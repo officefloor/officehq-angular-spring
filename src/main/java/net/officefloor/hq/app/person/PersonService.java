@@ -75,6 +75,11 @@ public class PersonService {
         return sheets.today(sheetId);
     }
 
+    /** The grade a new person on the sheet takes when none is given: its default grade, else A. */
+    public String defaultGrade(String sheetId) {
+        return sheets.defaultGrade(sheetId);
+    }
+
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);

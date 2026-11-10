@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The import box: lines of {@code name,grade,terms,contact}, taken in order (terms and contact may be
- * absent or blank). A line whose name matches a person on the sheet by name or alias (compared without
+ * absent or blank; a blank grade is the sheet's default grade). A line whose name matches a person on the sheet by name or alias (compared without
  * regard to case) updates them exactly as the person form edits them: their grade recorded from the
  * sheet's today, their terms and contact set when the line gives them, their name kept. Every other
  * line adds a person exactly as the person form adds them. Every line is held to the
@@ -51,9 +51,10 @@ public class PersonImportService {
         Set<String> names = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         String[] raw = text.split("\\r?\\n|\\r");
+        String defaultGrade = people.defaultGrade(sheetId);
         for (int i = 0; i < raw.length; i++) {
             if (!raw[i].isBlank()) {
-                Line line = parse(i + 1, raw[i]);
+                Line line = parse(i + 1, raw[i], defaultGrade);
                 if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
                     throw refused("Line " + (i + 1) + ": the name " + line.name() + " is already in this import.");
                 }
@@ -84,7 +85,7 @@ public class PersonImportService {
         return new Result(added, updated);
     }
 
-    private static Line parse(int number, String text) {
+    private static Line parse(int number, String text, String defaultGrade) {
         String[] fields = text.split(",", -1);
         if (fields.length < 2 || fields.length > 4) {
             throw refused("Line " + number + " needs a name and a grade, then optionally terms and a contact.");
@@ -93,7 +94,7 @@ public class PersonImportService {
         if (name.isEmpty() || name.length() > TEXT_MAX) {
             throw refused("Line " + number + ": enter a name.");
         }
-        String grade = fields[1].trim();
+        String grade = fields[1].trim().isEmpty() ? defaultGrade : fields[1].trim();
         if (!grade.matches("[ABC]")) {
             throw refused("Line " + number + ": choose a grade of A, B or C.");
         }

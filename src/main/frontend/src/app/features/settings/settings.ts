@@ -121,6 +121,8 @@ interface SettingsResponse {
   reviewSla: string;
   /** The proof kinds a claim above the proof threshold needs one of each of, comma separated, blank for none. */
   proofKinds: string;
+  /** The grade a new person takes when none is given, blank for none (A). */
+  defaultGrade: string;
 }
 
 /** Proof kinds: receipt or photo, comma separated. */
@@ -469,6 +471,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterProofKinds($any($event.target))"
           (input)="proofKindsInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-default-grade">Grade a new person takes when none is given: A, B or C (blank: A)</label>
+        <input
+          id="setting-default-grade"
+          data-testid="setting-default-grade"
+          [value]="defaultGradeInput() ?? ''"
+          (focus)="enterDefaultGrade($any($event.target))"
+          (input)="defaultGradeInput.set($any($event.target).value); error.set(null)"
+        />
         <label for="setting-parent">Parent sheet whose rates stand in for missing ones (blank: none)</label>
         <input
           id="setting-parent"
@@ -635,6 +645,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Default grade:
+        <strong data-testid="setting-default-grade-current">{{ defaultGrade() }}</strong>
+        @if (defaultGrade() === '') {
+          <span>(A)</span>
+        }
+      </p>
+      <p>
         Fiscal year starts in month:
         <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonth() }}</strong>
       </p>
@@ -759,6 +776,10 @@ export class Settings {
   protected readonly proofKinds = signal('');
   /** The proof kinds typed; null while their field has not been entered (left as they are). */
   protected readonly proofKindsInput = signal<string | null>(null);
+  /** The default grade in force, blank for none (A). */
+  protected readonly defaultGrade = signal('');
+  /** The default grade typed; null while its field has not been entered (left as it is). */
+  protected readonly defaultGradeInput = signal<string | null>(null);
   /** The month the sheet's fiscal year starts in (1 to 12). */
   protected readonly fiscalStartMonth = signal('1');
   /** The fiscal start month typed; null while its field has not been typed in (left as it is). */
@@ -803,6 +824,7 @@ export class Settings {
       this.escalateInput.set(null);
       this.reviewSlaInput.set(null);
       this.proofKindsInput.set(null);
+      this.defaultGradeInput.set(null);
       this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.error.set(null);
@@ -946,6 +968,15 @@ export class Settings {
     this.proofKindsInput.set(this.proofKinds());
   }
 
+  /** Entering the default grade's field fills it with the grade in force, selected, so it saves as it is
+   *  unless typed over. */
+  protected enterDefaultGrade(input: HTMLInputElement): void {
+    if (this.defaultGradeInput() !== null) return;
+    input.value = this.defaultGrade();
+    input.select();
+    this.defaultGradeInput.set(this.defaultGrade());
+  }
+
   /** Entering the parent's field fills it with the parent in force, selected, so it saves as it is
    *  unless typed over. */
   protected enterParent(input: HTMLInputElement): void {
@@ -1043,7 +1074,7 @@ export class Settings {
 
   private show(
     res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
-      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'proofKinds'>>,
+      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'proofKinds' | 'defaultGrade'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -1063,6 +1094,7 @@ export class Settings {
     if (res.parent !== undefined) this.session.parent.set(res.parent);
     this.session.reviewSla.set(res.reviewSla ?? '');
     this.proofKinds.set(res.proofKinds ?? '');
+    this.defaultGrade.set(res.defaultGrade ?? '');
   }
 
   protected async save(event: Event): Promise<void> {
@@ -1090,6 +1122,7 @@ export class Settings {
     const escalateAfter = this.escalateInput()?.trim() ?? null;
     const reviewSla = this.reviewSlaInput()?.trim() ?? null;
     const proofKinds = this.proofKindsInput()?.trim() ?? null;
+    const defaultGrade = this.defaultGradeInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
@@ -1192,6 +1225,10 @@ export class Settings {
       this.error.set('Enter the proof kinds as receipt or photo, comma separated, or leave it blank for none.');
       return;
     }
+    if (defaultGrade !== null && defaultGrade !== '' && !(GRADES as readonly string[]).includes(defaultGrade)) {
+      this.error.set('Enter a default grade of A, B or C, or leave it blank for A.');
+      return;
+    }
     if (fiscalStartMonth !== null && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
       this.error.set('Enter the fiscal start month as a month number, 1 to 12.');
       return;
@@ -1283,6 +1320,7 @@ export class Settings {
           escalateAfter,
           reviewSla,
           proofKinds,
+          defaultGrade,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -1309,6 +1347,7 @@ export class Settings {
       this.escalateInput.set(null);
       this.reviewSlaInput.set(null);
       this.proofKindsInput.set(null);
+      this.defaultGradeInput.set(null);
       this.fiscalInput.set(null);
       this.parentInput.set(null);
       this.fromInput.set({});

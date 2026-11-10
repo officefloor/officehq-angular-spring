@@ -98,6 +98,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
+    /** The grade a new person on the sheet takes when none is given: its default grade, else A. */
+    @Transactional(readOnly = true)
+    public String defaultGrade(String id) {
+        return sheets.findById(id).map(Sheet::defaultGradeOrA).orElse("A");
+    }
+
     /** The default date of a new claim on the sheet: its entry date when set, else its today. */
     @Transactional(readOnly = true)
     public LocalDate entryDate(String id) {

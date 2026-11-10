@@ -130,6 +130,10 @@ public class Sheet {
     @Column(name = "proof_kinds")
     private String proofKinds;
 
+    /** The grade a new person takes when none is given (quick-add, a blank import grade); null for A. Not dated. */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /** The due-total above which a person is alerted; null for off. Not dated. */
     @Column(name = "alert_threshold")
     private BigDecimal alertThreshold;
@@ -228,6 +232,7 @@ public class Sheet {
         then.escalateAfter = escalateAfter;
         then.reviewSla = reviewSla;
         then.proofKinds = proofKinds;
+        then.defaultGrade = defaultGrade;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -501,6 +506,20 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    /** The default grade; null for none (A). Not dated. */
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    /** The grade a new person takes when none is given: the default grade, else A. */
+    public String defaultGradeOrA() {
+        return defaultGrade == null ? "A" : defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
     }
 
     public BigDecimal getAlertThreshold() {
