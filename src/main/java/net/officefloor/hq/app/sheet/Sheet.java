@@ -87,6 +87,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The days after a period's to-date it is left open once the sheet's today passes it; null for off. */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     /** The last number given in the sheet's X sequence, to claims opened under numbering per period in no period. */
     @Column(name = "last_unperiod_claim_number", nullable = false)
     private int lastUnperiodClaimNumber;
@@ -242,6 +246,14 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public Integer getGraceDays() {
+        return graceDays;
+    }
+
+    public void setGraceDays(Integer graceDays) {
+        this.graceDays = graceDays;
     }
 
     /** Whether a claim opened on the sheet's today is numbered within its period. */

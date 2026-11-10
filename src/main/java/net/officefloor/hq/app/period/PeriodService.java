@@ -2,11 +2,8 @@ package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
-import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,7 +17,8 @@ import org.springframework.web.server.ResponseStatusException;
  * case) and a from and to date, both inclusive; no two periods on a sheet overlap. A period can be
  * closed once: closing fixes its due-total at that moment, and no claim dated inside a closed
  * period can be added, edited, opened, settled or voided. A steward can reopen a closed period, which
- * makes its due-total live again.
+ * makes its due-total live again. With grace days set, a change of the sheet's today closes the
+ * periods past them (see {@link SheetService#setToday}).
  */
 @Service
 public class PeriodService {
@@ -29,12 +27,10 @@ public class PeriodService {
     private final SheetService sheets;
     private final SheetRepository sheetRows;
     private final Audit audit;
-    private final RollupService rollup;
     private final RoleService roles;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, SheetRepository sheetRows, Audit audit,
-            RollupService rollup, RoleService roles) {
-        this.rollup = rollup;
+            RoleService roles) {
         this.roles = roles;
         this.periods = periods;
         this.sheets = sheets;
@@ -85,12 +81,7 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That period is already closed.");
         }
-        period.close(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()));
-        Period saved = periods.saveAndFlush(period);
-        BigDecimal due = saved.getClosedDue();
-        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " total=" + due.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
-        return saved;
+        return sheets.closePeriod(sheetId, user, period, false);
     }
 
     /**

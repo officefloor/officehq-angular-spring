@@ -33,7 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
  * date, as is its proof threshold (see {@link Sheet#proofThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
- * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}.
+ * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are
+ * the grace days (none: off): when the sheet's today changes, every open period whose to-date plus
+ * the grace days is before the new today is closed (see {@link SheetService#setToday}).
  */
 @Service
 public class SettingService {
@@ -48,6 +50,7 @@ public class SettingService {
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
     public static final String POLICY_DATE = "policy-date";
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
+    public static final String GRACE_DAYS = "grace-days";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -84,7 +87,8 @@ public class SettingService {
      * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
      * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
      * (by grade, in grade order), and a proof threshold when {@code proofThreshold} is not null, and each permission matrix entry
-     * given in {@code permissions} (by action, in the order given; blank for the standing rule). Each figure is recorded from its from-date, keeping the values
+     * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
+     * {@code changeGrace} (null for off). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -92,7 +96,8 @@ public class SettingService {
     public Sheet set(String sheetId, String user, Dated<BigDecimal> limit, Dated<BigDecimal> floor,
             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
-            Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Map<String, String> permissions) {
+            Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Map<String, String> permissions,
+            boolean changeGrace, Integer graceDays) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (limit != null) {
@@ -137,6 +142,11 @@ public class SettingService {
             sheet.setPermission(e.getKey(), e.getValue());
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, PERMISSION + e.getKey(), e.getValue()));
+        }
+        if (changeGrace) {
+            sheet.setGraceDays(graceDays);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, GRACE_DAYS, graceDays == null ? "" : graceDays.toString()));
         }
         return sheet;
     }

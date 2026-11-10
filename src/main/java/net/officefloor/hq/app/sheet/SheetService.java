@@ -1,9 +1,11 @@
 package net.officefloor.hq.app.sheet;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -20,8 +22,10 @@ public class SheetService {
     private final SheetRepository sheets;
     private final RollupService rollup;
     private final PeriodRepository periods;
+    private final Audit audit;
 
-    public SheetService(SheetRepository sheets, RollupService rollup, PeriodRepository periods) {
+    public SheetService(SheetRepository sheets, RollupService rollup, PeriodRepository periods, Audit audit) {
+        this.audit = audit;
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
@@ -97,13 +101,40 @@ public class SheetService {
         return "X-" + number;
     }
 
+    /**
+     * Close an open period, fixing its due-total now, and record it ({@code auto=yes} when closed by
+     * a change of the sheet's today). The caller holds the sheet.
+     */
+    @Transactional
+    public Period closePeriod(String id, String user, Period period, boolean auto) {
+        period.close(rollup.dueBetweenByPerson(id, period.getFromDate(), period.getToDate()));
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_CLOSED sheet=" + id + " by=" + user + " period=" + saved.getName() + " total="
+                + saved.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString() + (auto ? " auto=yes" : ""));
+        return saved;
+    }
+
+    /**
+     * Change the sheet's today. With grace days set, every open period whose to-date plus the grace
+     * days is before the new today is then closed, in order of their to-dates.
+     */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
-        Sheet sheet = load(id, user);
+        load(id, user);
+        // hold the sheet so no claim changes while periods close
+        Sheet sheet = lock(id);
         RollupService.Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
-        // changing today has no audit line of its own, only the figures it moves
+        Integer grace = saved.getGraceDays();
+        if (grace != null) {
+            for (Period period : periods.findBySheetIdAndClosedFalseOrderByToDateAsc(id)) {
+                if (period.getToDate().plusDays(grace).isBefore(today)) {
+                    closePeriod(id, user, period, true);
+                }
+            }
+        }
+        // changing today has no audit line of its own, only the periods it closes and the figures it moves
         rollup.recordChanges(id, user, before);
         return saved;
     }

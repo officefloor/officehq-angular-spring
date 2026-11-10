@@ -20,6 +20,9 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
     Optional<Period> findBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(String sheetId, LocalDate date,
             LocalDate sameDate);
 
+    /** A sheet's open periods by to-date. */
+    List<Period> findBySheetIdAndClosedFalseOrderByToDateAsc(String sheetId);
+
     Optional<Period> findByIdAndSheetId(Long id, String sheetId);
 
     /** Whether a closed period on the sheet contains the date. */
