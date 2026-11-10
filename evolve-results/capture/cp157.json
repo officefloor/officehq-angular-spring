@@ -1,0 +1,64 @@
+{
+  "checkpoint": 157,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp157_user-locale",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "eb73a6b5915c5ae268ffac940d56f2b3d3645fca",
+  "reset_sha": "",
+  "preagent_sha": "b64911cece463ed527f4d3eef89a89ce147161a9",
+  "prev_sha": "b64911cece463ed527f4d3eef89a89ce147161a9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5511873999999999,
+    "input_tokens": 72,
+    "output_tokens": 19663,
+    "cache_read_tokens": 2263317,
+    "cache_creation_tokens": 88122,
+    "num_turns": 36,
+    "duration_ms": 888013,
+    "duration_api_ms": 199293,
+    "model": "claude-opus-5-5",
+    "session_id": "ff4f9f9e-7370-41fe-9e61-c51db09dab72",
+    "stop_reason": "success",
+    "result_text": "I added the per-user locale, and all 4 Playwright tests now pass with `bin/e2e`.\n\n**What it does**\n- There is a locale select (`user-locale`, with en or de), a Save button and a display of the current locale near \"Signed in as\". Each user's choice is stored and read back when they sign in; it defaults to en and writes no audit line. The store is a new table, `V86__user_locale.sql`, with a small `user/` package on the server, and the sign-in response now includes the locale.\n- Under de, a figure (a number with two decimals) shows as `1.234,56`. A new pipe, `core/figure.ts`, does this and leaves any other text unchanged. Typed entries, the CSV export and audit lines are untouched.\n- I picked the figure cells by hand, about 55 of them: amounts, due figures, totals, rates, shares, cuts, and the amount-type settings shown under \"current\". Any figure cell I missed will still show the en form under de.\n\n**Two changes outside locale that the test needed**\n1. **Grade rates now go up to 99999.99 instead of 999.99.** The test sets a rate of 12345.67, which the old limit rejected. The limit is raised in the form check, the server checks and the rate import, and `V87__rate_pct_wider.sql` widens the stored columns. The late percentage setting keeps its 999.99 limit.\n2. **A viewer can now press \"generate plan claims\" when nothing is due and get \"0 made\".** Scenario 2 expects this, but the server used to refuse a viewer outright. A viewer is still refused whenever generating would actually make a claim, because adding a claim already refuses viewers, and an archived sheet is still refused. This is a change to who may do what, so please confirm it's the rule you want.\n\nWhile a sheet is shown \"as of\" a past date, saving a locale still goes through, since it changes no sheet; other changes are blocked in that view.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5511873999999999,
+        "num_turns": 36,
+        "duration_ms": 888013,
+        "duration_api_ms": 199293,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp157.agent.jsonl",
+  "agent_diff_file": "cp157.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

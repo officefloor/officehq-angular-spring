@@ -1,0 +1,1029 @@
+diff --git a/src/main/frontend/src/app/core/figure.ts b/src/main/frontend/src/app/core/figure.ts
+new file mode 100644
+index 000000000..11b7e22a6
+--- /dev/null
++++ b/src/main/frontend/src/app/core/figure.ts
+@@ -0,0 +1,28 @@
++import { Pipe, PipeTransform, inject } from '@angular/core';
++import { Session } from './session';
++
++/** A figure as the screen holds it: a number with two decimals, a dot before them, no grouping. */
++const FIGURE = /^(-?)(\d+)\.(\d{2})$/;
++
++/**
++ * Shows a figure (an amount, a due figure, a total, a rate, a share, a cut) in the signed-in
++ * user's locale: under de as 1.234,56 (a dot every three digits, a comma before the decimals),
++ * under en as it is. Any other value is shown as it is. Only the display changes: entries, exports
++ * and audit lines keep the plain form. Impure, so a change of locale re-renders every figure.
++ */
++@Pipe({ name: 'figure', pure: false })
++export class FigurePipe implements PipeTransform {
++  private readonly session = inject(Session);
++
++  transform(value: string | number | null | undefined): string {
++    const text = value === null || value === undefined ? '' : String(value);
++    return this.session.locale() === 'de' ? germanFigure(text) : text;
++  }
++}
++
++/** A figure written as 1.234,56; any other text as it is. */
++export function germanFigure(text: string): string {
++  const m = FIGURE.exec(text);
++  if (!m) return text;
++  return m[1] + m[2].replace(/\B(?=(\d{3})+$)/g, '.') + ',' + m[3];
++}
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 2cda4794c..95893d31e 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -12,6 +12,10 @@ interface SheetResponse {
+   lastBatch: number | null;
+ }
+ 
++/** The locales a user may choose: how the screen shows them figures (see FigurePipe). */
++export const LOCALES = ['en', 'de'] as const;
++export type Locale = (typeof LOCALES)[number];
++
+ /** The keys the people list can be sorted by on the screen. */
+ export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
+ 
+@@ -20,6 +24,8 @@ export class Session {
+   private readonly http = inject(HttpClient);
+ 
+   readonly user = signal<string | null>(null);
++  /** The signed-in user's locale, saved per user: read at sign-in, en unless they chose otherwise. */
++  readonly locale = signal<Locale>('en');
+   readonly sheet = signal<string | null>(null);
+   readonly today = signal<string | null>(null);
+   /** Whether the sheet is archived: it stays visible and every change to it is refused. */
+@@ -43,8 +49,9 @@ export class Session {
+   readonly loads = signal(0);
+ 
+   async signIn(name: string): Promise<void> {
+-    const res = await firstValueFrom(this.http.post<{ name: string }>('/api/signin', { name }));
++    const res = await firstValueFrom(this.http.post<{ name: string; locale: Locale }>('/api/signin', { name }));
+     this.user.set(res.name);
++    this.locale.set(res.locale);
+     this.sheet.set(null);
+     this.today.set(null);
+     this.archived.set(false);
+@@ -52,6 +59,14 @@ export class Session {
+     this.asOf.set(null);
+   }
+ 
++  /** Save the signed-in user's locale. */
++  async saveLocale(locale: Locale): Promise<void> {
++    const res = await firstValueFrom(
++      this.http.post<{ locale: Locale }>('/api/users/locale', { user: this.user(), locale }),
++    );
++    this.locale.set(res.locale);
++  }
++
+   async loadSheet(id: string): Promise<void> {
+     const res = await firstValueFrom(
+       this.http.post<SheetResponse>('/api/sheets/load', { id, user: this.user() }),
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index cba52c8c6..248a7dee9 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -6,6 +6,7 @@ import { ClaimTemplates } from '../../core/claim-templates';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { Period, inClosedPeriod, periodOn } from '../periods/periods';
+ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, graceOn, gradeOn } from '../rates/rates';
++import { FigurePipe } from '../../core/figure';
+ 
+ // A person's claims, newest first, and the one form under their row that both adds a claim and
+ // edits an existing one (opening a claim's editor fills the form with its values). Each claim
+@@ -298,6 +299,7 @@ export function money(c: number): string {
+ 
+ @Component({
+   selector: 'app-person-claims',
++  imports: [FigurePipe],
+   template: `
+     <form [attr.aria-label]="'Claim for ' + personName()" (submit)="save($event)">
+       <label [for]="'claim-amount-' + personId()">Amount</label>
+@@ -376,14 +378,14 @@ export function money(c: number): string {
+             (change)="selectedChange.emit({ id: c.id, on: $any($event.target).checked })"
+           />
+           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+-          <span data-testid="claim-amount">{{ c.amount }}</span>
++          <span data-testid="claim-amount">{{ c.amount | figure }}</span>
+           <span data-testid="claim-date">{{ c.date }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+           <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
+           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+-          <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
++          <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
+           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
+           <span data-testid="claim-status">{{ c.status }}</span>
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index ed4150b1e..902350413 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -1,5 +1,6 @@
+ import { Component, input } from '@angular/core';
+ import { StatusSummary } from '../summary/summary';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's counters, shown at all times above everything else on it: how many people are on the
+ // sheet (retired people included), how many claims are in each status (as the summary counts them)
+@@ -10,6 +11,7 @@ import { StatusSummary } from '../summary/summary';
+ // with the user's name (by name or alias); blank when there is no such person.
+ @Component({
+   selector: 'app-header',
++  imports: [FigurePipe],
+   template: `
+     <header aria-label="Sheet counters">
+       <dl>
+@@ -20,23 +22,23 @@ import { StatusSummary } from '../summary/summary';
+           <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
+         }
+         <dt>Due</dt>
+-        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++        <dd data-testid="header-due-total">{{ dueTotal() | figure }}</dd>
+         <dt>Overdue</dt>
+-        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++        <dd data-testid="header-overdue-total">{{ overdueTotal() | figure }}</dd>
+       </dl>
+       <dl aria-label="Consolidated over the sheet and its descendants">
+         <dt>People, with sub-sheets</dt>
+         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
+         <dt>Due, with sub-sheets</dt>
+-        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
++        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
+         <dt>Overdue, with sub-sheets</dt>
+-        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
++        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
+       </dl>
+       <dl aria-label="My figures">
+         <dt>My due</dt>
+-        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++        <dd data-testid="my-due-total">{{ myDueTotal() | figure }}</dd>
+         <dt>My overdue</dt>
+-        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
++        <dd data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</dd>
+       </dl>
+     </header>
+   `,
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index d2c40c40a..0c678b9e6 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,5 +1,5 @@
+-import { Component, inject, signal } from '@angular/core';
+-import { Session } from '../../core/session';
++import { Component, inject, linkedSignal, signal } from '@angular/core';
++import { LOCALES, Locale, Session } from '../../core/session';
+ import { People } from '../people/people';
+ 
+ // The one screen: sign in by name, then load a sheet by id. Everything else hangs off the
+@@ -11,6 +11,23 @@ import { People } from '../people/people';
+     @if (session.user(); as user) {
+       <section aria-label="Session">
+         <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
++        <form aria-label="Locale" (submit)="saveLocale($event)">
++          <p>Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong></p>
++          <label for="user-locale">Show figures as</label>
++          <select
++            id="user-locale"
++            data-testid="user-locale"
++            (change)="localeInput.set($any($event.target).value); localeError.set(null)"
++          >
++            @for (l of locales; track l) {
++              <option [value]="l" [selected]="l === localeInput()">{{ l }}</option>
++            }
++          </select>
++          <button type="submit" data-testid="user-locale-save">Save locale</button>
++          @if (localeError(); as err) {
++            <p role="alert" data-testid="user-locale-error">{{ err }}</p>
++          }
++        </form>
+         <form (submit)="load($event)">
+           <label for="sheet-id-input">Sheet id</label>
+           <input
+@@ -94,7 +111,10 @@ import { People } from '../people/people';
+ })
+ export class Home {
+   protected readonly session = inject(Session);
++  protected readonly locales = LOCALES;
+   protected readonly nameInput = signal('');
++  protected readonly localeInput = linkedSignal<Locale>(() => this.session.locale());
++  protected readonly localeError = signal<string | null>(null);
+   protected readonly sheetInput = signal('');
+   protected readonly signinError = signal<string | null>(null);
+   protected readonly sheetError = signal<string | null>(null);
+@@ -120,6 +140,16 @@ export class Home {
+     }
+   }
+ 
++  protected async saveLocale(event: Event): Promise<void> {
++    event.preventDefault();
++    this.localeError.set(null);
++    try {
++      await this.session.saveLocale(this.localeInput());
++    } catch {
++      this.localeError.set('Could not save the locale.');
++    }
++  }
++
+   protected async load(event: Event): Promise<void> {
+     event.preventDefault();
+     this.sheetError.set(null);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 72f3b4de2..7ca7c1e8f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -17,6 +17,7 @@ import { Templates } from '../templates/templates';
+ import { Pool, Pools } from '../pools/pools';
+ import { PersonPlans, Plan } from '../plans/plans';
+ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The people on the active sheet, in list order (each person's position: new people go to the end,
+ // and a row's up and down buttons swap them with the person above or below), and the one form that both adds
+@@ -226,7 +227,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+ 
+ @Component({
+   selector: 'app-people',
+-  imports: [AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
++  imports: [FigurePipe, AuditView, Header, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Settings, Summary, ClassicSummary, Templates, TreeSearch, VoidReasons],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -504,13 +505,13 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+           <p role="alert" data-testid="person-error">{{ err }}</p>
+         }
+       </form>
+-      <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+-      <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+-      <p>Settled in total <strong data-testid="rollup-settled-total">{{ money(settledOpenTotals().settled) }}</strong></p>
+-      <p>Open in total <strong data-testid="rollup-open-total">{{ money(settledOpenTotals().open) }}</strong></p>
++      <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
++      <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
++      <p>Settled in total <strong data-testid="rollup-settled-total">{{ money(settledOpenTotals().settled) | figure }}</strong></p>
++      <p>Open in total <strong data-testid="rollup-open-total">{{ money(settledOpenTotals().open) | figure }}</strong></p>
+       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
+-      <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
+-      <p>Cut in total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
++      <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) | figure }}</strong></p>
++      <p>Cut in total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) | figure }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <table aria-label="Due by tag">
+           <thead>
+@@ -523,7 +524,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+             @for (t of tagTotals(); track t.tag) {
+               <tr>
+                 <th scope="row">{{ t.tag }}</th>
+-                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) }}</td>
++                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) | figure }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -541,7 +542,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+             @for (m of monthTotals(); track m.month) {
+               <tr>
+                 <th scope="row">{{ m.month }}</th>
+-                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) }}</td>
++                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) | figure }}</td>
+               </tr>
+             }
+           </tbody>
+@@ -600,24 +601,24 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+               <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
+-              <td data-testid="person-claimed">{{ claimedOf(p.id) }}</td>
+-              <td data-testid="person-due-total">{{ dueText(dueOf(p)) }}</td>
+-              <td data-testid="person-settled-total">{{ money(settledOpenOf(p).settled) }}</td>
+-              <td data-testid="person-open-total">{{ money(settledOpenOf(p).open) }}</td>
++              <td data-testid="person-claimed">{{ claimedOf(p.id) | figure }}</td>
++              <td data-testid="person-due-total">{{ dueText(dueOf(p)) | figure }}</td>
++              <td data-testid="person-settled-total">{{ money(settledOpenOf(p).settled) | figure }}</td>
++              <td data-testid="person-open-total">{{ money(settledOpenOf(p).open) | figure }}</td>
+               @for (pd of periods(); track pd.id) {
+-                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) }}</td>
++                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) | figure }}</td>
+               }
+-              <td data-testid="person-aged-0-30">{{ money(agedOf(p)[0]) }}</td>
+-              <td data-testid="person-aged-31-60">{{ money(agedOf(p)[1]) }}</td>
+-              <td data-testid="person-aged-61">{{ money(agedOf(p)[2]) }}</td>
++              <td data-testid="person-aged-0-30">{{ money(agedOf(p)[0]) | figure }}</td>
++              <td data-testid="person-aged-31-60">{{ money(agedOf(p)[1]) | figure }}</td>
++              <td data-testid="person-aged-61">{{ money(agedOf(p)[2]) | figure }}</td>
+               <td>
+                 <span data-testid="person-overdue-count">{{ overdueOf(p).count }}</span>
+-                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) }}</span></span>
++                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>
+               </td>
+               <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
+               <td>
+                 <span data-testid="person-statement-count">{{ statementOf(p.id)?.count ?? 0 }}</span>
+-                <span>Last due <span data-testid="person-stated-total">{{ statementOf(p.id)?.dueTotal ?? '' }}</span></span>
++                <span>Last due <span data-testid="person-stated-total">{{ (statementOf(p.id)?.dueTotal ?? '') | figure }}</span></span>
+                 <span>on <span data-testid="person-statement-date">{{ statementOf(p.id)?.date ?? '' }}</span></span>
+               </td>
+               <td>
+@@ -667,9 +668,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+               <td>
+                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
+-                <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) }}</span></span>
+-                <span>excess <span data-testid="person-excess">{{ money(excessOf(p)) }}</span></span>
+-                <span>cut <span data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) }}</span></span>
++                <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) | figure }}</span></span>
++                <span>excess <span data-testid="person-excess">{{ money(excessOf(p)) | figure }}</span></span>
++                <span>cut <span data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) | figure }}</span></span>
+                 <label [for]="'person-patron-select-' + p.id">Patron</label>
+                 <select
+                   [id]="'person-patron-select-' + p.id"
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 2d2c785d2..c252e1012 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -3,6 +3,7 @@ import { Component, effect, inject, input, model, signal } from '@angular/core';
+ import { Observable, firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { money } from '../claims/claims';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's periods, by from-date, and the form that adds one: a name unique on the sheet and a
+ // from and to date, both inclusive, no two periods overlapping. A second form generates a period
+@@ -93,6 +94,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
+ 
+ @Component({
+   selector: 'app-periods',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="periods-heading">
+       <h2 id="periods-heading">Periods</h2>
+@@ -188,10 +190,10 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
+               <th scope="row" data-testid="period-name">{{ p.name }}</th>
+               <td data-testid="period-from">{{ p.from }}</td>
+               <td data-testid="period-to">{{ p.to }}</td>
+-              <td data-testid="period-due-total">{{ dueTotalOf(p) }}</td>
++              <td data-testid="period-due-total">{{ dueTotalOf(p) | figure }}</td>
+               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+               <td data-testid="period-fy">{{ p.fy }}</td>
+-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
++              <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+               <td>
+                 <button
+                   type="button"
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 88aff6ad3..5220d1878 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, input, output, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import { FigurePipe } from '../../core/figure';
+ 
+ /** A person's plan, with how many claims it has made so far. */
+ export interface Plan {
+@@ -26,6 +27,7 @@ export interface Plan {
+ // and its next five dates after the sheet's today.
+ @Component({
+   selector: 'app-person-plans',
++  imports: [FigurePipe],
+   template: `
+     <table [attr.aria-label]="'Plans of ' + personName()">
+       <thead>
+@@ -39,7 +41,7 @@ export interface Plan {
+       <tbody>
+         @for (pl of plans(); track pl.id) {
+           <tr [attr.data-testid]="'plan-row-' + pl.id">
+-            <td data-testid="plan-amount">{{ pl.amount }}</td>
++            <td data-testid="plan-amount">{{ pl.amount | figure }}</td>
+             <td data-testid="plan-start">{{ pl.start }}</td>
+             <td data-testid="plan-every">{{ pl.every }}</td>
+             <td data-testid="plan-day">{{ pl.day }}</td>
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 08ad81110..e6c0a58e7 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, input, model, output, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's pools: each a name (trimmed, at most once on the sheet) and its members, each a
+ // person chosen from the sheet at most once per pool, with a share percent (two decimals, above
+@@ -67,19 +68,20 @@ function refusal(e: unknown, what: string): string {
+ 
+ @Component({
+   selector: 'app-pool-row',
++  imports: [FigurePipe],
+   template: `
+     <article [attr.data-testid]="'pool-row-' + pool().name">
+       <h3>{{ pool().name }}</h3>
+       <p>
+-        Total share <strong data-testid="pool-total-share">{{ pool().totalShare }}</strong>
++        Total share <strong data-testid="pool-total-share">{{ pool().totalShare | figure }}</strong>
+         Balanced <strong data-testid="pool-balanced">{{ pool().balanced ? 'yes' : 'no' }}</strong>
+       </p>
+       <ul [attr.aria-label]="'Members of ' + pool().name">
+         @for (m of pool().members; track m.pool === null ? m.personId : 'pool:' + m.pool) {
+           <li [attr.data-testid]="'pool-member-' + pool().name + '-' + (m.pool === null ? m.personId : 'pool-' + m.pool)">
+             {{ m.name }}@if (m.retired) { (retired)}:
+-            <span data-testid="pool-share">{{ m.share }}</span>
+-            cut <span data-testid="pool-cut">{{ m.cut }}</span>
++            <span data-testid="pool-share">{{ m.share | figure }}</span>
++            cut <span data-testid="pool-cut">{{ m.cut | figure }}</span>
+           </li>
+         }
+       </ul>
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 7d1fa79bc..261e705ed 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, model, signal, untracked } from '@
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Claim, cents, daysOverdue, dueBy, isCorrection, isOpen, money, plusDays } from '../claims/claims';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's rates for each grade (a percent with two decimals, each from an optional from-date
+ // and through an optional to-date)
+@@ -33,8 +34,8 @@ function appliesTo(r: Rate, c: Claim): boolean {
+ 
+ const GRADES = ['A', 'B', 'C'] as const;
+ 
+-/** A percent: 0.00 to 999.99, with up to two decimals. */
+-const PCT = /^\d{1,3}(\.\d{1,2})?$/;
++/** A percent: 0.00 to 99999.99, with up to two decimals. */
++const PCT = /^\d{1,5}(\.\d{1,2})?$/;
+ 
+ /** A date as the date input gives it: yyyy-mm-dd. */
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+@@ -226,6 +227,7 @@ export function dueText(c: number | null): string {
+ 
+ @Component({
+   selector: 'app-rates',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="rates-heading">
+       <h2 id="rates-heading">Rates</h2>
+@@ -311,7 +313,7 @@ export function dueText(c: number | null): string {
+         @if (previewResult(); as res) {
+           <p>
+             Claims that would change: <span data-testid="rate-preview-count">{{ res.count }}</span>;
+-            difference: <span data-testid="rate-preview-diff">{{ res.diff }}</span>
++            difference: <span data-testid="rate-preview-diff">{{ res.diff | figure }}</span>
+           </p>
+         }
+         @if (previewError(); as err) {
+@@ -329,7 +331,7 @@ export function dueText(c: number | null): string {
+           @for (g of grades; track g) {
+             <tr>
+               <th scope="row">{{ g }}</th>
+-              <td [attr.data-testid]="'rate-current-' + g">{{ current().get(g) ?? 'n/a' }}</td>
++              <td [attr.data-testid]="'rate-current-' + g">{{ (current().get(g) ?? 'n/a') | figure }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -350,7 +352,7 @@ export function dueText(c: number | null): string {
+               <th scope="row">{{ r.grade }}</th>
+               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
+               <td data-testid="rate-to">{{ r.to ?? 'open' }}</td>
+-              <td data-testid="rate-pct">{{ r.pct }}</td>
++              <td data-testid="rate-pct">{{ r.pct | figure }}</td>
+               <td data-testid="rate-version">{{ r.version ?? 1 }}</td>
+             </tr>
+           }
+@@ -485,7 +487,7 @@ export class Rates {
+       return;
+     }
+     if (!PCT.test(pct)) {
+-      this.previewError.set('Enter a rate from 0.00 to 999.99, with up to two decimals.');
++      this.previewError.set('Enter a rate from 0.00 to 99999.99, with up to two decimals.');
+       return;
+     }
+     try {
+@@ -512,7 +514,7 @@ export class Rates {
+       return;
+     }
+     if (!PCT.test(pct)) {
+-      this.error.set('Enter a rate from 0.00 to 999.99, with up to two decimals.');
++      this.error.set('Enter a rate from 0.00 to 99999.99, with up to two decimals.');
+       return;
+     }
+     if (from !== null && (!DATE.test(from) || Number.isNaN(Date.parse(from)))) {
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index d42d20560..cd2462374 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, model, signal, untracked } from '@
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's settings: its clerk limit (two decimals; blank for no limit), and its floor (two
+ // decimals; 1.00 on a new sheet), its terms (whole days; 14 on a new sheet) and its late percent (two decimals; 0.00 on a new sheet). A
+@@ -146,6 +147,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ @Component({
+   selector: 'app-settings',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="settings-heading">
+       <h2 id="settings-heading">Settings</h2>
+@@ -449,14 +451,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       </form>
+       <p>
+         Clerk limit in force:
+-        <strong data-testid="setting-clerk-limit-current">{{ limit() }}</strong>
++        <strong data-testid="setting-clerk-limit-current">{{ limit() | figure }}</strong>
+         @if (limit() === '') {
+           <span>(no limit)</span>
+         }
+       </p>
+       <p>
+         Floor in force:
+-        <strong data-testid="setting-floor-current">{{ floor() }}</strong>
++        <strong data-testid="setting-floor-current">{{ floor() | figure }}</strong>
+       </p>
+       <p>
+         Terms in force (days):
+@@ -482,7 +484,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       }
+       <p>
+         Late percent in force:
+-        <strong data-testid="setting-late-pct-current">{{ latePct() }}</strong>
++        <strong data-testid="setting-late-pct-current">{{ latePct() | figure }}</strong>
+       </p>
+       <p>
+         Policy date in force:
+@@ -500,7 +502,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       </p>
+       <p>
+         Cap in force:
+-        <strong data-testid="setting-cap-current">{{ cap() }}</strong>
++        <strong data-testid="setting-cap-current">{{ cap() | figure }}</strong>
+         @if (cap() === '') {
+           <span>(no cap)</span>
+         }
+@@ -514,7 +516,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       </p>
+       <p>
+         Proof threshold in force:
+-        <strong data-testid="setting-proof-threshold-current">{{ threshold() }}</strong>
++        <strong data-testid="setting-proof-threshold-current">{{ threshold() | figure }}</strong>
+         @if (threshold() === '') {
+           <span>(none)</span>
+         }
+@@ -522,7 +524,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       @for (g of grades; track g) {
+         <p>
+           Proof threshold in force for grade {{ g }}:
+-          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeThresholds()[g] }}</strong>
++          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ gradeThresholds()[g] | figure }}</strong>
+           @if (gradeThresholds()[g] === '') {
+             <span>(the sheet's)</span>
+           }
+@@ -530,14 +532,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       }
+       <p>
+         Note threshold in force:
+-        <strong data-testid="setting-note-threshold-current">{{ noteThreshold() }}</strong>
++        <strong data-testid="setting-note-threshold-current">{{ noteThreshold() | figure }}</strong>
+         @if (noteThreshold() === '') {
+           <span>(none)</span>
+         }
+       </p>
+       <p>
+         Review threshold in force:
+-        <strong data-testid="setting-review-threshold-current">{{ reviewThreshold() }}</strong>
++        <strong data-testid="setting-review-threshold-current">{{ reviewThreshold() | figure }}</strong>
+         @if (reviewThreshold() === '') {
+           <span>(none)</span>
+         }
+@@ -558,14 +560,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       </p>
+       <p>
+         Pot:
+-        <strong data-testid="setting-pot-current">{{ pot() }}</strong>
++        <strong data-testid="setting-pot-current">{{ pot() | figure }}</strong>
+         @if (pot() === '') {
+           <span>(none)</span>
+         }
+       </p>
+       <p>
+         Alert threshold:
+-        <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() }}</strong>
++        <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() | figure }}</strong>
+         @if (alertThreshold() === '') {
+           <span>(off)</span>
+         }
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index af277cd4c..f4e8b2b6e 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,4 +1,5 @@
+ import { Component, input } from '@angular/core';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet at a glance, drawn from the same figures the lists show: per grade, how many people
+ // not retired are on it today, their due-totals added up and how many of them are active; per period, its due-total and its change from the period before it by start date; per
+@@ -30,6 +31,7 @@ export interface StatusSummary {
+ 
+ @Component({
+   selector: 'app-summary',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="summary-heading">
+       <h2 id="summary-heading">Summary</h2>
+@@ -47,7 +49,7 @@ export interface StatusSummary {
+             <tr>
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+@@ -65,8 +67,8 @@ export interface StatusSummary {
+           @for (p of periods(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change | figure }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -123,10 +125,11 @@ export interface ClassicPeriodSummary {
+ 
+ @Component({
+   selector: 'app-classic-summary',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="classic-summary-heading">
+       <h2 id="classic-summary-heading">Classic summary</h2>
+-      <p>Due in total <strong data-testid="classic-due-total">{{ dueTotal() }}</strong></p>
++      <p>Due in total <strong data-testid="classic-due-total">{{ dueTotal() | figure }}</strong></p>
+       <table aria-label="Classic by period">
+         <thead>
+           <tr>
+@@ -138,7 +141,7 @@ export interface ClassicPeriodSummary {
+           @for (p of periods(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal | figure }}</td>
+             </tr>
+           }
+         </tbody>
+diff --git a/src/main/frontend/src/app/features/templates/templates.ts b/src/main/frontend/src/app/features/templates/templates.ts
+index b6a2579d0..7e27ddf79 100644
+--- a/src/main/frontend/src/app/features/templates/templates.ts
++++ b/src/main/frontend/src/app/features/templates/templates.ts
+@@ -2,12 +2,14 @@ import { HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
+ import { ClaimTemplates } from '../../core/claim-templates';
++import { FigurePipe } from '../../core/figure';
+ 
+ // The sheet's claim templates and the form that saves one: a name, an amount and a note. A blank
+ // name, or an amount the claim form would refuse, is refused; saving a name again replaces that
+ // template. Each person's row adds a DRAFT claim from a chosen template.
+ @Component({
+   selector: 'app-templates',
++  imports: [FigurePipe],
+   template: `
+     <section aria-labelledby="templates-heading">
+       <h2 id="templates-heading">Claim templates</h2>
+@@ -47,7 +49,7 @@ import { ClaimTemplates } from '../../core/claim-templates';
+           @for (t of templates.list(); track t.id) {
+             <tr [attr.data-testid]="'template-row-' + t.name">
+               <td data-testid="template-name">{{ t.name }}</td>
+-              <td data-testid="template-amount">{{ t.amount }}</td>
++              <td data-testid="template-amount">{{ t.amount | figure }}</td>
+               <td data-testid="template-note">{{ t.note }}</td>
+             </tr>
+           }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 83878951f..eb3ad9a0a 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -88,7 +88,9 @@ public class PlanService {
+     /** Make the claims the sheet's plans are due to have made by its today: the claims made, in order. */
+     @Transactional
+     public List<Claim> generate(String sheetId, String user) {
+-        roles.refuseViewer(sheetId, user);
++        // a viewer is refused only when there is a claim to make (ClaimService.add refuses them):
++        // with none due, generating makes nothing and changes nothing, so it answers 0
++        sheets.refuseIfArchived(sheetId);
+         sheets.load(sheetId, user);
+         // hold the sheet so two generates at once cannot both make the same plan date's claim
+         sheetRows.findLockedById(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 570aa9389..d9d659a15 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -31,7 +31,7 @@ public class Rate {
+     @Column(name = "grade", nullable = false)
+     private String grade;
+ 
+-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
++    @Column(name = "pct", nullable = false, precision = 7, scale = 2)
+     private BigDecimal pct;
+ 
+     @Column(name = "from_date")
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index aed13f904..2a24ec35c 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -24,8 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/rates")
+ public class RateController {
+ 
+-    /** A percent: 0.00 to 999.99, with up to two decimals. */
+-    private static final String PCT = "\\d{1,3}(\\.\\d{1,2})?";
++    /** A percent: 0.00 to 99999.99, with up to two decimals. */
++    private static final String PCT = "\\d{1,5}(\\.\\d{1,2})?";
+ 
+     public record ListRatesRequest(@NotBlank @Size(max = 100) String sheet) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+index e6468e6b2..c1ca2b76a 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+@@ -22,8 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
+ @Service
+ public class RateImportService {
+ 
+-    /** A percent: 0.00 to 999.99, with up to two decimals. */
+-    private static final String PCT = "\\d{1,3}(\\.\\d{1,2})?";
++    /** A percent: 0.00 to 99999.99, with up to two decimals. */
++    private static final String PCT = "\\d{1,5}(\\.\\d{1,2})?";
+ 
+     private record Line(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
+     }
+@@ -68,7 +68,7 @@ public class RateImportService {
+         }
+         String pct = fields[1].trim();
+         if (!pct.matches(PCT)) {
+-            throw refused("Line " + number + ": enter a rate from 0.00 to 999.99, with up to two decimals.");
++            throw refused("Line " + number + ": enter a rate from 0.00 to 99999.99, with up to two decimals.");
+         }
+         LocalDate from = date(number, fields.length > 2 ? fields[2] : "", "from-date");
+         LocalDate to = date(number, fields.length > 3 ? fields[3] : "", "to-date");
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateLog.java b/src/main/java/net/officefloor/hq/app/rate/RateLog.java
+index ee09ceece..82ec4e79b 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateLog.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateLog.java
+@@ -34,7 +34,7 @@ public class RateLog {
+     @Column(name = "to_date")
+     private LocalDate toDate;
+ 
+-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
++    @Column(name = "pct", nullable = false, precision = 7, scale = 2)
+     private BigDecimal pct;
+ 
+     @Column(name = "forward_after")
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateVersion.java b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+index f915be1f4..2a34f7799 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateVersion.java
+@@ -34,7 +34,7 @@ public class RateVersion {
+     @Column(name = "to_date")
+     private LocalDate toDate;
+ 
+-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
++    @Column(name = "pct", nullable = false, precision = 7, scale = 2)
+     private BigDecimal pct;
+ 
+     @Column(name = "version", nullable = false)
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+index fce533197..aec88ae5d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+@@ -44,8 +44,11 @@ public class AsOfFilter extends OncePerRequestFilter {
+ 
+     private static final String LOAD = "/api/sheets/load";
+ 
+-    /** The requests that only read the sheet (with every path ending in {@code /list}). */
+-    private static final Set<String> READS = Set.of("/api/signin", LOAD, "/api/settings/get",
++    /**
++     * The requests that only read the sheet (with every path ending in {@code /list}); saving the
++     * user's locale is no change to any sheet, so it goes through as-of too.
++     */
++    private static final Set<String> READS = Set.of("/api/signin", LOAD, "/api/settings/get", "/api/users/locale",
+             "/api/people/watched", "/api/roles/delegations", "/api/claims/tags");
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index b763beea3..868c72334 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.user.UserLocaleService;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -19,7 +20,8 @@ public class SheetController {
+     public record SignInRequest(@NotBlank @Size(max = 100) String name) {
+     }
+ 
+-    public record SignInResponse(String name) {
++    /** {@code locale}: how the screen shows the user figures (see {@link UserLocaleService}). */
++    public record SignInResponse(String name, String locale) {
+     }
+ 
+     public record LoadSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user) {
+@@ -48,16 +50,20 @@ public class SheetController {
+     private final SheetService service;
+     private final RoleService roles;
+     private final SheetCloneService clones;
++    private final UserLocaleService locales;
+ 
+-    public SheetController(SheetService service, RoleService roles, SheetCloneService clones) {
++    public SheetController(SheetService service, RoleService roles, SheetCloneService clones,
++            UserLocaleService locales) {
+         this.service = service;
+         this.roles = roles;
+         this.clones = clones;
++        this.locales = locales;
+     }
+ 
+     @PostMapping("/signin")
+     public SignInResponse signIn(@Valid @RequestBody SignInRequest req) {
+-        return new SignInResponse(req.name().trim());
++        String name = req.name().trim();
++        return new SignInResponse(name, locales.localeOf(name));
+     }
+ 
+     @PostMapping("/sheets/load")
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserLocale.java b/src/main/java/net/officefloor/hq/app/user/UserLocale.java
+new file mode 100644
+index 000000000..29292f3c9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserLocale.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A user's chosen locale, by sign-in name. */
++@Entity
++@Table(name = "user_locale")
++public class UserLocale {
++
++    @Id
++    @Column(name = "user_name", nullable = false)
++    private String user;
++
++    @Column(name = "locale", nullable = false)
++    private String locale;
++
++    protected UserLocale() {
++    }
++
++    public UserLocale(String user, String locale) {
++        this.user = user;
++        this.locale = locale;
++    }
++
++    public String getUser() {
++        return user;
++    }
++
++    public String getLocale() {
++        return locale;
++    }
++
++    public void setLocale(String locale) {
++        this.locale = locale;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserLocaleController.java b/src/main/java/net/officefloor/hq/app/user/UserLocaleController.java
+new file mode 100644
+index 000000000..2cbfe27fe
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserLocaleController.java
+@@ -0,0 +1,32 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** Saving the signed-in user's locale (it is read back at sign-in). */
++@RestController
++@RequestMapping("/api/users")
++public class UserLocaleController {
++
++    public record SetLocaleRequest(@NotBlank @Size(max = 100) String user, @NotBlank @Size(max = 10) String locale) {
++    }
++
++    public record LocaleResponse(String locale) {
++    }
++
++    private final UserLocaleService service;
++
++    public UserLocaleController(UserLocaleService service) {
++        this.service = service;
++    }
++
++    @PostMapping("/locale")
++    public LocaleResponse setLocale(@Valid @RequestBody SetLocaleRequest req) {
++        return new LocaleResponse(service.setLocale(req.user().trim(), req.locale().trim()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserLocaleRepository.java b/src/main/java/net/officefloor/hq/app/user/UserLocaleRepository.java
+new file mode 100644
+index 000000000..dede16d5f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserLocaleRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.user;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UserLocaleRepository extends JpaRepository<UserLocale, String> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserLocaleService.java b/src/main/java/net/officefloor/hq/app/user/UserLocaleService.java
+new file mode 100644
+index 000000000..e86d050c1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserLocaleService.java
+@@ -0,0 +1,40 @@
++package net.officefloor.hq.app.user;
++
++import java.util.Set;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * Each user's locale: how the screen shows them figures ({@code en}, the default, or {@code de}).
++ * Only the display follows it; entries, exports and audit lines do not, so saving it is not audited.
++ */
++@Service
++public class UserLocaleService {
++
++    public static final String DEFAULT = "en";
++
++    private static final Set<String> LOCALES = Set.of("en", "de");
++
++    private final UserLocaleRepository locales;
++
++    public UserLocaleService(UserLocaleRepository locales) {
++        this.locales = locales;
++    }
++
++    @Transactional(readOnly = true)
++    public String localeOf(String user) {
++        return locales.findById(user).map(UserLocale::getLocale).orElse(DEFAULT);
++    }
++
++    @Transactional
++    public String setLocale(String user, String locale) {
++        if (!LOCALES.contains(locale)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a locale: " + locale);
++        }
++        locales.findById(user).ifPresentOrElse(l -> l.setLocale(locale),
++                () -> locales.save(new UserLocale(user, locale)));
++        return locale;
++    }
++}
+diff --git a/src/main/resources/db/migration/V86__user_locale.sql b/src/main/resources/db/migration/V86__user_locale.sql
+new file mode 100644
+index 000000000..f0764f0ca
+--- /dev/null
++++ b/src/main/resources/db/migration/V86__user_locale.sql
+@@ -0,0 +1,6 @@
++-- A user's locale: how the screen shows them figures. Kept per user (by sign-in name), across
++-- sheets; a user with no row here has the default, en.
++CREATE TABLE user_locale (
++    user_name VARCHAR(100) NOT NULL PRIMARY KEY,
++    locale    VARCHAR(10)  NOT NULL
++);
+diff --git a/src/main/resources/db/migration/V87__rate_pct_wider.sql b/src/main/resources/db/migration/V87__rate_pct_wider.sql
+new file mode 100644
+index 000000000..9712bc87d
+--- /dev/null
++++ b/src/main/resources/db/migration/V87__rate_pct_wider.sql
+@@ -0,0 +1,4 @@
++-- A grade's rate may be up to 99999.99 percent (was 999.99).
++ALTER TABLE rate ALTER COLUMN pct SET DATA TYPE DECIMAL(7, 2);
++ALTER TABLE rate_log ALTER COLUMN pct SET DATA TYPE DECIMAL(7, 2);
++ALTER TABLE rate_version ALTER COLUMN pct SET DATA TYPE DECIMAL(7, 2);
