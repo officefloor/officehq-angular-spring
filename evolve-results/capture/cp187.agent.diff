@@ -1,0 +1,229 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 73b0bb560..6f98b730a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -282,7 +282,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+     <app-void-reasons />
+     <app-templates />
+     <app-notes />
+-    <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [(pools)]="pools" />
++    <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [periods]="periods()" [(pools)]="pools" />
+     <app-crews [people]="crewPeople()" [(crews)]="crews" />
+     <app-audit-view />
+     <app-tree-search />
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 5186f21cf..7f6becf8f 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -28,6 +28,10 @@ import { FigurePipe } from '../../core/figure';
+ // Each crew is also listed as a pool, after the pools, under the crew's name: its lead and members at
+ // equal shares (worked out by the store). It takes no members here and is not offered as a member; a
+ // pool may not take a crew's name. Re-read whenever the crews change.
++// For every period whose to-date is on or before the sheet's today, each member's line also shows
++// their cut as it stood at the end of that period (the pools, their members, the pot and the holds
++// as they were then, that day as the sheet's today; blank when there was none) — worked out by the
++// store. Re-read whenever the periods change.
+ export interface PoolMember {
+   /** The person's id; 0 for a pool. */
+   personId: number;
+@@ -38,6 +42,14 @@ export interface PoolMember {
+   retired: boolean;
+   /** Their cut of the pot, two decimals; blank when the pool is unbalanced, there is no pot or their dates leave out today. */
+   cut: string;
++  /** Their cut at the end of each period ended by the sheet's today, in the periods' order. */
++  cuts: PeriodCut[];
++}
++
++/** A member's cut as it stood at the end of a period; blank when there was none. */
++export interface PeriodCut {
++  period: string;
++  cut: string;
+ }
+ 
+ export interface Pool {
+@@ -87,6 +99,9 @@ function refusal(e: unknown, what: string): string {
+             {{ m.name }}@if (m.retired) { (retired)}:
+             <span data-testid="pool-share">{{ m.share | figure }}</span>
+             cut <span data-testid="pool-cut">{{ m.cut | figure }}</span>
++            @for (c of m.cuts; track c.period) {
++              · {{ c.period }} <span [attr.data-testid]="'pool-cut-' + c.period">{{ c.cut | figure }}</span>
++            }
+           </li>
+         }
+       </ul>
+@@ -260,6 +275,8 @@ export class Pools {
+   readonly pot = input('');
+   /** The sheet's crews: a change re-reads the crews listed as pools. */
+   readonly crews = input<unknown[]>([]);
++  /** The sheet's periods: a change re-reads the cuts of the periods ended. */
++  readonly periods = input<unknown[]>([]);
+ 
+   /** The sheet's pools as last read from the store: the people's cut totals add up their cuts. */
+   readonly pools = model<Pool[]>([]);
+@@ -284,6 +301,7 @@ export class Pools {
+       this.people(); // a person retired, renamed or added: re-read the totals and names
+       this.pot(); // the pot changed: re-read the cuts
+       this.crews(); // a crew added or changed: re-read the crews listed as pools
++      this.periods(); // a period added or changed: re-read the cuts at the periods' ends
+       if (sheet) void this.fetch(sheet);
+     });
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 4de4933b5..fc03ad8b2 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -17,15 +17,21 @@ import net.officefloor.hq.app.crew.Crew;
+ import net.officefloor.hq.app.crew.CrewMember;
+ import net.officefloor.hq.app.crew.CrewMemberRepository;
+ import net.officefloor.hq.app.crew.CrewRepository;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.sheet.SheetHistory;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
++import jakarta.persistence.EntityManager;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.PlatformTransactionManager;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionTemplate;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+@@ -62,6 +68,11 @@ import org.springframework.web.server.ResponseStatusException;
+  * the lead). It cuts the sheet's pot like any pool that is a member of none, but it is not stored as
+  * a pool: it takes no members added to it and is never a member of a pool. A pool may not take a
+  * crew's name.
++ * <p>
++ * For every period whose to-date is on or before the sheet's today, each member's line also shows
++ * their cut as it stood at the end of that period: the sheet as {@link SheetHistory} kept it then
++ * (the pools, their members, the pot and the holds), with that day as its today; blank when the
++ * member, or a cut, was not there then.
+  */
+ @Service
+ public class PoolService {
+@@ -76,7 +87,16 @@ public class PoolService {
+      * the current name, their share, whether they are retired, and their cut of the pool's pot (two
+      * decimals; blank when the pool is unbalanced or has no pot, or the member's dates leave out today).
+      */
+-    public record MemberView(long personId, String pool, String name, String share, boolean retired, String cut) {
++    public record MemberView(long personId, String pool, String name, String share, boolean retired, String cut,
++            List<PeriodCut> cuts) {
++
++        MemberView withCuts(List<PeriodCut> cuts) {
++            return new MemberView(personId, pool, name, share, retired, cut, cuts);
++        }
++    }
++
++    /** A member's cut as it stood at the end of a period (two decimals; blank for none then). */
++    public record PeriodCut(String period, String cut) {
+     }
+ 
+     /** A pool as listed: its members in the order they were added, their total share (two decimals) and balance. */
+@@ -93,10 +113,22 @@ public class PoolService {
+     private final RoleService roles;
+     private final CrewRepository crews;
+     private final CrewMemberRepository crewMembers;
++    private final PeriodRepository periods;
++    private final SheetHistory history;
++    private final EntityManager entities;
++    private final TransactionTemplate readOnly;
++    private final TransactionTemplate rolledBack;
+ 
+     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
+             SheetService sheets, SheetRepository sheetRows, Audit audit, RoleService roles, CrewRepository crews,
+-            CrewMemberRepository crewMembers) {
++            CrewMemberRepository crewMembers, PeriodRepository periods, SheetHistory history,
++            EntityManager entities, PlatformTransactionManager transactions) {
++        this.periods = periods;
++        this.history = history;
++        this.entities = entities;
++        this.readOnly = new TransactionTemplate(transactions);
++        this.readOnly.setReadOnly(true);
++        this.rolledBack = new TransactionTemplate(transactions);
+         this.crews = crews;
+         this.crewMembers = crewMembers;
+         this.pools = pools;
+@@ -108,8 +140,67 @@ public class PoolService {
+         this.roles = roles;
+     }
+ 
+-    @Transactional(readOnly = true)
++    /**
++     * The pools as they stand now, each member with their cut at the end of every period whose to-date
++     * is on or before the sheet's today (in the periods' order). Those are read from the sheet restored
++     * as it stood at the end of each such day, in a transaction that is then rolled back (the
++     * request's own when it is answered as of a date, see {@link net.officefloor.hq.app.sheet.AsOfFilter}).
++     */
+     public List<PoolView> list(String sheetId) {
++        record Now(List<PoolView> views, List<Period> ended) {
++        }
++        Now now = readOnly.execute(status -> {
++            LocalDate today = sheetRows.findById(sheetId).map(s -> s.getToday()).orElse(null);
++            List<Period> ended = today == null ? List.of()
++                    : periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
++                            .filter(p -> !p.getToDate().isAfter(today)).toList();
++            return new Now(current(sheetId), ended);
++        });
++        if (now.views().isEmpty()) {
++            return now.views();
++        }
++        List<Map<String, String>> then = new ArrayList<>();
++        if (!now.ended().isEmpty()) {
++            rolledBack.executeWithoutResult(status -> {
++                status.setRollbackOnly();
++                for (Period period : now.ended()) {
++                    entities.flush();
++                    history.restore(sheetId, period.getToDate());
++                    // the rows were put back behind the persistence context's back: read them afresh
++                    entities.clear();
++                    Map<String, String> cuts = new HashMap<>();
++                    for (PoolView pool : current(sheetId)) {
++                        for (MemberView m : pool.members()) {
++                            cuts.put(key(pool, m), m.cut());
++                        }
++                    }
++                    then.add(cuts);
++                }
++                entities.clear();
++            });
++        }
++        List<PoolView> out = new ArrayList<>();
++        for (PoolView pool : now.views()) {
++            List<MemberView> views = new ArrayList<>();
++            for (MemberView m : pool.members()) {
++                List<PeriodCut> cuts = new ArrayList<>();
++                for (int i = 0; i < now.ended().size(); i++) {
++                    cuts.add(new PeriodCut(now.ended().get(i).getName(), then.get(i).getOrDefault(key(pool, m), "")));
++                }
++                views.add(m.withCuts(cuts));
++            }
++            out.add(new PoolView(pool.id(), pool.name(), views, pool.totalShare(), pool.balanced(), pool.crew()));
++        }
++        return out;
++    }
++
++    /** A member's place on the sheet, the same over time: the pool (a crew's by its negated id) and the person or pool. */
++    private static String key(PoolView pool, MemberView m) {
++        return pool.id() + "/" + (m.pool() == null ? "person:" + m.personId() : "pool:" + m.pool());
++    }
++
++    /** The pools as the store holds them, with no cuts of past periods. */
++    private List<PoolView> current(String sheetId) {
+         List<Pool> all = new ArrayList<>(pools.findBySheetIdOrderByIdAsc(sheetId));
+         List<Crew> crewList = crews.findBySheetIdOrderByIdAsc(sheetId);
+         if (all.isEmpty() && crewList.isEmpty()) {
+@@ -156,7 +247,8 @@ public class PoolService {
+             for (int i = 0; i < sh.listed().size(); i++) {
+                 Listed l = sh.listed().get(i);
+                 views.add(new MemberView(l.personId(), l.pool(), l.name(), sh.shares().get(i).toPlainString(),
+-                        l.retired(), poolCuts == null || poolCuts.get(i) == null ? "" : poolCuts.get(i).toPlainString()));
++                        l.retired(), poolCuts == null || poolCuts.get(i) == null ? "" : poolCuts.get(i).toPlainString(),
++                        List.of()));
+             }
+             out.add(new PoolView(pool.getId(), pool.getName(), views, sh.total().toPlainString(), sh.balanced(),
+                     crewPools.contains(pool.getId())));
