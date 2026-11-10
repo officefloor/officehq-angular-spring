@@ -1,0 +1,64 @@
+{
+  "checkpoint": 81,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp81_remind",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN or PENDING claim can be reminded (a button on the claim): REMIND is written, naming the\nclaim like every claim line, and the claim shows the sheet's today as its reminded date. A claim\ncan be reminded once per sheet-today: a second press on the same day, or a press on a claim in any\nother status, is refused with an error on the claim and writes nothing. The reminded date is the\nlast day a reminder was written, or nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN or PENDING claim can be reminded (a button on the claim): REMIND is written, naming the\nclaim like every claim line, and the claim shows the sheet's today as its reminded date. A claim\ncan be reminded once per sheet-today: a second press on the same day, or a press on a claim in any\nother status, is refused with an error on the claim and writes nothing. The reminded date is the\nlast day a reminder was written, or nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6b6fb69d41ea8017092e48b0fe2c438096f5d409",
+  "reset_sha": "",
+  "preagent_sha": "3e64500e88a2f169f77ccea212052394ee8c02fb",
+  "prev_sha": "3e64500e88a2f169f77ccea212052394ee8c02fb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0932968000000003,
+    "input_tokens": 64,
+    "output_tokens": 11190,
+    "cache_read_tokens": 1698524,
+    "cache_creation_tokens": 66192,
+    "num_turns": 32,
+    "duration_ms": 1264518,
+    "duration_api_ms": 122184,
+    "model": "claude-opus-5-5",
+    "session_id": "93c7ac75-5bee-4974-9396-b8ea3a4b1ad3",
+    "stop_reason": "success",
+    "result_text": "Claims can now be reminded, and the final `bin/e2e` run passed all 4 tests.\n\n**How it works:** an OPEN or PENDING claim has a Remind button. Pressing it writes a REMIND line to the audit file, in the same form as the other claim lines (person, amount, date, and the claim's number if it has one). The claim then shows the sheet's today as its reminded date. A second press on the same sheet-today is refused with an error on the claim, and so is a press on a claim in any other status. A refused press writes nothing. The reminded date is the last day a reminder was written, or blank if there never was one.\n\n**Changes:**\n- **Database:** a new migration, `V51__claim_reminded.sql`, adds a `reminded_on` column to the claim table.\n- **Server:**\n  - `Claim.java` has a new `remindedOn` field.\n  - `ClaimService.remind` does the checks and writes the audit line. Viewers are refused, as for every other change, which the test expects.\n  - `ClaimController` adds a `POST /api/claims/remind` endpoint and returns `remindedOn` with each claim.\n- **Front end (`features/claims/claims.ts`):** adds the `claim-reminded` value, the `claim-remind` button, and a `remind()` handler that shows refusals in the existing `claim-error` element.\n\n**Test runs:** the first three `bin/e2e` runs each failed one or two scenarios, at a different step each time: once editing a claim and twice timing out while reloading a sheet. None of those steps involve reminders. The machine was heavily loaded at the time (load average around 18 on 8 cores). The failing scenario passed when run alone, and the full suite then passed twice against a running app and once more through `bin/e2e`. I didn't confirm the cause, but it looks like timing under load rather than a fault in the change.\n\nI didn't make reminding refuse claims in closed periods, because the request doesn't ask for that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0932968000000003,
+        "num_turns": 32,
+        "duration_ms": 1264518,
+        "duration_api_ms": 122184,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp81.agent.jsonl",
+  "agent_diff_file": "cp81.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

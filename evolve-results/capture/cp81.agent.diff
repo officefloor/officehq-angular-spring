@@ -1,0 +1,180 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 35914a18e..85aab3ee2 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -42,6 +42,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
+ // Each claim shows its proofs count, raised by one with its proof button (refused for a SETTLED or
+ // VOID claim, or one in a closed period). A claim whose due is above the proof threshold in force on
+ // its date cannot be settled or approved while it has no proofs: refused with an error on the claim.
++// An OPEN or PENDING claim can be reminded with its remind button, once per sheet-today: it shows
++// the last day a reminder was written (refused for a claim in any other status or already reminded
++// on the sheet's today).
+ // A claim whose due is above the note threshold in force on its date cannot be opened while its
+ // note is empty: refused with an error on the claim (by the bulk button, counted as refused).
+ // An OPEN claim can be split: an amount more than 0.00 and less than its own is split off into a new
+@@ -89,6 +92,8 @@ export interface Claim {
+   lockedBy: string | null;
+   /** Whether the claim was added while the period its due-by falls in was soft-closed. */
+   lateEntry: boolean;
++  /** The last sheet-today a reminder was written for the claim; null when never reminded. */
++  remindedOn: string | null;
+ }
+ 
+ /** One line of a claim's status log. */
+@@ -295,6 +300,7 @@ export function money(c: number): string {
+           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
++          <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
+           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+             @for (l of c.log; track $index) {
+               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>
+@@ -313,6 +319,7 @@ export function money(c: number): string {
+           />
+           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
+           <button type="button" data-testid="claim-proof" (click)="addProof(c)">Add proof</button>
++          <button type="button" data-testid="claim-remind" (click)="remind(c)">Remind</button>
+           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
+           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+           <input
+@@ -779,6 +786,32 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** Remind an OPEN or PENDING claim; the server refuses any other status, and a second reminder
++   *  on the same sheet-today. */
++  protected async remind(c: Claim): Promise<void> {
++    this.clearActionError(c.id);
++    const sheet = this.session.sheet();
++    try {
++      const claim = await firstValueFrom(
++        this.http.post<Claim>('/api/claims/remind', { sheet, user: this.session.user(), id: c.id }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.saved.emit(claim);
++    } catch (e) {
++      if (this.session.sheet() !== sheet) return;
++      const status = e instanceof HttpErrorResponse ? e.status : 0;
++      const err =
++        status === 409
++          ? c.status === 'OPEN' || c.status === 'PENDING'
++            ? 'This claim was already reminded today.'
++            : `A ${c.status} claim cannot be reminded.`
++          : status === 403
++            ? 'You may not remind this claim.'
++            : 'Could not remind this claim.';
++      this.actionErrors.update((m) => new Map(m).set(c.id, err));
++    }
++  }
++
+   /** Move a claim to its next status; the server refuses a move its status does not allow. */
+   protected async act(c: Claim, action: ClaimAction): Promise<void> {
+     this.clearActionError(c.id);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 993b9483e..0ae45740d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -113,6 +113,10 @@ public class Claim {
+     @Column(name = "deferred_on")
+     private LocalDate deferredOn;
+ 
++    /** The last sheet-today a reminder was written for the claim; none when never reminded. */
++    @Column(name = "reminded_on")
++    private LocalDate remindedOn;
++
+     /** How many proofs the claim has: raised by one at a time, never while SETTLED or VOID. */
+     @Column(name = "proofs", nullable = false)
+     private int proofs;
+@@ -342,6 +346,14 @@ public class Claim {
+         return proofs;
+     }
+ 
++    public LocalDate getRemindedOn() {
++        return remindedOn;
++    }
++
++    public void setRemindedOn(LocalDate remindedOn) {
++        this.remindedOn = remindedOn;
++    }
++
+     /** Raise the claim's proofs count by one. */
+     public void addProof() {
+         proofs++;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 8c0ad3997..4c8bc881a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -91,7 +91,7 @@ public class ClaimController {
+             ClaimStatus status, String number, String settledDue, String openedBy,
+             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+-            boolean lateEntry) {
++            boolean lateEntry, LocalDate remindedOn) {
+     }
+ 
+     /** One line of a claim's status log, oldest first. */
+@@ -111,7 +111,7 @@ public class ClaimController {
+                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
+                         .toList(),
+                 claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
+-                claim.isLateEntry());
++                claim.isLateEntry(), claim.getRemindedOn());
+     }
+ 
+     public static BigDecimal amount(String amount) {
+@@ -214,6 +214,11 @@ public class ClaimController {
+         return response(service.addProof(req.sheet().trim(), req.user().trim(), req.id()));
+     }
+ 
++    @PostMapping("/remind")
++    public ClaimResponse remind(@Valid @RequestBody ClaimStatusRequest req) {
++        return response(service.remind(req.sheet().trim(), req.user().trim(), req.id()));
++    }
++
+     @PostMapping("/reassign")
+     public ClaimResponse reassign(@Valid @RequestBody ReassignClaimRequest req) {
+         return response(service.reassign(req.sheet().trim(), req.user().trim(), req.id(), req.personId()));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 37ff8bc86..335952031 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -426,6 +426,31 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Remind an OPEN or PENDING claim: write REMIND and mark it reminded on the sheet's today.
++     * Refused (409) for a claim in any other status or already reminded on the sheet's today.
++     */
++    @Transactional
++    public Claim remind(String sheetId, String user, long id) {
++        roles.refuseViewer(sheetId, user);
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
++        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be reminded.");
++        }
++        LocalDate today = sheets.today(sheetId);
++        if (today.equals(claim.getRemindedOn())) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "This claim was already reminded today.");
++        }
++        Person person = person(sheetId, claim.getPersonId());
++        claim.setRemindedOn(today);
++        Claim saved = claims.saveAndFlush(claim);
++        audit.recordOnCommit(record("REMIND", sheetId, user, person, saved)
++                + (saved.getNumber() != null ? " number=" + saved.getNumber() : ""));
++        return saved;
++    }
++
+     /**
+      * Re-settle a SETTLED claim: fix its due again at the figure it would have on the sheet's today
+      * as an open claim bound by no statement, with its late charge. Refused (403) for anyone but a
+diff --git a/src/main/resources/db/migration/V51__claim_reminded.sql b/src/main/resources/db/migration/V51__claim_reminded.sql
+new file mode 100644
+index 000000000..8aae1a438
+--- /dev/null
++++ b/src/main/resources/db/migration/V51__claim_reminded.sql
+@@ -0,0 +1,2 @@
++-- The last sheet-today a reminder was written for the claim; none when never reminded.
++ALTER TABLE claim ADD COLUMN reminded_on DATE;
