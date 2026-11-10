@@ -28,6 +28,10 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // The proof threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
 // above the one in force on its date cannot be settled or approved while it has no proofs. It
 // saves, like the clerk limit, once its field has been entered (blank: none).
+// The permission matrix: for each of open, settle, void, reassign, close and reopen, the roles that
+// may do it, comma separated (blank: the standing rule, open, settle, void and close by clerk and
+// steward, reassign and reopen by steward). Each saves, like the clerk limit, once its field has
+// been entered; it is not dated.
 /** A value saved for a dated setting, by key: blank from for the beginning of time, blank value for none. */
 interface DatedSetting extends DatedValue {
   key: string;
@@ -51,7 +55,16 @@ interface SettingsResponse {
   proofThreshold: string;
   /** Every value saved for the dated settings, by key and from-date. */
   dated: DatedSetting[];
+  /** The permission matrix: for each action, its roles comma separated, blank for the standing rule. */
+  permissions: Partial<Record<PermAction, string>>;
 }
+
+/** The actions the permission matrix covers. */
+const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+type PermAction = (typeof PERM_ACTIONS)[number];
+
+/** A permission matrix entry: roles comma separated. */
+const ROLES = /^\s*(clerk|steward)(\s*,\s*(clerk|steward))*\s*$/i;
 
 /** The grades that may have their own terms. */
 const GRADES = ['A', 'B', 'C'] as const;
@@ -218,6 +231,16 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput()['proof-threshold'] ?? ''"
           (input)="typeFrom('proof-threshold', $any($event.target).value)"
         />
+        @for (a of permActions; track a) {
+          <label [for]="'setting-perm-' + a">Roles that may {{ a }}, comma separated (blank: the standing rule)</label>
+          <input
+            [id]="'setting-perm-' + a"
+            [attr.data-testid]="'setting-perm-' + a"
+            [value]="permInput()[a] ?? ''"
+            (focus)="enterPerm(a, $any($event.target))"
+            (input)="typePerm(a, $any($event.target).value)"
+          />
+        }
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -279,6 +302,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>(none)</span>
         }
       </p>
+      @for (a of permActions; track a) {
+        <p>
+          Roles that may {{ a }}:
+          <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] ?? '' }}</strong>
+          @if (!permissions()[a]) {
+            <span>(the standing rule)</span>
+          }
+        </p>
+      }
     </section>
   `,
 })
@@ -337,6 +369,11 @@ export class Settings {
   protected readonly policyInput = signal<string | null>(null);
   /** The period-numbering-from date typed; null while its field has not been entered (left as it is). */
   protected readonly numberingInput = signal<string | null>(null);
+  protected readonly permActions = PERM_ACTIONS;
+  /** The permission matrix in force: for each action, its roles, blank for the standing rule. */
+  protected readonly permissions = signal<Partial<Record<PermAction, string>>>({});
+  /** The roles typed for each action; missing while its field has not been entered (left as it is). */
+  protected readonly permInput = signal<Partial<Record<PermAction, string>>>({});
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
@@ -346,7 +383,8 @@ export class Settings {
     effect(() => {
       const sheet = this.session.sheet();
       this.session.loads();
-      untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '' }));
+      untracked(() => this.show({ dated: [], policyDate: '', periodNumberingFrom: '', permissions: {} }));
+      this.permInput.set({});
       this.gradeTermsInput.set({});
       this.fromInput.set({});
       this.capInput.set(null);
@@ -418,6 +456,21 @@ export class Settings {
     this.numberingInput.set(this.numberingFrom());
   }
 
+  /** Entering an action's permission field fills it with its roles in force, selected, so it saves
+   *  as it is unless typed over. */
+  protected enterPerm(action: PermAction, input: HTMLInputElement): void {
+    if (this.permInput()[action] !== undefined) return;
+    const roles = this.permissions()[action] ?? '';
+    input.value = roles;
+    input.select();
+    this.permInput.update((m) => ({ ...m, [action]: roles }));
+  }
+
+  protected typePerm(action: PermAction, value: string): void {
+    this.permInput.update((m) => ({ ...m, [action]: value }));
+    this.error.set(null);
+  }
+
   protected gradeKey(grade: Grade): DatedKey {
     return `terms-${grade}`;
   }
@@ -442,8 +495,9 @@ export class Settings {
     this.error.set(null);
   }
 
-  private show(res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom'>): void {
+  private show(res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions'>): void {
     this.dated.set(res.dated);
+    this.permissions.set(res.permissions);
     this.floors.set(this.datedOf('floor'));
     this.latePcts.set(this.datedOf('late-pct'));
     this.caps.set(this.datedOf('cap'));
@@ -506,6 +560,16 @@ export class Settings {
       this.error.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
+    const perms: Partial<Record<PermAction, string>> = {};
+    for (const a of PERM_ACTIONS) {
+      const roles = this.permInput()[a]?.trim();
+      if (roles === undefined) continue;
+      if (roles !== '' && !ROLES.test(roles)) {
+        this.error.set(`Enter the roles that may ${a} as clerk and/or steward, comma separated, or leave it blank.`);
+        return;
+      }
+      perms[a] = roles;
+    }
     const from: Partial<Record<DatedKey, string>> = {};
     for (const k of DATED_KEYS) {
       const f = this.fromInput()[k]?.trim();
@@ -542,6 +606,12 @@ export class Settings {
           capFrom: from.cap ?? null,
           proofThreshold,
           proofThresholdFrom: from['proof-threshold'] ?? null,
+          permOpen: perms.open ?? null,
+          permSettle: perms.settle ?? null,
+          permVoid: perms.void ?? null,
+          permReassign: perms.reassign ?? null,
+          permClose: perms.close ?? null,
+          permReopen: perms.reopen ?? null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -555,6 +625,7 @@ export class Settings {
       this.numberingInput.set(null);
       this.capInput.set(null);
       this.thresholdInput.set(null);
+      this.permInput.set({});
       this.fromInput.set({});
     } catch {
       this.error.set('Could not save the settings.');

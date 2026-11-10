@@ -23,7 +23,8 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
 // approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
 // by the last statement); the user who opened it cannot approve it.
-// A steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its number and
+// Who may open, settle, void or move a claim is the sheet's permission matrix (see the settings).
+// By default a steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its number and
 // date, loses any figure a statement bound it to, and is listed first under its new person.
 // An OPEN claim can be deferred to a date after the sheet's today (refused for a claim that is not
 // OPEN, a date not after today, or a claim in a closed period). Until the sheet's today reaches that
@@ -495,7 +496,7 @@ export class PersonClaims {
       const status = e instanceof HttpErrorResponse ? e.status : 0;
       const err =
         status === 403
-          ? 'Only a steward can move a claim.'
+          ? 'Your role may not move a claim on this sheet.'
           : status === 423
             ? CLOSED
             : status === 422
@@ -558,7 +559,9 @@ export class PersonClaims {
               : 'Only a steward can approve or reject a PENDING claim.'
             : action === 'resettle'
               ? 'Only a steward can re-settle a claim.'
-              : 'The user who opened a claim cannot settle it.'
+              : action === 'settle' && c.openedBy === this.session.user()
+                ? 'The user who opened a claim cannot settle it.'
+                : `Your role may not ${action} a claim on this sheet.`
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
             : e instanceof HttpErrorResponse && e.status === 422

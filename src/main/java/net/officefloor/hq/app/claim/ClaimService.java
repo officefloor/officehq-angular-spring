@@ -53,6 +53,8 @@ import org.springframework.web.server.ResponseStatusException;
  * claim like any other. A claim has a proofs count, raised by one at a time while it is not SETTLED
  * or VOID. A claim whose figure is above the proof threshold in force on its date cannot be settled
  * or approved while it has no proofs: that is refused before the clerk limit is considered.
+ * Who may open, settle, void or move a claim is the sheet's permission matrix (see
+ * {@link Sheet#permits}): an action the user's role may not take is refused (403).
  */
 @Service
 public class ClaimService {
@@ -176,6 +178,14 @@ public class ClaimService {
     /** Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING claim. */
     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
             boolean review) {
+        if (!review) {
+            roles.refuseUnlessPermitted(sheetId, user, switch (next) {
+                case OPEN -> "open";
+                case SETTLED -> "settle";
+                case VOID -> "void";
+                default -> throw new IllegalStateException();
+            });
+        }
         // lock the sheet's numbering before reading the claim, so a claim is opened (and numbered) once
         if (next == ClaimStatus.OPEN) {
             sheets.lock(sheetId);
@@ -324,16 +334,14 @@ public class ClaimService {
     /**
      * Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and
      * date, is unbound from any statement (live again until its new person's next statement), and
-     * is listed first under its new person. Refused (403) for a clerk, (409) for a SETTLED or VOID
+     * is listed first under its new person. Refused (403) for a role the permission matrix does not allow, (409) for a SETTLED or VOID
      * claim or a move to the person it is already on, (400) for a correction (it must stay with
      * the claim it corrects), (423) when dated inside a closed period and (422) when dated after
      * the new person's retirement date.
      */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
-        if (!isSteward(sheetId, user)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can move a claim.");
-        }
+        roles.refuseUnlessPermitted(sheetId, user, "reassign");
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
@@ -377,8 +385,9 @@ public class ClaimService {
         List<Claim> selected = inListOrder(sheetId, ids);
         int refused = (int) ids.stream().distinct().count() - selected.size();
         List<Claim> opened = new ArrayList<>();
+        boolean permitted = sheets.sheet(sheetId).permits("open", roles.roleOf(sheetId, user));
         for (Claim claim : selected) {
-            if (claim.getStatus() != ClaimStatus.DRAFT || periods.isClosed(sheetId, claim.getDate())) {
+            if (!permitted || claim.getStatus() != ClaimStatus.DRAFT || periods.isClosed(sheetId, claim.getDate())) {
                 refused++;
                 continue;
             }

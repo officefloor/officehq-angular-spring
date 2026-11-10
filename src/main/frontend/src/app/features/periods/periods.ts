@@ -8,7 +8,8 @@ import { money } from '../claims/claims';
 // from and to date, both inclusive, no two periods overlapping. A claim belongs to the period whose
 // dates contain its date, or to none; each period shows the due of the claims that count in it.
 // A period can be closed: its due-total is then the one fixed when it was closed, and no claim
-// dated inside it can be added, edited, opened, settled or voided. A steward can reopen a closed
+// dated inside it can be added, edited, opened, settled or voided. Who may close or reopen a period
+// is the sheet's permission matrix (see the settings); by default a steward can reopen a closed
 // period, making its due-total live again. Each person's row shows their own due-total for every
 // period, fixed the same way while it is closed; a period's due-total is the sum of these.
 // An open period counts a claim by the status it had at the end of its to-date, as the claim's status
@@ -188,19 +189,24 @@ export class Periods {
     return periodDueTotal(p, this.dues());
   }
 
-  /** Close a period, fixing its due-total; the server refuses a period already closed. */
+  /** Close a period, fixing its due-total; the server refuses a role the permission matrix does
+   *  not allow, and a period already closed. */
   protected close(p: Period): Promise<void> {
     return this.act(p, 'close', (status) =>
-      status === 409 ? 'Period ' + p.name + ' is already closed.' : 'Could not close period ' + p.name + '.',
+      status === 403
+        ? 'Your role may not close period ' + p.name + '.'
+        : status === 409
+          ? 'Period ' + p.name + ' is already closed.'
+          : 'Could not close period ' + p.name + '.',
     );
   }
 
-  /** Reopen a closed period, making its due-total live again; the server refuses anyone but a
-   *  steward, and a period that is not closed. */
+  /** Reopen a closed period, making its due-total live again; the server refuses a role the
+   *  permission matrix does not allow, and a period that is not closed. */
   protected reopen(p: Period): Promise<void> {
     return this.act(p, 'reopen', (status) =>
       status === 403
-        ? 'Only a steward can reopen period ' + p.name + '.'
+        ? 'Your role may not reopen period ' + p.name + '.'
         : status === 409
           ? 'Period ' + p.name + ' is not closed.'
           : 'Could not reopen period ' + p.name + '.',

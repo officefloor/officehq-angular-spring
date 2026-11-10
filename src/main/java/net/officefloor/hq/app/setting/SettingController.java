@@ -7,7 +7,10 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.claim.ClaimController;
@@ -34,6 +37,9 @@ public class SettingController {
     /** A date setting: yyyy-mm-dd, or blank for none. */
     private static final String DATE = "\\s*|\\s*\\d{4}-\\d{2}-\\d{2}\\s*";
 
+    /** A permission matrix entry: roles (clerk, steward) comma separated, or blank for the standing rule. */
+    private static final String ROLES = "\\s*|\\s*(?i:clerk|steward)(\\s*,\\s*(?i:clerk|steward))*\\s*";
+
     public record GetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
     }
 
@@ -44,7 +50,8 @@ public class SettingController {
      * yyyy-mm-dd, or blank for none (the sheet's today). A period-numbering-from date: yyyy-mm-dd,
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
-     * for none. Each setting that carries a figure may name the date it
+     * for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
+     * comma separated, or blank for the standing rule. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -60,7 +67,10 @@ public class SettingController {
             @Pattern(regexp = DATE) String termsAFrom, @Pattern(regexp = DATE) String termsBFrom,
             @Pattern(regexp = DATE) String termsCFrom, @Pattern(regexp = DATE) String capFrom,
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThreshold,
-            @Pattern(regexp = DATE) String proofThresholdFrom) {
+            @Pattern(regexp = DATE) String proofThresholdFrom,
+            @Pattern(regexp = ROLES) String permOpen, @Pattern(regexp = ROLES) String permSettle,
+            @Pattern(regexp = ROLES) String permVoid, @Pattern(regexp = ROLES) String permReassign,
+            @Pattern(regexp = ROLES) String permClose, @Pattern(regexp = ROLES) String permReopen) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -71,11 +81,12 @@ public class SettingController {
      * The settings in force on the sheet's today; the clerk limit blank for none, the policy date
      * blank for none, the period-numbering-from date blank for off, the cap blank for none, the proof threshold blank for none; the terms
      * in force for each grade that has its own. And every value recorded for the settings that carry
-     * a figure, by key and from-date.
+     * a figure, by key and from-date. And the permission matrix: for each action, its roles as
+     * entered, blank for the standing rule.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
-            List<DatedValue> dated) {
+            List<DatedValue> dated, Map<String, String> permissions) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -84,7 +95,7 @@ public class SettingController {
                 sheet.getPolicyDate() == null ? "" : sheet.getPolicyDate().toString(),
                 sheet.getPeriodNumberingFrom() == null ? "" : sheet.getPeriodNumberingFrom().toString(),
                 sheet.getGradeTerms(), SettingService.text(sheet.getCap()), SettingService.text(sheet.getProofThreshold()),
-                sheet.getSettings().stream().map(SettingController::dated).toList());
+                sheet.getSettings().stream().map(SettingController::dated).toList(), sheet.getPermissions());
     }
 
     private static DatedValue dated(DatedSetting s) {
@@ -113,6 +124,13 @@ public class SettingController {
         if (req.termsA() != null) gradeTerms.put("A", terms(req.termsA(), req.termsAFrom()));
         if (req.termsB() != null) gradeTerms.put("B", terms(req.termsB(), req.termsBFrom()));
         if (req.termsC() != null) gradeTerms.put("C", terms(req.termsC(), req.termsCFrom()));
+        Map<String, String> permissions = new LinkedHashMap<>();
+        permission(permissions, "open", req.permOpen());
+        permission(permissions, "settle", req.permSettle());
+        permission(permissions, "void", req.permVoid());
+        permission(permissions, "reassign", req.permReassign());
+        permission(permissions, "close", req.permClose());
+        permission(permissions, "reopen", req.permReopen());
         return response(service.set(req.sheet().trim(), req.user().trim(),
                 req.clerkLimit() == null ? null : amount(req.clerkLimit(), req.clerkLimitFrom()),
                 req.floor() == null ? null : amount(req.floor(), req.floorFrom()),
@@ -121,7 +139,15 @@ public class SettingController {
                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
                 numberingFrom.isEmpty() ? null : date(numberingFrom),
                 req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms,
-                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom())));
+                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()), permissions));
+    }
+
+    /** A permission matrix entry given: its roles, lower case, comma separated without spaces. */
+    private static void permission(Map<String, String> permissions, String action, String roles) {
+        if (roles != null) {
+            permissions.put(action, roles.trim().isEmpty() ? ""
+                    : String.join(",", Arrays.stream(roles.trim().split("\\s*,\\s*")).map(r -> r.toLowerCase(Locale.ROOT)).toList()));
+        }
     }
 
     /** An amount (blank: none) from a from-date (blank or null: the sheet's today). */

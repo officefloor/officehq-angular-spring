@@ -34,6 +34,17 @@ public class RoleService {
         return roles.findBySheetIdAndUserName(sheetId, user).map(Role::getRole).orElse(Role.CLERK);
     }
 
+    /**
+     * Refuse (403) an action the user's role may not take by the sheet's permission matrix (see
+     * {@link net.officefloor.hq.app.sheet.Sheet#permits}).
+     */
+    @Transactional(readOnly = true)
+    public void refuseUnlessPermitted(String sheetId, String user, String action) {
+        if (!sheets.sheet(sheetId).permits(action, roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " here.");
+        }
+    }
+
     @Transactional
     public Role set(String sheetId, String user, String name, String role) {
         sheets.load(sheetId, user);

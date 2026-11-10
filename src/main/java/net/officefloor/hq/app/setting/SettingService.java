@@ -30,7 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
  * the clerk limit, the cap and the proof threshold) are dated: each value is recorded from a from-date (the sheet's
  * today when none is given). A claim's floor, late percent and terms are those in force on its
  * date, as is its proof threshold (see {@link Sheet#proofThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
- * The policy date and the period-numbering-from date are not dated.
+ * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
+ * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
+ * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}.
  */
 @Service
 public class SettingService {
@@ -45,6 +47,8 @@ public class SettingService {
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
     public static final String POLICY_DATE = "policy-date";
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
+    /** The key of a permission matrix entry: {@code perm-<action>}. */
+    public static final String PERMISSION = "perm-";
 
     private final SheetService sheets;
     private final SheetRepository sheetStore;
@@ -75,7 +79,8 @@ public class SettingService {
      * terms and the late percent when they are not null, and a policy date when {@code changePolicy}
      * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
      * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
-     * (by grade, in grade order), and a proof threshold when {@code proofThreshold} is not null. Each figure is recorded from its from-date, keeping the values
+     * (by grade, in grade order), and a proof threshold when {@code proofThreshold} is not null, and each permission matrix entry
+     * given in {@code permissions} (by action, in the order given; blank for the standing rule). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -83,7 +88,7 @@ public class SettingService {
     public Sheet set(String sheetId, String user, Dated<BigDecimal> limit, Dated<BigDecimal> floor,
             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
-            Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold) {
+            Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Map<String, String> permissions) {
         Sheet sheet = sheets.load(sheetId, user);
         if (limit != null) {
             sheet = record(sheet, user, CLERK_LIMIT, limit.value(), limit.from(), text(limit.value()), false);
@@ -122,6 +127,11 @@ public class SettingService {
         if (proofThreshold != null) {
             sheet = record(sheet, user, PROOF_THRESHOLD, proofThreshold.value(), proofThreshold.from(),
                     text(proofThreshold.value()), false);
+        }
+        for (Map.Entry<String, String> e : permissions.entrySet()) {
+            sheet.setPermission(e.getKey(), e.getValue());
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, PERMISSION + e.getKey(), e.getValue()));
         }
         return sheet;
     }

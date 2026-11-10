@@ -35,7 +35,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // A person can be put on hold from a date (the sheet's today when left blank) to an optional to-date,
 // and may have several holds over time; a hold ends on its to-date. Their OPEN and PENDING claims dated
 // within a hold count in no total (their own, the sheet's or a period's); their other claims still do,
-// and so does a claim bound by a statement, whatever its date. "On hold" shows whether they have any hold.
+// and so does a claim bound by a statement, whatever its date. A period counts a claim open at its
+// end but since settled or voided whatever its holds. "On hold" shows whether they have any hold.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 // The paste box takes lines of name,amount,date,note (the date blank for the sheet's today, the note
@@ -479,9 +480,11 @@ export class People {
       if (p === undefined) continue;
       const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
       if (due === null) continue;
+      // a hold takes out only a claim that is open now as well
       const countsAt = (day: string): boolean => {
         const status = statusAt(c, day);
-        return status !== null && countsFor(p, { ...c, status }, today);
+        return status !== null && (isOpen(c) ? countsFor(p, { ...c, status }, today)
+          : countsFor(undefined, { ...c, status }, today));
       };
       out.push({ personId: c.personId, date: c.date, cents: due, countsAt });
     }

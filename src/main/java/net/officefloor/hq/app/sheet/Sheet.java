@@ -7,16 +7,19 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 
 /** A sheet: the unit everything else in the app is kept under. Created on its first load. */
@@ -41,6 +44,15 @@ public class Sheet {
     public static final String GRADE_TERMS = "terms-";
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+
+    /** The actions the permission matrix covers. */
+    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
+
+    /** The standing rule for an action with no entry in the permission matrix: the roles that may take it. */
+    private static final Map<String, Set<String>> STANDING_PERMISSIONS = Map.of(
+            "open", Set.of("clerk", "steward"), "settle", Set.of("clerk", "steward"),
+            "void", Set.of("clerk", "steward"), "close", Set.of("clerk", "steward"),
+            "reassign", Set.of("steward"), "reopen", Set.of("steward"));
 
     @Id
     private String id;
@@ -78,6 +90,13 @@ public class Sheet {
     /** The last number given in the sheet's X sequence, to claims opened under numbering per period in no period. */
     @Column(name = "last_unperiod_claim_number", nullable = false)
     private int lastUnperiodClaimNumber;
+
+    /** The permission matrix: for an action, the roles that may take it, comma separated; an action without keeps the standing rule. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "action")
+    @Column(name = "roles", nullable = false)
+    private Map<String, String> permissions = new TreeMap<>();
 
     protected Sheet() {
     }
@@ -238,5 +257,30 @@ public class Sheet {
     /** Give out the next claim number on the sheet. */
     public int nextClaimNumber() {
         return ++lastClaimNumber;
+    }
+
+    /** The permission matrix entry for each action: the roles as entered, blank for the standing rule. */
+    public Map<String, String> getPermissions() {
+        Map<String, String> all = new TreeMap<>();
+        PERMISSION_ACTIONS.forEach(a -> all.put(a, permissions.getOrDefault(a, "")));
+        return all;
+    }
+
+    /** Set an action's entry in the permission matrix; blank keeps the standing rule. */
+    public void setPermission(String action, String roles) {
+        if (roles == null || roles.isBlank()) {
+            permissions.remove(action);
+        } else {
+            permissions.put(action, roles);
+        }
+    }
+
+    /** Whether a role may take an action: by the permission matrix entry, else the standing rule. */
+    public boolean permits(String action, String role) {
+        String entry = permissions.get(action);
+        if (entry == null || entry.isBlank()) {
+            return STANDING_PERMISSIONS.getOrDefault(action, Set.of()).contains(role);
+        }
+        return Arrays.stream(entry.split(",")).map(String::trim).anyMatch(r -> r.equalsIgnoreCase(role));
     }
 }
