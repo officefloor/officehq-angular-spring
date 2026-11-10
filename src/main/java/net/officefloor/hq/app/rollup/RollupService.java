@@ -109,7 +109,9 @@ public class RollupService {
                 if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)) {
                     continue;
                 }
-                claimed = claimed.add(claim.getAmount());
+                if (!claim.isCorrection()) {
+                    claimed = claimed.add(claim.getAmount());
+                }
                 BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
                 if (figure != null) {
                     anyFigure = true;

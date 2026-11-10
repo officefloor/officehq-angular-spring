@@ -179,7 +179,7 @@ export interface ClaimTarget {
 /** A move from one status to the next, by the endpoint that makes it. */
 type ClaimAction = 'open' | 'settle' | 'resettle' | 'approve' | 'reject' | 'void' | 'delete' | 'restore';
 
-/** Whether a claim counts toward claimed, due-total and every total: only OPEN, PENDING and SETTLED do. */
+/** Whether a claim counts toward claimed, due-total and every total: only OPEN, PENDING and SETTLED do (a correction never toward claimed). */
 export function counts(c: Claim): boolean {
   return isOpen(c) || c.status === 'SETTLED';
 }

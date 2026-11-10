@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, plusDays, roundingDate, statusAt } from '../claims/claims';
 import { AuditView } from '../audit/audit-view';
 import { Holidays } from '../holidays/holidays';
 import { DatedDue, Period, Periods, periodDueTotal, periodOn, personPeriodDueTotal } from '../periods/periods';
@@ -39,8 +39,8 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 // yes, and every edit of them is refused until it renames them to a name that does not clash.
 // The editor remembers the version of the person it opened; if someone else has saved the person
 // since, the save is refused and the form is refilled with the values the store holds now.
-// Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
-// adds everyone's up. Only OPEN, PENDING and SETTLED claims count toward any of these totals. Each claim shows
+// Each row shows what the person has claimed (leaving out corrections) and lists their claims; the
+// sheet's claimed-total adds everyone's up. Only OPEN, PENDING and SETTLED claims count toward any of these totals. Each claim shows
 // what is due at the rate for the person's grade in force on the claim's date (a settled claim the
 // figure fixed when settled), each person the sum of those figures over the claims that count, and
 // the sheet's due-total adds up every person's due-total that has one. A live due is never below
@@ -1342,9 +1342,9 @@ export class People {
     return money(this.claimsOf(personId).reduce((sum, c) => sum + this.countedCents(p, c), 0));
   }
 
-  /** A claim's amount in whole cents when it counts toward the totals, else nothing. */
+  /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does. */
   private countedCents(p: Person | undefined, c: Claim): number {
-    return countsFor(p, c, this.session.today()) ? cents(c.amount) : 0;
+    return countsFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
   }
 
   /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */
