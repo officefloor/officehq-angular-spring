@@ -113,6 +113,15 @@ interface Person {
 }
 
 /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
+/** The figures of a sheet's descendants added up: each sheet's as that sheet shows it. */
+interface Descendants {
+  peopleCount: number;
+  dueTotal: string;
+  overdueTotal: string;
+}
+
+const NO_DESCENDANTS: Descendants = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+
 interface DatedHold {
   from: string;
   to: string | null;
@@ -184,6 +193,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
       [statuses]="statusSummary()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="money(overdueTotals().cents)"
+      [consolidatedPeopleCount]="people().length + descendants().peopleCount"
+      [consolidatedDueTotal]="money(cents(dueTotal()) + cents(descendants().dueTotal))"
+      [consolidatedOverdueTotal]="money(overdueTotals().cents + cents(descendants().overdueTotal))"
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
@@ -804,6 +816,9 @@ export class People {
   });
   protected readonly dueText = dueText;
   protected readonly money = money;
+  protected readonly cents = cents;
+  /** The figures of the sheet's descendants as the store holds them, added to its own for the consolidated figures. */
+  protected readonly descendants = signal<Descendants>(NO_DESCENDANTS);
   /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
   protected readonly overdueTotals = computed(() => {
     const each = this.people().map((p) => this.overdueOf(p));
@@ -918,6 +933,7 @@ export class People {
       this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.descendants.set(NO_DESCENDANTS);
       this.usedTags.set([]);
       this.selectedClaims.set(new Set());
       this.bulkOpenResult.set(null);
@@ -959,16 +975,18 @@ export class People {
 
   private async fetch(sheet: string): Promise<void> {
     try {
-      const [list, claims, statements, patrons, watched, tags] = await Promise.all([
+      const [list, claims, statements, patrons, watched, tags, descendants] = await Promise.all([
         firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet })),
         firstValueFrom(this.http.post<Claim[]>('/api/claims/list', { sheet })),
         firstValueFrom(this.http.post<StatementSummary[]>('/api/statements/list', { sheet })),
         firstValueFrom(this.http.post<PatronLink[]>('/api/people/patrons/list', { sheet })),
         firstValueFrom(this.http.post<number[]>('/api/people/watched', { sheet, user: this.session.user() })),
         firstValueFrom(this.http.post<string[]>('/api/claims/tags', { sheet })),
+        firstValueFrom(this.http.post<Descendants>('/api/rollup/descendants/list', { sheet })),
       ]);
       if (this.session.sheet() === sheet) {
         this.claims.set(claims);
+        this.descendants.set(descendants);
         this.usedTags.set(tags);
         this.statements.set(new Map(statements.map((s) => [s.personId, s])));
         this.patrons.set(patrons);

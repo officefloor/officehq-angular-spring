@@ -3,11 +3,15 @@ package net.officefloor.hq.app.rollup;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -68,6 +72,10 @@ public class RollupService {
         }
     }
 
+    /** Figures added up over sheets: their people (retired included), due-totals and overdue-totals. */
+    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    }
+
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final RateChain rates;
@@ -116,6 +124,31 @@ public class RollupService {
                     overdue));
         }
         return new Snapshot(figures);
+    }
+
+    /**
+     * The figures of the sheet's descendants (its children, their children and so on; not the sheet
+     * itself), each sheet's due- and overdue-total as that sheet shows it, added up.
+     */
+    public Consolidated descendants(String sheetId) {
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        Deque<String> pending = new ArrayDeque<>(List.of(sheetId));
+        int count = 0;
+        BigDecimal due = zero();
+        BigDecimal overdue = zero();
+        while (!pending.isEmpty()) {
+            for (Sheet child : sheets.findByParentIdOrderByIdAsc(pending.pop())) {
+                if (!seen.add(child.getId())) {
+                    continue;
+                }
+                Snapshot figures = snapshot(child.getId());
+                count += figures.people().size();
+                due = due.add(figures.dueTotal());
+                overdue = overdue.add(figures.overdueTotal());
+                pending.add(child.getId());
+            }
+        }
+        return new Consolidated(count, due, overdue);
     }
 
     /**
