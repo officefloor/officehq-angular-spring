@@ -96,6 +96,22 @@ public class Person {
         return sheetId;
     }
 
+    /**
+     * The person as they arrive on another sheet: their name, every grade they were given (each with
+     * its from-date), their terms, contact and aliases; not their holds or retirement.
+     */
+    public Person transferredTo(String toSheetId) {
+        Person copy = new Person();
+        copy.sheetId = toSheetId;
+        copy.name = name;
+        copy.addedOn = addedOn;
+        grades.forEach(g -> copy.grades.add(new DatedGrade(g.getFromDate(), g.getGrade(), g.getMadeOn())));
+        copy.terms = terms;
+        copy.contact = contact;
+        copy.aliases.addAll(aliases);
+        return copy;
+    }
+
     public String getName() {
         return name;
     }

@@ -182,9 +182,18 @@ public class RollupService {
 
     /** Record, once the change commits, the figures that moved since the snapshot taken before it. */
     public void recordChanges(String sheetId, String user, Snapshot before) {
+        recordChanges(sheetId, user, before, false);
+    }
+
+    /**
+     * Record, once the change commits, the figures that moved since the snapshot taken before it;
+     * with {@code leaving}, a person who has left the sheet since counts as moved, so the totals
+     * they leave are recorded too.
+     */
+    public void recordChanges(String sheetId, String user, Snapshot before, boolean leaving) {
         Snapshot after = snapshot(sheetId);
         String prefix = " sheet=" + sheetId + " by=" + user;
-        boolean moved = false;
+        boolean moved = leaving && !after.people().keySet().containsAll(before.people().keySet());
         for (Map.Entry<Long, Figures> entry : after.people().entrySet()) {
             Figures now = entry.getValue();
             Figures was = before.people().get(entry.getKey());

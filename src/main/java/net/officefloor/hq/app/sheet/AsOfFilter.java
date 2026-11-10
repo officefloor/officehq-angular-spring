@@ -48,6 +48,12 @@ public class AsOfFilter extends OncePerRequestFilter {
     private static final Set<String> READS = Set.of("/api/signin", LOAD, "/api/settings/get",
             "/api/people/watched", "/api/roles/delegations", "/api/claims/tags");
 
+    /**
+     * The reads answered as the store holds the sheets now, whatever the date asked for: the
+     * consolidated figures are not dated.
+     */
+    private static final Set<String> UNDATED = Set.of("/api/rollup/descendants/list");
+
     /** The changes that only take or release a claim editor's lock: not part of the sheet's history. */
     private static final Set<String> LOCKS = Set.of("/api/claims/lock", "/api/claims/unlock");
 
@@ -99,7 +105,7 @@ public class AsOfFilter extends OncePerRequestFilter {
             response.sendError(HttpStatus.LOCKED.value(), "The sheet is shown as of a date and may not be changed.");
             return;
         }
-        if (sheet == null) {
+        if (sheet == null || UNDATED.contains(path)) {
             chain.doFilter(body, response);
             return;
         }

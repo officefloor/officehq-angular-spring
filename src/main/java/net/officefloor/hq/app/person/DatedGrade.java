@@ -35,6 +35,10 @@ public class DatedGrade {
         return grade;
     }
 
+    public LocalDate getMadeOn() {
+        return madeOn;
+    }
+
     /** Whether it was recorded by the end of a day: the sheet's today then on or before it. */
     public boolean madeBy(LocalDate day) {
         return madeOn == null || !madeOn.isAfter(day);

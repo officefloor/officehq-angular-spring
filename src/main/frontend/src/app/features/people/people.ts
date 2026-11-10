@@ -118,9 +118,11 @@ interface Descendants {
   peopleCount: number;
   dueTotal: string;
   overdueTotal: string;
+  /** The sheet's own figures as the store holds them now: an as-of view shows these, the consolidated figures not being dated. */
+  own: { peopleCount: number; dueTotal: string; overdueTotal: string } | null;
 }
 
-const NO_DESCENDANTS: Descendants = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+const NO_DESCENDANTS: Descendants = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', own: null };
 
 interface DatedHold {
   from: string;
@@ -193,9 +195,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
       [statuses]="statusSummary()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="money(overdueTotals().cents)"
-      [consolidatedPeopleCount]="people().length + descendants().peopleCount"
-      [consolidatedDueTotal]="money(cents(dueTotal()) + cents(descendants().dueTotal))"
-      [consolidatedOverdueTotal]="money(overdueTotals().cents + cents(descendants().overdueTotal))"
+      [consolidatedPeopleCount]="consolidated().peopleCount"
+      [consolidatedDueTotal]="consolidated().dueTotal"
+      [consolidatedOverdueTotal]="consolidated().overdueTotal"
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
@@ -670,6 +672,22 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 >
                   Merge
                 </button>
+                <label [for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
+                <input
+                  type="text"
+                  [id]="'person-transfer-to-' + p.id"
+                  data-testid="person-transfer-to"
+                  [value]="transferTos().get(p.id) ?? ''"
+                  (input)="setTransferTo(p.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-transfer"
+                  [attr.aria-label]="'Transfer ' + p.name + ' to the sheet entered'"
+                  (click)="transfer(p)"
+                >
+                  Transfer
+                </button>
                 @if (rowErrors().get(p.id); as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -691,6 +709,8 @@ export class People {
   protected readonly listed = computed(() =>
     this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
   );
+  /** The sheet id typed on each person's row to transfer them to, by person id. */
+  protected readonly transferTos = signal<ReadonlyMap<number, string>>(new Map());
   /** The retire-from date typed on each person's row, by person id. */
   protected readonly retireDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The alias typed on each person's row, by person id. */
@@ -819,6 +839,21 @@ export class People {
   protected readonly cents = cents;
   /** The figures of the sheet's descendants as the store holds them, added to its own for the consolidated figures. */
   protected readonly descendants = signal<Descendants>(NO_DESCENDANTS);
+  /**
+   * The figures over the sheet and its descendants. They are not dated: an as-of view adds the
+   * sheet's own figures as the store holds them now, else the screen's own.
+   */
+  protected readonly consolidated = computed(() => {
+    const d = this.descendants();
+    const own = this.session.asOf() && d.own
+      ? { peopleCount: d.own.peopleCount, due: cents(d.own.dueTotal), overdue: cents(d.own.overdueTotal) }
+      : { peopleCount: this.people().length, due: cents(this.dueTotal()), overdue: this.overdueTotals().cents };
+    return {
+      peopleCount: own.peopleCount + d.peopleCount,
+      dueTotal: money(own.due + cents(d.dueTotal)),
+      overdueTotal: money(own.overdue + cents(d.overdueTotal)),
+    };
+  });
   /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
   protected readonly overdueTotals = computed(() => {
     const each = this.people().map((p) => this.overdueOf(p));
@@ -954,6 +989,7 @@ export class People {
       this.patronChoices.set(new Map());
       this.patronErrors.set(new Map());
       this.mergeChoices.set(new Map());
+      this.transferTos.set(new Map());
       this.watched.set(new Set());
       this.retireDates.set(new Map());
       this.holdFroms.set(new Map());
@@ -1250,6 +1286,56 @@ export class People {
     }
     if (this.session.sheet() !== sheet) return;
     this.mergeChoices.update((m) => {
+      const next = new Map(m);
+      next.delete(p.id);
+      return next;
+    });
+    if (sheet) await this.fetch(sheet);
+  }
+
+  protected setTransferTo(id: number, value: string): void {
+    this.transferTos.update((m) => new Map(m).set(id, value));
+    this.clearRowError(id);
+  }
+
+  /**
+   * Transfer the person to the sheet whose id is typed on their row (a steward only): they arrive
+   * there with their grades, details and claims and leave this sheet, so the sheet is re-read.
+   */
+  protected async transfer(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const to = (this.transferTos().get(p.id) ?? '').trim();
+    const fail = (err: string) => this.rowErrors.update((m) => new Map(m).set(p.id, err));
+    if (to === '') {
+      fail('Enter the id of the sheet to transfer ' + p.name + ' to.');
+      return;
+    }
+    if (to === sheet) {
+      fail(p.name + ' is already on this sheet.');
+      return;
+    }
+    if (p.retired) {
+      fail('A retired person cannot be transferred.');
+      return;
+    }
+    try {
+      await firstValueFrom(
+        this.http.post<Person>('/api/people/transfer', { sheet, user: this.session.user(), id: p.id, to }),
+      );
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      fail(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can transfer people.'
+          : e instanceof HttpErrorResponse && e.status === 409
+            ? 'Could not transfer ' + p.name + ': a name, alias or contact is already on sheet ' + to + ', or ' + p.name + ' is retired.'
+            : 'Could not transfer ' + p.name + '.',
+      );
+      return;
+    }
+    if (this.session.sheet() !== sheet) return;
+    this.transferTos.update((m) => {
       const next = new Map(m);
       next.delete(p.id);
       return next;

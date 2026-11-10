@@ -42,6 +42,10 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long intoId) {
     }
 
+    public record TransferPersonRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 100) String to) {
+    }
+
     public record BulkGradeRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids,
             @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
@@ -105,10 +109,12 @@ public class PersonController {
 
     private final PersonService service;
     private final PersonMergeService merges;
+    private final PersonTransferService transfers;
 
-    public PersonController(PersonService service, PersonMergeService merges) {
+    public PersonController(PersonService service, PersonMergeService merges, PersonTransferService transfers) {
         this.service = service;
         this.merges = merges;
+        this.transfers = transfers;
     }
 
     @PostMapping("/list")
@@ -137,6 +143,12 @@ public class PersonController {
     @PostMapping("/merge")
     public PersonResponse merge(@Valid @RequestBody MergePersonRequest req) {
         return response(merges.merge(req.sheet().trim(), req.user().trim(), req.id(), req.intoId()));
+    }
+
+    /** Transfer the person to another sheet by id; answers them as the other sheet now holds them. */
+    @PostMapping("/transfer")
+    public PersonResponse transfer(@Valid @RequestBody TransferPersonRequest req) {
+        return response(transfers.transfer(req.sheet().trim(), req.user().trim(), req.id(), req.to().trim()));
     }
 
     @PostMapping("/bulk-grade")

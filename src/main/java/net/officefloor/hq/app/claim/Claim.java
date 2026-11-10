@@ -191,6 +191,32 @@ public class Claim {
         return sheetId;
     }
 
+    /**
+     * The claim as it arrives on another sheet under a person transferred there: everything it has
+     * (status, dates, note, tags, frozen figures, log and comments) but its number, which the caller
+     * gives afresh, its reference, which is not carried, a figure a statement bound, which is lost,
+     * and an editor's lock.
+     */
+    public Claim transferredTo(String toSheetId, Long toPersonId) {
+        Claim copy = new Claim(toSheetId, toPersonId, amount, date, dueBy, terms, note, corrects);
+        copy.status = status;
+        copy.settledDue = settledDue;
+        copy.openedBy = openedBy;
+        copy.editedBy = editedBy;
+        copy.tags = tags;
+        copy.splitFrom = splitFrom;
+        copy.batch = batch;
+        copy.lateEntry = lateEntry;
+        copy.deferredUntil = deferredUntil;
+        copy.deferredOn = deferredOn;
+        copy.remindedOn = remindedOn;
+        copy.voidReason = voidReason;
+        copy.proofs = proofs;
+        copy.log.addAll(log);
+        copy.comments.addAll(comments);
+        return copy;
+    }
+
     public Long getPersonId() {
         return personId;
     }

@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,7 +18,11 @@ public class RollupController {
     public record DescendantsRequest(@NotBlank @Size(max = 100) String sheet) {
     }
 
-    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal) {
+    /** The sheet's own figures as the store holds them now, as consolidated figures count them. */
+    public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal) {
+    }
+
+    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal, OwnFigures own) {
     }
 
     private final RollupService service;
@@ -26,12 +31,18 @@ public class RollupController {
         this.service = service;
     }
 
-    // ends in /list: it only reads, so the as-of view answers it
+    // ends in /list: it only reads; the as-of view answers it as the store holds the sheets now
     @PostMapping("/descendants/list")
     public DescendantsResponse descendants(@Valid @RequestBody DescendantsRequest req) {
-        RollupService.Consolidated figures = service.descendants(req.sheet().trim());
-        return new DescendantsResponse(figures.peopleCount(),
-                figures.dueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                figures.overdueTotal().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        String sheet = req.sheet().trim();
+        RollupService.Consolidated figures = service.descendants(sheet);
+        RollupService.Snapshot own = service.snapshot(sheet);
+        return new DescendantsResponse(figures.peopleCount(), money(figures.dueTotal()),
+                money(figures.overdueTotal()),
+                new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal())));
+    }
+
+    private static String money(BigDecimal amount) {
+        return amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
     }
 }
