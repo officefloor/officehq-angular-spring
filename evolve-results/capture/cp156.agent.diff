@@ -1,0 +1,381 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 03522ed2d..cba52c8c6 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -82,6 +82,8 @@ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'D
+ 
+ export interface Claim {
+   id: number;
++  /** When the claim was added, in the order claims and forward-only rates are saved (see Rate.forwardAfter). */
++  addedSeq?: number | null;
+   personId: number;
+   amount: string;
+   date: string;
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 8c481043f..7d1fa79bc 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -21,6 +21,14 @@ export interface Rate {
+   version?: number;
+   /** Whose rate it is: 0 (or missing) for the sheet's own, 1 for its parent's, 2 for the parent's parent, and so on. */
+   level?: number;
++  /** For a rate saved with a from-date on or after the sheet's today: it applies only to claims
++   *  whose addedSeq is above this. Null (or missing) for a rate that applies to every claim. */
++  forwardAfter?: number | null;
++}
++
++/** Whether a rate applies to a claim: it is not forward-only, or the claim was added after it was saved. */
++function appliesTo(r: Rate, c: Claim): boolean {
++  return r.forwardAfter == null || (c.addedSeq != null && c.addedSeq > r.forwardAfter);
+ }
+ 
+ const GRADES = ['A', 'B', 'C'] as const;
+@@ -54,9 +62,11 @@ export function gradeOn(grades: readonly DatedGrade[], date: string | null): str
+  * The grade's rate in force on a date (yyyy-mm-dd) on the sheet: the one with the latest from-date
+  * on or before it, an undated rate counting as from the beginning of time; none when none applies yet,
+  * or when that one's to-date has passed by the date. With none on the sheet, its parent's rate in
+- * force then, then the parent's parent's, and so on. Undefined when no level has one.
++ * force then, then the parent's parent's, and so on. Undefined when no level has one. Given a claim,
++ * only the rates that apply to it count (a forward-only rate applies only to claims added after it).
+  */
+-export function pctOn(rates: readonly Rate[], grade: string, date: string | null): string | undefined {
++export function pctOn(rates: readonly Rate[], grade: string, date: string | null, claim?: Claim): string | undefined {
++  if (claim !== undefined) rates = rates.filter((r) => appliesTo(r, claim));
+   const levels = [...new Set(rates.map((r) => r.level ?? 0))].sort((a, b) => a - b);
+   for (const level of levels) {
+     const pct = levelPctOn(rates.filter((r) => (r.level ?? 0) === level), grade, date);
+@@ -128,7 +138,7 @@ export function roundsHalfUp(
+ export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, halfUp = false): number | null {
+   if (c.settledDue !== null) return cents(c.settledDue);
+   if (c.stated && c.status !== 'PENDING') return fixedDueCents(c);
+-  return dueCents(cents(c.amount), pctOn(rates, grade, c.date), halfUp);
++  return dueCents(cents(c.amount), pctOn(rates, grade, c.date, c), halfUp);
+ }
+ 
+ /** One value recorded for a dated setting: in force from its from-date (blank: from the
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 6ed2361b1..0014fd9ae 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -19,6 +19,7 @@ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Optional;
+ import org.hibernate.annotations.BatchSize;
++import org.hibernate.annotations.Generated;
+ 
+ /**
+  * A claim by a person on a sheet: an amount (two decimals; below zero only for a correction, which
+@@ -48,6 +49,11 @@ public class Claim {
+     @Column(name = "note", nullable = false)
+     private String note;
+ 
++    /** When the claim was added, in the order claims and forward-only rates are saved (see {@link net.officefloor.hq.app.rate.Rate#appliesTo}). */
++    @Generated
++    @Column(name = "added_seq", insertable = false, updatable = false)
++    private Long addedSeq;
++
+     @Enumerated(EnumType.STRING)
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+@@ -190,6 +196,10 @@ public class Claim {
+         this.corrects = corrects;
+     }
+ 
++    public Long getAddedSeq() {
++        return addedSeq;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 7f35960e7..b4f13aea5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -133,7 +133,7 @@ public class ClaimController {
+             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
+-            List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines) {
++            List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq) {
+     }
+ 
+     /** One line of a claim, in the order added: its label, quantity and unit amount. */
+@@ -167,7 +167,8 @@ public class ClaimController {
+                         .toList(),
+                 claim.getBatch(),
+                 claim.getLines().stream().map(l -> new ClaimLineLine(l.getLabel(), l.getQty(), money(l.getUnit())))
+-                        .toList());
++                        .toList(),
++                claim.getAddedSeq());
+     }
+ 
+     public static BigDecimal amount(String amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0b0c93b01..a0388a136 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -1033,7 +1033,7 @@ public class ClaimService {
+     public BigDecimal due(String sheetId, Person person, Claim claim) {
+         Sheet sheet = sheets.sheet(sheetId);
+         RoundingMode rounding = Rounding.mode(sheet, roundingDate(sheetId, claim));
+-        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
++        return rates.findInForce(sheetId, person.gradeOn(claim.getDate()), claim).map(Rate::getPct)
+                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding))
+                 .orElse(null);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index bae6a3ced..570aa9389 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -8,11 +8,14 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.claim.Claim;
+ 
+ /**
+  * A sheet's rate for a grade: a percent with two decimals, in force from its from-date (none: from
+  * the beginning of time) until the grade's next rate, or through its to-date when it has one. Its
+  * version counts how many times it has been set: the older ones are kept as {@link RateVersion}s.
++ * Saved with a from-date on or after the sheet's today it is forward-only: it applies only to the
++ * claims added after it was saved.
+  */
+ @Entity
+ @Table(name = "rate")
+@@ -40,6 +43,10 @@ public class Rate {
+     @Column(name = "version", nullable = false)
+     private int version = 1;
+ 
++    /** For a forward-only rate, the point it was saved at: it applies to claims added after it; none applies to every claim. */
++    @Column(name = "forward_after")
++    private Long forwardAfter;
++
+     protected Rate() {
+     }
+ 
+@@ -88,6 +95,19 @@ public class Rate {
+         this.version = version;
+     }
+ 
++    public Long getForwardAfter() {
++        return forwardAfter;
++    }
++
++    public void setForwardAfter(Long forwardAfter) {
++        this.forwardAfter = forwardAfter;
++    }
++
++    /** Whether the rate applies to a claim: it is not forward-only, or the claim was added after it was saved. */
++    public boolean appliesTo(Claim claim) {
++        return forwardAfter == null || claim.getAddedSeq() != null && claim.getAddedSeq() > forwardAfter;
++    }
++
+     public BigDecimal getPct() {
+         return pct;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChain.java b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+index 5027aace5..36e98e8f2 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChain.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+@@ -4,6 +4,7 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Optional;
++import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.sheet.AsOfFilter;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -95,6 +96,25 @@ public class RateChain {
+         return Optional.empty();
+     }
+ 
++    /**
++     * The grade's rate in force on a claim's date among the rates that apply to the claim (see
++     * {@link Rate#appliesTo}): the sheet's own, else the nearest ancestor's; empty when none has one.
++     */
++    public static Optional<Rate> inForce(List<List<Rate>> chain, String grade, Claim claim) {
++        for (List<Rate> level : chain) {
++            Optional<Rate> rate = RateRepository.inForce(level, grade, claim);
++            if (rate.isPresent()) {
++                return rate;
++            }
++        }
++        return Optional.empty();
++    }
++
++    /** The grade's rate in force for a claim on the sheet or, failing that, its nearest ancestor. */
++    public Optional<Rate> findInForce(String sheetId, String grade, Claim claim) {
++        return inForce(current(sheetId), grade, claim);
++    }
++
+     /** The grade's rate in force on a date on the sheet or, failing that, its nearest ancestor. */
+     public Optional<Rate> findInForce(String sheetId, String grade, LocalDate date) {
+         return inForce(current(sheetId), grade, date);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 18d1175b0..aed13f904 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -50,14 +50,18 @@ public class RateController {
+     public record PreviewRateResponse(int count, String diff) {
+     }
+ 
+-    /** A rate with its version count; {@code level} 0 for the sheet's own, 1 for its parent's, 2 for the parent's parent, and so on. */
+-    public record RateResponse(String grade, LocalDate from, LocalDate to, String pct, int level, int version) {
++    /**
++     * A rate with its version count; {@code level} 0 for the sheet's own, 1 for its parent's, 2 for the parent's parent, and so on;
++     * {@code forwardAfter} for a forward-only rate, applying only to claims whose {@code addedSeq} is above it (none: every claim).
++     */
++    public record RateResponse(String grade, LocalDate from, LocalDate to, String pct, int level, int version,
++            Long forwardAfter) {
+     }
+ 
+     private static RateResponse response(Rate rate, int level) {
+         return new RateResponse(rate.getGrade(), rate.getFromDate(), rate.getToDate(),
+                 rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), level,
+-                rate.getVersion());
++                rate.getVersion(), rate.getForwardAfter());
+     }
+ 
+     private final RateService service;
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateLog.java b/src/main/java/net/officefloor/hq/app/rate/RateLog.java
+index d7bdf583a..ee09ceece 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateLog.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateLog.java
+@@ -37,6 +37,9 @@ public class RateLog {
+     @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+     private BigDecimal pct;
+ 
++    @Column(name = "forward_after")
++    private Long forwardAfter;
++
+     @Column(name = "made_on")
+     private LocalDate madeOn;
+ 
+@@ -49,6 +52,7 @@ public class RateLog {
+         this.fromDate = rate.getFromDate();
+         this.toDate = rate.getToDate();
+         this.pct = rate.getPct();
++        this.forwardAfter = rate.getForwardAfter();
+         this.madeOn = madeOn;
+     }
+ 
+@@ -65,6 +69,7 @@ public class RateLog {
+     public Rate toRate() {
+         Rate rate = new Rate(sheetId, grade, fromDate, pct);
+         rate.setToDate(toDate);
++        rate.setForwardAfter(forwardAfter);
+         return rate;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+index 03e204c29..6f46afd95 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+@@ -4,10 +4,17 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Objects;
+ import java.util.Optional;
++import java.util.stream.Stream;
++import net.officefloor.hq.app.claim.Claim;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface RateRepository extends JpaRepository<Rate, Long> {
+ 
++    /** The next point in the order claims are added and forward-only rates saved (see {@link Rate#appliesTo}). */
++    @Query(value = "SELECT NEXT VALUE FOR entry_seq", nativeQuery = true)
++    long nextEntrySeq();
++
+     /** A sheet's rates by grade, then by from-date. */
+     List<Rate> findBySheetIdOrderByGradeAscFromDateAsc(String sheetId);
+ 
+@@ -31,7 +38,16 @@ public interface RateRepository extends JpaRepository<Rate, Long> {
+ 
+     /** The grade's rate in force on a date among the given rates, as {@link #findInForce} picks it. */
+     static Optional<Rate> inForce(List<Rate> rates, String grade, LocalDate date) {
+-        return rates.stream().filter(r -> r.getGrade().equals(grade))
++        return inForce(rates.stream(), grade, date);
++    }
++
++    /** The grade's rate in force on a claim's date among the given rates that apply to the claim (see {@link Rate#appliesTo}). */
++    static Optional<Rate> inForce(List<Rate> rates, String grade, Claim claim) {
++        return inForce(rates.stream().filter(r -> r.appliesTo(claim)), grade, claim.getDate());
++    }
++
++    private static Optional<Rate> inForce(Stream<Rate> rates, String grade, LocalDate date) {
++        return rates.filter(r -> r.getGrade().equals(grade))
+                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
+                 .max((a, b) -> a.getFromDate() == null ? -1 : b.getFromDate() == null ? 1
+                         : a.getFromDate().compareTo(b.getFromDate()))
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 621a7bd8a..ec9e6273b 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -19,7 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * The sheet's rates for each grade: set (or set again) on the screen, one per grade and from-date;
+  * setting a grade's rate for a from-date it already has keeps the rate it replaces as an older
+  * version and makes the new value (and its to-date) the newest, the one in force. A to-date before
+- * the from-date is refused.
++ * the from-date is refused. A rate saved with a from-date on or after the sheet's today is
++ * forward-only: it applies only to claims added after it was saved (see {@link Rate#appliesTo}).
+  */
+ @Service
+ public class RateService {
+@@ -69,6 +70,8 @@ public class RateService {
+         Rate rate = replaced.orElseGet(() -> new Rate(sheetId, grade, fromDate, pct));
+         rate.setPct(pct);
+         rate.setToDate(toDate);
++        LocalDate today = sheets.today(sheetId);
++        rate.setForwardAfter(fromDate != null && today != null && !fromDate.isBefore(today) ? rates.nextEntrySeq() : null);
+         Rate saved;
+         try {
+             saved = rates.saveAndFlush(rate);
+@@ -76,7 +79,7 @@ public class RateService {
+             // another user set this grade's rate from this date at the same moment
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "This rate was just set by someone else.");
+         }
+-        rateLog.saveAndFlush(new RateLog(saved, sheets.today(sheetId)));
++        rateLog.saveAndFlush(new RateLog(saved, today));
+         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade + " rate="
+                 + saved.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()
+                 + (fromDate != null ? " from=" + fromDate : "") + (toDate != null ? " to=" + toDate : ""));
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 63a34b518..1f4a9b492 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -264,7 +264,7 @@ public class RollupService {
+             return claim.getSettledDue();
+         }
+         BigDecimal figure = claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
+-                : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate()).map(Rate::getPct)
++                : RateChain.inForce(sheetRates, person.gradeOn(claim.getDate()), claim).map(Rate::getPct)
+                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
+                                 Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
+                         .orElse(null);
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 2f2dd64e2..a382cd26b 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -179,7 +179,7 @@ public class StatementService {
+                 charged = figure;
+             } else {
+                 figure = stated && status != ClaimStatus.PENDING ? claim.getStatedDue()
+-                        : RateChain.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim.getDate())
++                        : RateChain.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim)
+                                 .map(Rate::getPct)
+                                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
+                                         Rounding.mode(then, Rounding.dateOf(claim, theirs))))
+diff --git a/src/main/resources/db/migration/V85__rate_forward_only.sql b/src/main/resources/db/migration/V85__rate_forward_only.sql
+new file mode 100644
+index 000000000..3dc77b5af
+--- /dev/null
++++ b/src/main/resources/db/migration/V85__rate_forward_only.sql
+@@ -0,0 +1,7 @@
++-- A rate saved with a from-date on or after the sheet's today is forward-only: it applies only to
++-- claims added after it was saved. Claims and forward-only rates draw from one sequence, so a
++-- claim's added_seq above a rate's forward_after means the claim was added after the rate was saved.
++CREATE SEQUENCE entry_seq START WITH 1;
++ALTER TABLE claim ADD COLUMN added_seq BIGINT DEFAULT NEXT VALUE FOR entry_seq NOT NULL;
++ALTER TABLE rate ADD COLUMN forward_after BIGINT;
++ALTER TABLE rate_log ADD COLUMN forward_after BIGINT;
