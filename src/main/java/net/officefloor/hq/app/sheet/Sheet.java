@@ -387,7 +387,7 @@ public class Sheet {
         this.parentId = parentId;
     }
 
-    /** The pot shared out over each balanced pool's members; null for none. Not dated. */
+    /** The pot cut by each balanced pool that is a member of none; null for none. Not dated. */
     public BigDecimal getPot() {
         return pot;
     }

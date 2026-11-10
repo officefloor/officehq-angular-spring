@@ -10,8 +10,15 @@ import { Session } from '../../core/session';
 // whether it is balanced: the total exactly 100.00. With a pot set, each member of a balanced pool
 // shows their cut of it (worked out by the store; blank when unbalanced or no pot). Re-read from
 // the store on every sheet load and whenever the people or the pot change.
+// A member may instead be another pool, chosen as pool:<name>, with a share like a person's. A pool
+// is a member of at most one pool, never contains itself through any chain, and a chain of pools is
+// at most three deep (the store refuses each). A pool that is a member of another cuts its cut in
+// the pool above; the sheet's pot is cut by a pool that is a member of none.
 export interface PoolMember {
+  /** The person's id; 0 for a pool. */
   personId: number;
+  /** The member pool's name; null for a person. */
+  pool: string | null;
   name: string;
   share: string;
   retired: boolean;
@@ -52,8 +59,8 @@ function refusal(e: unknown, what: string): string {
         Balanced <strong data-testid="pool-balanced">{{ pool().balanced ? 'yes' : 'no' }}</strong>
       </p>
       <ul [attr.aria-label]="'Members of ' + pool().name">
-        @for (m of pool().members; track m.personId) {
-          <li [attr.data-testid]="'pool-member-' + pool().name + '-' + m.personId">
+        @for (m of pool().members; track m.pool === null ? m.personId : 'pool:' + m.pool) {
+          <li [attr.data-testid]="'pool-member-' + pool().name + '-' + (m.pool === null ? m.personId : 'pool-' + m.pool)">
             {{ m.name }}@if (m.retired) { (retired)}:
             <span data-testid="pool-share">{{ m.share }}</span>
             cut <span data-testid="pool-cut">{{ m.cut }}</span>
@@ -61,16 +68,19 @@ function refusal(e: unknown, what: string): string {
         }
       </ul>
       <form [attr.aria-label]="'Add a member to ' + pool().name" (submit)="add($event)">
-        <label [for]="'pool-member-select-' + pool().id">Person</label>
+        <label [for]="'pool-member-select-' + pool().id">Member</label>
         <select
           [id]="'pool-member-select-' + pool().id"
           data-testid="pool-member-select"
           [value]="personInput()"
           (change)="personInput.set($any($event.target).value); error.set(null)"
         >
-          <option value="">Choose a person</option>
+          <option value="">Choose a member</option>
           @for (p of people(); track p.id) {
             <option [value]="'' + p.id" [selected]="personInput() === '' + p.id">{{ p.name }}</option>
+          }
+          @for (p of pools(); track p.id) {
+            <option [value]="'pool:' + p.id" [selected]="personInput() === 'pool:' + p.id">pool:{{ p.name }}</option>
           }
         </select>
         <label [for]="'pool-member-share-' + pool().id">Share %</label>
@@ -95,6 +105,8 @@ export class PoolRow {
 
   readonly pool = input.required<Pool>();
   readonly people = input.required<PoolPerson[]>();
+  /** The sheet's pools: the pools a member may be chosen from. */
+  readonly pools = input.required<Pool[]>();
   /** The sheet's pools as the store holds them once a member was added. */
   readonly changed = output<Pool[]>();
 
@@ -107,13 +119,15 @@ export class PoolRow {
     event.preventDefault();
     if (this.submitting) return;
     this.error.set(null);
-    const personId = Number(this.personInput());
+    const chosen = this.personInput();
+    const memberPool = chosen.startsWith('pool:') ? Number(chosen.slice('pool:'.length)) : null;
+    const personId = memberPool === null ? Number(chosen) : null;
     const share = this.shareInput().trim();
-    if (!personId) {
-      this.error.set('Choose a person.');
+    if (!memberPool && !personId) {
+      this.error.set('Choose a member.');
       return;
     }
-    if (this.pool().members.some((m) => m.personId === personId)) {
+    if (personId && this.pool().members.some((m) => m.pool === null && m.personId === personId)) {
       this.error.set('That person is already in the pool.');
       return;
     }
@@ -135,6 +149,7 @@ export class PoolRow {
           user: this.session.user(),
           pool: this.pool().id,
           person: personId,
+          memberPool,
           share,
         }),
       );
@@ -170,7 +185,7 @@ export class PoolRow {
         }
       </form>
       @for (p of pools(); track p.id) {
-        <app-pool-row [pool]="p" [people]="people()" (changed)="changed($event)" />
+        <app-pool-row [pool]="p" [people]="people()" [pools]="pools()" (changed)="changed($event)" />
       }
     </section>
   `,

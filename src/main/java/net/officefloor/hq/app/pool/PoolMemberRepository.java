@@ -12,6 +12,8 @@ public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
 
     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
 
+    boolean existsByMemberPoolId(Long memberPoolId);
+
     /** A person's memberships, in the order they were added. */
     List<PoolMember> findByPersonIdOrderByIdAsc(Long personId);
 

@@ -8,7 +8,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 
-/** A person in a pool with their share percent; a person is in a pool at most once. */
+/**
+ * A member of a pool with their share percent: a person (in a pool at most once) or another pool (a
+ * member of at most one pool).
+ */
 @Entity
 @Table(name = "pool_member")
 public class PoolMember {
@@ -17,11 +20,17 @@ public class PoolMember {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "sheet_id", nullable = false)
+    private String sheetId;
+
     @Column(name = "pool_id", nullable = false)
     private Long poolId;
 
-    @Column(name = "person_id", nullable = false)
+    @Column(name = "person_id")
     private Long personId;
+
+    @Column(name = "member_pool_id")
+    private Long memberPoolId;
 
     @Column(name = "share", nullable = false)
     private BigDecimal share;
@@ -29,10 +38,18 @@ public class PoolMember {
     protected PoolMember() {
     }
 
-    public PoolMember(Long poolId, Long personId, BigDecimal share) {
+    public PoolMember(String sheetId, Long poolId, Long personId, BigDecimal share) {
+        this.sheetId = sheetId;
         this.poolId = poolId;
         this.personId = personId;
         this.share = share;
+    }
+
+    /** A pool as a member of another. */
+    public static PoolMember ofPool(String sheetId, Long poolId, Long memberPoolId, BigDecimal share) {
+        PoolMember m = new PoolMember(sheetId, poolId, null, share);
+        m.memberPoolId = memberPoolId;
+        return m;
     }
 
     public Long getId() {
@@ -45,6 +62,11 @@ public class PoolMember {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    /** The pool that is this member, null for a person. */
+    public Long getMemberPoolId() {
+        return memberPoolId;
     }
 
     public BigDecimal getShare() {
