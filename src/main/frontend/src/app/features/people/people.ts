@@ -37,6 +37,9 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
 // and so does a claim bound by a statement, whatever its date. "On hold" shows whether they have any hold.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
+// The paste box takes lines of name,amount,date,note (the date blank for the sheet's today, the note
+// optional and free to hold commas) and adds a DRAFT claim per line, in order, for the person of that
+// name. Every line is held to the claim form's rules; if any is refused, nothing is added.
 // Each person, and the sheet, shows how many of the claims that count are overdue and the sum of
 // their figures (the overdue-total). An overdue claim's figure has its late charge (the sheet's late
 // percent of it for every full 30 days overdue) added on top, in every figure and total.
@@ -192,6 +195,23 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
         <button type="submit" data-testid="quick-submit">Quick add</button>
         @if (quickError(); as err) {
           <p role="alert" data-testid="quick-error">{{ err }}</p>
+        }
+      </form>
+      <form aria-label="Paste claims" (submit)="pasteClaims($event)">
+        <label for="paste-claims">Paste claims (name,amount,date,note per line)</label>
+        <textarea
+          id="paste-claims"
+          data-testid="paste-claims"
+          rows="4"
+          [value]="pasteText()"
+          (input)="pasteText.set($any($event.target).value); pasteError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        @if (pasteAdded() !== null) {
+          <p>Added <strong data-testid="paste-added">{{ pasteAdded() }}</strong></p>
+        }
+        @if (pasteError(); as err) {
+          <p role="alert" data-testid="paste-error">{{ err }}</p>
         }
       </form>
       <label>
@@ -532,6 +552,12 @@ export class People {
   protected readonly quickError = signal<string | null>(null);
   /** Whether a quick-add is waiting for its answer: a second one meanwhile is ignored. */
   private quickSubmitting = false;
+  protected readonly pasteText = signal('');
+  /** How many claims the last paste added; cleared while the next one runs. */
+  protected readonly pasteAdded = signal<number | null>(null);
+  protected readonly pasteError = signal<string | null>(null);
+  /** Whether a paste is waiting for its answer: a second one meanwhile is ignored. */
+  private pasteSubmitting = false;
 
   constructor() {
     // Re-read the sheet's people from the store every time a sheet is loaded.
@@ -557,6 +583,9 @@ export class People {
       this.quickName.set('');
       this.quickAmount.set('');
       this.quickError.set(null);
+      this.pasteText.set('');
+      this.pasteAdded.set(null);
+      this.pasteError.set(null);
       if (sheet) {
         void this.fetch(sheet);
       }
@@ -914,6 +943,39 @@ export class People {
       );
     } finally {
       this.quickSubmitting = false;
+    }
+  }
+
+  /** Add a DRAFT claim per pasted line, in order; the server refuses the whole paste if any line fails. */
+  protected async pasteClaims(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.pasteSubmitting) return;
+    this.pasteAdded.set(null);
+    this.pasteError.set(null);
+    const sheet = this.session.sheet();
+    const text = this.pasteText();
+    if (!text.trim()) {
+      this.pasteError.set('Paste at least one line of name,amount,date,note.');
+      return;
+    }
+    this.pasteSubmitting = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ added: number; claims: Claim[] }>('/api/claims/paste', {
+          sheet,
+          user: this.session.user(),
+          text,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      for (const c of done.claims) this.claimSaved(c);
+      this.pasteText.set('');
+      this.pasteAdded.set(done.added);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.pasteError.set('Could not add the pasted claims: every line needs a name on the sheet and a claim the claim form takes.');
+    } finally {
+      this.pasteSubmitting = false;
     }
   }
 

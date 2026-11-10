@@ -39,6 +39,14 @@ public class ClaimController {
             @Size(max = 120) String corrects) {
     }
 
+    public record PasteClaimsRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull @Size(max = 200000) String text) {
+    }
+
+    /** What a paste added: how many claims, and the claims in the order they were added. */
+    public record PasteClaimsResponse(int added, List<ClaimResponse> claims) {
+    }
+
     public record ClaimStatusRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
     }
@@ -99,9 +107,11 @@ public class ClaimController {
     }
 
     private final ClaimService service;
+    private final ClaimPasteService pasteService;
 
-    public ClaimController(ClaimService service) {
+    public ClaimController(ClaimService service, ClaimPasteService pasteService) {
         this.service = service;
+        this.pasteService = pasteService;
     }
 
     @PostMapping("/list")
@@ -113,6 +123,13 @@ public class ClaimController {
     public ClaimResponse add(@Valid @RequestBody AddClaimRequest req) {
         return response(service.add(req.sheet().trim(), req.user().trim(), req.personId(), amount(req.amount()), req.date(),
                 note(req.note()), corrects(req.corrects())));
+    }
+
+    @PostMapping("/paste")
+    public PasteClaimsResponse paste(@Valid @RequestBody PasteClaimsRequest req) {
+        List<ClaimResponse> added = pasteService.paste(req.sheet().trim(), req.user().trim(), req.text()).stream()
+                .map(ClaimController::response).toList();
+        return new PasteClaimsResponse(added.size(), added);
     }
 
     @PostMapping("/update")
