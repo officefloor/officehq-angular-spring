@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -21,7 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
  * The sheet's crews: each a name (trimmed, not blank, at most once on the sheet) and a lead chosen
  * from the sheet's people, and its members, each a person on the sheet at most once per crew and
  * never the crew's lead. A crew's due-total (the lead's and the members' due-totals added up, n/a
- * skipped) is worked out on screen from the figures it shows for each person.
+ * skipped) is worked out on screen from the figures it shows for each person. A crew is also listed
+ * among the pools (see {@link net.officefloor.hq.app.pool.PoolService}), so it may not take a pool's name.
  */
 @Service
 public class CrewService {
@@ -41,9 +43,11 @@ public class CrewService {
     private final SheetRepository sheetRows;
     private final Audit audit;
     private final RoleService roles;
+    private final PoolRepository pools;
 
     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
-            SheetService sheets, SheetRepository sheetRows, Audit audit, RoleService roles) {
+            SheetService sheets, SheetRepository sheetRows, Audit audit, RoleService roles, PoolRepository pools) {
+        this.pools = pools;
         this.crews = crews;
         this.members = members;
         this.people = people;
@@ -82,7 +86,7 @@ public class CrewService {
 
     /**
      * Add a crew (its name trimmed) led by a person on the sheet; a blank name or no lead is refused
-     * (422), a name already on the sheet (409).
+     * (422), a name already on the sheet as a crew or a pool (409).
      */
     @Transactional
     public void add(String sheetId, String user, String name, Long leadId) {
@@ -101,6 +105,9 @@ public class CrewService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Choose a lead."));
         if (crews.existsBySheetIdAndName(sheetId, text)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That crew is already on the sheet.");
+        }
+        if (pools.existsBySheetIdAndName(sheetId, text)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A pool on the sheet has that name.");
         }
         try {
             crews.saveAndFlush(new Crew(sheetId, text, lead.getId()));

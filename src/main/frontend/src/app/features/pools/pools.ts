@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, model, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, model, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { FigurePipe } from '../../core/figure';
@@ -25,6 +25,9 @@ import { FigurePipe } from '../../core/figure';
 // The export button downloads the pools as a CSV file (pool, member, share, cut): one line per member,
 // pools and their members in the order added, a pool member as pool:<name>, the cut as shown (empty
 // when none), read afresh from the store.
+// Each crew is also listed as a pool, after the pools, under the crew's name: its lead and members at
+// equal shares (worked out by the store). It takes no members here and is not offered as a member; a
+// pool may not take a crew's name. Re-read whenever the crews change.
 export interface PoolMember {
   /** The person's id; 0 for a pool. */
   personId: number;
@@ -43,6 +46,8 @@ export interface Pool {
   members: PoolMember[];
   totalShare: string;
   balanced: boolean;
+  /** Whether this is a crew listed as a pool. */
+  crew: boolean;
 }
 
 /** A person who may be chosen as a member. */
@@ -85,6 +90,7 @@ function refusal(e: unknown, what: string): string {
           </li>
         }
       </ul>
+      @if (!pool().crew) {
       <form [attr.aria-label]="'Add a member to ' + pool().name" (submit)="add($event)">
         <label [for]="'pool-member-select-' + pool().id">Member</label>
         <select
@@ -97,7 +103,7 @@ function refusal(e: unknown, what: string): string {
           @for (p of people(); track p.id) {
             <option [value]="'' + p.id" [selected]="personInput() === '' + p.id">{{ p.name }}</option>
           }
-          @for (p of pools(); track p.id) {
+          @for (p of memberPools(); track p.id) {
             <option [value]="'pool:' + p.id" [selected]="personInput() === 'pool:' + p.id">pool:{{ p.name }}</option>
           }
         </select>
@@ -130,6 +136,7 @@ function refusal(e: unknown, what: string): string {
           <p role="alert" data-testid="pool-error">{{ err }}</p>
         }
       </form>
+      }
     </article>
   `,
 })
@@ -143,6 +150,8 @@ export class PoolRow {
   readonly pools = input.required<Pool[]>();
   /** The sheet's pools as the store holds them once a member was added. */
   readonly changed = output<Pool[]>();
+  /** The pools a member may be chosen from: a crew is never a member. */
+  protected readonly memberPools = computed(() => this.pools().filter((p) => !p.crew));
 
   protected readonly personInput = signal('');
   protected readonly shareInput = signal('');
@@ -249,6 +258,8 @@ export class Pools {
   readonly people = input.required<PoolPerson[]>();
   /** The sheet's pot, blank for none: a change re-reads the cuts. */
   readonly pot = input('');
+  /** The sheet's crews: a change re-reads the crews listed as pools. */
+  readonly crews = input<unknown[]>([]);
 
   /** The sheet's pools as last read from the store: the people's cut totals add up their cuts. */
   readonly pools = model<Pool[]>([]);
@@ -272,6 +283,7 @@ export class Pools {
       this.session.loads();
       this.people(); // a person retired, renamed or added: re-read the totals and names
       this.pot(); // the pot changed: re-read the cuts
+      this.crews(); // a crew added or changed: re-read the crews listed as pools
       if (sheet) void this.fetch(sheet);
     });
   }

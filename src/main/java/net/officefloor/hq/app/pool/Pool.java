@@ -30,6 +30,13 @@ public class Pool {
         this.name = name;
     }
 
+    /** A crew as a pool, never stored: it goes by the id given. */
+    static Pool ofCrew(Long id, String sheetId, String name) {
+        Pool pool = new Pool(sheetId, name);
+        pool.id = id;
+        return pool;
+    }
+
     public Long getId() {
         return id;
     }

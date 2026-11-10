@@ -261,7 +261,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
     <app-holidays />
     <app-void-reasons />
     <app-templates />
-    <app-pools [people]="people()" [pot]="pot()" [(pools)]="pools" />
+    <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [(pools)]="pools" />
     <app-crews [people]="crewPeople()" [(crews)]="crews" />
     <app-audit-view />
     <app-tree-search />
