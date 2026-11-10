@@ -18,7 +18,7 @@ import java.util.Map;
 
 /**
  * A period on a sheet: a name and a from and to date, both inclusive. A closed period keeps the
- * due-total it had when it was closed, and each person's due-total for it at that moment; so does a
+ * due-total it had when it was closed, and each person's due-total and carried figure for it at that moment; so does a
  * soft-closed one, whose claims can still change.
  */
 @Entity
@@ -57,6 +57,13 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "due", nullable = false)
     private Map<Long, BigDecimal> closedDues = new HashMap<>();
+
+    /** Each person's carried figure fixed when the period was closed, by person id; empty while open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "carried", nullable = false)
+    private Map<Long, BigDecimal> closedCarried = new HashMap<>();
 
     /** The last number given to a claim opened in this period under numbering per period. */
     @Column(name = "last_claim_number", nullable = false)
@@ -121,17 +128,21 @@ public class Period {
         return closedDues;
     }
 
+    public Map<Long, BigDecimal> getClosedCarried() {
+        return closedCarried;
+    }
+
     /** Give out the next claim number within this period. */
     public int nextClaimNumber() {
         return ++lastClaimNumber;
     }
 
     /**
-     * Close the period, fixing each person's due-total for it at this moment; its own due-total is
-     * their sum.
+     * Close the period, fixing each person's due-total and carried figure for it at this moment; its
+     * own due-total is the sum of their due-totals.
      */
-    public void close(Map<Long, BigDecimal> dues) {
-        fix(dues);
+    public void close(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried) {
+        fix(dues, carried);
         this.closed = true;
         this.softClosed = false;
     }
@@ -140,14 +151,16 @@ public class Period {
      * Soft-close the period, fixing its figures as {@link #close} does while its claims can still
      * change.
      */
-    public void softClose(Map<Long, BigDecimal> dues) {
-        fix(dues);
+    public void softClose(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried) {
+        fix(dues, carried);
         this.softClosed = true;
     }
 
-    private void fix(Map<Long, BigDecimal> dues) {
+    private void fix(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried) {
         this.closedDues.clear();
         this.closedDues.putAll(dues);
+        this.closedCarried.clear();
+        this.closedCarried.putAll(carried);
         this.closedDue = dues.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
@@ -157,5 +170,6 @@ public class Period {
         this.softClosed = false;
         this.closedDue = null;
         this.closedDues.clear();
+        this.closedCarried.clear();
     }
 }

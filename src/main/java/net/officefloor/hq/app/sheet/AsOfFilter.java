@@ -52,10 +52,10 @@ public class AsOfFilter extends OncePerRequestFilter {
             "/api/people/watched", "/api/roles/delegations", "/api/claims/tags");
 
     /**
-     * The reads answered as the store holds the sheets now, whatever the date asked for: the
-     * consolidated figures and the tree search are not dated.
+     * The reads answered as the store holds the sheets now, whatever the date asked for: the tree
+     * search is not dated. (The consolidated figures are: each sheet of the tree as it stood then.)
      */
-    private static final Set<String> UNDATED = Set.of("/api/rollup/descendants/list", "/api/search/tree/list");
+    private static final Set<String> UNDATED = Set.of("/api/search/tree/list");
 
     /** The changes that only take or release a claim editor's lock: not part of the sheet's history. */
     private static final Set<String> LOCKS = Set.of("/api/claims/lock", "/api/claims/unlock");

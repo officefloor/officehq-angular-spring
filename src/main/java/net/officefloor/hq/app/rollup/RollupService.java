@@ -1,9 +1,11 @@
 package net.officefloor.hq.app.rollup;
 
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -18,11 +20,15 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
+import net.officefloor.hq.app.sheet.AsOfFilter;
 import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetHistory;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
@@ -82,10 +88,16 @@ public class RollupService {
     private final ClaimRepository claims;
     private final RateChain rates;
     private final SheetRepository sheets;
+    private final PeriodRepository periods;
+    private final SheetHistory history;
+    private final EntityManager entities;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates, SheetRepository sheets,
-            Audit audit) {
+            PeriodRepository periods, SheetHistory history, EntityManager entities, Audit audit) {
+        this.periods = periods;
+        this.history = history;
+        this.entities = entities;
         this.people = people;
         this.claims = claims;
         this.rates = rates;
@@ -132,25 +144,38 @@ public class RollupService {
 
     /**
      * The figures of the sheet's descendants (its children, their children and so on; not the sheet
-     * itself), each sheet's due- and overdue-total as that sheet shows it, added up.
+     * itself), each sheet's due- and overdue-total as that sheet shows it, added up. When the request
+     * is answered as of a date (see {@link AsOfFilter}), each descendant is first restored as it stood
+     * at the end of that day, its today the date, in the request's rolled-back transaction; the tree
+     * itself (each sheet's parent) is as it is now.
      */
     public Consolidated descendants(String sheetId) {
         Set<String> seen = new HashSet<>(Set.of(sheetId));
         Deque<String> pending = new ArrayDeque<>(List.of(sheetId));
+        List<String> tree = new ArrayList<>();
+        while (!pending.isEmpty()) {
+            for (Sheet child : sheets.findByParentIdOrderByIdAsc(pending.pop())) {
+                if (seen.add(child.getId())) {
+                    tree.add(child.getId());
+                    pending.add(child.getId());
+                }
+            }
+        }
+        Optional<LocalDate> asOf = AsOfFilter.current();
+        if (asOf.isPresent()) {
+            entities.flush();
+            tree.forEach(id -> history.restore(id, asOf.get()));
+            // the rows were put back behind the persistence context's back: read them afresh
+            entities.clear();
+        }
         int count = 0;
         BigDecimal due = zero();
         BigDecimal overdue = zero();
-        while (!pending.isEmpty()) {
-            for (Sheet child : sheets.findByParentIdOrderByIdAsc(pending.pop())) {
-                if (!seen.add(child.getId())) {
-                    continue;
-                }
-                Snapshot figures = snapshot(child.getId());
-                count += figures.people().size();
-                due = due.add(figures.dueTotal());
-                overdue = overdue.add(figures.overdueTotal());
-                pending.add(child.getId());
-            }
+        for (String id : tree) {
+            Snapshot figures = snapshot(id);
+            count += figures.people().size();
+            due = due.add(figures.dueTotal());
+            overdue = overdue.add(figures.overdueTotal());
         }
         return new Consolidated(count, due, overdue);
     }
@@ -182,6 +207,41 @@ public class RollupService {
             dues.put(person.getId(), due);
         }
         return dues;
+    }
+
+    /**
+     * Each person's carried figure for a period: the due of their claims that belong to a period of
+     * the sheet ending before this one starts and that counted and were still OPEN or PENDING at the
+     * end of this period's to-date (as their status log records it), by person id, for every person on
+     * the sheet (0.00 when none). Each counts at its figure as shown now.
+     */
+    public Map<Long, BigDecimal> carriedByPerson(String sheetId, Period period) {
+        Sheet sheet = sheet(sheetId);
+        List<Period> earlier = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> p.getToDate().isBefore(period.getFromDate())).toList();
+        List<List<Rate>> sheetRates = rates.current(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        LocalDate end = period.getToDate();
+        Map<Long, BigDecimal> carried = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            BigDecimal due = zero();
+            for (Claim claim : sheetClaims) {
+                LocalDate dueBy = claim.getDueBy();
+                if (!claim.getPersonId().equals(person.getId()) || dueBy == null
+                        || earlier.stream().noneMatch(p -> !dueBy.isBefore(p.getFromDate())
+                                && !dueBy.isAfter(p.getToDate()))
+                        || !claim.statusAt(end).map(status -> status.isOpen()
+                                && person.counts(claim, status, sheet.getToday())).orElse(false)) {
+                    continue;
+                }
+                BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
+                if (figure != null) {
+                    due = due.add(figure);
+                }
+            }
+            carried.put(person.getId(), due);
+        }
+        return carried;
     }
 
     /** Record, once the change commits, the figures that moved since the snapshot taken before it. */

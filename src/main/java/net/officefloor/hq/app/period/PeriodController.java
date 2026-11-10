@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
@@ -46,10 +47,12 @@ public class PeriodController {
     /**
      * closedDue is the due-total fixed when the period was closed, closedDues each person's (by
      * person id); null while it is open. fy is the fiscal year its from-date falls in; cap its
-     * claim cap per person, null for none.
+     * claim cap per person, null for none. closedCarried is each person's carried figure fixed when it
+     * was closed (by person id); null while it is open.
      */
     public record PeriodResponse(long id, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, String closedDue, Map<String, String> closedDues, String fy, Integer cap) {
+            boolean softClosed, String closedDue, Map<String, String> closedDues, String fy, Integer cap,
+            Map<String, String> closedCarried) {
     }
 
     private PeriodResponse response(String sheetId, Period period) {
@@ -63,13 +66,17 @@ public class PeriodController {
                 period.getClosedDue() == null ? null
                         : period.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                 period.isClosed() || period.isSoftClosed() ? closedDues(period) : null, years.get(period.getId()),
-                period.getClaimCap()))
+                period.getClaimCap(), period.isClosed() || period.isSoftClosed() ? figures(period.getClosedCarried()) : null))
                 .toList();
     }
 
     private static Map<String, String> closedDues(Period period) {
+        return figures(period.getClosedDues());
+    }
+
+    private static Map<String, String> figures(Map<Long, BigDecimal> byPerson) {
         Map<String, String> dues = new TreeMap<>();
-        period.getClosedDues().forEach((person, due) -> dues.put(String.valueOf(person),
+        byPerson.forEach((person, due) -> dues.put(String.valueOf(person),
                 due.setScale(2, RoundingMode.UNNECESSARY).toPlainString()));
         return dues;
     }

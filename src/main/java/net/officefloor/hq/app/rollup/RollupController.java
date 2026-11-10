@@ -18,7 +18,7 @@ public class RollupController {
     public record DescendantsRequest(@NotBlank @Size(max = 100) String sheet) {
     }
 
-    /** The sheet's own figures as the store holds them now, as consolidated figures count them. */
+    /** The sheet's own figures as the store holds them (as of the date the request is answered as of), as consolidated figures count them. */
     public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal) {
     }
 
@@ -31,7 +31,7 @@ public class RollupController {
         this.service = service;
     }
 
-    // ends in /list: it only reads; the as-of view answers it as the store holds the sheets now
+    // ends in /list: it only reads; the as-of view answers it with every sheet of the tree as it stood then
     @PostMapping("/descendants/list")
     public DescendantsResponse descendants(@Valid @RequestBody DescendantsRequest req) {
         String sheet = req.sheet().trim();

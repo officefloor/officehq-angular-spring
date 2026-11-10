@@ -157,7 +157,7 @@ interface Descendants {
   peopleCount: number;
   dueTotal: string;
   overdueTotal: string;
-  /** The sheet's own figures as the store holds them now: an as-of view shows these, the consolidated figures not being dated. */
+  /** The sheet's own figures as the store holds them (as of the as-of date, when one is set). */
   own: { peopleCount: number; dueTotal: string; overdueTotal: string } | null;
 }
 
@@ -1152,8 +1152,8 @@ export class People {
   /** The figures of the sheet's descendants as the store holds them, added to its own for the consolidated figures. */
   protected readonly descendants = signal<Descendants>(NO_DESCENDANTS);
   /**
-   * The figures over the sheet and its descendants. They are not dated: an as-of view adds the
-   * sheet's own figures as the store holds them now, else the screen's own.
+   * The figures over the sheet and its descendants. An as-of view shows every sheet of the tree as it
+   * stood at the end of that day, adding the sheet's own figures as the store held them then; else the screen's own.
    */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();

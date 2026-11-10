@@ -16,7 +16,8 @@ import { FigurePipe } from '../../core/figure';
 // due by a day inside it can be added, edited, opened, settled or voided. Who may close or reopen a period
 // is the sheet's permission matrix (see the settings); by default a steward can reopen a closed
 // period, making its due-total live again. Each person's row shows their own due-total for every
-// period, fixed the same way while it is closed; a period's due-total is the sum of these.
+// period, fixed the same way while it is closed, and their carried figure into it (fixed the same way);
+// a period's due-total is the sum of their due-totals.
 // A period can instead be soft-closed (by whoever may close it): its due-total and each person's
 // are fixed as for a closed period, but claims due inside it can still change; a claim added then
 // with its due-by inside it is a late entry. A soft-closed period can be closed (fixing its figures afresh) or reopened.
@@ -34,6 +35,8 @@ export interface Period {
   closedDue: string | null;
   /** Each person's due-total for the period fixed when it was closed, by person id; null while open. */
   closedDues: Record<string, string> | null;
+  /** Each person's carried figure for the period fixed when it was closed, by person id; null while open. */
+  closedCarried: Record<string, string> | null;
   /** The fiscal year its from-date falls in: FY<yyyy>. */
   fy: string;
   /** At most this many OPEN or PENDING claims per person in it; null for no cap. */
@@ -89,11 +92,13 @@ export function personPeriodDueTotal(p: Period, personId: number, dues: readonly
   );
 }
 
-/** A person's carried figure for a period: the due of their claims that count which belong to a
- *  period ending before this one starts and were still OPEN or PENDING at the end of its to-date. */
+/** A person's carried figure for a period: for a closed or soft-closed period, the one fixed when it was
+ *  closed (0.00 for a person added since); for an open one, the due of their claims that count which
+ *  belong to a period ending before this one starts and were still OPEN or PENDING at the end of its to-date. */
 export function personPeriodCarried(
   p: Period, periods: readonly Period[], personId: number, dues: readonly DatedDue[],
 ): string {
+  if ((p.closed || p.softClosed) && p.closedCarried !== null) return p.closedCarried[String(personId)] ?? '0.00';
   const earlier = periods.filter((q) => q.to < p.from);
   return money(
     dues.reduce((sum, d) => sum + (d.personId === personId && earlier.some((q) => q.from <= d.date && d.date <= q.to)
