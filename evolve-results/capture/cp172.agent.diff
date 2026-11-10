@@ -1,0 +1,148 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 38aca8545..d1a1fc36b 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -39,8 +39,8 @@ import { FigurePipe } from '../../core/figure';
+ // A claim may carry tags, typed comma separated: each trimmed and lower-cased, repeats dropped,
+ // shown sorted. A claim split off another carries the original's tags.
+ // A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
+-// counts like an OPEN one but is not bound by a statement: it shows its live figure. A steward
+-// approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, bound again
++// counts like an OPEN one, and a statement binds it like any other claim that counts. A steward
++// approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, still bound
+ // by the last statement); the user who opened or last edited it cannot approve it.
+ // Who may open, settle, void or move a claim is the sheet's permission matrix (see the settings).
+ // By default a steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its date, takes
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 813534d2d..d07eeaf1e 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -107,7 +107,7 @@ export function dueCents(amountCents: number, pct: string | undefined, halfUp =
+  * due fixed when it was settled. Null when it has none (its figure is live, or there was no rate).
+  */
+ export function fixedDueCents(c: Claim): number | null {
+-  const fixed = c.stated && c.status !== 'PENDING' ? c.statedDue : c.settledDue;
++  const fixed = c.stated ? c.statedDue : c.settledDue;
+   return fixed !== null ? cents(fixed) : null;
+ }
+ 
+@@ -130,15 +130,14 @@ export function roundsHalfUp(
+ }
+ 
+ /**
+- * A claim's figure in whole cents: a stated claim's figure bound by the last statement (not while
+- * PENDING: its figure is live), a settled
++ * A claim's figure in whole cents: a stated claim's figure bound by the last statement, a settled
+  * claim's due fixed when it was settled, any other claim's live due at the rate for the grade in
+  * force on the claim's date, rounded half up when `halfUp` (else half to even). The floor is not
+  * applied here (see {@link chargedDueCents}). Null when it has none.
+  */
+ export function claimDueCents(c: Claim, rates: readonly Rate[], grade: string, halfUp = false): number | null {
+   if (c.settledDue !== null) return cents(c.settledDue);
+-  if (c.stated && c.status !== 'PENDING') return fixedDueCents(c);
++  if (c.stated) return fixedDueCents(c);
+   return dueCents(cents(c.amount), pctOn(rates, grade, c.date, c), halfUp);
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 99a34fd86..e747d69a2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -47,8 +47,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
+  * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
+  * the user who opened a claim cannot approve it. The user who last edited a claim (through its form or
+- * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is not bound by a statement: it
+- * shows its live figure, and is bound again by the last statement once rejected. An overdue claim's due gains a late charge on its
++ * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is bound by a statement
++ * like any other claim that counts: while a statement binds it, it shows the bound figure. An overdue claim's due gains a late charge on its
+  * figure (see {@link LateCharge}), and the floor is applied last: a claim's live due is never below
+  * the sheet's floor. A statement binds only the rate figure, not the charge nor the floor, and settling fixes the charge into the settled due. A claim with
+  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
+@@ -115,13 +115,13 @@ public class ClaimService {
+ 
+     /**
+      * A claim's figure under any late charge: the due fixed when settled, else the one bound by a
+-     * statement (not while PENDING), else the live due; null when it has none.
++     * statement, else the live due; null when it has none.
+      */
+     public BigDecimal figure(String sheetId, Person person, Claim claim) {
+         if (isFrozen(claim)) {
+             return claim.getSettledDue();
+         }
+-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
++        return claim.isStated() ? claim.getStatedDue()
+                 : due(sheetId, person, claim);
+     }
+ 
+@@ -323,7 +323,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Approve a PENDING claim: it becomes SETTLED, its due fixed at its live figure with its late
++     * Approve a PENDING claim: it becomes SETTLED, its due fixed at its figure (the one a statement bound, else its live one) with its late
+      * charge on the sheet's today. Refused (409) when not PENDING, and (403) for a clerk or the
+      * user who opened it.
+      */
+@@ -333,7 +333,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Reject a PENDING claim with a reason: it is OPEN again, bound again by the last statement if
++     * Reject a PENDING claim with a reason: it is OPEN again, still bound by the last statement if
+      * that statement included it. Refused (409) when not PENDING, and (403) for a clerk.
+      */
+     @Transactional
+@@ -403,7 +403,7 @@ public class ClaimService {
+             next = ClaimStatus.REVIEW;
+         }
+         // settling fixes the figure with its late charge as it stands on the sheet's today (a
+-        // PENDING claim's figure is live)
++        // PENDING claim keeps any figure a statement bound)
+         BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
+         if (next == ClaimStatus.SETTLED && needsProof(sheetId, person, claim, settling)) {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+@@ -1078,7 +1078,7 @@ public class ClaimService {
+             if (person == null || !claim.getStatus().isOpen() || !grade.equals(person.gradeOn(claim.getDate()))) {
+                 continue;
+             }
+-            if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) {
++            if (claim.isStated()) {
+                 continue;
+             }
+             BigDecimal current = charged(sheetId, person, claim);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index d64cdb52a..53b0b687f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -315,7 +315,7 @@ public class RollupService {
+ 
+     /**
+      * A claim's figure as the screen shows it: the due fixed when settled, else the one bound by the
+-     * last statement (not while PENDING), else its live due (rounded as the claim rounds, see {@link Rounding}), with its late charge added on top, then raised to the floor (a correction's is not);
++     * last statement, else its live due (rounded as the claim rounds, see {@link Rounding}), with its late charge added on top, then raised to the floor (a correction's is not);
+      * null when none.
+      */
+     private static BigDecimal figure(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims, Person person,
+@@ -323,7 +323,7 @@ public class RollupService {
+         if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        BigDecimal figure = claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
++        BigDecimal figure = claim.isStated() ? claim.getStatedDue()
+                 : RateChain.inForce(sheetRates, person.gradeOn(claim.getDate()), claim).map(Rate::getPct)
+                         .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
+                                 Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 34062c780..fb82ae0c2 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -185,7 +185,7 @@ public class StatementService {
+                 figure = claim.settledDueAt(day);
+                 charged = figure;
+             } else {
+-                figure = stated && status != ClaimStatus.PENDING ? claim.getStatedDue()
++                figure = stated ? claim.getStatedDue()
+                         : RateChain.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim)
+                                 .map(Rate::getPct)
+                                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
