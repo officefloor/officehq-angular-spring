@@ -1,0 +1,202 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 289ed3a0e..07e3f149a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -28,7 +28,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/
+ // the floor in force on the claim's date (a figure fixed when settled, bound by a statement or by closing a period keeps its own).
+ // Taking a person's statement binds each of their claims that counts to the figure it has then
+ // (a stated claim shows and totals that figure); each row shows how many statements the person
+-// has taken, and the last one's due-total and date.
++// has taken, and the last one's due-total and date. A steward can cancel the last statement: the
++// claims it bound are live again, and the row shows the statement before it (or none).
+ // Each claim shows the period its date falls in, and each period the due of the claims that counted in it
+ // at its end (by the status each had then, as its log records it).
+ // A person can be retired from a date (the sheet's today when left blank); with a date set they count
+@@ -398,6 +399,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+                 >
+                   Statement
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-unstate"
++                  [attr.aria-label]="'Cancel last statement for ' + p.name"
++                  (click)="cancelStatement(p)"
++                >
++                  Cancel statement
++                </button>
+                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                 <input
+                   type="date"
+@@ -933,6 +942,32 @@ export class People {
+     }
+   }
+ 
++  /** Cancel the person's last statement: their claims come back as it left them, the row shows the one before. */
++  protected async cancelStatement(p: Person): Promise<void> {
++    this.clearRowError(p.id);
++    const sheet = this.session.sheet();
++    try {
++      const cancelled = await firstValueFrom(
++        this.http.post<StatementTaken>('/api/statements/cancel', { sheet, user: this.session.user(), personId: p.id }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      const byId = new Map(cancelled.claims.map((c) => [c.id, c]));
++      this.claims.update((list) => list.map((c) => byId.get(c.id) ?? c));
++      this.statements.update((m) => {
++        const next = new Map(m);
++        if (cancelled.summary.count === 0) {
++          next.delete(p.id);
++        } else {
++          next.set(p.id, cancelled.summary);
++        }
++        return next;
++      });
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not cancel the statement for ' + p.name + '.'));
++    }
++  }
++
+   /** A claim added (listed first, newest first) or edited (replaced where it is). */
+   protected claimSaved(claim: Claim): void {
+     this.claims.update((list) =>
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 959f1eadc..09123e3dd 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -152,8 +152,8 @@ public class SheetService {
+     }
+ 
+     /**
+-     * Change the sheet's today. With grace days set, every open period whose to-date plus the grace
+-     * days is before the new today is then closed, in order of their to-dates. A new today releases
++     * Change the sheet's today. With grace days set, every open (not soft-closed) period whose to-date
++     * plus the grace days is before the new today is then closed, in order of their to-dates. A new today releases
+      * every claim editor's lock.
+      */
+     @Transactional
+@@ -169,7 +169,8 @@ public class SheetService {
+         Integer grace = saved.getGraceDays();
+         if (grace != null) {
+             for (Period period : periods.findBySheetIdAndClosedFalseOrderByToDateAsc(id)) {
+-                if (period.getToDate().plusDays(grace).isBefore(today)) {
++                // a soft-closed period keeps the figures it fixed: only an open one closes by grace days
++                if (!period.isSoftClosed() && period.getToDate().plusDays(grace).isBefore(today)) {
+                     closePeriod(id, user, period, true);
+                 }
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index e6ff0be28..d3b01ee93 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+-/** Listing each person's statements on a sheet, and taking a person's statement. */
++/** Listing each person's statements on a sheet, and taking or cancelling a person's statement. */
+ @RestController
+ @RequestMapping("/api/statements")
+ public class StatementController {
+@@ -25,7 +25,14 @@ public class StatementController {
+             @NotBlank @Size(max = 100) String user, @NotNull Long personId) {
+     }
+ 
+-    /** A person's statement count, and the last statement's due-total ("n/a" when none) and date. */
++    public record CancelStatementRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotNull Long personId) {
++    }
++
++    /**
++     * A person's statement count, and the last statement's due-total ("n/a" when it had none) and
++     * date; both none when no statement is left.
++     */
+     public record SummaryResponse(long personId, int count, String dueTotal, LocalDate date) {
+     }
+ 
+@@ -33,6 +40,9 @@ public class StatementController {
+     }
+ 
+     private static SummaryResponse response(StatementService.Summary s) {
++        if (s.last() == null) {
++            return new SummaryResponse(s.personId(), s.count(), null, null);
++        }
+         return new SummaryResponse(s.personId(), s.count(), StatementService.money(s.last().getDueTotal()),
+                 s.last().getTakenOn());
+     }
+@@ -54,4 +64,11 @@ public class StatementController {
+         return new TakenResponse(response(taken.summary()),
+                 taken.claims().stream().map(ClaimController::response).toList());
+     }
++
++    @PostMapping("/cancel")
++    public TakenResponse cancel(@Valid @RequestBody CancelStatementRequest req) {
++        StatementService.Cancelled cancelled = service.cancel(req.sheet().trim(), req.user().trim(), req.personId());
++        return new TakenResponse(response(cancelled.summary()),
++                cancelled.claims().stream().map(ClaimController::response).toList());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 12f4dd93b..4fd9f9181 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -28,6 +28,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * person's OPEN or PENDING claims) to the figure it has then; a claim of theirs that does not count is unbound,
+  * so its figure is live again. The late charge is never bound: the due-total includes each claim's charge on the day, but a claim is
+  * bound to the rate figure under it, not the floored one (the floor is applied last, see {@link net.officefloor.hq.app.claim.LateCharge}).
++ * A steward can cancel a person's last statement: the claims it bound are live again (a figure bound
++ * by a statement before it is not restored), and the statement before it is the last one again.
+  */
+ @Service
+ public class StatementService {
+@@ -40,6 +42,10 @@ public class StatementService {
+     public record Taken(Summary summary, List<Claim> claims) {
+     }
+ 
++    /** A statement just cancelled: the person's statements left (none last when none are), and their claims. */
++    public record Cancelled(Summary summary, List<Claim> claims) {
++    }
++
+     private final StatementRepository statements;
+     private final PersonRepository people;
+     private final ClaimRepository claims;
+@@ -112,6 +118,39 @@ public class StatementService {
+         return new Taken(new Summary(personId, count, taken), theirs);
+     }
+ 
++    /**
++     * Cancel the person's last statement: each claim it bound is unbound, so its figure is live
++     * again. Refused (403) to anyone but a steward, and (409) for a person with no statement.
++     */
++    @Transactional
++    public Cancelled cancel(String sheetId, String user, long personId) {
++        roles.refuseViewer(sheetId, user);
++        roles.refuseUnlessSteward(sheetId, user);
++        Person person = people.lockByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        List<Statement> theirStatements = statements.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(s -> Objects.equals(s.getPersonId(), personId)).toList();
++        if (theirStatements.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, person.getName() + " has no statement to cancel.");
++        }
++        Statement last = theirStatements.get(theirStatements.size() - 1);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
++        for (Claim claim : theirs) {
++            if (claim.isStated()) {
++                claim.bind(false, null);
++            }
++        }
++        claims.saveAllAndFlush(theirs);
++        statements.delete(last);
++        statements.flush();
++        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " due-total=" + money(last.getDueTotal()));
++        rollup.recordChanges(sheetId, user, before);
++        int count = theirStatements.size() - 1;
++        return new Cancelled(new Summary(personId, count, count == 0 ? null : theirStatements.get(count - 1)), theirs);
++    }
++
+     public static String money(BigDecimal value) {
+         return value == null ? "n/a" : value.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+     }
