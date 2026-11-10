@@ -83,10 +83,15 @@ public class Claim {
     /**
      * The date the claim is due by: fixed when it is created, the terms-th business day after its
      * date (skipping Saturdays, Sundays and the sheet's holidays), with the terms of its person's
-     * grade in force on its date; later changes to the terms, the holidays or its date leave it as it is.
+     * grade in force on its date; later changes to the terms or its date leave it as it is. A holiday
+     * added on or before it works it out again (see {@link #getTerms}), unless the claim is SETTLED or VOID.
      */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms, in business days, the claim's due-by was fixed with. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
 
     /** The number of the claim this correction corrects; none for a claim that is not a correction. */
     @Column(name = "corrects")
@@ -162,13 +167,14 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
-            String corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, int terms,
+            String note, String corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
         this.dueBy = dueBy;
+        this.terms = terms;
         this.note = note;
         this.corrects = corrects;
     }
@@ -212,6 +218,15 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    /** Fix the due-by again, as a holiday added on or before it does. */
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
     }
 
     public String getNote() {

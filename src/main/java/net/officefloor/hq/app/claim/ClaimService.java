@@ -139,10 +139,14 @@ public class ClaimService {
      * terms of their grade and the sheet's terms, each as in force on its date, counted in business
      * days: skipping every Saturday, Sunday and holiday on the sheet.
      */
-    private LocalDate dueBy(String sheetId, Person person, LocalDate dated) {
+    private LocalDate dueBy(String sheetId, LocalDate dated, int terms) {
+        return holidays.businessDaysAfter(sheetId, dated, terms);
+    }
+
+    /** The terms a claim of the person dated so is due by: their own, else those of their grade or the sheet. */
+    private int terms(String sheetId, Person person, LocalDate dated) {
         Integer own = person.getTerms();
-        return holidays.businessDaysAfter(sheetId, dated,
-                own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated));
+        return own != null ? own : sheets.sheet(sheetId).termsFor(person.gradeOn(dated), dated);
     }
 
     @Transactional(readOnly = true)
@@ -156,13 +160,14 @@ public class ClaimService {
         roles.refuseViewer(sheetId, user);
         Person person = person(sheetId, personId);
         LocalDate dated = dateOrToday(sheetId, date);
-        LocalDate dueBy = dueBy(sheetId, person, dated);
+        int terms = terms(sheetId, person, dated);
+        LocalDate dueBy = dueBy(sheetId, dated, terms);
         periods.refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, dated);
         String corrected = corrected(sheetId, personId, amount, corrects);
         refuseIfRefUsed(sheetId, ref, null);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = new Claim(sheetId, personId, amount, dated, dueBy, note, corrected);
+        Claim claim = new Claim(sheetId, personId, amount, dated, dueBy, terms, note, corrected);
         claim.setRef(ref);
         claim.setTags(tags);
         claim.setLateEntry(periods.isSoftClosed(sheetId, dueBy));
@@ -681,8 +686,9 @@ public class ClaimService {
         claim.bind(false, null);
         Claim original = claims.saveAndFlush(claim);
         LocalDate dated = claim.getDate();
-        Claim split = new Claim(sheetId, person.getId(), amount, dated,
-                dueBy(sheetId, person, dated), claim.getNote(), null);
+        int terms = terms(sheetId, person, dated);
+        Claim split = new Claim(sheetId, person.getId(), amount, dated, dueBy(sheetId, dated, terms), terms,
+                claim.getNote(), null);
         split.setStatus(ClaimStatus.OPEN);
         split.setNumber(sheets.nextClaimNumber(sheetId, split.getDueBy()));
         split.setLateEntry(periods.isSoftClosed(sheetId, split.getDueBy()));
