@@ -408,6 +408,23 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
           <p role="alert" data-testid="person-error">{{ err }}</p>
         }
       </form>
+      <form aria-label="Retire selected people" (submit)="bulkRetire($event)">
+        <label for="bulk-retire-date">Retire selected people from</label>
+        <input
+          type="date"
+          id="bulk-retire-date"
+          data-testid="bulk-retire-date"
+          [value]="bulkRetireDate()"
+          (input)="bulkRetireDate.set($any($event.target).value); bulkRetireError.set(null)"
+        />
+        <button type="submit" data-testid="bulk-retire">Retire selected</button>
+        @if (bulkRetired() !== null) {
+          <p>Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></p>
+        }
+        @if (bulkRetireError(); as err) {
+          <p role="alert" data-testid="person-error">{{ err }}</p>
+        }
+      </form>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Settled in total <strong data-testid="rollup-settled-total">{{ money(settledOpenTotals().settled) }}</strong></p>
@@ -793,6 +810,11 @@ export class People {
   /** How many people the last bulk grade changed; cleared while the next one runs. */
   protected readonly bulkGraded = signal<number | null>(null);
   protected readonly bulkGradeError = signal<string | null>(null);
+  /** The from-date of the bulk retire; blank for the sheet's today. */
+  protected readonly bulkRetireDate = signal('');
+  /** How many people the last bulk retire retired; cleared while the next one runs. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  protected readonly bulkRetireError = signal<string | null>(null);
   protected readonly importText = signal('');
   /** How many people the last import added; cleared while the next one runs. */
   protected readonly importAdded = signal<number | null>(null);
@@ -1056,6 +1078,9 @@ export class People {
       this.bulkGradeFrom.set('');
       this.bulkGraded.set(null);
       this.bulkGradeError.set(null);
+      this.bulkRetireDate.set('');
+      this.bulkRetired.set(null);
+      this.bulkRetireError.set(null);
       this.importText.set('');
       this.importAdded.set(null);
       this.importUpdated.set(null);
@@ -1750,6 +1775,7 @@ export class People {
       return next;
     });
     this.bulkGradeError.set(null);
+    this.bulkRetireError.set(null);
     this.clearRowError(id);
   }
 
@@ -1788,6 +1814,43 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.bulkGradeError.set('Could not grade the selected people.');
+    }
+  }
+
+  /** Retire the selected people from the date (the sheet's today when blank): the server retires
+   *  each, in list order, as the row's retire would; all or none. */
+  protected async bulkRetire(event: Event): Promise<void> {
+    event.preventDefault();
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set(null);
+    const sheet = this.session.sheet();
+    const date = this.bulkRetireDate().trim();
+    const ids = this.people().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    if (ids.length === 0) {
+      this.bulkRetireError.set('Select at least one person.');
+      return;
+    }
+    if (date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.bulkRetireError.set('Enter a date, or leave it blank for the sheet\'s today.');
+      return;
+    }
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ retired: number; people: Person[] }>('/api/people/bulk-retire', {
+          sheet,
+          user: this.session.user(),
+          ids,
+          date: date || null,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      const byId = new Map(done.people.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkRetired.set(done.retired);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkRetireError.set('Could not retire the selected people.');
     }
   }
 

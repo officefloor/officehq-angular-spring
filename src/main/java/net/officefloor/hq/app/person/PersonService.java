@@ -212,6 +212,30 @@ public class PersonService {
     }
 
     /**
+     * Retire each of the people from a date (the sheet's today when none is given), in list order,
+     * exactly as retiring each from their row would. All or none: a person not on the sheet refuses
+     * the lot. A viewer may retire no one: each person is refused and none is retired.
+     */
+    @Transactional
+    public List<Person> bulkRetire(String sheetId, String user, List<Long> ids, LocalDate date) {
+        try {
+            roles.refuseViewer(sheetId, user);
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
+                return List.of();
+            }
+            throw e;
+        }
+        Set<Long> wanted = new HashSet<>(ids);
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> wanted.contains(p.getId())).toList();
+        if (chosen.size() != wanted.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
+        }
+        return chosen.stream().map(p -> retire(sheetId, user, p.getId(), date)).toList();
+    }
+
+    /**
      * Swap the person with the one above ({@code up}) or below them in the list; the top person
      * cannot move up nor the bottom one down (409).
      */

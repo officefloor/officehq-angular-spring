@@ -68,6 +68,14 @@ public class PersonController {
     public record BulkGradeResponse(int graded, List<PersonResponse> people) {
     }
 
+    public record BulkRetireRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids, LocalDate date) {
+    }
+
+    /** How many people were retired, and each as the store now holds them. */
+    public record BulkRetireResponse(int retired, List<PersonResponse> people) {
+    }
+
     public record RetirePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate date) {
     }
@@ -195,6 +203,13 @@ public class PersonController {
         List<PersonResponse> graded = service.bulkGrade(req.sheet().trim(), req.user().trim(), req.ids(), req.grade(),
                 req.from()).stream().map(p -> response(req.sheet().trim(), p)).toList();
         return new BulkGradeResponse(graded.size(), graded);
+    }
+
+    @PostMapping("/bulk-retire")
+    public BulkRetireResponse bulkRetire(@Valid @RequestBody BulkRetireRequest req) {
+        List<PersonResponse> retired = service.bulkRetire(req.sheet().trim(), req.user().trim(), req.ids(),
+                req.date()).stream().map(p -> response(req.sheet().trim(), p)).toList();
+        return new BulkRetireResponse(retired.size(), retired);
     }
 
     @PostMapping("/retire")
