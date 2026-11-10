@@ -13,7 +13,7 @@ import { Header } from '../header/header';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../void-reasons/void-reasons';
 import { Templates } from '../templates/templates';
-import { Pools } from '../pools/pools';
+import { Pool, Pools } from '../pools/pools';
 import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
 
 // The people on the active sheet, in list order (each person's position: new people go to the end,
@@ -212,7 +212,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
     <app-holidays />
     <app-void-reasons />
     <app-templates />
-    <app-pools [people]="people()" [pot]="pot()" />
+    <app-pools [people]="people()" [pot]="pot()" [(pools)]="pools" />
     <app-audit-view />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -412,6 +412,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
       <p>Open in total <strong data-testid="rollup-open-total">{{ money(settledOpenTotals().open) }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
       <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) }}</strong></p>
+      <p>Cut in total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
       @if (tagTotals().length > 0) {
         <table aria-label="Due by tag">
           <thead>
@@ -554,6 +555,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
                 <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) }}</span></span>
                 <span>excess <span data-testid="person-excess">{{ money(excessOf(p)) }}</span></span>
+                <span>cut <span data-testid="person-cut-total">{{ money(cutTotalOf(p.id)) }}</span></span>
                 <label [for]="'person-patron-select-' + p.id">Patron</label>
                 <select
                   [id]="'person-patron-select-' + p.id"
@@ -822,6 +824,22 @@ export class People {
   protected readonly policyDate = signal('');
   /** The sheet's pot, blank for none: what the pools cut. */
   protected readonly pot = signal('');
+  /** The sheet's pools, as the pools list last read them. */
+  protected readonly pools = signal<Pool[]>([]);
+  /** Per person id: their cuts across every pool they are a member of, in whole cents. */
+  private readonly cutTotals = computed(() => {
+    const totals = new Map<number, number>();
+    for (const pool of this.pools()) {
+      for (const m of pool.members) {
+        if (m.pool === null && m.cut !== '') totals.set(m.personId, (totals.get(m.personId) ?? 0) + cents(m.cut));
+      }
+    }
+    return totals;
+  });
+  /** The sheet's cut total: everyone's cut totals added up, in whole cents. */
+  protected readonly cutTotal = computed(() =>
+    this.people().reduce((sum, p) => sum + this.cutTotalOf(p.id), 0),
+  );
   /** What works out an overdue claim's late charge on the sheet's today. */
   private readonly lateness = computed<Lateness>(() => ({
     latePcts: this.latePcts(),
@@ -1118,6 +1136,11 @@ export class People {
     const sum = this.figuresOf(p);
     const cap = this.capCents();
     return sum === null || cap === null ? sum : Math.min(sum, cap);
+  }
+
+  /** The person's cut total, in whole cents: 0 when no pool shows them a cut. */
+  protected cutTotalOf(id: number): number {
+    return this.cutTotals().get(id) ?? 0;
   }
 
   /** How far the sum of the person's figures is above the cap, in whole cents; 0 otherwise. */

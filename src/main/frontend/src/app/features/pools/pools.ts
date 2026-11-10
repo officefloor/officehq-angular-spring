@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, model, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -14,6 +14,8 @@ import { Session } from '../../core/session';
 // is a member of at most one pool, never contains itself through any chain, and a chain of pools is
 // at most three deep (the store refuses each). A pool that is a member of another cuts its cut in
 // the pool above; the sheet's pot is cut by a pool that is a member of none.
+// Each person shows their cut total: their cuts across every pool they are a member of, added up
+// (a pool that shows no cuts adds nothing); the sheet's cut total adds up everyone's.
 export interface PoolMember {
   /** The person's id; 0 for a pool. */
   personId: number;
@@ -199,7 +201,8 @@ export class Pools {
   /** The sheet's pot, blank for none: a change re-reads the cuts. */
   readonly pot = input('');
 
-  protected readonly pools = signal<Pool[]>([]);
+  /** The sheet's pools as last read from the store: the people's cut totals add up their cuts. */
+  readonly pools = model<Pool[]>([]);
   protected readonly nameInput = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly loadError = signal<string | null>(null);
