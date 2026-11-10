@@ -804,6 +804,46 @@ public class ClaimService {
                 .orElse(null);
     }
 
+    /** What a candidate rate would change: how many claims would show a different due, and the sum of new minus current. */
+    public record RatePreview(int count, BigDecimal diff) {
+    }
+
+    /**
+     * Preview a candidate rate for a grade, as if it applied to that grade on every date: of the
+     * OPEN and PENDING claims whose person has the grade on the claim's date, how many would show a
+     * different due and the sum of the differences (new due minus current due). A claim bound by a
+     * statement keeps its figure; a claim with no due counts as 0.00. Nothing is saved.
+     */
+    @Transactional(readOnly = true)
+    public RatePreview previewRate(String sheetId, String grade, BigDecimal pct) {
+        Sheet sheet = sheets.sheet(sheetId);
+        Map<Long, Person> byId = new HashMap<>();
+        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            byId.put(p.getId(), p);
+        }
+        int count = 0;
+        BigDecimal diff = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !claim.getStatus().isOpen() || !grade.equals(person.gradeOn(claim.getDate()))) {
+                continue;
+            }
+            if (claim.isStated() && claim.getStatus() != ClaimStatus.PENDING) {
+                continue;
+            }
+            BigDecimal current = charged(sheetId, person, claim);
+            RoundingMode rounding = Rounding.mode(sheet, roundingDate(sheetId, claim));
+            BigDecimal figure = claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, rounding);
+            BigDecimal next = LateCharge.withCharge(sheet, claim, grade, figure);
+            BigDecimal was = current == null ? BigDecimal.ZERO : current;
+            if (current == null || was.compareTo(next) != 0) {
+                count++;
+                diff = diff.add(next.subtract(was));
+            }
+        }
+        return new RatePreview(count, diff.setScale(2, RoundingMode.UNNECESSARY));
+    }
+
     /** The date a claim rounds by: its own, or for a correction that of the claim it corrects. */
     private LocalDate roundingDate(String sheetId, Claim claim) {
         if (!claim.isCorrection() || claim.getCorrects() == null) {

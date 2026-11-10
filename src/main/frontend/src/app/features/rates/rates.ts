@@ -233,6 +233,37 @@ export function dueText(c: number | null): string {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
         }
       </form>
+      <form aria-label="Rate preview" (submit)="preview($event)">
+        <label for="rate-preview-grade">Preview grade</label>
+        <select
+          id="rate-preview-grade"
+          data-testid="rate-preview-grade"
+          [value]="previewGrade()"
+          (change)="previewGrade.set($any($event.target).value); clearPreview()"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input
+          id="rate-preview-pct"
+          data-testid="rate-preview-pct"
+          inputmode="decimal"
+          [value]="previewPct()"
+          (input)="previewPct.set($any($event.target).value); clearPreview()"
+        />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewResult(); as res) {
+          <p>
+            Claims that would change: <span data-testid="rate-preview-count">{{ res.count }}</span>;
+            difference: <span data-testid="rate-preview-diff">{{ res.diff }}</span>
+          </p>
+        }
+        @if (previewError(); as err) {
+          <p role="alert" data-testid="rate-preview-error">{{ err }}</p>
+        }
+      </form>
       <table aria-label="Rates in force today">
         <thead>
           <tr>
@@ -296,6 +327,13 @@ export class Rates {
   protected readonly fromInput = signal('');
   protected readonly toInput = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly previewGrade = signal<string>('A');
+  protected readonly previewPct = signal('');
+  /** The last preview's answer: how many claims would change and the sum of the differences. */
+  protected readonly previewResult = signal<{ count: number; diff: string } | null>(null);
+  protected readonly previewError = signal<string | null>(null);
+  /** Counts each preview pressed, so only the latest one's answer is shown. */
+  private previewRun = 0;
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
@@ -310,6 +348,9 @@ export class Rates {
       this.fromInput.set('');
       this.toInput.set('');
       this.error.set(null);
+      this.previewGrade.set('A');
+      this.previewPct.set('');
+      this.clearPreview();
       if (sheet) {
         void this.fetch(sheet);
       }
@@ -322,6 +363,38 @@ export class Rates {
       if (this.session.sheet() === sheet) this.rates.set(list);
     } catch {
       this.error.set('Could not read the rates on this sheet.');
+    }
+  }
+
+  protected clearPreview(): void {
+    this.previewRun++;
+    this.previewResult.set(null);
+    this.previewError.set(null);
+  }
+
+  /** Ask how many claims the candidate rate would change for the grade; nothing is saved. */
+  protected async preview(event: Event): Promise<void> {
+    event.preventDefault();
+    this.clearPreview();
+    const run = this.previewRun;
+    const sheet = this.session.sheet();
+    const grade = this.previewGrade();
+    const pct = this.previewPct().trim();
+    if (!GRADES.includes(grade as (typeof GRADES)[number])) {
+      this.previewError.set('Choose a grade of A, B or C.');
+      return;
+    }
+    if (!PCT.test(pct)) {
+      this.previewError.set('Enter a rate from 0.00 to 999.99, with up to two decimals.');
+      return;
+    }
+    try {
+      const res = await firstValueFrom(
+        this.http.post<{ count: number; diff: string }>('/api/rates/preview', { sheet, grade, pct }),
+      );
+      if (run === this.previewRun && this.session.sheet() === sheet) this.previewResult.set(res);
+    } catch {
+      if (run === this.previewRun) this.previewError.set('Could not preview this rate.');
     }
   }
 
