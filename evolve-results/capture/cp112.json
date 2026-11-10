@@ -1,0 +1,73 @@
+{
+  "checkpoint": 112,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp112_uniqueness-across-tree",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    109,
+    110,
+    111
+  ],
+  "replaced_tests": [
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+    "cp111_transfer-person.spec.ts::transfer person scenario 3"
+  ],
+  "request": {
+    "spec": "A name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ba936a872d94ad9c7235fd6de51f16c8aaf9a7e9",
+  "reset_sha": "",
+  "preagent_sha": "2e6ff448d86af48ecf617d53b45d8d9b4f1bf490",
+  "prev_sha": "2e6ff448d86af48ecf617d53b45d8d9b4f1bf490",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1421170000000003,
+    "input_tokens": 56,
+    "output_tokens": 14595,
+    "cache_read_tokens": 1526845,
+    "cache_creation_tokens": 68078,
+    "num_turns": 28,
+    "duration_ms": 554470,
+    "duration_api_ms": 145917,
+    "model": "claude-opus-5-5",
+    "session_id": "89604f1f-b8ec-4af0-a856-59df2bf9bc57",
+    "stop_reason": "success",
+    "result_text": "The change is in, and all 4 acceptance tests passed on the second `bin/e2e` run. On the first run, \"scenario 1\" failed at line 177: a viewer's claim edit timed out with neither the result nor the error showing. That step doesn't involve names or aliases, and it passed on the rerun without any code change, so it looks like a timing flake. I didn't investigate it further.\n\n**How it works now**\n- **A sheet's tree** is every sheet above it through its parents, plus every sheet below it at any depth. Other sheets that share an ancestor (siblings, for example) are not part of the tree. `SheetService.tree()` works this out.\n- **What gets refused:** adding a person, renaming one, and adding an alias are now refused when another sheet in the tree already uses that name or alias. They show the same error as a duplicate on the same sheet, which now reads \"\u2026already in use on this sheet or its tree.\" The quick-add bar inherits this because it creates people through the same add method. The paste box already refused any name not on the sheet, so it needed no change.\n- **People who already clash:** they are left as they are, and each person's row now shows `person-clashing` as yes or no. Any edit of a clashing person is refused unless it renames them to a name that doesn't clash and none of their aliases clash either.\n- **Edits are checked by name, not by \"was clashing\":** the check looks at the new name and the person's current aliases on every edit, so renaming a non-clashing person to a name used elsewhere in the tree is refused too.\n\n**Choices you may want to revisit**\n- **Bulk grade:** it goes through the same edit path, so it is also refused for a clashing person.\n- **Adding an alias to a clashing person** is still allowed, as long as the new alias itself doesn't clash. The request only blocked edits through the person form.\n- **Transfer (my reading of \"any later import\"):** moving a person to another sheet is now also refused when their name or an alias is used in the destination sheet's tree. The person being moved doesn't count against themselves.\n\n**Files changed**\n- `SheetService`: the tree lookup.\n- `PersonRepository`: two queries for names and aliases across several sheets.\n- `PersonService`: the checks above, plus `usedInTree` and `clashing`.\n- `PersonTransferService`: the transfer check.\n- `PersonController` and `QuickAddController`: every person response now includes `clashing`.\n- `people.ts`: a new \"Clashing\" column holding `person-clashing`.\n\nNo database migration was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1421170000000003,
+        "num_turns": 28,
+        "duration_ms": 554470,
+        "duration_api_ms": 145917,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp112.agent.jsonl",
+  "agent_diff_file": "cp112.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

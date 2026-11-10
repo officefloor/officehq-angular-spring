@@ -1,0 +1,404 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 73c8bef4c..8d615e34e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -30,6 +30,9 @@ import { VoidReasons as VoidReasonList } from '../../core/void-reasons';
+ // (without regard to case), comma and space separated. An alias shares the names' uniqueness: one equal
+ // to any name or alias on the sheet is refused, as is a name equal to an alias. The quick-add bar and
+ // the paste box find a person by an alias as well as by the name.
++// Nor may a name or alias be used when another sheet of the sheet's tree (its ancestors, and its
++// descendants and theirs) uses it as a name or alias. A person who already clashes so shows clashing
++// yes, and every edit of them is refused until it renames them to a name that does not clash.
+ // The editor remembers the version of the person it opened; if someone else has saved the person
+ // since, the save is refused and the form is refilled with the values the store holds now.
+ // Each row shows what the person has claimed and lists their claims; the sheet's claimed-total
+@@ -110,6 +113,8 @@ interface Person {
+   contact: string | null;
+   /** The person's aliases, sorted as names are compared. */
+   aliases: string[];
++  /** Whether the person's name or an alias is used on another sheet of the sheet's tree. */
++  clashing: boolean;
+ }
+ 
+ /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
+@@ -447,6 +452,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+             <th scope="col">Retired</th>
+             <th scope="col">On hold</th>
+             <th scope="col">Aliases</th>
++            <th scope="col">Clashing</th>
+             <th scope="col">Patrons</th>
+             <th scope="col">Watched</th>
+             <th scope="col">Claims</th>
+@@ -520,6 +526,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+                   Add alias
+                 </button>
+               </td>
++              <td>
++                <span data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</span>
++              </td>
+               <td>
+                 <span data-testid="person-patrons">{{ patronNamesOf(p.id) }}</span>
+                 <span>backing <span data-testid="person-backing">{{ money(backingOf(p.id)) }}</span></span>
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 3979fe186..cca4a0260 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Set;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -86,19 +87,24 @@ public class PersonController {
+     public record HoldResponse(LocalDate from, LocalDate to) {
+     }
+ 
+-    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, and their aliases sorted as names are compared. */
++    /** A person, with every grade recorded for them, the one from the beginning of time first, their own terms or null, their contact or null, their aliases sorted as names are compared, and whether they clash: their name or an alias is used on another sheet of the sheet's tree. */
+     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
+             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
+-            List<String> aliases) {
++            List<String> aliases, boolean clashing) {
+     }
+ 
+-    public static PersonResponse response(Person person) {
++    public static PersonResponse response(Person person, boolean clashing) {
+         List<GradeResponse> grades = person.getGrades().stream()
+                 .map(g -> new GradeResponse(g.getFromDate(), g.getGrade())).toList();
+         return new PersonResponse(person.getId(), person.getName(), grades, person.getVersion(),
+                 person.isRetired(), person.getRetiredFrom(), person.isHeld(),
+                 person.getHolds().stream().map(h -> new HoldResponse(h.getFromDate(), h.getToDate())).toList(),
+-                person.getTerms(), person.getContact(), person.getAliases());
++                person.getTerms(), person.getContact(), person.getAliases(), clashing);
++    }
++
++    /** The person, with whether they clash on the sheet's tree. */
++    private PersonResponse response(String sheetId, Person person) {
++        return response(person, service.clashing(sheetId, List.of(person)).contains(person.getId()));
+     }
+ 
+     /** A contact as stored: trimmed and lower-cased; null when blank. */
+@@ -119,53 +125,56 @@ public class PersonController {
+ 
+     @PostMapping("/list")
+     public List<PersonResponse> list(@Valid @RequestBody ListPeopleRequest req) {
+-        return service.list(req.sheet().trim()).stream().map(PersonController::response).toList();
++        String sheet = req.sheet().trim();
++        List<Person> people = service.list(sheet);
++        Set<Long> clashing = service.clashing(sheet, people);
++        return people.stream().map(p -> response(p, clashing.contains(p.getId()))).toList();
+     }
+ 
+     @PostMapping("/add")
+     public PersonResponse add(@Valid @RequestBody AddPersonRequest req) {
+-        return response(service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
++        return response(req.sheet().trim(), service.add(req.sheet().trim(), req.user().trim(), req.name().trim(), req.grade(),
+                 req.terms(), contact(req.contact())));
+     }
+ 
+     @PostMapping("/update")
+     public PersonResponse update(@Valid @RequestBody UpdatePersonRequest req) {
+-        return response(service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
++        return response(req.sheet().trim(), service.update(req.sheet().trim(), req.user().trim(), req.id(), req.version(), req.name().trim(),
+                 req.grade(), req.gradeFrom(), req.terms(), contact(req.contact())));
+     }
+ 
+     @PostMapping("/aliases/add")
+     public PersonResponse addAlias(@Valid @RequestBody AddAliasRequest req) {
+-        return response(service.addAlias(req.sheet().trim(), req.user().trim(), req.id(), req.alias().trim()));
++        return response(req.sheet().trim(), service.addAlias(req.sheet().trim(), req.user().trim(), req.id(), req.alias().trim()));
+     }
+ 
+     /** Merge the person into another; answers the other as the store now holds them. */
+     @PostMapping("/merge")
+     public PersonResponse merge(@Valid @RequestBody MergePersonRequest req) {
+-        return response(merges.merge(req.sheet().trim(), req.user().trim(), req.id(), req.intoId()));
++        return response(req.sheet().trim(), merges.merge(req.sheet().trim(), req.user().trim(), req.id(), req.intoId()));
+     }
+ 
+     /** Transfer the person to another sheet by id; answers them as the other sheet now holds them. */
+     @PostMapping("/transfer")
+     public PersonResponse transfer(@Valid @RequestBody TransferPersonRequest req) {
+-        return response(transfers.transfer(req.sheet().trim(), req.user().trim(), req.id(), req.to().trim()));
++        return response(req.to().trim(), transfers.transfer(req.sheet().trim(), req.user().trim(), req.id(), req.to().trim()));
+     }
+ 
+     @PostMapping("/bulk-grade")
+     public BulkGradeResponse bulkGrade(@Valid @RequestBody BulkGradeRequest req) {
+         List<PersonResponse> graded = service.bulkGrade(req.sheet().trim(), req.user().trim(), req.ids(), req.grade(),
+-                req.from()).stream().map(PersonController::response).toList();
++                req.from()).stream().map(p -> response(req.sheet().trim(), p)).toList();
+         return new BulkGradeResponse(graded.size(), graded);
+     }
+ 
+     @PostMapping("/retire")
+     public PersonResponse retire(@Valid @RequestBody RetirePersonRequest req) {
+-        return response(service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
++        return response(req.sheet().trim(), service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
+     }
+ 
+     @PostMapping("/hold")
+     public PersonResponse hold(@Valid @RequestBody HoldPersonRequest req) {
+-        return response(service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.from(), req.to()));
++        return response(req.sheet().trim(), service.hold(req.sheet().trim(), req.user().trim(), req.id(), req.from(), req.to()));
+     }
+ 
+     @PostMapping("/patrons/list")
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 2efb265ce..fa8e5a8fb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.person;
+ 
++import java.util.Collection;
+ import java.util.List;
+ import java.util.Optional;
+ import jakarta.persistence.LockModeType;
+@@ -41,4 +42,15 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     @Query("select distinct p from Person p left join p.aliases a where p.sheetId = :sheetId"
+             + " and (lower(p.name) = lower(:name) or lower(a) = lower(:name))")
+     Optional<Person> findBySheetIdAndNameOrAlias(String sheetId, String name);
++
++    /** The people on any of the sheets. */
++    List<Person> findBySheetIdIn(Collection<String> sheetIds);
++
++    /**
++     * Whether a person on any of the sheets, other than the one of {@code exceptId}, has this name or
++     * alias, compared without regard to case.
++     */
++    @Query("select count(p) > 0 from Person p left join p.aliases a where p.sheetId in :sheetIds and p.id <> :exceptId"
++            + " and (lower(p.name) = lower(:name) or lower(a) = lower(:name))")
++    boolean existsNameOrAliasOnSheets(Collection<String> sheetIds, String name, Long exceptId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index c90d10e3f..3d09b3fcc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,8 +1,10 @@
+ package net.officefloor.hq.app.person;
+ 
+ import java.time.LocalDate;
++import java.util.Collection;
+ import java.util.HashSet;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Objects;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+@@ -31,6 +33,10 @@ import org.springframework.web.server.ResponseStatusException;
+  * A person may have a contact (arriving trimmed and lower-cased, null for none), unique on the sheet.
+  * A person may have aliases (arriving trimmed), sharing the names' uniqueness: an alias equals no name
+  * or alias on the sheet, and no name equals an alias.
++ * Nor may a name or alias be used on a sheet when another sheet of its tree (see
++ * {@link SheetService#tree}) already uses it as a name or alias. People who already clash so are not
++ * changed: they show as clashing, and every edit of them is refused until it renames them to a name
++ * that does not clash and leaves them no clashing alias.
+  */
+ @Service
+ public class PersonService {
+@@ -69,7 +75,8 @@ public class PersonService {
+         roles.refuseViewer(sheetId, user);
+         sheets.load(sheetId, user);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAliasOnSheet(sheetId, name)) {
++        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name) || people.existsAliasOnSheet(sheetId, name)
++                || usedInTree(sheetId, name, null)) {
+             throw nameInUse();
+         }
+         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
+@@ -95,9 +102,16 @@ public class PersonService {
+         if (person.getVersion() != version) {
+             throw stale();
+         }
+-        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id) || people.existsAliasOnSheet(sheetId, name)) {
++        if (people.existsBySheetIdAndNameIgnoreCaseAndIdNot(sheetId, name, id) || people.existsAliasOnSheet(sheetId, name)
++                || usedInTree(sheetId, name, null)) {
+             throw nameInUse();
+         }
++        for (String alias : person.getAliases()) {
++            if (usedInTree(sheetId, alias, null)) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT,
++                        "The alias " + alias + " is already in use on a sheet of this sheet's tree.");
++            }
++        }
+         if (contact != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contact, id)) {
+             throw contactInUse();
+         }
+@@ -118,13 +132,49 @@ public class PersonService {
+         return saved;
+     }
+ 
+-    /** Give the person an alias; refused (409) when it equals any name or alias on the sheet. */
++    /**
++     * Whether another sheet of the sheet's tree has a person, other than the one of {@code exceptId}
++     * (null for none), with this name or alias, compared without regard to case.
++     */
++    @Transactional(readOnly = true)
++    public boolean usedInTree(String sheetId, String name, Long exceptId) {
++        Set<String> tree = sheets.tree(sheetId);
++        return !tree.isEmpty() && people.existsNameOrAliasOnSheets(tree, name, exceptId != null ? exceptId : -1L);
++    }
++
++    /**
++     * The ids of those of the people on the sheet who clash: whose name or an alias another sheet of
++     * its tree uses as a name or alias.
++     */
++    @Transactional(readOnly = true)
++    public Set<Long> clashing(String sheetId, Collection<Person> those) {
++        Set<String> tree = sheets.tree(sheetId);
++        if (tree.isEmpty()) {
++            return Set.of();
++        }
++        Set<String> used = new HashSet<>();
++        for (Person other : people.findBySheetIdIn(tree)) {
++            used.add(other.getName().toLowerCase(Locale.ROOT));
++            other.getAliases().forEach(a -> used.add(a.toLowerCase(Locale.ROOT)));
++        }
++        Set<Long> clashing = new HashSet<>();
++        for (Person person : those) {
++            if (used.contains(person.getName().toLowerCase(Locale.ROOT))
++                    || person.getAliases().stream().anyMatch(a -> used.contains(a.toLowerCase(Locale.ROOT)))) {
++                clashing.add(person.getId());
++            }
++        }
++        return clashing;
++    }
++
++    /** Give the person an alias; refused (409) when it equals any name or alias on the sheet or its tree. */
+     @Transactional
+     public Person addAlias(String sheetId, String user, long id, String alias) {
+         roles.refuseViewer(sheetId, user);
+         Person person = people.lockByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+-        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAliasOnSheet(sheetId, alias)) {
++        if (people.existsBySheetIdAndNameIgnoreCase(sheetId, alias) || people.existsAliasOnSheet(sheetId, alias)
++                || usedInTree(sheetId, alias, null)) {
+             throw nameInUse();
+         }
+         person.addAlias(alias);
+@@ -301,6 +351,6 @@ public class PersonService {
+     }
+ 
+     private static ResponseStatusException nameInUse() {
+-        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet.");
++        return new ResponseStatusException(HttpStatus.CONFLICT, "That name is already in use on this sheet or its tree.");
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index f5e81a15f..d2db577cf 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -4,9 +4,11 @@ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashMap;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimLogEntry;
+@@ -97,10 +99,13 @@ public class PersonTransferService {
+         if (person.isRetired()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "A retired person cannot be transferred.");
+         }
++        Set<String> toTree = new HashSet<>(sheets.tree(toSheetId));
++        toTree.remove(toSheetId);
+         List<String> names = new ArrayList<>(List.of(person.getName()));
+         names.addAll(person.getAliases());
+         for (String name : names) {
+-            if (people.existsBySheetIdAndNameIgnoreCase(toSheetId, name) || people.existsAliasOnSheet(toSheetId, name)) {
++            if (people.existsBySheetIdAndNameIgnoreCase(toSheetId, name) || people.existsAliasOnSheet(toSheetId, name)
++                    || !toTree.isEmpty() && people.existsNameOrAliasOnSheets(toTree, name, person.getId())) {
+                 throw new ResponseStatusException(HttpStatus.CONFLICT,
+                         "The name " + name + " is already in use on sheet " + toSheetId + ".");
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/quick/QuickAddController.java b/src/main/java/net/officefloor/hq/app/quick/QuickAddController.java
+index ab380059f..8ea1e366b 100644
+--- a/src/main/java/net/officefloor/hq/app/quick/QuickAddController.java
++++ b/src/main/java/net/officefloor/hq/app/quick/QuickAddController.java
+@@ -5,9 +5,11 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.util.List;
+ import net.officefloor.hq.app.claim.ClaimController;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimResponse;
+ import net.officefloor.hq.app.person.PersonController;
++import net.officefloor.hq.app.person.PersonService;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -27,16 +29,19 @@ public class QuickAddController {
+     }
+ 
+     private final QuickAddService service;
++    private final PersonService people;
+ 
+-    public QuickAddController(QuickAddService service) {
++    public QuickAddController(QuickAddService service, PersonService people) {
+         this.service = service;
++        this.people = people;
+     }
+ 
+     @PostMapping("/add")
+     public QuickAddResponse add(@Valid @RequestBody QuickAddRequest req) {
+         QuickAddService.Added added = service.add(req.sheet().trim(), req.user().trim(), req.name().trim(),
+                 ClaimController.amount(req.amount()));
+-        return new QuickAddResponse(PersonController.response(added.person()), added.created(),
++        boolean clashing = people.clashing(req.sheet().trim(), List.of(added.person())).contains(added.person().getId());
++        return new QuickAddResponse(PersonController.response(added.person(), clashing), added.created(),
+                 ClaimController.response(added.claim()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 66de4185c..d8556d467 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -4,7 +4,12 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.Instant;
+ import java.time.LocalDate;
++import java.util.ArrayDeque;
++import java.util.Deque;
++import java.util.LinkedHashSet;
++import java.util.List;
+ import java.util.Optional;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.period.Period;
+@@ -47,6 +52,28 @@ public class SheetService {
+         });
+     }
+ 
++    /**
++     * The other sheets of the sheet's tree, among the sheets that exist: its ancestors, and its
++     * descendants and their descendants.
++     */
++    @Transactional(readOnly = true)
++    public Set<String> tree(String id) {
++        Set<String> tree = new LinkedHashSet<>();
++        String at = sheets.findById(id).map(Sheet::getParentId).orElse(null);
++        while (at != null && !at.equals(id) && sheets.existsById(at) && tree.add(at)) {
++            at = sheets.findById(at).map(Sheet::getParentId).orElse(null);
++        }
++        Deque<String> below = new ArrayDeque<>(List.of(id));
++        while (!below.isEmpty()) {
++            for (Sheet child : sheets.findByParentIdOrderByIdAsc(below.pop())) {
++                if (!child.getId().equals(id) && tree.add(child.getId())) {
++                    below.push(child.getId());
++                }
++            }
++        }
++        return tree;
++    }
++
+     /** The sheet's today, for any date-dependent decision or default date on it. */
+     @Transactional(readOnly = true)
+     public LocalDate today(String id) {
