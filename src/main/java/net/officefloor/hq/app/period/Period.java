@@ -65,6 +65,13 @@ public class Period {
     @Column(name = "carried", nullable = false)
     private Map<Long, BigDecimal> closedCarried = new HashMap<>();
 
+    /** Each person's opening balance for the period, added to their carried figure into it, by person id. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "opening", nullable = false)
+    private Map<Long, BigDecimal> openings = new HashMap<>();
+
     /** The last number given to a claim opened in this period under numbering per period. */
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
@@ -130,6 +137,15 @@ public class Period {
 
     public Map<Long, BigDecimal> getClosedCarried() {
         return closedCarried;
+    }
+
+    public Map<Long, BigDecimal> getOpenings() {
+        return openings;
+    }
+
+    /** Add an amount to a person's opening balance for the period. */
+    public void addOpening(long personId, BigDecimal amount) {
+        openings.merge(personId, amount, BigDecimal::add);
     }
 
     /** Give out the next claim number within this period. */

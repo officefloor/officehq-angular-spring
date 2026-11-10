@@ -108,8 +108,10 @@ public class SheetCloneService {
         copy("PERSON_PATRON", "sheet_id = ?", sheetId, "ORDER BY id",
                 Map.of("SHEET_ID", onClone, "PERSON_ID", person, "PATRON_ID", person));
 
-        copy("PERIOD", "sheet_id = ?", sheetId, "ORDER BY id", Map.of("SHEET_ID", onClone, "CLOSED", v -> false,
-                "SOFT_CLOSED", v -> false, "CLOSED_DUE", v -> null, "LAST_CLAIM_NUMBER", v -> 0));
+        Map<Long, Long> periodIds = copy("PERIOD", "sheet_id = ?", sheetId, "ORDER BY id", Map.of("SHEET_ID", onClone,
+                "CLOSED", v -> false, "SOFT_CLOSED", v -> false, "CLOSED_DUE", v -> null, "LAST_CLAIM_NUMBER", v -> 0));
+        copy("PERIOD_PERSON_OPENING", "period_id IN (SELECT id FROM period WHERE sheet_id = ?)", sheetId, "",
+                Map.of("PERIOD_ID", v -> periodIds.get(((Number) v).longValue()), "PERSON_ID", person));
 
         Map<Long, Long> pools = copy("POOL", "sheet_id = ?", sheetId, "ORDER BY id", Map.of("SHEET_ID", onClone));
         UnaryOperator<Object> pool = v -> v == null ? null : pools.get(((Number) v).longValue());

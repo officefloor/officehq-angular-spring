@@ -44,15 +44,25 @@ public class PeriodController {
             @NotNull Long id) {
     }
 
+    /** Lines of name,period,amount. */
+    public record ImportOpeningsRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull @Size(max = 100_000) String text) {
+    }
+
+    /** What a paste of opening balances did: how many lines went through, and the sheet's periods now. */
+    public record ImportOpeningsResponse(int count, List<PeriodResponse> periods) {
+    }
+
     /**
      * closedDue is the due-total fixed when the period was closed, closedDues each person's (by
      * person id); null while it is open. fy is the fiscal year its from-date falls in; cap its
      * claim cap per person, null for none. closedCarried is each person's carried figure fixed when it
-     * was closed (by person id); null while it is open.
+     * was closed (by person id); null while it is open. openings is each person's opening balance for
+     * it (by person id), added to their carried figure into it.
      */
     public record PeriodResponse(long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedDue, Map<String, String> closedDues, String fy, Integer cap,
-            Map<String, String> closedCarried) {
+            Map<String, String> closedCarried, Map<String, String> openings) {
     }
 
     private PeriodResponse response(String sheetId, Period period) {
@@ -66,7 +76,8 @@ public class PeriodController {
                 period.getClosedDue() == null ? null
                         : period.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                 period.isClosed() || period.isSoftClosed() ? closedDues(period) : null, years.get(period.getId()),
-                period.getClaimCap(), period.isClosed() || period.isSoftClosed() ? figures(period.getClosedCarried()) : null))
+                period.getClaimCap(), period.isClosed() || period.isSoftClosed() ? figures(period.getClosedCarried()) : null,
+                figures(period.getOpenings())))
                 .toList();
     }
 
@@ -82,9 +93,11 @@ public class PeriodController {
     }
 
     private final PeriodService service;
+    private final OpeningImportService openings;
 
-    public PeriodController(PeriodService service) {
+    public PeriodController(PeriodService service, OpeningImportService openings) {
         this.service = service;
+        this.openings = openings;
     }
 
     @PostMapping("/list")
@@ -108,6 +121,13 @@ public class PeriodController {
     public List<PeriodResponse> generateFiscalYear(@Valid @RequestBody GenerateFiscalYearRequest req) {
         return responses(req.sheet().trim(), service.generateFiscalYear(req.sheet().trim(), req.user().trim(),
                 Integer.parseInt(req.year().trim())));
+    }
+
+    @PostMapping("/openings")
+    public ImportOpeningsResponse importOpenings(@Valid @RequestBody ImportOpeningsRequest req) {
+        String sheet = req.sheet().trim();
+        int count = openings.importOpenings(sheet, req.user().trim(), req.text());
+        return new ImportOpeningsResponse(count, responses(sheet, service.list(sheet)));
     }
 
     @PostMapping("/reopen")

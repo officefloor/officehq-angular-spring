@@ -12,6 +12,8 @@ public interface PeriodRepository extends JpaRepository<Period, Long> {
 
     boolean existsBySheetIdAndNameIgnoreCase(String sheetId, String name);
 
+    Optional<Period> findBySheetIdAndNameIgnoreCase(String sheetId, String name);
+
     /** Whether a period on the sheet shares any day with from..to (both inclusive). */
     boolean existsBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(String sheetId, LocalDate to,
             LocalDate from);

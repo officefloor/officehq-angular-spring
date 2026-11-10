@@ -213,7 +213,8 @@ public class RollupService {
      * Each person's carried figure for a period: the due of their claims that belong to a period of
      * the sheet ending before this one starts and that counted and were still OPEN or PENDING at the
      * end of this period's to-date (as their status log records it), by person id, for every person on
-     * the sheet (0.00 when none). Each counts at its figure as shown now.
+     * the sheet (0.00 when none). Each counts at its figure as shown now. The person's opening balance
+     * for the period is added to it.
      */
     public Map<Long, BigDecimal> carriedByPerson(String sheetId, Period period) {
         Sheet sheet = sheet(sheetId);
@@ -239,7 +240,7 @@ public class RollupService {
                     due = due.add(figure);
                 }
             }
-            carried.put(person.getId(), due);
+            carried.put(person.getId(), due.add(period.getOpenings().getOrDefault(person.getId(), zero())));
         }
         return carried;
     }

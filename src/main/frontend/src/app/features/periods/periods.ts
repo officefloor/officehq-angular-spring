@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, model, signal } from '@angular/core';
 import { Observable, firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { money } from '../claims/claims';
+import { cents, money } from '../claims/claims';
 import { FigurePipe } from '../../core/figure';
 
 // The sheet's periods, by from-date, and the form that adds one: a name unique on the sheet and a
@@ -21,6 +21,9 @@ import { FigurePipe } from '../../core/figure';
 // A period can instead be soft-closed (by whoever may close it): its due-total and each person's
 // are fixed as for a closed period, but claims due inside it can still change; a claim added then
 // with its due-by inside it is a late entry. A soft-closed period can be closed (fixing its figures afresh) or reopened.
+// Opening balances can be pasted as lines of name,period,amount (a person by name or alias, a period
+// on the sheet, an amount of 0.00 or more with two decimals); each adds to the person's opening
+// balance for the period, which is added to their carried figure into it. Any refused line refuses the paste.
 // An open period counts a claim by the status it had at the end of its to-date, as the claim's status
 // log records it (a claim with no status by then does not count), at its figure as shown now.
 export interface Period {
@@ -37,6 +40,8 @@ export interface Period {
   closedDues: Record<string, string> | null;
   /** Each person's carried figure for the period fixed when it was closed, by person id; null while open. */
   closedCarried: Record<string, string> | null;
+  /** Each person's opening balance for the period, added to their carried figure into it, by person id. */
+  openings: Record<string, string>;
   /** The fiscal year its from-date falls in: FY<yyyy>. */
   fy: string;
   /** At most this many OPEN or PENDING claims per person in it; null for no cap. */
@@ -94,14 +99,16 @@ export function personPeriodDueTotal(p: Period, personId: number, dues: readonly
 
 /** A person's carried figure for a period: for a closed or soft-closed period, the one fixed when it was
  *  closed (0.00 for a person added since); for an open one, the due of their claims that count which
- *  belong to a period ending before this one starts and were still OPEN or PENDING at the end of its to-date. */
+ *  belong to a period ending before this one starts and were still OPEN or PENDING at the end of its to-date,
+ *  plus their opening balance for it. */
 export function personPeriodCarried(
   p: Period, periods: readonly Period[], personId: number, dues: readonly DatedDue[],
 ): string {
   if ((p.closed || p.softClosed) && p.closedCarried !== null) return p.closedCarried[String(personId)] ?? '0.00';
   const earlier = periods.filter((q) => q.to < p.from);
+  const opening = cents(p.openings[String(personId)] ?? '0.00');
   return money(
-    dues.reduce((sum, d) => sum + (d.personId === personId && earlier.some((q) => q.from <= d.date && d.date <= q.to)
+    opening + dues.reduce((sum, d) => sum + (d.personId === personId && earlier.some((q) => q.from <= d.date && d.date <= q.to)
       && d.openAt(p.to) ? d.cents : 0), 0),
   );
 }
@@ -190,6 +197,23 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
       @if (generateError(); as err) {
         <p role="alert" data-testid="period-generate-error">{{ err }}</p>
       }
+      <form aria-label="Paste opening balances" (submit)="importOpenings($event)">
+        <label for="opening-import">Opening balances (name,period,amount per line)</label>
+        <textarea
+          id="opening-import"
+          data-testid="opening-import"
+          rows="3"
+          [value]="openingText()"
+          (input)="openingText.set($any($event.target).value); openingError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="opening-import-submit">Paste opening balances</button>
+      </form>
+      @if (openingDone() !== null) {
+        <p role="status">Set <span data-testid="opening-import-done">{{ openingDone() }}</span></p>
+      }
+      @if (openingError(); as err) {
+        <p role="alert" data-testid="opening-error">{{ err }}</p>
+      }
       <table data-testid="periods-list" aria-label="Periods">
         <thead>
           <tr>
@@ -270,6 +294,11 @@ export class Periods {
   /** How many periods the last generate made; null before one, and while one runs. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
+  /** The lines of name,period,amount typed to paste as opening balances. */
+  protected readonly openingText = signal('');
+  /** How many lines the last paste of opening balances set; null before one, and while one runs. */
+  protected readonly openingDone = signal<number | null>(null);
+  protected readonly openingError = signal<string | null>(null);
   /** The error of each period's last refused action, by period id. */
   protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
@@ -290,6 +319,9 @@ export class Periods {
       this.fyYear.set('');
       this.generated.set(null);
       this.generateError.set(null);
+      this.openingText.set('');
+      this.openingDone.set(null);
+      this.openingError.set(null);
       this.rowErrors.set(new Map());
       if (sheet) {
         void this.fetch(sheet);
@@ -458,6 +490,43 @@ export class Periods {
       return;
     }
     await this.made(sheet, this.http.post<Period[]>('/api/periods/generate-fy', { sheet, user: this.session.user(), year }));
+  }
+
+  /** Paste opening balances: every line is checked by the server before any is set; shows how many
+   *  lines went through, or why the paste was refused. */
+  protected async importOpenings(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.submitting) return;
+    this.openingError.set(null);
+    this.openingDone.set(null);
+    const sheet = this.session.sheet();
+    const text = this.openingText();
+    if (text.trim() === '') {
+      this.openingError.set('Paste at least one line of name,period,amount.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ count: number; periods: Period[] }>('/api/periods/openings', {
+          sheet, user: this.session.user(), text,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.periods.set(done.periods);
+      this.openingDone.set(done.count);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.openingError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role may not set opening balances.'
+          : e instanceof HttpErrorResponse && e.status === 400 && typeof e.error?.message === 'string' && e.error.message
+            ? e.error.message
+            : 'Could not set the opening balances.',
+      );
+    } finally {
+      this.submitting = false;
+    }
   }
 
   /** Add the periods a generate made to the list and show how many; or show why it was refused. */
