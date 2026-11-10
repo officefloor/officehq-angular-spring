@@ -102,6 +102,10 @@ public class Sheet {
     @Column(name = "roles", nullable = false)
     private Map<String, String> permissions = new TreeMap<>();
 
+    /** Whether a steward has archived the sheet: it stays visible and every change to it is refused. */
+    @Column(name = "archived", nullable = false)
+    private boolean archived;
+
     protected Sheet() {
     }
 
@@ -130,6 +134,14 @@ public class Sheet {
 
     public void setToday(LocalDate today) {
         this.today = today;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void archive() {
+        this.archived = true;
     }
 
     /**
@@ -287,9 +299,9 @@ public class Sheet {
         }
     }
 
-    /** Whether a role may take an action: never a viewer; else by the permission matrix entry, else the standing rule. */
+    /** Whether a role may take an action: never on an archived sheet, never a viewer; else by the permission matrix entry, else the standing rule. */
     public boolean permits(String action, String role) {
-        if ("viewer".equals(role)) {
+        if (archived || "viewer".equals(role)) {
             return false;
         }
         String entry = permissions.get(action);

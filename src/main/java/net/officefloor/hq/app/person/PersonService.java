@@ -172,6 +172,7 @@ public class PersonService {
      */
     @Transactional
     public void watch(String sheetId, String user, long id, boolean on) {
+        sheets.refuseIfArchived(sheetId);
         Person person = people.lockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         var existing = watches.findByPersonIdAndUserName(person.getId(), user);

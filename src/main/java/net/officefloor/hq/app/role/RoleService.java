@@ -77,6 +77,7 @@ public class RoleService {
      */
     @Transactional
     public Delegation delegate(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+        sheets.refuseIfArchived(sheetId);
         sheets.load(sheetId, user);
         if (!Role.STEWARD.equals(assignedRoleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can delegate the steward role.");
@@ -98,17 +99,30 @@ public class RoleService {
     // a refusal leaves the caller's transaction usable (a bulk action refuses one claim and goes on)
     @Transactional(readOnly = true, noRollbackFor = ResponseStatusException.class)
     public void refuseUnlessPermitted(String sheetId, String user, String action) {
+        sheets.refuseIfArchived(sheetId);
         if (!sheets.sheet(sheetId).permits(action, roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " here.");
         }
     }
 
-    /** Refuse (403) any change by a viewer: a viewer sees the sheet and may change nothing. */
+    /**
+     * Refuse (403) any change by a viewer: a viewer sees the sheet and may change nothing; and
+     * (423) any change at all to an archived sheet.
+     */
     // a refusal leaves the caller's transaction usable (a bulk action refuses one claim and goes on)
     @Transactional(readOnly = true, noRollbackFor = ResponseStatusException.class)
     public void refuseViewer(String sheetId, String user) {
+        sheets.refuseIfArchived(sheetId);
         if (Role.VIEWER.equals(roleOf(sheetId, user))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer may not change anything here.");
+        }
+    }
+
+    /** Refuse (403) anyone but a steward (in their own right or by a delegation in force). */
+    @Transactional(readOnly = true)
+    public void refuseUnlessSteward(String sheetId, String user) {
+        if (!Role.STEWARD.equals(roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can do that.");
         }
     }
 

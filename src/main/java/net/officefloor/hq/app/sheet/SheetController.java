@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Sign-in (a name, no password), loading a sheet by id, and changing a sheet's today. */
+/** Sign-in (a name, no password), loading a sheet by id, changing a sheet's today and archiving it. */
 @RestController
 @RequestMapping("/api")
 public class SheetController {
@@ -29,11 +29,14 @@ public class SheetController {
             @NotNull LocalDate today) {
     }
 
-    public record SheetResponse(String id, LocalDate today) {
+    public record ArchiveSheetRequest(@NotBlank @Size(max = 100) String id, @NotBlank @Size(max = 100) String user) {
+    }
+
+    public record SheetResponse(String id, LocalDate today, boolean archived) {
     }
 
     private static SheetResponse response(Sheet sheet) {
-        return new SheetResponse(sheet.getId(), sheet.getToday());
+        return new SheetResponse(sheet.getId(), sheet.getToday(), sheet.isArchived());
     }
 
     private final SheetService service;
@@ -59,5 +62,12 @@ public class SheetController {
         // a viewer may not change the sheet's today (checked here: the role service depends on the sheet service)
         roles.refuseViewer(req.id().trim(), req.user().trim());
         return response(service.setToday(req.id().trim(), req.user().trim(), req.today()));
+    }
+
+    @PostMapping("/sheets/archive")
+    public SheetResponse archive(@Valid @RequestBody ArchiveSheetRequest req) {
+        // only a steward may archive the sheet (checked here: the role service depends on the sheet service)
+        roles.refuseUnlessSteward(req.id().trim(), req.user().trim());
+        return response(service.archive(req.id().trim(), req.user().trim()));
     }
 }

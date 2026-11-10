@@ -67,6 +67,29 @@ public class SheetService {
         return sheets.findById(id).map(s -> s.capped(dueTotal)).orElse(dueTotal);
     }
 
+    /** Refuse (423) any change to an archived sheet: it stays visible and may not be changed. */
+    // a refusal leaves the caller's transaction usable (a bulk action refuses one claim and goes on)
+    @Transactional(readOnly = true, noRollbackFor = ResponseStatusException.class)
+    public void refuseIfArchived(String id) {
+        if (sheet(id).isArchived()) {
+            throw new ResponseStatusException(HttpStatus.LOCKED, "This sheet is archived and may not be changed.");
+        }
+    }
+
+    /** Archive the sheet; refused (409) when it is already archived. The caller checks the user is a steward. */
+    @Transactional
+    public Sheet archive(String id, String user) {
+        load(id, user);
+        Sheet sheet = lock(id);
+        if (sheet.isArchived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This sheet is already archived.");
+        }
+        sheet.archive();
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + user);
+        return saved;
+    }
+
     /** Lock the sheet until the caller's transaction ends; refused (404) when there is no such sheet. */
     @Transactional
     public Sheet lock(String id) {
@@ -120,6 +143,7 @@ public class SheetService {
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
+        refuseIfArchived(id);
         load(id, user);
         // hold the sheet so no claim changes while periods close
         Sheet sheet = lock(id);
