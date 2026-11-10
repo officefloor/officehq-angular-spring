@@ -55,7 +55,8 @@ import org.springframework.web.server.ResponseStatusException;
  * claim like any other. A claim has a proofs count, raised by one at a time while it is not SETTLED
  * or VOID. An OPEN claim can be split: an amount split off it becomes a new OPEN claim (see
  * {@link #split}). A claim whose figure is above the proof threshold in force on its date cannot be settled
- * or approved while it has no proofs: that is refused before the clerk limit is considered.
+ * or approved while it has no proofs: that is refused before the clerk limit is considered. A claim
+ * whose due is above the note threshold in force on its date cannot be opened while its note is empty.
  * Who may open, settle, void or move a claim is the sheet's permission matrix (see
  * {@link Sheet#permits}): an action the user's role may not take is refused (403). When a claim is
  * settled, approved or re-settled, each user watching its person is notified, in the order they
@@ -304,6 +305,10 @@ public class ClaimService {
                     "Only a steward can approve or reject a PENDING claim.");
         }
         Person person = person(sheetId, claim.getPersonId());
+        if (next == ClaimStatus.OPEN && !review && needsNote(sheetId, person, claim)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "A claim due above the note threshold cannot be opened with an empty note.");
+        }
         // settling fixes the figure with its late charge as it stands on the sheet's today (a
         // PENDING claim's figure is live)
         BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
@@ -597,7 +602,8 @@ public class ClaimService {
     /**
      * Open the given claims together, in list order (the order people were added, newest claim
      * first within a person), so they are numbered in that order. A claim that cannot be opened
-     * (not on the sheet, not DRAFT, or dated inside a closed period) is refused and left as it is.
+     * (not on the sheet, not DRAFT, dated inside a closed period, or due above the note threshold
+     * with an empty note) is refused and left as it is.
      */
     @Transactional
     public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> ids) {
@@ -606,7 +612,8 @@ public class ClaimService {
         List<Claim> opened = new ArrayList<>();
         boolean permitted = sheets.sheet(sheetId).permits("open", roles.roleOf(sheetId, user));
         for (Claim claim : selected) {
-            if (!permitted || claim.getStatus() != ClaimStatus.DRAFT || periods.isClosed(sheetId, claim.getDate())) {
+            if (!permitted || claim.getStatus() != ClaimStatus.DRAFT || periods.isClosed(sheetId, claim.getDate())
+                    || needsNote(sheetId, person(sheetId, claim.getPersonId()), claim)) {
                 refused++;
                 continue;
             }
@@ -690,6 +697,16 @@ public class ClaimService {
     private boolean needsProof(String sheetId, Claim claim, BigDecimal figure) {
         BigDecimal threshold = sheets.sheet(sheetId).proofThresholdOn(claim.getDate());
         return claim.getProofs() == 0 && figure != null && threshold != null && figure.compareTo(threshold) > 0;
+    }
+
+    /** Whether a claim's due is above the note threshold in force on its date and its note is empty. */
+    private boolean needsNote(String sheetId, Person person, Claim claim) {
+        if (claim.getNote() != null && !claim.getNote().isBlank()) {
+            return false;
+        }
+        BigDecimal threshold = sheets.sheet(sheetId).noteThresholdOn(claim.getDate());
+        BigDecimal due = threshold == null ? null : charged(sheetId, person, claim);
+        return due != null && due.compareTo(threshold) > 0;
     }
 
     /** Whether the user is a clerk settling a claim whose figure is above the sheet's clerk limit. */

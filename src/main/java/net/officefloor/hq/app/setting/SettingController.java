@@ -50,7 +50,7 @@ public class SettingController {
      * yyyy-mm-dd, or blank for none (the sheet's today). A period-numbering-from date: yyyy-mm-dd,
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
-     * for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
+     * for none. A note threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
      * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
@@ -68,6 +68,8 @@ public class SettingController {
             @Pattern(regexp = DATE) String termsCFrom, @Pattern(regexp = DATE) String capFrom,
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String proofThreshold,
             @Pattern(regexp = DATE) String proofThresholdFrom,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String noteThreshold,
+            @Pattern(regexp = DATE) String noteThresholdFrom,
             @Pattern(regexp = ROLES) String permOpen, @Pattern(regexp = ROLES) String permSettle,
             @Pattern(regexp = ROLES) String permVoid, @Pattern(regexp = ROLES) String permReassign,
             @Pattern(regexp = ROLES) String permClose, @Pattern(regexp = ROLES) String permReopen,
@@ -80,13 +82,14 @@ public class SettingController {
 
     /**
      * The settings in force on the sheet's today; the clerk limit blank for none, the policy date
-     * blank for none, the period-numbering-from date blank for off, the cap blank for none, the proof threshold blank for none; the terms
+     * blank for none, the period-numbering-from date blank for off, the cap blank for none, the proof threshold blank for none, the note threshold blank for none; the terms
      * in force for each grade that has its own. And every value recorded for the settings that carry
      * a figure, by key and from-date. And the permission matrix: for each action, its roles as
      * entered, blank for the standing rule. And the grace days, blank for off.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
+            String noteThreshold,
             List<DatedValue> dated, Map<String, String> permissions, String graceDays) {
     }
 
@@ -96,6 +99,7 @@ public class SettingController {
                 sheet.getPolicyDate() == null ? "" : sheet.getPolicyDate().toString(),
                 sheet.getPeriodNumberingFrom() == null ? "" : sheet.getPeriodNumberingFrom().toString(),
                 sheet.getGradeTerms(), SettingService.text(sheet.getCap()), SettingService.text(sheet.getProofThreshold()),
+                SettingService.text(sheet.getNoteThreshold()),
                 sheet.getSettings().stream().map(SettingController::dated).toList(), sheet.getPermissions(),
                 sheet.getGraceDays() == null ? "" : String.valueOf(sheet.getGraceDays()));
     }
@@ -142,7 +146,8 @@ public class SettingController {
                 policy.isEmpty() ? null : date(policy), req.periodNumberingFrom() != null,
                 numberingFrom.isEmpty() ? null : date(numberingFrom),
                 req.cap() == null ? null : amount(req.cap(), req.capFrom()), gradeTerms,
-                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()), permissions,
+                req.proofThreshold() == null ? null : amount(req.proofThreshold(), req.proofThresholdFrom()),
+                req.noteThreshold() == null ? null : amount(req.noteThreshold(), req.noteThresholdFrom()), permissions,
                 req.graceDays() != null, grace.isEmpty() ? null : Integer.valueOf(grace)));
     }
 

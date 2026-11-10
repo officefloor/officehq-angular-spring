@@ -45,6 +45,7 @@ public class Sheet {
     public static final String GRADE_TERMS = "terms-";
     public static final String LATE_PCT = "late-pct";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    public static final String NOTE_THRESHOLD = "note-threshold";
 
     /** The actions the permission matrix covers. */
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
@@ -74,7 +75,7 @@ public class Sheet {
 
     /**
      * The values recorded for the settings that carry a figure (the floor, the late percent, the
-     * terms, a grade's own terms, the clerk limit, the cap and the proof threshold), each from a from-date.
+     * terms, a grade's own terms, the clerk limit, the cap, the proof threshold and the note threshold), each from a from-date.
      */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
@@ -235,6 +236,19 @@ public class Sheet {
      */
     public BigDecimal proofThresholdOn(LocalDate date) {
         return inForce(PROOF_THRESHOLD, date).map(DatedSetting::getValue).orElse(null);
+    }
+
+    /** The note threshold in force on the sheet's today; null for none. */
+    public BigDecimal getNoteThreshold() {
+        return noteThresholdOn(today);
+    }
+
+    /**
+     * The note threshold in force on a date: a claim of that date whose due is above it cannot be
+     * opened while its note is empty; null for none.
+     */
+    public BigDecimal noteThresholdOn(LocalDate date) {
+        return inForce(NOTE_THRESHOLD, date).map(DatedSetting::getValue).orElse(null);
     }
 
     /** The sheet's terms in force on the sheet's today. */

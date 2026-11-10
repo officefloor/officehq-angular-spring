@@ -39,6 +39,8 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // Each claim shows its proofs count, raised by one with its proof button (refused for a SETTLED or
 // VOID claim, or one in a closed period). A claim whose due is above the proof threshold in force on
 // its date cannot be settled or approved while it has no proofs: refused with an error on the claim.
+// A claim whose due is above the note threshold in force on its date cannot be opened while its
+// note is empty: refused with an error on the claim (by the bulk button, counted as refused).
 // An OPEN claim can be split: an amount more than 0.00 and less than its own is split off into a new
 // OPEN claim (same date and note, the next number, opened by the user), listed first and showing the
 // original's number as split-from; the original keeps the rest and loses any figure a statement bound
@@ -807,6 +809,8 @@ export class PersonClaims {
                 : `Your role may not ${action} a claim on this sheet.`
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
+            : e instanceof HttpErrorResponse && e.status === 422 && action === 'open'
+              ? 'This claim is due above the note threshold and cannot be opened with an empty note.'
             : e instanceof HttpErrorResponse && e.status === 422
               ? `This claim is due above the proof threshold and cannot be ${PAST[action]} without a proof.`
             : action === 'settle' && deferred(c, this.session.today())

@@ -28,9 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
  * when it is created, so changing any terms moves no claim's due-by.
  * <p>
  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
- * the clerk limit, the cap and the proof threshold) are dated: each value is recorded from a from-date (the sheet's
+ * the clerk limit, the cap, the proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
  * today when none is given). A claim's floor, late percent and terms are those in force on its
- * date, as is its proof threshold (see {@link Sheet#proofThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+ * date, as are its proof threshold (see {@link Sheet#proofThresholdOn}) and its note threshold (see {@link Sheet#noteThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
  * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are
@@ -48,6 +48,7 @@ public class SettingService {
     public static final String GRADE_TERMS = Sheet.GRADE_TERMS;
     public static final String LATE_PCT = Sheet.LATE_PCT;
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
+    public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
     public static final String POLICY_DATE = "policy-date";
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
     public static final String GRACE_DAYS = "grace-days";
@@ -86,7 +87,8 @@ public class SettingService {
      * terms and the late percent when they are not null, and a policy date when {@code changePolicy}
      * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
      * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
-     * (by grade, in grade order), and a proof threshold when {@code proofThreshold} is not null, and each permission matrix entry
+     * (by grade, in grade order), and a proof threshold when {@code proofThreshold} is not null, and a note threshold when
+     * {@code noteThreshold} is not null, and each permission matrix entry
      * given in {@code permissions} (by action, in the order given; blank for the standing rule), and the grace days when
      * {@code changeGrace} (null for off). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
@@ -96,7 +98,8 @@ public class SettingService {
     public Sheet set(String sheetId, String user, Dated<BigDecimal> limit, Dated<BigDecimal> floor,
             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
-            Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Map<String, String> permissions,
+            Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Dated<BigDecimal> noteThreshold,
+            Map<String, String> permissions,
             boolean changeGrace, Integer graceDays) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
@@ -137,6 +140,10 @@ public class SettingService {
         if (proofThreshold != null) {
             sheet = record(sheet, user, PROOF_THRESHOLD, proofThreshold.value(), proofThreshold.from(),
                     text(proofThreshold.value()), false);
+        }
+        if (noteThreshold != null) {
+            sheet = record(sheet, user, NOTE_THRESHOLD, noteThreshold.value(), noteThreshold.from(),
+                    text(noteThreshold.value()), false);
         }
         for (Map.Entry<String, String> e : permissions.entrySet()) {
             sheet.setPermission(e.getKey(), e.getValue());

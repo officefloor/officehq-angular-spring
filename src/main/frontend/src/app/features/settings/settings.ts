@@ -28,6 +28,9 @@ import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates
 // The proof threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
 // above the one in force on its date cannot be settled or approved while it has no proofs. It
 // saves, like the clerk limit, once its field has been entered (blank: none).
+// The note threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
+// above the one in force on its date cannot be opened while its note is empty. It saves, like the
+// clerk limit, once its field has been entered (blank: none).
 // The permission matrix: for each of open, settle, void, reassign, close and reopen, the roles that
 // may do it, comma separated (blank: the standing rule, open, settle, void and close by clerk and
 // steward, reassign and reopen by steward). Each saves, like the clerk limit, once its field has
@@ -56,6 +59,8 @@ interface SettingsResponse {
   cap: string;
   /** The proof threshold, blank for none. */
   proofThreshold: string;
+  /** The note threshold, blank for none. */
+  noteThreshold: string;
   /** Every value saved for the dated settings, by key and from-date. */
   dated: DatedSetting[];
   /** The permission matrix: for each action, its roles comma separated, blank for the standing rule. */
@@ -89,7 +94,7 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
 
 /** The keys of the dated settings, each with its own from field. */
-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold'] as const;
+const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'late-pct', 'cap', 'proof-threshold', 'note-threshold'] as const;
 type DatedKey = (typeof DATED_KEYS)[number];
 
 /** A policy date: yyyy-mm-dd. */
@@ -236,6 +241,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput()['proof-threshold'] ?? ''"
           (input)="typeFrom('proof-threshold', $any($event.target).value)"
         />
+        <label for="setting-note-threshold">Note threshold (blank: none)</label>
+        <input
+          id="setting-note-threshold"
+          data-testid="setting-note-threshold"
+          inputmode="decimal"
+          [value]="noteThresholdInput() ?? ''"
+          (focus)="enterNoteThreshold($any($event.target))"
+          (input)="noteThresholdInput.set($any($event.target).value); error.set(null)"
+        />
+        <label for="setting-note-threshold-from">Note threshold in force from (blank: the sheet's today)</label>
+        <input
+          id="setting-note-threshold-from"
+          data-testid="setting-note-threshold-from"
+          type="date"
+          [value]="fromInput()['note-threshold'] ?? ''"
+          (input)="typeFrom('note-threshold', $any($event.target).value)"
+        />
         @for (a of permActions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }}, comma separated (blank: the standing rule)</label>
           <input
@@ -317,6 +339,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Note threshold in force:
+        <strong data-testid="setting-note-threshold-current">{{ noteThreshold() }}</strong>
+        @if (noteThreshold() === '') {
+          <span>(none)</span>
+        }
+      </p>
+      <p>
         Grace days:
         <strong data-testid="setting-grace-days-current">{{ graceDays() }}</strong>
         @if (graceDays() === '') {
@@ -371,6 +400,10 @@ export class Settings {
   protected readonly threshold = computed(() => this.inForce('proof-threshold', ''));
   /** The proof threshold typed; null while its field has not been entered (left as it is). */
   protected readonly thresholdInput = signal<string | null>(null);
+  /** The note threshold in force on the sheet's today; blank for none. */
+  protected readonly noteThreshold = computed(() => this.inForce('note-threshold', ''));
+  /** The note threshold typed; null while its field has not been entered (left as it is). */
+  protected readonly noteThresholdInput = signal<string | null>(null);
 
   /** The clerk limit in force on the sheet's today; blank for none. */
   protected readonly limit = computed(() => this.inForce('clerk-limit', ''));
@@ -414,6 +447,7 @@ export class Settings {
       this.fromInput.set({});
       this.capInput.set(null);
       this.thresholdInput.set(null);
+      this.noteThresholdInput.set(null);
       this.limitInput.set(null);
       this.floorInput.set(null);
       this.termsInput.set(null);
@@ -464,6 +498,15 @@ export class Settings {
     input.value = this.threshold();
     input.select();
     this.thresholdInput.set(this.threshold());
+  }
+
+  /** Entering the note threshold's field fills it with the threshold in force, selected, so it
+   *  saves as it is unless typed over. */
+  protected enterNoteThreshold(input: HTMLInputElement): void {
+    if (this.noteThresholdInput() !== null) return;
+    input.value = this.noteThreshold();
+    input.select();
+    this.noteThresholdInput.set(this.noteThreshold());
   }
 
   /** Entering the policy date's field fills it with the date in force, so it saves as it is unless
@@ -556,6 +599,7 @@ export class Settings {
     const periodNumberingFrom = this.numberingInput()?.trim() ?? null;
     const cap = this.capInput()?.trim() ?? null;
     const proofThreshold = this.thresholdInput()?.trim() ?? null;
+    const noteThreshold = this.noteThresholdInput()?.trim() ?? null;
     const graceDays = this.graceInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
@@ -597,6 +641,10 @@ export class Settings {
     }
     if (proofThreshold !== null && proofThreshold !== '' && !LIMIT.test(proofThreshold)) {
       this.error.set('Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.');
+      return;
+    }
+    if (noteThreshold !== null && noteThreshold !== '' && !LIMIT.test(noteThreshold)) {
+      this.error.set('Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
     }
     if (graceDays !== null && graceDays !== '' && !TERMS.test(graceDays)) {
@@ -649,6 +697,8 @@ export class Settings {
           capFrom: from.cap ?? null,
           proofThreshold,
           proofThresholdFrom: from['proof-threshold'] ?? null,
+          noteThreshold,
+          noteThresholdFrom: from['note-threshold'] ?? null,
           permOpen: perms.open ?? null,
           permSettle: perms.settle ?? null,
           permVoid: perms.void ?? null,
@@ -669,6 +719,7 @@ export class Settings {
       this.numberingInput.set(null);
       this.capInput.set(null);
       this.thresholdInput.set(null);
+      this.noteThresholdInput.set(null);
       this.permInput.set({});
       this.graceInput.set(null);
       this.fromInput.set({});
