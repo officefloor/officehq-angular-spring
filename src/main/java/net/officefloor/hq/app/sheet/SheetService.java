@@ -31,9 +31,11 @@ public class SheetService {
     private final PeriodRepository periods;
     private final Audit audit;
     private final ClaimRepository claims;
+    private final FiscalClaimNumberRepository fiscalNumbers;
 
     public SheetService(SheetRepository sheets, RollupService rollup, PeriodRepository periods, Audit audit,
-            ClaimRepository claims) {
+            ClaimRepository claims, FiscalClaimNumberRepository fiscalNumbers) {
+        this.fiscalNumbers = fiscalNumbers;
         this.audit = audit;
         this.claims = claims;
         this.sheets = sheets;
@@ -149,8 +151,10 @@ public class SheetService {
 
     /**
      * The next number for a claim due by {@code date} opened on the sheet, never reused. Tree-wide
-     * (1, 2, ...): the sheets of a tree (a root and every sheet below it) share one sequence, each
-     * number the next after the last given anywhere in the tree; unless the sheet numbers by period
+     * per fiscal year ({@code FY<yyyy>-<n>}, n counting from 1 within the fiscal year {@code date}
+     * falls in by the sheet's fiscal start month): the sheets of a tree (a root and every sheet below
+     * it) share one sequence per fiscal year, each number the next after the last given in that
+     * fiscal year anywhere in the tree; unless the sheet numbers by period
      * on its today: then within the period the date falls in ({@code <period name>-<n>}), or in no period its X sequence
      * ({@code X-<n>}), each counting from 1. The sheet stays locked until the caller's transaction
      * ends, so two claims opened at the same moment take different numbers.
@@ -168,9 +172,12 @@ public class SheetService {
             // the whole tree: the root and every sheet below it, side branches included
             Set<String> whole = new HashSet<>(tree(root));
             whole.add(root);
-            int number = sheet.nextClaimNumber(sheets.maxLastClaimNumber(whole));
-            sheets.saveAndFlush(sheet);
-            return String.valueOf(number);
+            String fiscalYear = Sheet.fiscalYearOf(date, sheet.getFiscalStartMonth());
+            FiscalClaimNumber counter = fiscalNumbers.findById(new FiscalClaimNumber.Key(id, fiscalYear))
+                    .orElseGet(() -> new FiscalClaimNumber(id, fiscalYear));
+            int number = counter.next(fiscalNumbers.maxLastNumber(whole, fiscalYear));
+            fiscalNumbers.saveAndFlush(counter);
+            return fiscalYear + "-" + number;
         }
         Optional<Period> period = periods.findBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(id, date,
                 date);
