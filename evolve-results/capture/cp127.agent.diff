@@ -1,0 +1,65 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index b7c6af134..ed4150b1e 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -6,6 +6,8 @@ import { StatusSummary } from '../summary/summary';
+ // and the sheet's due- and overdue-totals (as the people list's totals show them). Then the same
+ // figures consolidated over the sheet and all its descendants (the sheets naming it as parent, and
+ // theirs): each sheet's as that sheet shows it, added up; a sheet with no children shows its own.
++// Last, the signed-in user's own figures: the due- and overdue-totals of the person on the sheet
++// with the user's name (by name or alias); blank when there is no such person.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -30,6 +32,12 @@ import { StatusSummary } from '../summary/summary';
+         <dt>Overdue, with sub-sheets</dt>
+         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+       </dl>
++      <dl aria-label="My figures">
++        <dt>My due</dt>
++        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++        <dt>My overdue</dt>
++        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
++      </dl>
+     </header>
+   `,
+ })
+@@ -41,4 +49,6 @@ export class Header {
+   readonly consolidatedPeopleCount = input.required<number>();
+   readonly consolidatedDueTotal = input.required<string>();
+   readonly consolidatedOverdueTotal = input.required<string>();
++  readonly myDueTotal = input.required<string>();
++  readonly myOverdueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e49a00492..560a41bcd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -216,6 +216,8 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as cons
+       [consolidatedPeopleCount]="consolidated().peopleCount"
+       [consolidatedDueTotal]="consolidated().dueTotal"
+       [consolidatedOverdueTotal]="consolidated().overdueTotal"
++      [myDueTotal]="myFigures()?.dueTotal ?? ''"
++      [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+     />
+     <app-rates [(rates)]="rates" />
+     <app-roles />
+@@ -972,6 +974,18 @@ export class People {
+       overdueTotal: money(own.overdue + cents(d.overdueTotal)),
+     };
+   });
++  /**
++   * The signed-in user's own figures: the due- and overdue-totals of the person on the sheet with
++   * the user's name, by name or alias (compared without regard to case); none when there is no such person.
++   */
++  protected readonly myFigures = computed(() => {
++    const user = this.session.user()?.toLowerCase();
++    if (!user) return null;
++    const me = this.people().find(
++      (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
++    );
++    return me ? { dueTotal: dueText(this.dueOf(me)), overdueTotal: money(this.overdueOf(me).cents) } : null;
++  });
+   /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
+   protected readonly overdueTotals = computed(() => {
+     const each = this.people().map((p) => this.overdueOf(p));
