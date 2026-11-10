@@ -14,6 +14,8 @@ public class Role {
 
     public static final String CLERK = "clerk";
     public static final String STEWARD = "steward";
+    /** Sees every screen and figure, and may change nothing. */
+    public static final String VIEWER = "viewer";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

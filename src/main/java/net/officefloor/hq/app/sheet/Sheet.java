@@ -275,8 +275,11 @@ public class Sheet {
         }
     }
 
-    /** Whether a role may take an action: by the permission matrix entry, else the standing rule. */
+    /** Whether a role may take an action: never a viewer; else by the permission matrix entry, else the standing rule. */
     public boolean permits(String action, String role) {
+        if ("viewer".equals(role)) {
+            return false;
+        }
         String entry = permissions.get(action);
         if (entry == null || entry.isBlank()) {
             return STANDING_PERMISSIONS.getOrDefault(action, Set.of()).contains(role);

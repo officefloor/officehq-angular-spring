@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The roles a sheet assigns to user names: clerk (the default for any name) or steward. */
+/** The roles a sheet assigns to user names: clerk (the default for any name), steward or viewer. */
 @Service
 public class RoleService {
 
@@ -45,8 +45,17 @@ public class RoleService {
         }
     }
 
+    /** Refuse (403) any change by a viewer: a viewer sees the sheet and may change nothing. */
+    @Transactional(readOnly = true)
+    public void refuseViewer(String sheetId, String user) {
+        if (Role.VIEWER.equals(roleOf(sheetId, user))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer may not change anything here.");
+        }
+    }
+
     @Transactional
     public Role set(String sheetId, String user, String name, String role) {
+        refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         Role assigned = roles.findBySheetIdAndUserName(sheetId, name).orElseGet(() -> new Role(sheetId, name, role));
         assigned.setRole(role);

@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -25,8 +26,10 @@ public class RateService {
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final RoleService roles;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit, RollupService rollup) {
+    public RateService(RateRepository rates, SheetService sheets, Audit audit, RollupService rollup, RoleService roles) {
+        this.roles = roles;
         this.rollup = rollup;
         this.rates = rates;
         this.sheets = sheets;
@@ -41,6 +44,7 @@ public class RateService {
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate fromDate, LocalDate toDate,
             BigDecimal pct) {
+        roles.refuseViewer(sheetId, user);
         if (toDate != null && fromDate != null && toDate.isBefore(fromDate)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rate's to-date cannot be before its from-date.");
         }

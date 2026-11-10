@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import net.officefloor.hq.app.role.RoleService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,9 +37,11 @@ public class SheetController {
     }
 
     private final SheetService service;
+    private final RoleService roles;
 
-    public SheetController(SheetService service) {
+    public SheetController(SheetService service, RoleService roles) {
         this.service = service;
+        this.roles = roles;
     }
 
     @PostMapping("/signin")
@@ -53,6 +56,8 @@ public class SheetController {
 
     @PostMapping("/sheets/today")
     public SheetResponse setToday(@Valid @RequestBody SetTodayRequest req) {
+        // a viewer may not change the sheet's today (checked here: the role service depends on the sheet service)
+        roles.refuseViewer(req.id().trim(), req.user().trim());
         return response(service.setToday(req.id().trim(), req.user().trim(), req.today()));
     }
 }

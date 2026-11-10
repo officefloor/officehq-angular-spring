@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.RoleService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,14 +31,17 @@ public class ClaimPasteService {
 
     private final PersonRepository people;
     private final ClaimService claims;
+    private final RoleService roles;
 
-    public ClaimPasteService(PersonRepository people, ClaimService claims) {
+    public ClaimPasteService(PersonRepository people, ClaimService claims, RoleService roles) {
+        this.roles = roles;
         this.people = people;
         this.claims = claims;
     }
 
     @Transactional
     public List<Claim> paste(String sheetId, String user, String text) {
+        roles.refuseViewer(sheetId, user);
         List<Line> lines = new ArrayList<>();
         String[] raw = text.split("\\r?\\n|\\r");
         for (int i = 0; i < raw.length; i++) {

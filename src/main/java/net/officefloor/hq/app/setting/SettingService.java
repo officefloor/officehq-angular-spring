@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Rounding;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -54,8 +55,11 @@ public class SettingService {
     private final SheetRepository sheetStore;
     private final RollupService rollup;
     private final Audit audit;
+    private final RoleService roles;
 
-    public SettingService(SheetService sheets, SheetRepository sheetStore, RollupService rollup, Audit audit) {
+    public SettingService(SheetService sheets, SheetRepository sheetStore, RollupService rollup, Audit audit,
+            RoleService roles) {
+        this.roles = roles;
         this.sheets = sheets;
         this.sheetStore = sheetStore;
         this.rollup = rollup;
@@ -89,6 +93,7 @@ public class SettingService {
             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
             Map<String, Dated<Integer>> gradeTerms, Dated<BigDecimal> proofThreshold, Map<String, String> permissions) {
+        roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (limit != null) {
             sheet = record(sheet, user, CLERK_LIMIT, limit.value(), limit.from(), text(limit.value()), false);

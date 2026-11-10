@@ -105,6 +105,7 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        roles.refuseViewer(sheetId, user);
         Person person = person(sheetId, personId);
         LocalDate dated = dateOrToday(sheetId, date);
         periods.refuseIfClosed(sheetId, dated);
@@ -123,6 +124,7 @@ public class ClaimService {
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        roles.refuseViewer(sheetId, user);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         if (claim.getStatus() != ClaimStatus.DRAFT) {
@@ -178,6 +180,7 @@ public class ClaimService {
     /** Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING claim. */
     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
             boolean review) {
+        roles.refuseViewer(sheetId, user);
         if (!review) {
             roles.refuseUnlessPermitted(sheetId, user, switch (next) {
                 case OPEN -> "open";
@@ -251,12 +254,13 @@ public class ClaimService {
 
     /**
      * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it
-     * the claim counts in no total, is not overdue, cannot be settled and is left unbound by a
-     * statement (deferring unbinds it). Refused (409) for a claim that is not OPEN, (400) for a date
+     * the claim counts in no total, is not overdue and cannot be settled; a statement it is bound
+     * by stays as it is. Refused (409) for a claim that is not OPEN, (400) for a date
      * not after the sheet's today and (423) when dated inside a closed period.
      */
     @Transactional
     public Claim defer(String sheetId, String user, long id, LocalDate until) {
+        roles.refuseViewer(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
@@ -271,7 +275,6 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, claim.getDate());
         Person person = person(sheetId, claim.getPersonId());
         claim.setDeferredUntil(until);
-        claim.bind(false, null);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_DEFERRED", sheetId, user, person, saved)
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " until=" + until);
@@ -285,6 +288,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim addProof(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
@@ -307,6 +311,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim resettle(String sheetId, String user, long id) {
+        roles.refuseViewer(sheetId, user);
         if (!isSteward(sheetId, user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-settle a claim.");
         }

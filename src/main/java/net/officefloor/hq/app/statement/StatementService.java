@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -47,9 +48,12 @@ public class StatementService {
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final RoleService roles;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            ClaimService claimService, RateRepository rates, SheetService sheets, Audit audit, RollupService rollup) {
+            ClaimService claimService, RateRepository rates, SheetService sheets, Audit audit, RollupService rollup,
+            RoleService roles) {
+        this.roles = roles;
         this.rollup = rollup;
         this.statements = statements;
         this.people = people;
@@ -73,6 +77,7 @@ public class StatementService {
 
     @Transactional
     public Taken take(String sheetId, String user, long personId) {
+        roles.refuseViewer(sheetId, user);
         Person person = people.lockByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         LocalDate today = sheets.today(sheetId);

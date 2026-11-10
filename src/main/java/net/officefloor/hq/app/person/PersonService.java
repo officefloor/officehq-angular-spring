@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,9 +32,11 @@ public class PersonService {
     private final Audit audit;
     private final RollupService rollup;
     private final PatronRepository patrons;
+    private final RoleService roles;
 
     public PersonService(PersonRepository people, SheetService sheets, Audit audit, RollupService rollup,
-            PatronRepository patrons) {
+            PatronRepository patrons, RoleService roles) {
+        this.roles = roles;
         this.people = people;
         this.patrons = patrons;
         this.sheets = sheets;
@@ -48,6 +51,7 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
+        roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         if (people.existsBySheetIdAndNameIgnoreCase(sheetId, name)) {
@@ -62,6 +66,7 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, long id, long version, String name, String grade,
             LocalDate gradeFrom) {
+        roles.refuseViewer(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
@@ -85,6 +90,7 @@ public class PersonService {
     /** Retire the person from a date, or from the sheet's today when none is given. */
     @Transactional
     public Person retire(String sheetId, String user, long id, LocalDate date) {
+        roles.refuseViewer(sheetId, user);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         LocalDate from = date != null ? date : sheets.today(sheetId);
@@ -102,6 +108,7 @@ public class PersonService {
      */
     @Transactional
     public Person hold(String sheetId, String user, long id, LocalDate fromDate, LocalDate toDate) {
+        roles.refuseViewer(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.lockByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
@@ -128,6 +135,7 @@ public class PersonService {
      */
     @Transactional
     public Patron addPatron(String sheetId, String user, long id, long patronId) {
+        roles.refuseViewer(sheetId, user);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
         Person patron = people.findByIdAndSheetId(patronId, sheetId)

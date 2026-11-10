@@ -3,15 +3,16 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-// The roles the sheet assigns to user names: clerk (the default for any name) or steward, and the
-// form that assigns one. A steward settles any claim, and approves or rejects a PENDING one; a
-// clerk settling a claim above the clerk limit makes it PENDING.
+// The roles the sheet assigns to user names: clerk (the default for any name), steward or viewer,
+// and the form that assigns one. A steward settles any claim, and approves or rejects a PENDING
+// one; a clerk settling a claim above the clerk limit makes it PENDING; a viewer sees everything
+// and changes nothing (the server refuses each change; a bulk or generate action does nothing).
 interface Role {
   user: string;
   role: string;
 }
 
-const ROLES = ['clerk', 'steward'];
+const ROLES = ['clerk', 'steward', 'viewer'];
 
 @Component({
   selector: 'app-roles',
@@ -26,7 +27,7 @@ const ROLES = ['clerk', 'steward'];
           [value]="userInput()"
           (input)="userInput.set($any($event.target).value); error.set(null)"
         />
-        <label for="role-form-role">Role (clerk or steward)</label>
+        <label for="role-form-role">Role (clerk, steward or viewer)</label>
         <input
           id="role-form-role"
           data-testid="role-form-role"
@@ -112,7 +113,7 @@ export class Roles {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.error.set('Choose a role of clerk or steward.');
+      this.error.set('Choose a role of clerk, steward or viewer.');
       return;
     }
     this.submitting = true;

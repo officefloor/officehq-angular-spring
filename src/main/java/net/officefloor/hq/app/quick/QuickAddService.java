@@ -6,6 +6,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.role.RoleService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,8 +27,11 @@ public class QuickAddService {
     private final PersonRepository people;
     private final PersonService personService;
     private final ClaimService claimService;
+    private final RoleService roles;
 
-    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService) {
+    public QuickAddService(PersonRepository people, PersonService personService, ClaimService claimService,
+            RoleService roles) {
+        this.roles = roles;
         this.people = people;
         this.personService = personService;
         this.claimService = claimService;
@@ -35,6 +39,7 @@ public class QuickAddService {
 
     @Transactional
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
+        roles.refuseViewer(sheetId, user);
         Person existing = people.findBySheetIdAndNameIgnoreCase(sheetId, name).orElse(null);
         Person person = existing != null ? existing : personService.add(sheetId, user, name, GRADE);
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null);

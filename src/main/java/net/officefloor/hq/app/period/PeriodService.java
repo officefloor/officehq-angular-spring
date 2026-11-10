@@ -49,6 +49,7 @@ public class PeriodService {
 
     @Transactional
     public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+        roles.refuseViewer(sheetId, user);
         if (to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A period's to-date cannot be before its from-date.");
         }
