@@ -7,7 +7,9 @@ import { Claim, cents, daysOverdue, dueBy, isCorrection, isOpen, money, plusDays
 // The sheet's rates for each grade (a percent with two decimals, each from an optional from-date
 // and through an optional to-date)
 // and the form that sets one. Each grade shows the rate in force on the sheet's today, or n/a when
-// none is. What is due on an amount is worked out here from those rates.
+// none is. Setting a rate again for its grade and from-date keeps the one it replaces as an older
+// version; each row shows how many versions it has had. What is due on an amount is worked out
+// here from those rates.
 export interface Rate {
   grade: string;
   /** The date the rate is in force from; null for a rate in force from the beginning of time. */
@@ -15,6 +17,8 @@ export interface Rate {
   /** The last date the rate is in force; null for a rate in force until the grade's next one. */
   to: string | null;
   pct: string;
+  /** How many versions the rate has had: 1 when first set, one more each time it is set again. */
+  version?: number;
   /** Whose rate it is: 0 (or missing) for the sheet's own, 1 for its parent's, 2 for the parent's parent, and so on. */
   level?: number;
 }
@@ -327,6 +331,7 @@ export function dueText(c: number | null): string {
             <th scope="col">From</th>
             <th scope="col">To</th>
             <th scope="col">Rate (%)</th>
+            <th scope="col">Versions</th>
           </tr>
         </thead>
         <tbody>
@@ -336,6 +341,7 @@ export function dueText(c: number | null): string {
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
               <td data-testid="rate-to">{{ r.to ?? 'open' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-version">{{ r.version ?? 1 }}</td>
             </tr>
           }
         </tbody>

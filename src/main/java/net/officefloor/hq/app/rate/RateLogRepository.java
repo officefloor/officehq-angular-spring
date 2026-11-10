@@ -15,13 +15,17 @@ public interface RateLogRepository extends JpaRepository<RateLog, Long> {
 
     /**
      * The sheet's rates as they stood at the end of a day: each set while the sheet's today was on
-     * or before it, a later one for the same grade and from-date replacing an earlier. Not to be saved.
+     * or before it, a later one for the same grade and from-date replacing an earlier as its newest
+     * version. Not to be saved.
      */
     default List<Rate> asOf(String sheetId, LocalDate day) {
         Map<List<Object>, Rate> by = new LinkedHashMap<>();
         for (RateLog set : findBySheetIdOrderByIdAsc(sheetId)) {
             if (set.madeBy(day)) {
-                by.put(Arrays.asList(set.getGrade(), set.getFromDate()), set.toRate());
+                Rate rate = set.toRate();
+                Rate older = by.get(Arrays.asList(set.getGrade(), set.getFromDate()));
+                rate.setVersion(older == null ? 1 : older.getVersion() + 1);
+                by.put(Arrays.asList(set.getGrade(), set.getFromDate()), rate);
             }
         }
         return new ArrayList<>(by.values());

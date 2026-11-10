@@ -48,8 +48,8 @@ public class SheetCloneService {
 
     /** The sheet's own tables copied as they are, onto the clone. */
     private static final List<String> SHEET_TABLES = List.of("SHEET_SETTING", "SHEET_SETTING_LOG",
-            "SHEET_PERMISSION", "SHEET_ROLE", "RATE", "RATE_LOG", "HOLIDAY", "VOID_REASON", "CLAIM_TEMPLATE",
-            "CLAIM_TAG_USED");
+            "SHEET_PERMISSION", "SHEET_ROLE", "RATE", "RATE_LOG", "RATE_VERSION", "HOLIDAY", "VOID_REASON",
+            "CLAIM_TEMPLATE", "CLAIM_TAG_USED");
 
     /** A person's own tables, copied onto their clone. */
     private static final List<String> PERSON_TABLES = List.of("PERSON_GRADE", "PERSON_HOLD", "PERSON_ALIAS",
