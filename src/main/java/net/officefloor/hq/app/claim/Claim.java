@@ -148,6 +148,13 @@ public class Claim {
     @BatchSize(size = 100)
     private List<ClaimLogEntry> log = new ArrayList<>();
 
+    /** The claim's comments, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_comment", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    @BatchSize(size = 100)
+    private List<ClaimComment> comments = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -405,5 +412,15 @@ public class Claim {
     /** Add a line to the claim's status log. */
     public void log(ClaimLogEntry entry) {
         log.add(entry);
+    }
+
+    /** The claim's comments, oldest first. */
+    public List<ClaimComment> getComments() {
+        return List.copyOf(comments);
+    }
+
+    /** Add a comment to the claim. */
+    public void comment(ClaimComment comment) {
+        comments.add(comment);
     }
 }

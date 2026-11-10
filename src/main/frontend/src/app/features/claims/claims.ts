@@ -52,6 +52,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grace
 // An OPEN or PENDING claim can be reminded with its remind button, once per sheet-today: it shows
 // the last day a reminder was written (refused for a claim in any other status or already reminded
 // on the sheet's today).
+// Any claim can be commented with its comment text and button (an empty comment is refused with an
+// error on the claim): its comments show oldest first as <user> on <date>: <text>, each kept with
+// the user who wrote it and the sheet's today then.
 // A claim whose due is above the note threshold in force on its date cannot be opened while its
 // note is empty: refused with an error on the claim (by the bulk button, counted as refused).
 // An OPEN claim can be split: an amount more than 0.00 and less than its own is split off into a new
@@ -107,6 +110,15 @@ export interface Claim {
   remindedOn: string | null;
   /** The reason the claim was voided with, from the sheet's void reasons; null when none. */
   voidReason: string | null;
+  /** The claim's comments, oldest first. */
+  comments: ClaimCommentLine[];
+}
+
+/** One comment on a claim: who wrote it, on the sheet's today then. */
+export interface ClaimCommentLine {
+  by: string;
+  date: string;
+  text: string;
 }
 
 /** One line of a claim's status log. */
@@ -336,6 +348,19 @@ export function money(c: number): string {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>
             }
           </ol>
+          <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+            @for (m of c.comments; track $index) {
+              <li data-testid="claim-comments-line">{{ m.by }} on {{ m.date }}: {{ m.text }}</li>
+            }
+          </ol>
+          <label [for]="'claim-comment-text-' + c.id">Comment</label>
+          <input
+            [id]="'claim-comment-text-' + c.id"
+            data-testid="claim-comment-text"
+            [value]="commentTexts().get(c.id) ?? ''"
+            (input)="setCommentText(c.id, $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-comment-add" (click)="comment(c)">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')">Re-settle</button>
@@ -495,6 +520,8 @@ export class PersonClaims {
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** The reason typed for rejecting each claim, by claim id. */
   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
+  /** The comment typed on each claim, by claim id. */
+  protected readonly commentTexts = signal<ReadonlyMap<number, string>>(new Map());
   /** The sheet's void reasons, one of which a void needs while there are any. */
   protected readonly voidReasons = inject(VoidReasons);
   /** The void reason chosen for each claim, by claim id. */
@@ -682,6 +709,11 @@ export class PersonClaims {
 
   protected setReason(id: number, reason: string): void {
     this.reasons.update((m) => new Map(m).set(id, reason));
+    this.clearActionError(id);
+  }
+
+  protected setCommentText(id: number, text: string): void {
+    this.commentTexts.update((m) => new Map(m).set(id, text));
     this.clearActionError(id);
   }
 
@@ -930,6 +962,35 @@ export class PersonClaims {
           : status === 409
             ? `A ${c.status} claim cannot have a proof added.`
             : 'Could not add a proof to this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  /** Comment on a claim; an empty comment is refused. */
+  protected async comment(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const text = (this.commentTexts().get(c.id) ?? '').trim();
+    if (!text) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter a comment.'));
+      return;
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/comment', { sheet, user: this.session.user(), id: c.id, text }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.setCommentText(c.id, '');
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 403
+          ? 'You may not comment on this claim.'
+          : status === 423
+            ? 'This sheet may not be changed.'
+            : 'Could not comment on this claim.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

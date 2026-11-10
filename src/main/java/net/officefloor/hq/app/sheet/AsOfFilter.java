@@ -40,7 +40,7 @@ public class AsOfFilter extends OncePerRequestFilter {
 
     /** The requests that only read the sheet (with every path ending in {@code /list}). */
     private static final Set<String> READS = Set.of("/api/signin", LOAD, "/api/settings/get",
-            "/api/people/watched", "/api/roles/delegations");
+            "/api/people/watched", "/api/roles/delegations", "/api/claims/tags");
 
     /** The changes that only take or release a claim editor's lock: not part of the sheet's history. */
     private static final Set<String> LOCKS = Set.of("/api/claims/lock", "/api/claims/unlock");

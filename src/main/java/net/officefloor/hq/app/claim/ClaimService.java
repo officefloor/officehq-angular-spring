@@ -478,6 +478,27 @@ public class ClaimService {
     }
 
     /**
+     * Comment on a claim in any status: kept with the user and the sheet's today, and written as
+     * COMMENT_ADDED. Refused (422) for an empty comment, and as any change for a viewer or an
+     * archived sheet.
+     */
+    @Transactional
+    public Claim comment(String sheetId, String user, long id, String text) {
+        roles.refuseViewer(sheetId, user);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (text.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "A comment cannot be empty.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.comment(new ClaimComment(user, sheets.today(sheetId), text));
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("COMMENT_ADDED", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " text=" + text);
+        return saved;
+    }
+
+    /**
      * Remind an OPEN or PENDING claim: write REMIND and mark it reminded on the sheet's today.
      * Refused (409) for a claim in any other status or already reminded on the sheet's today.
      */

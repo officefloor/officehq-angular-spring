@@ -69,6 +69,10 @@ public class ClaimController {
             @NotBlank @Size(max = 200) @Pattern(regexp = "\\s*\\S+\\s*") String reason) {
     }
 
+    public record CommentClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull @Size(max = 1000) String text) {
+    }
+
     public record RedateClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate date) {
     }
@@ -104,7 +108,12 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue, String openedBy,
             boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason) {
+            boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
+            List<ClaimCommentLine> comments) {
+    }
+
+    /** One comment on a claim, oldest first. */
+    public record ClaimCommentLine(String by, LocalDate date, String text) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -125,7 +134,9 @@ public class ClaimController {
                         .toList(),
                 claim.getDeferredUntil(), claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
                 claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(), claim.getTags(),
-                claim.getVoidReason());
+                claim.getVoidReason(),
+                claim.getComments().stream().map(c -> new ClaimCommentLine(c.getBy(), c.getDate(), c.getText()))
+                        .toList());
     }
 
     public static BigDecimal amount(String amount) {
@@ -249,6 +260,11 @@ public class ClaimController {
     @PostMapping("/proof")
     public ClaimResponse proof(@Valid @RequestBody ClaimStatusRequest req) {
         return response(service.addProof(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/comment")
+    public ClaimResponse comment(@Valid @RequestBody CommentClaimRequest req) {
+        return response(service.comment(req.sheet().trim(), req.user().trim(), req.id(), req.text().trim()));
     }
 
     @PostMapping("/remind")
