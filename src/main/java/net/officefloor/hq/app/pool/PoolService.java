@@ -28,18 +28,19 @@ import org.springframework.web.server.ResponseStatusException;
  * The sheet's pools: each a name, at most once on the sheet, and its members, each a person on the
  * sheet at most once per pool with a share percent (two decimals, above 0.00 and at most 100.00).
  * A pool's total adds up its members' shares, a retired member's (one with a retirement date set,
- * whatever the date) counting as 0.00; the pool is balanced when the total is exactly 100.00.
+ * whatever the date) included as given; the pool is balanced when the total is exactly 100.00.
  * <p>
  * With a pot set on the sheet, each member of a balanced pool has a cut: the pot times their share
- * divided by 100, rounded half to even to two decimals, a retired member's 0.00. The remainder, the
+ * divided by 100, rounded half to even to two decimals. The remainder, the
  * pot less the cuts added up, goes to the member with the largest share (the earliest added on a
  * tie), so the cuts total exactly the pot. An unbalanced pool, or no pot, has no cuts.
  * <p>
- * A person with a hold in force on the sheet's today (one whose dates include today) has a cut of
- * 0.00 in every pool, and their share is spread over the members left with a cut: each of those
- * cuts the pot times their share divided by the shares of the members with a cut added up, half to
- * even, the remainder as above (all 0.00 when no member is left with a cut). The pool's total share
- * and balance are unchanged by a hold.
+ * A retired person, and a person with a hold in force on the sheet's today (one whose dates include
+ * today), has a cut of 0.00 in every pool, and their share is spread over the members left with a
+ * cut: each of those cuts the pot times their share divided by the shares of the members with a cut
+ * added up, half to even, the remainder as above (all 0.00 when no member is left with a cut). A
+ * pool whose every member within their dates is retired shows no cuts. The pool's total share and
+ * balance are unchanged by a hold or a retirement.
  * <p>
  * A member may instead be another pool, with a share like a person's. A pool is a member of at most
  * one pool, never contains itself through any chain, and a chain of pools is at most three deep. A
@@ -168,7 +169,7 @@ public class PoolService {
             BigDecimal share = m.getShare().setScale(2);
             listed.add(l);
             shares.add(share);
-            if (!l.retired() && l.current()) {
+            if (l.current()) {
                 total = total.add(share);
             }
         }
@@ -177,8 +178,8 @@ public class PoolService {
 
     /**
      * A pool's cuts, in its members' order, or null for none: a pool that is a member of another cuts
-     * its cut in that pool, one that is a member of none the sheet's pot; an unbalanced pool, or no pot
-     * to cut, has none.
+     * its cut in that pool, one that is a member of none the sheet's pot; an unbalanced pool, one whose
+     * every current member is retired, or no pot to cut, has none.
      */
     private static List<BigDecimal> cutsOf(long poolId, Map<Long, Shares> shares, Map<Long, Long> parentOf,
             BigDecimal sheetPot, Map<Long, List<BigDecimal>> memo, Set<Long> visiting) {
@@ -202,7 +203,8 @@ public class PoolService {
                 }
             }
         }
-        List<BigDecimal> cuts = sh.balanced() && pot != null ? cuts(pot, sh.listed(), sh.shares()) : null;
+        boolean allRetired = sh.listed().stream().filter(Listed::current).allMatch(Listed::retired);
+        List<BigDecimal> cuts = sh.balanced() && pot != null && !allRetired ? cuts(pot, sh.listed(), sh.shares()) : null;
         memo.put(poolId, cuts);
         return cuts;
     }

@@ -6,9 +6,11 @@ import { Session } from '../../core/session';
 // The sheet's pools: each a name (trimmed, at most once on the sheet) and its members, each a
 // person chosen from the sheet at most once per pool, with a share percent (two decimals, above
 // 0.00 and at most 100.00). A person may be in several pools. Each pool shows its total share,
-// a retired member's (one with a retirement date set, whatever the date) counting as 0.00, and
+// a retired member's (one with a retirement date set, whatever the date) included as given, and
 // whether it is balanced: the total exactly 100.00. With a pot set, each member of a balanced pool
-// shows their cut of it (worked out by the store; blank when unbalanced or no pot). Re-read from
+// shows their cut of it (worked out by the store; blank when unbalanced or no pot). A retired or
+// held member's cut is 0.00, their share spread over the others; a pool whose every member is
+// retired shows no cuts. Re-read from
 // the store on every sheet load and whenever the people or the pot change.
 // A member may instead be another pool, chosen as pool:<name>, with a share like a person's. A pool
 // is a member of at most one pool, never contains itself through any chain, and a chain of pools is
