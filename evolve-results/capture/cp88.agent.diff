@@ -1,0 +1,44 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 314c831f2..95f5cfd4c 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -153,7 +153,7 @@ export interface Lateness {
+ /**
+  * A claim's due in whole cents as shown: its figure (see {@link claimDueCents}) with, when it is
+  * overdue, a late charge added on top: for each full 30 days overdue, the late percent in force on
+- * that boundary date (its due-by plus its grace days, plus 30, 60, 90 ... days) of that figure, rounded to whole cents,
++ * that boundary date (its due-by plus its grace days, plus 30, 60, 90 ... days) of that figure plus the charges of the boundaries before it, rounded to whole cents,
+  * the charges added up. Both round as the claim rounds by `roundOn` (see {@link roundsHalfUp}).
+  * The floor is applied last: the due is the greater of the floor in force on the claim's date and
+  * the figure plus its charge. The charge is never bound by a statement; a settled claim's due is
+@@ -177,7 +177,7 @@ export function chargedDueCents(
+   let charge = 0;
+   for (let k = 1; k <= periods; k++) {
+     const boundary = plusDays(dueBy(c), grace + 30 * k);
+-    charge += dueCents(figure, valueOn(late.latePcts, boundary, START_LATE_PCT), halfUp) ?? 0;
++    charge += dueCents(figure + charge, valueOn(late.latePcts, boundary, START_LATE_PCT), halfUp) ?? 0;
+   }
+   return Math.max(figure + charge, floor);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+index 6942dc05c..dc487287e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
++++ b/src/main/java/net/officefloor/hq/app/claim/LateCharge.java
+@@ -10,7 +10,7 @@ import net.officefloor.hq.app.sheet.Sheet;
+  * The late charge on an overdue claim (OPEN or PENDING, and past its due-by plus the grace days of its person's grade
+  * on its date, see {@link Sheet#lateFrom}, on the sheet's today): for each full 30 days it is overdue, the late
+  * percent in force on that boundary date (its due-by plus the grace, plus 30, 60, 90 ... days) of
+- * its figure, rounded to the cent as the claim rounds (see {@link Rounding}), the charges added up. A correction has none. Never bound by a statement; settling a claim fixes it into its due.
++ * its figure plus the charges of the boundaries before it (the charge compounds), rounded to the cent as the claim rounds (see {@link Rounding}), the charges added up. A correction has none. Never bound by a statement; settling a claim fixes it into its due.
+  * The charge is worked out on the rate figure alone (or the figure a statement bound); the floor is applied last: a
+  * claim's live due is the greater of the floor in force on its date and its figure plus its charge (a correction has
+  * no floor).
+@@ -68,7 +68,7 @@ public final class LateCharge {
+         BigDecimal total = zero;
+         for (long k = 1; k <= periods; k++) {
+             LocalDate boundary = lateFrom.plusDays(k * PERIOD_DAYS);
+-            total = total.add(figure.multiply(sheet.latePctOn(boundary)).divide(BigDecimal.valueOf(100), 2, mode));
++            total = total.add(figure.add(total).multiply(sheet.latePctOn(boundary)).divide(BigDecimal.valueOf(100), 2, mode));
+         }
+         return total;
+     }
