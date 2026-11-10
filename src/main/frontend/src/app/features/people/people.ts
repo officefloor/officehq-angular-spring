@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, counts, isOpen, money, overdue, roundingDate } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, counts, deferred, isOpen, money, overdue, roundingDate } from '../claims/claims';
 import { DatedDue, Period, Periods, periodDueTotal, personPeriodDueTotal } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueText, gradeOn, pctOn, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
@@ -80,10 +80,10 @@ function heldOn(p: Person, date: string): boolean {
 
 /**
  * Whether a claim of the person counts toward the totals: an OPEN or PENDING claim dated within one
- * of their holds does not, unless a statement binds it.
+ * of their holds does not, unless a statement binds it; nor does a claim deferred on the sheet's today.
  */
-function countsFor(p: Person | undefined, c: Claim): boolean {
-  return counts(c) && (c.stated || !(p !== undefined && isOpen(c) && heldOn(p, c.date)));
+function countsFor(p: Person | undefined, c: Claim, today: string | null): boolean {
+  return counts(c) && !deferred(c, today) && (c.stated || !(p !== undefined && isOpen(c) && heldOn(p, c.date)));
 }
 
 /** One of a person's patrons. */
@@ -473,7 +473,7 @@ export class People {
     const out: DatedDue[] = [];
     for (const c of this.claims()) {
       const p = this.peopleById().get(c.personId);
-      if (p === undefined || !countsFor(p, c)) continue;
+      if (p === undefined || !countsFor(p, c, this.session.today())) continue;
       const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
       if (due !== null) out.push({ personId: c.personId, date: c.date, cents: due });
     }
@@ -632,7 +632,7 @@ export class People {
 
   /** A claim's amount in whole cents when it counts toward the totals, else nothing. */
   private countedCents(p: Person | undefined, c: Claim): number {
-    return countsFor(p, c) ? cents(c.amount) : 0;
+    return countsFor(p, c, this.session.today()) ? cents(c.amount) : 0;
   }
 
   /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */
@@ -656,7 +656,7 @@ export class People {
    */
   private figuresOf(p: Person): number | null {
     const figures = this.claimsOf(p.id)
-      .filter((c) => countsFor(p, c))
+      .filter((c) => countsFor(p, c, this.session.today()))
       .map((c) => chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)));
     if (this.pctOf().get(this.gradeToday(p)) === undefined && figures.every((f) => f === null)) return null;
     return figures.reduce<number>((sum, f) => sum + (f ?? 0), 0);
@@ -665,7 +665,7 @@ export class People {
   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
   protected overdueOf(p: Person): { count: number; cents: number } {
     const today = this.session.today();
-    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c) && overdue(c, today));
+    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.today()) && overdue(c, today));
     return {
       count: late.length,
       cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0), 0),

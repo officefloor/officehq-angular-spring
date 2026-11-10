@@ -135,11 +135,12 @@ public class Person {
 
     /**
      * Whether a claim of this person counts toward the live totals: an open claim dated within a
-     * hold does not, unless a statement binds it.
+     * hold does not, unless a statement binds it; nor does a claim deferred on the sheet's today.
      */
-    public boolean counts(Claim claim) {
+    public boolean counts(Claim claim, LocalDate today) {
         ClaimStatus status = claim.getStatus();
-        return status.counts() && (claim.isStated() || !(status.isOpen() && heldOn(claim.getDate())));
+        return status.counts() && !claim.isDeferredOn(today)
+                && (claim.isStated() || !(status.isOpen() && heldOn(claim.getDate())));
     }
 
     public long getVersion() {

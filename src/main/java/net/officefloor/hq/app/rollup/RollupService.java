@@ -84,7 +84,7 @@ public class RollupService {
             BigDecimal overdue = zero();
             boolean anyFigure = false;
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim)) {
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)) {
                     continue;
                 }
                 claimed = claimed.add(claim.getAmount());
@@ -118,7 +118,7 @@ public class RollupService {
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             BigDecimal due = zero();
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim)
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, sheet.getToday())
                         || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                     continue;
                 }
@@ -174,9 +174,9 @@ public class RollupService {
         return LateCharge.withCharge(sheet, claim, figure);
     }
 
-    /** Whether a claim is overdue on the sheet's today: OPEN or PENDING, and past its due-by. */
+    /** Whether a claim is overdue on the sheet's today: OPEN or PENDING, not deferred, and past its due-by. */
     private static boolean overdue(Claim claim, LocalDate today) {
-        return claim.getStatus().isOpen() && today != null && claim.getDueBy() != null
+        return claim.getStatus().isOpen() && !claim.isDeferredOn(today) && today != null && claim.getDueBy() != null
                 && claim.getDueBy().isBefore(today);
     }
 

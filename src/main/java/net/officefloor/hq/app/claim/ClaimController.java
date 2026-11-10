@@ -56,6 +56,10 @@ public class ClaimController {
             @NotBlank @Size(max = 200) @Pattern(regexp = "\\s*\\S+\\s*") String reason) {
     }
 
+    public record DeferClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate until) {
+    }
+
     public record ReassignClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long personId) {
     }
@@ -72,7 +76,8 @@ public class ClaimController {
 
     public record ClaimResponse(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy,
-            boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log) {
+            boolean stated, String statedDue, String corrects, LocalDate dueBy, List<ClaimLogLine> log,
+            LocalDate deferredUntil) {
     }
 
     /** One line of a claim's status log, oldest first. */
@@ -90,7 +95,8 @@ public class ClaimController {
                 money(claim.getSettledDue()), claim.getOpenedBy(), claim.isStated(), money(claim.getStatedDue()),
                 claim.getCorrects(), claim.getDueBy(),
                 claim.getLog().stream().map(l -> new ClaimLogLine(l.getStatus(), l.getBy(), l.getDate(), l.getDue()))
-                        .toList());
+                        .toList(),
+                claim.getDeferredUntil());
     }
 
     public static BigDecimal amount(String amount) {
@@ -166,6 +172,11 @@ public class ClaimController {
     @PostMapping("/resettle")
     public ClaimResponse resettle(@Valid @RequestBody ClaimStatusRequest req) {
         return response(service.resettle(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/defer")
+    public ClaimResponse defer(@Valid @RequestBody DeferClaimRequest req) {
+        return response(service.defer(req.sheet().trim(), req.user().trim(), req.id(), req.until()));
     }
 
     @PostMapping("/reassign")

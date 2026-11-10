@@ -32,7 +32,7 @@ public final class LateCharge {
 
     /** The late charge on a claim's figure on the sheet's today; zero when it is not overdue. */
     public static BigDecimal charge(Sheet sheet, Claim claim, BigDecimal figure) {
-        return charge(sheet, claim, figure, claim.getStatus().isOpen());
+        return charge(sheet, claim, figure, claim.getStatus().isOpen() && !claim.isDeferredOn(sheet.getToday()));
     }
 
     private static BigDecimal charge(Sheet sheet, Claim claim, BigDecimal figure, boolean open) {

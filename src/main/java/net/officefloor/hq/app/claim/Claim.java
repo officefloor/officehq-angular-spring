@@ -87,6 +87,13 @@ public class Claim {
     private String corrects;
 
     /**
+     * The date an OPEN claim is deferred until: while the sheet's today is before it the claim
+     * counts in no total, is not overdue and cannot be settled; none when never deferred.
+     */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
+    /**
      * The claim's place in the list, newest (highest) first: taken from the store's sequence when
      * the claim is added and again when it is moved to another person.
      */
@@ -220,6 +227,19 @@ public class Claim {
     public void bind(boolean stated, BigDecimal statedDue) {
         this.stated = stated;
         this.statedDue = stated ? statedDue : null;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    public void setDeferredUntil(LocalDate deferredUntil) {
+        this.deferredUntil = deferredUntil;
+    }
+
+    /** Whether the claim is open and deferred on the given day: its deferral date not yet reached. */
+    public boolean isDeferredOn(LocalDate today) {
+        return status.isOpen() && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     public List<ClaimLogEntry> getLog() {

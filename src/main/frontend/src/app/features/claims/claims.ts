@@ -25,6 +25,9 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // by the last statement); the user who opened it cannot approve it.
 // A steward can move a DRAFT, OPEN or PENDING claim to another person: it keeps its number and
 // date, loses any figure a statement bound it to, and is listed first under its new person.
+// An OPEN claim can be deferred to a date after the sheet's today (refused for a claim that is not
+// OPEN, a date not after today, or a claim in a closed period). Until the sheet's today reaches that
+// date it counts in no total, is not overdue, cannot be settled and is left unbound by a statement.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -52,6 +55,8 @@ export interface Claim {
   /** The claim's status log, oldest first: who moved it to each status, on the sheet's today then,
    *  with its due as computed at that moment. */
   log: ClaimLogLine[];
+  /** The date the claim is deferred until; null when it was never deferred. */
+  deferredUntil: string | null;
 }
 
 /** One line of a claim's status log. */
@@ -91,6 +96,11 @@ export function counts(c: Claim): boolean {
 /** Whether a claim is open: OPEN or PENDING. Only an open claim goes overdue, and a hold takes it out of the totals. */
 export function isOpen(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING';
+}
+
+/** Whether a claim is deferred on the sheet's today: open, and its deferral date not yet reached. */
+export function deferred(c: Claim, today: string | null): boolean {
+  return isOpen(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
 }
 
 /** The refusal of a change to a claim dated inside a closed period. */
@@ -144,9 +154,9 @@ export function dueBy(c: Claim): string {
   return c.dueBy;
 }
 
-/** Whether a claim is overdue: open (OPEN or PENDING), and due by a date before the sheet's today. */
+/** Whether a claim is overdue: open (OPEN or PENDING), not deferred, and due by a date before the sheet's today. */
 export function overdue(c: Claim, today: string | null): boolean {
-  return isOpen(c) && today !== null && dueBy(c) < today;
+  return isOpen(c) && !deferred(c, today) && today !== null && dueBy(c) < today;
 }
 
 /** The days a claim is overdue on the sheet's today: past its due-by; 0 when it is not overdue. */
@@ -223,6 +233,8 @@ export function money(c: number): string {
           <span data-testid="claim-status">{{ c.status }}</span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+          <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
+          <span>Until <span data-testid="claim-deferred-until">{{ deferredOf(c) ? c.deferredUntil : '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.date }} due={{ l.due }}</li>
@@ -241,6 +253,15 @@ export function money(c: number): string {
           />
           <button type="button" data-testid="claim-reject" (click)="act(c, 'reject')">Reject</button>
           <button type="button" data-testid="claim-void" (click)="act(c, 'void')">Void</button>
+          <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+          <input
+            [id]="'claim-defer-date-' + c.id"
+            type="date"
+            data-testid="claim-defer-date"
+            [value]="deferDates().get(c.id) ?? ''"
+            (input)="setDeferDate(c.id, $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-defer" (click)="defer(c)">Defer</button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -314,6 +335,8 @@ export class PersonClaims {
   protected readonly actionErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** The reason typed for rejecting each claim, by claim id. */
   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
+  /** The date typed to defer each claim until, by claim id. */
+  protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The person id chosen to move each claim to, by claim id. */
   protected readonly targets = signal<ReadonlyMap<number, string>>(new Map());
   /** The people a claim of this person can be moved to. */
@@ -339,6 +362,10 @@ export class PersonClaims {
 
   protected overdueOf(c: Claim): boolean {
     return overdue(c, this.session.today());
+  }
+
+  protected deferredOf(c: Claim): boolean {
+    return deferred(c, this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; blank when none does. */
@@ -390,6 +417,42 @@ export class PersonClaims {
   protected setTarget(id: number, personId: string): void {
     this.targets.update((m) => new Map(m).set(id, personId));
     this.clearActionError(id);
+  }
+
+  protected setDeferDate(id: number, date: string): void {
+    this.deferDates.update((m) => new Map(m).set(id, date));
+    this.clearActionError(id);
+  }
+
+  /** Defer an OPEN claim until the date typed; the server refuses any other claim, a date not after
+   *  the sheet's today, and a claim dated inside a closed period. */
+  protected async defer(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const until = (this.deferDates().get(c.id) ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter the date to defer this claim until.'));
+      return;
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/defer', { sheet, user: this.session.user(), id: c.id, until }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 423
+          ? CLOSED
+          : status === 400
+            ? 'A claim can only be deferred to a date after the sheet\'s today.'
+            : status === 409
+              ? `A ${c.status} claim cannot be deferred.`
+              : 'Could not defer this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
   }
 
   /** Move a claim to the chosen person; the server refuses a clerk, and a SETTLED or VOID claim. */
@@ -459,7 +522,9 @@ export class PersonClaims {
               : 'The user who opened a claim cannot settle it.'
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
-            : `A ${c.status} claim cannot be ${PAST[action]}.`;
+            : action === 'settle' && deferred(c, this.session.today())
+              ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
+              : `A ${c.status} claim cannot be ${PAST[action]}.`;
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

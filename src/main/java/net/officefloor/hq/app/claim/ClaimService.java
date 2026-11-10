@@ -47,7 +47,10 @@ import org.springframework.web.server.ResponseStatusException;
  * a DRAFT, OPEN or PENDING claim to another person: it keeps its number and date, loses any figure
  * a statement bound it to, and is listed as its new person's newest claim. A steward can re-settle
  * a SETTLED claim: its due is fixed again at the figure it would have today as an open claim bound
- * by no statement (today's rates, grades, floor and late charge).
+ * by no statement (today's rates, grades, floor and late charge). An OPEN claim can be deferred to
+ * a date after the sheet's today: until the sheet's today reaches it the claim counts in no total,
+ * is not overdue, cannot be settled and is left unbound by a statement; from then on it is an OPEN
+ * claim like any other.
  */
 @Service
 public class ClaimService {
@@ -184,6 +187,10 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot become " + next + ".");
         }
         periods.refuseIfClosed(sheetId, claim.getDate());
+        if (next == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then.");
+        }
         if (next == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot " + (review ? "approve" : "settle") + " it.");
@@ -220,6 +227,36 @@ public class ClaimService {
                 + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : "")
                 + (reason != null ? " reason=" + reason : ""));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it
+     * the claim counts in no total, is not overdue, cannot be settled and is left unbound by a
+     * statement (deferring unbinds it). Refused (409) for a claim that is not OPEN, (400) for a date
+     * not after the sheet's today and (423) when dated inside a closed period.
+     */
+    @Transactional
+    public Claim defer(String sheetId, String user, long id, LocalDate until) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be deferred.");
+        }
+        if (!until.isAfter(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A claim can only be deferred to a date after the sheet's today.");
+        }
+        periods.refuseIfClosed(sheetId, claim.getDate());
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setDeferredUntil(until);
+        claim.bind(false, null);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_DEFERRED", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "") + " until=" + until);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

@@ -82,7 +82,7 @@ public class StatementService {
         boolean anyFigure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (person.counts(claim)) {
+            if (person.counts(claim, today)) {
                 BigDecimal figure = claimService.figure(sheetId, person, claim);
                 BigDecimal charged = claimService.charged(sheetId, person, claim);
                 claim.bind(true, figure);
