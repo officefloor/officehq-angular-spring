@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6a6b2f028..7429e6321 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1310,8 +1310,9 @@ export class People {
+     }
+   }
+ 
+-  /** Settle the selected claims together: the server settles each it can, in list order, by the
+-   *  rules of settling one (a clerk's above the limit goes PENDING), and refuses the rest. */
++  /** Settle the selected claims together, all or nothing: the server settles each in list order by
++   *  the rules of settling one (a clerk's above the limit goes PENDING), or, when any one would be
++   *  refused, settles none and counts every one refused. */
+   protected async bulkSettle(): Promise<void> {
+     this.bulkSettleResult.set(null);
+     this.bulkSettleError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index ad24aa685..3e4dbf98a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -27,6 +27,7 @@ import net.officefloor.hq.app.voidreason.VoidReasonService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.interceptor.TransactionAspectSupport;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+@@ -739,35 +740,48 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * Settle the given claims together, in list order (the order people were added, newest claim
+-     * first within a person), each by exactly the rules of settling one claim. A claim a clerk's
+-     * settle makes PENDING counts as settled; a claim that cannot be settled is refused and left
+-     * as it is. A bulk settle that settles at least one claim is a batch: it takes the sheet's next
+-     * batch number, and each claim it settled is marked with it.
++     * Settle the given claims together, all or nothing: in list order (the order people were added,
++     * newest claim first within a person), each by exactly the rules of settling one claim. A claim
++     * a clerk's settle makes PENDING counts as settled. When any selected claim cannot be settled
++     * (or is not on the sheet), none is: every one counts as refused and nothing is written. Else the
++     * settle is a batch: it takes the sheet's next batch number, each claim is marked with it, and
++     * after the claims' own records one BATCH_SETTLED record gives the batch, its count and the
++     * frozen dues of those SETTLED added up.
+      */
+     @Transactional
+     public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> ids) {
+         List<Claim> selected = inListOrder(sheetId, ids);
+-        int refused = (int) ids.stream().distinct().count() - selected.size();
++        int requested = (int) ids.stream().distinct().count();
+         List<Claim> settled = new ArrayList<>();
++        boolean refusedAny = selected.size() < requested;
+         for (Claim claim : selected) {
++            if (refusedAny) {
++                break;
++            }
+             try {
+                 settled.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
+             } catch (ResponseStatusException refusedOne) {
+-                // every refusal is checked before the claim is changed, so it is left as it is
+-                refused++;
++                refusedAny = true;
+             }
+         }
+-        if (settled.isEmpty()) {
+-            return new BulkSettled(0, refused, settled, sheets.sheet(sheetId).getLastBatch());
++        if (refusedAny || settled.isEmpty()) {
++            // undo the claims already settled, and the records waiting for the commit with them
++            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
++            return new BulkSettled(0, requested, List.of(), sheets.sheet(sheetId).getLastBatch());
+         }
+         int batch = sheets.nextBatch(sheetId);
+         List<Claim> batched = new ArrayList<>();
++        BigDecimal total = BigDecimal.ZERO;
+         for (Claim claim : settled) {
+             claim.setBatch(batch);
+             batched.add(claims.saveAndFlush(claim));
++            if (claim.getStatus() == ClaimStatus.SETTLED) {
++                total = total.add(claim.getSettledDue());
++            }
+         }
+-        return new BulkSettled(batched.size(), refused, batched, batch);
++        audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + batch
++                + " count=" + batched.size() + " total=" + dueText(total));
++        return new BulkSettled(batched.size(), 0, batched, batch);
+     }
+ 
+     /** What a bulk move did: how many claims were moved and how many refused, and the claims moved. */
