@@ -40,6 +40,10 @@ import { DatedGrade, DatedValue, Lateness, Rate, chargedDueCents, dueText, grade
 // original's number as split-from; the original keeps the rest and loses any figure a statement bound
 // it to. Refused for a claim that is not OPEN, one deferred or in a closed period, and a role that may
 // not open a claim.
+// A steward can re-date an OPEN or PENDING claim: its due-by and any statement-bound figure stay, its
+// period follows the new date, and under numbering per period a change of period gives it the next
+// number of its new period. Refused for anyone else, a claim in a closed period or a new date inside
+// one, and a date after its person's retirement.
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 export interface Claim {
@@ -303,6 +307,15 @@ export function money(c: number): string {
             (input)="setDeferDate(c.id, $any($event.target).value)"
           />
           <button type="button" data-testid="claim-defer" (click)="defer(c)">Defer</button>
+          <label [for]="'claim-date-new-' + c.id">Re-date to</label>
+          <input
+            [id]="'claim-date-new-' + c.id"
+            type="date"
+            data-testid="claim-date-new"
+            [value]="redates().get(c.id) ?? ''"
+            (input)="setRedate(c.id, $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-redate" (click)="redate(c)">Re-date</button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -387,6 +400,8 @@ export class PersonClaims {
   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The new date typed for each claim, by claim id. */
+  protected readonly redates = signal<ReadonlyMap<number, string>>(new Map());
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** The person id chosen to move each claim to, by claim id. */
@@ -503,6 +518,45 @@ export class PersonClaims {
             : status === 409
               ? `A ${c.status} claim cannot be deferred.`
               : 'Could not defer this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  protected setRedate(id: number, date: string): void {
+    this.redates.update((m) => new Map(m).set(id, date));
+    this.clearActionError(id);
+  }
+
+  /** Re-date an OPEN or PENDING claim to the date typed; the server refuses anyone but a steward,
+   *  any other claim, a claim in a closed period or a new date inside one, and a date after its
+   *  person's retirement. */
+  protected async redate(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const date = (this.redates().get(c.id) ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter the date to re-date this claim to.'));
+      return;
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/redate', { sheet, user: this.session.user(), id: c.id, date }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 423
+          ? CLOSED
+          : status === 403
+            ? 'Only a steward can re-date a claim.'
+            : status === 422
+              ? 'That date is after the person\'s retirement date.'
+              : status === 409
+                ? `A ${c.status} claim cannot be re-dated.`
+                : 'Could not re-date this claim.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

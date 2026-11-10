@@ -404,6 +404,48 @@ public class ClaimService {
     }
 
     /**
+     * Re-date an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure bound by a
+     * statement stays bound; its period follows the new date. Under numbering per period, a claim
+     * whose period changes takes the next number of its new period's sequence (or the X sequence in
+     * no period); its old number is never given again. Refused (403) for anyone but a steward, (409)
+     * for a claim that is not OPEN or PENDING, (423) when dated, or re-dated, inside a closed period
+     * and (422) for a date after its person's retirement date.
+     */
+    @Transactional
+    public Claim redate(String sheetId, String user, long id, LocalDate date) {
+        roles.refuseViewer(sheetId, user);
+        if (!isSteward(sheetId, user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can re-date a claim.");
+        }
+        // lock the sheet's numbering before reading the claim, as opening one does
+        Sheet sheet = sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be re-dated.");
+        }
+        LocalDate old = claim.getDate();
+        periods.refuseIfClosed(sheetId, old);
+        periods.refuseIfClosed(sheetId, date);
+        Person person = person(sheetId, claim.getPersonId());
+        refuseIfRetired(person, date);
+        boolean renumber = sheet.numbersByPeriod()
+                && !periods.periodNameOn(sheetId, old).equals(periods.periodNameOn(sheetId, date));
+        claim.setDate(date);
+        if (renumber) {
+            claim.setNumber(sheets.nextClaimNumber(sheetId, date));
+        }
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_REDATED", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : "")
+                + " old=" + old + " new=" + date);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and
      * date, is unbound from any statement (live again until its new person's next statement), and
      * is listed first under its new person. Refused (403) for a role the permission matrix does not allow, (409) for a SETTLED or VOID

@@ -157,4 +157,10 @@ public class PeriodService {
         return periods.existsBySheetIdAndClosedTrueAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date,
                 date);
     }
+
+    /** The name of the period the day falls in; blank when it falls in none. */
+    public String periodNameOn(String sheetId, LocalDate date) {
+        return periods.findBySheetIdAndFromDateLessThanEqualAndToDateGreaterThanEqual(sheetId, date, date)
+                .map(Period::getName).orElse("");
+    }
 }

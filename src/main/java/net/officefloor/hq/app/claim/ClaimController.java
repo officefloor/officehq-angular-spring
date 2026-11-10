@@ -56,6 +56,10 @@ public class ClaimController {
             @NotBlank @Size(max = 200) @Pattern(regexp = "\\s*\\S+\\s*") String reason) {
     }
 
+    public record RedateClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate date) {
+    }
+
     public record DeferClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate until) {
     }
@@ -186,6 +190,11 @@ public class ClaimController {
     @PostMapping("/defer")
     public ClaimResponse defer(@Valid @RequestBody DeferClaimRequest req) {
         return response(service.defer(req.sheet().trim(), req.user().trim(), req.id(), req.until()));
+    }
+
+    @PostMapping("/redate")
+    public ClaimResponse redate(@Valid @RequestBody RedateClaimRequest req) {
+        return response(service.redate(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
     }
 
     @PostMapping("/proof")
