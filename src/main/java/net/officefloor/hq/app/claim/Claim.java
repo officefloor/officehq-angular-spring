@@ -176,6 +176,19 @@ public class Claim {
         return statedDue;
     }
 
+    /**
+     * Whether the claim's due follows its statement binding now: a PENDING claim is not bound while PENDING (it shows
+     * its live figure), but keeps its binding for when it is rejected back to OPEN.
+     */
+    public boolean isBound() {
+        return stated && status != ClaimStatus.PENDING;
+    }
+
+    /** The due the claim is bound to now; null when it is not bound, or bound with none (n/a). */
+    public BigDecimal getBoundDue() {
+        return isBound() ? statedDue : null;
+    }
+
     /** Binds the claim to the due (null: n/a), or with {@code stated} false leaves it unbound and live. */
     public void setStated(boolean stated, BigDecimal statedDue) {
         this.stated = stated;

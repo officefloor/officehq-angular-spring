@@ -10,7 +10,6 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
-import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -83,13 +82,13 @@ public class StatementService {
                 continue;
             }
             counted++;
-            if (claim.getSettledDue() != null || claim.getStatedDue() != null) {
+            if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
                 anyDue = true;
             }
             // The statement binds the figure under the claim's due; its late charge keeps following the sheet's today.
             BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
             BigDecimal due = claim.getSettledDue() != null ? figure
-                    : sheet.withLateCharge(figure, claim.getStatus() == ClaimStatus.OPEN && !claim.isCorrection(),
+                    : sheet.withLateCharge(figure, claim.getStatus().isOpen() && !claim.isCorrection(),
                             claim.getDate());
             if (due != null) {
                 total = total.add(due);
@@ -117,7 +116,7 @@ public class StatementService {
         if (claim.getSettledDue() != null) {
             return Optional.of(claim.getSettledDue());
         }
-        if (claim.isStated()) {
+        if (claim.isBound()) {
             return Optional.ofNullable(claim.getStatedDue());
         }
         return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())

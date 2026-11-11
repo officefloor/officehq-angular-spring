@@ -139,9 +139,9 @@ public class Person {
         this.held = held;
     }
 
-    /** Whether a claim of the person in the status counts in the live totals: an OPEN one not while held. */
+    /** Whether a claim of the person in the status counts in the live totals: an OPEN or PENDING one not while held. */
     public boolean counts(ClaimStatus status) {
-        return status.counts() && !(held && status == ClaimStatus.OPEN);
+        return status.counts() && !(held && status.isOpen());
     }
 
     /** Refused when the person is retired and the date is after their retirement date. */

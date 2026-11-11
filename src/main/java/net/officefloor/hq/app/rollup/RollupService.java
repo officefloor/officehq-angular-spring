@@ -13,7 +13,6 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
-import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -76,7 +75,7 @@ public class RollupService {
             boolean anyDue = today != null && rateOn(sheetRates, person.gradeOn(today), today).isPresent();
             for (Claim claim : theirs) {
                 claimed = claimed.add(claim.getAmount());
-                if (claim.getSettledDue() != null || claim.getStatedDue() != null) {
+                if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
                     anyDue = true;
                 }
                 Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
@@ -154,7 +153,7 @@ public class RollupService {
         if (claim.getSettledDue() != null) {
             return Optional.of(claim.getSettledDue());
         }
-        Optional<BigDecimal> figure = claim.isStated() ? Optional.ofNullable(claim.getStatedDue())
+        Optional<BigDecimal> figure = claim.isBound() ? Optional.ofNullable(claim.getStatedDue())
                 : rateOn(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                         .map(Rate::getPct)
                         .map(pct -> sheet == null
@@ -163,7 +162,7 @@ public class RollupService {
                         .map(due -> sheet == null || claim.isCorrection() ? due : sheet.floored(due));
         return sheet == null ? figure
                 : figure.map(f -> sheet.withLateCharge(f,
-                        claim.getStatus() == ClaimStatus.OPEN && !claim.isCorrection(), claim.getDate()));
+                        claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDate()));
     }
 
     private static Optional<Rate> rateOn(List<Rate> sheetRates, String grade, LocalDate date) {

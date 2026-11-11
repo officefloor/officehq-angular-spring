@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PersonGrade, claimDue, counts, dueFixed, gradeOn, overdue, sumAmounts } from '../claims/claims';
+import { Claim, Claims, PersonGrade, claimDue, counts, dueFixed, gradeOn, isOpen, overdue, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
@@ -26,15 +26,18 @@ interface Person {
   retired: boolean;
   /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: their OPEN claims then count in no live total; their SETTLED ones still do. */
+  /** Whether the person is on hold: their OPEN and PENDING claims then count in no live total; their SETTLED ones still do. */
   held: boolean;
   /** The ids of the other people on the sheet the person has named as their patrons. */
   patronIds: number[];
 }
 
-/** Whether the claim counts in the live totals: an OPEN or SETTLED one, but an OPEN one not while its person is held. */
+/**
+ * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one not while
+ * its person is held.
+ */
 function live(claim: Claim, held: boolean): boolean {
-  return counts(claim) && !(held && claim.status === 'OPEN');
+  return counts(claim) && !(held && isOpen(claim));
 }
 
 /** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */
@@ -285,7 +288,7 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's periods in date order. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each period's due-total by name: the dues of the OPEN and SETTLED claims dated in it, skipping the n/a ones. */
+  /** Each period's due-total by name: the dues of the OPEN, PENDING and SETTLED claims dated in it, skipping the n/a ones. */
   protected readonly periodDueTotals = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const dues = new Map<string, string[]>();
@@ -399,7 +402,7 @@ export class People {
     return this.claimsByPerson().get(personId) ?? [];
   }
 
-  /** The sum of the person's OPEN and SETTLED claims' amounts, with two decimals; OPEN ones not while they are held. */
+  /** The sum of the person's OPEN, PENDING and SETTLED claims' amounts, with two decimals; open ones not while they are held. */
   protected claimedBy(personId: number): string {
     const held = this.people().find((p) => p.id === personId)?.held ?? false;
     return sumAmounts(this.claimsOf(personId).filter((c) => live(c, held)).map((c) => c.amount));
@@ -418,7 +421,7 @@ export class People {
   }
 
   /**
-   * The sum of the person's OPEN and SETTLED claims' dues, each already rounded, skipping the n/a ones; n/a when
+   * The sum of the person's OPEN, PENDING and SETTLED claims' dues, each already rounded, skipping the n/a ones; n/a when
    * their grade in force today has no rate in force today, unless a claim keeps a due fixed by settling or a statement
    * or has a due and is dated on or before today.
    */

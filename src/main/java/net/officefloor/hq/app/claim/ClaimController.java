@@ -128,7 +128,7 @@ public class ClaimController {
         return bulkOpen.open(sheetId.trim(), user.trim(), request.ids());
     }
 
-    /** Settle an OPEN claim; refused to the user who opened it. */
+    /** Settle an OPEN claim; refused to the user who opened it; PENDING instead when a clerk settles it above the clerk limit. */
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
@@ -136,7 +136,30 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
     }
 
-    /** Void a DRAFT or OPEN claim. */
+    /** A steward's reason for rejecting a PENDING claim. */
+    public record RejectRequest(@NotBlank @Size(max = 1000) String reason) {
+    }
+
+    /** Approve a PENDING claim: a steward only, and not the one who opened it. */
+    @PostMapping("/claims/{id}/approve")
+    public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.approve(sheetId.trim(), user.trim(), id));
+    }
+
+    /** Reject a PENDING claim with a reason, back to OPEN: a steward only. */
+    @PostMapping("/claims/{id}/reject")
+    public ClaimView reject(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid RejectRequest request) {
+        // One line in the audit file: any run of white space in the reason becomes a single space.
+        String reason = request.reason().trim().replaceAll("\\s+", " ");
+        return ClaimView.of(service.reject(sheetId.trim(), user.trim(), id, reason));
+    }
+
+    /** Void a DRAFT, OPEN or PENDING claim. */
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
