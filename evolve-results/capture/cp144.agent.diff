@@ -1,0 +1,97 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index cac20f580..b6b76d2c7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -973,13 +973,14 @@ public class ClaimService {
+ 
+     /**
+      * The number a claim due by the date gets when opened: while the sheet numbers by period, the next in its
+-     * period's own sequence (X for no period); otherwise the next sheet-wide number.
++     * period's own sequence (X for no period); otherwise the next sheet-wide number in the fiscal
++     * year of the date (<FY>-<n>).
+      */
+     public String nextNumber(String sheetId, LocalDate date) {
+         if (settings.get(sheetId).numbersByPeriod()) {
+             return sheets.nextSequenceNumber(sheetId, periods.nameOn(sheetId, date).orElse("X"));
+         }
+-        return String.valueOf(sheets.nextClaimNumber(sheetId));
++        return sheets.nextClaimNumber(sheetId, date);
+     }
+ 
+     /** The terms of the person on the date: their own, else their grade's on that date, else the sheet's then. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index f45f3ff41..5200d9631 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -50,6 +50,20 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Query(value = "UPDATE sheet SET last_claim_number = :number WHERE id = :id", nativeQuery = true)
+     int setLastClaimNumber(@Param("id") String id, @Param("number") long number);
+ 
++    /** The last claim number given in the fiscal year on any of the sheets; 0 when none has been given. */
++    @Query(value = "SELECT COALESCE(MAX(last_number), 0) FROM claim_fiscal_number"
++            + " WHERE sheet_id IN (:ids) AND fiscal_year = :year", nativeQuery = true)
++    long maxLastFiscalNumber(@Param("ids") Collection<String> ids, @Param("year") String year);
++
++    /** Sets the sheet's last claim number in the fiscal year; the sheet's row must be locked by the caller. */
++    @Modifying
++    @Query(value = "MERGE INTO claim_fiscal_number f USING (VALUES (:id, :year, :number)) v (sheet_id, fiscal_year, last_number)"
++            + " ON f.sheet_id = v.sheet_id AND f.fiscal_year = v.fiscal_year"
++            + " WHEN MATCHED THEN UPDATE SET last_number = v.last_number"
++            + " WHEN NOT MATCHED THEN INSERT (sheet_id, fiscal_year, last_number) VALUES (v.sheet_id, v.fiscal_year, v.last_number)",
++            nativeQuery = true)
++    int setLastFiscalNumber(@Param("id") String id, @Param("year") String year, @Param("number") long number);
++
+     @Query(value = "SELECT parent FROM sheet WHERE id = :id", nativeQuery = true)
+     String parentOf(@Param("id") String id);
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index e3909949c..7259f84d7 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -112,21 +112,25 @@ public class SheetService {
+     }
+ 
+     /**
+-     * The next claim number on the sheet: the sheets of its tree (its root parent and all the root's descendants)
+-     * share one sequence, so it is the number after the last given on any of them. The rows of the tree's sheets are
+-     * locked, in id order, until the caller's transaction ends, so two claims opened at once get different numbers.
++     * The next claim number on the sheet for a claim placed by the date: <FY>-<n>, counting from 1 within the fiscal
++     * year (by the sheet's fiscal start month) the date falls in. The sheets of its tree (its root parent and all the
++     * root's descendants) share one sequence per fiscal year, so n is the number after the last given in that year on
++     * any of them. The rows of the tree's sheets are locked, in id order, until the caller's transaction ends, so two
++     * claims opened at once get different numbers.
+      */
+     @Transactional
+-    public long nextClaimNumber(String id) {
++    public String nextClaimNumber(String id, LocalDate date) {
++        Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
+         SortedSet<String> tree = treeOf(id);
+         for (String member : tree) {
+             if (sheets.lockById(member) != 1 && member.equals(id)) {
+                 throw new SheetNotFoundException(id);
+             }
+         }
+-        long next = sheets.maxLastClaimNumber(tree) + 1;
+-        sheets.setLastClaimNumber(id, next);
+-        return next;
++        String year = sheet.fiscalYearOf(date);
++        long next = sheets.maxLastFiscalNumber(tree, year) + 1;
++        sheets.setLastFiscalNumber(id, year, next);
++        return year + "-" + next;
+     }
+ 
+     /** The ids of the sheets in the sheet's tree: its topmost ancestor and every sheet below it. */
+diff --git a/src/main/resources/db/migration/V80__claim_fiscal_number.sql b/src/main/resources/db/migration/V80__claim_fiscal_number.sql
+new file mode 100644
+index 000000000..53e7de4f3
+--- /dev/null
++++ b/src/main/resources/db/migration/V80__claim_fiscal_number.sql
+@@ -0,0 +1,8 @@
++-- The last sheet-wide claim number given on a sheet in each fiscal year (FYyyyy): the sheets of a tree share one
++-- sequence per fiscal year, numbered <FY>-<n>. Numbers already given stay as they were.
++CREATE TABLE claim_fiscal_number (
++    sheet_id VARCHAR(100) NOT NULL,
++    fiscal_year VARCHAR(10) NOT NULL,
++    last_number BIGINT NOT NULL,
++    PRIMARY KEY (sheet_id, fiscal_year)
++);
