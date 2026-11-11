@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { Rate, Rates, capped, excessOver, rateOn, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
+import { Rate, Rates, capped, changeFrom, excessOver, rateOn, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
@@ -825,13 +825,20 @@ export class People {
       };
     }),
   );
-  /** Per period: its due-total as the period list shows it. */
-  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
-    this.periods().map((p) => ({
-      name: p.name,
-      dueTotal: p.closedTotal ?? this.periodDueTotals().get(p.name) ?? '0.00',
-    })),
-  );
+  /**
+   * Per period: its due-total as the period list shows it, and its change from the period before it by start date
+   * (blank for the earliest).
+   */
+  protected readonly periodSummary = computed<PeriodSummary[]>(() => {
+    const totals = new Map(
+      this.periods().map((p) => [p.name, p.closedTotal ?? this.periodDueTotals().get(p.name) ?? '0.00']),
+    );
+    const byStart = [...this.periods()].sort((a, b) => a.from.localeCompare(b.from));
+    const changes = new Map(
+      byStart.map((p, i) => [p.name, i === 0 ? '' : changeFrom(totals.get(p.name)!, totals.get(byStart[i - 1].name)!)]),
+    );
+    return this.periods().map((p) => ({ name: p.name, dueTotal: totals.get(p.name)!, change: changes.get(p.name)! }));
+  });
   /** Per status: how many of the sheet's claims have it. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
     ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({

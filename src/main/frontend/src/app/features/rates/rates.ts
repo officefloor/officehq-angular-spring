@@ -100,6 +100,11 @@ export function excessOver(dueTotal: string, cap: string | null): string {
   return decimalOf(hundredths(dueTotal) - hundredths(cap));
 }
 
+/** The figure less the one before it, exactly to two decimals, with a minus sign when lower. */
+export function changeFrom(figure: string, before: string): string {
+  return decimalOf(hundredths(figure) - hundredths(before));
+}
+
 /** Adds dues with two decimals exactly, a correction's negative ones too, skipping the n/a ones. */
 export function sumDues(dues: string[]): string {
   return decimalOf(dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n));
