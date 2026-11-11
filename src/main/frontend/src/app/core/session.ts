@@ -17,12 +17,19 @@ export class Session {
   readonly sheet = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it. */
   readonly today = signal<string | null>(null);
+  /** Counts completed sheet loads, so the screen re-reads the sheet's data even for the same id. */
+  readonly loaded = signal(0);
   private loads = 0;
 
   signIn(name: string): void {
     this.user.set(name);
     this.sheet.set(null);
     this.today.set(null);
+  }
+
+  /** Request options carrying the signed-in user. */
+  headers(): { headers: Record<string, string> } {
+    return { headers: { 'X-User': this.user() ?? '' } };
   }
 
   /** Load a sheet by id; an id never used before starts an empty sheet. */
@@ -34,7 +41,10 @@ export class Session {
       }),
     );
     // A later load wins over a slower earlier one.
-    if (load === this.loads) this.show(loaded);
+    if (load === this.loads) {
+      this.show(loaded);
+      this.loaded.update((n) => n + 1);
+    }
   }
 
   /** Change the active sheet's today. */
