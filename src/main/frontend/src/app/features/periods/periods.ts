@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -78,6 +78,14 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
                 >
                   Close
                 </button>
+                <button
+                  type="button"
+                  data-testid="period-reopen"
+                  [attr.aria-label]="'Reopen period ' + p.name"
+                  (click)="reopen(p)"
+                >
+                  Reopen
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" data-testid="period-error">{{ e.message }}</p>
@@ -99,14 +107,14 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total by its name: the due of the counting claims dated in it. */
   readonly dueTotals = input.required<Map<string, string>>();
-  /** A period was added or closed. */
+  /** A period was added, closed or reopened. */
   readonly saved = output<Period>();
 
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
-  /** The error of the last close refused, and the period it belongs to. */
+  /** The error of the last close or reopen refused, and the period it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
@@ -126,6 +134,24 @@ export class Periods {
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch {
       this.rowError.set({ id: period.id, message: `The period ${period.name} could not be closed: it is already closed.` });
+    }
+  }
+
+  /** Reopen a closed period, making its due-total live again; the store refuses a non-steward or an open period. */
+  protected async reopen(period: Period): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(period.name)}/reopen`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Period>(url, null, this.session.headers()));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? `Only a steward can reopen the period ${period.name}.`
+          : `The period ${period.name} could not be reopened: it is not closed.`;
+      this.rowError.set({ id: period.id, message });
     }
   }
 
