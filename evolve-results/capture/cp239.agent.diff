@@ -1,0 +1,65 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e136925c2..6627a4d21 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -315,7 +315,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+     <app-grades />
+     <app-roles />
+     <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(roundings)]="roundings" [(caps)]="caps" [(pot)]="pot" />
+-    <app-periods [(periods)]="periods" [dues]="dues()" />
++    <app-periods [(periods)]="periods" [dues]="dues()" [claimDueBys]="claimDueBys()" />
+     <app-holidays />
+     <app-void-reasons />
+     <app-templates />
+@@ -1421,6 +1421,10 @@ export class People {
+     }
+     return out;
+   });
++  /** The due-by of each claim that is not VOID or DELETED, for the periods' claim counts. */
++  protected readonly claimDueBys = computed(() =>
++    this.claims().filter((c) => c.status !== 'VOID' && c.status !== 'DELETED').map((c) => c.dueBy),
++  );
+   /** Each person's statements, by person id. */
+   protected readonly statements = signal<ReadonlyMap<number, StatementSummary>>(new Map());
+   /** Each person's patrons, in the order they were named. */
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index f4c10fad9..a465ca5d0 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -261,6 +261,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
+             <th scope="col">Fiscal year</th>
+             <th scope="col">Cap</th>
+             <th scope="col">Locked</th>
++            <th scope="col">Claims</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -275,6 +276,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
+               <td data-testid="period-fy">{{ p.fy }}</td>
+               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
++              <td data-testid="period-claims-count">{{ claimsCountOf(p) }}</td>
+               <td>
+                 <button
+                   type="button"
+@@ -335,6 +337,8 @@ export class Periods {
+   readonly periods = model<Period[]>([]);
+   /** The date and figure of each claim that counts. */
+   readonly dues = input.required<DatedDue[]>();
++  /** The due-by of each claim on the sheet that is not VOID or DELETED, for the periods' claim counts. */
++  readonly claimDueBys = input.required<string[]>();
+ 
+   protected readonly nameInput = signal('');
+   protected readonly fromInput = signal('');
+@@ -394,6 +398,11 @@ export class Periods {
+     });
+   }
+ 
++  /** How many claims belong to the period (their due-by inside it), leaving out VOID and DELETED ones. */
++  protected claimsCountOf(p: Period): number {
++    return this.claimDueBys().filter((d) => p.from <= d && d <= p.to).length;
++  }
++
+   protected dueTotalOf(p: Period): string {
+     return periodDueTotal(p, this.dues());
+   }
