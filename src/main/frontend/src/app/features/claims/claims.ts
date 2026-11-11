@@ -134,6 +134,9 @@ export interface Claim {
   log: ClaimLogLine[];
   /** The date the claim is deferred until; null when it was never deferred. */
   deferredUntil: string | null;
+  /** Whether the claim was deferred while a statement bound it: the deferral takes effect only once
+   *  the binding ends. */
+  deferredBound?: boolean;
   /** How many proofs the claim has. */
   proofs: number;
   /** How many of its proofs are receipts. */
@@ -279,7 +282,9 @@ export function pendingLate(c: Claim, today: string | null, sla: string): boolea
 }
 
 export function deferred(c: Claim, today: string | null): boolean {
-  return isOpen(c) && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+  if (c.deferredUntil === null || today === null || today >= c.deferredUntil) return false;
+  // deferred while bound: not until the binding ends, and then whether open or settled
+  return c.deferredBound ? !c.stated && counts(c) : isOpen(c);
 }
 
 /** The refusal of a change to a claim dated inside a closed period. */

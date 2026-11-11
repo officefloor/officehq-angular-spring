@@ -152,6 +152,13 @@ public class Claim {
     @Column(name = "deferred_on")
     private LocalDate deferredOn;
 
+    /**
+     * Whether the claim was deferred while a statement bound it: the deferral takes effect only once
+     * the binding ends, and then holds whatever the claim's status (a claim settled while bound included).
+     */
+    @Column(name = "deferred_bound", nullable = false)
+    private boolean deferredBound;
+
     /** The last sheet-today a reminder was written for the claim; none when never reminded. */
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
@@ -285,6 +292,7 @@ public class Claim {
         copy.lateEntry = lateEntry;
         copy.deferredUntil = deferredUntil;
         copy.deferredOn = deferredOn;
+        copy.deferredBound = deferredBound;
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.reviewOn = reviewOn;
@@ -518,18 +526,28 @@ public class Claim {
         return deferredUntil;
     }
 
-    /** Defer the claim until a date; {@code madeOn} is the sheet's today. */
+    /**
+     * Defer the claim until a date; {@code madeOn} is the sheet's today. Deferred while a statement
+     * binds it, the deferral takes effect only once the binding ends.
+     */
     public void setDeferredUntil(LocalDate deferredUntil, LocalDate madeOn) {
         this.deferredUntil = deferredUntil;
         this.deferredOn = madeOn;
+        this.deferredBound = stated;
+    }
+
+    /** Whether the claim was deferred while a statement bound it. */
+    public boolean isDeferredBound() {
+        return deferredBound;
     }
 
     /**
-     * Whether the claim was deferred at the end of a day, had it the given status then: deferred
-     * while the sheet's today was on or before the day, until a date after it.
+     * Whether the claim was deferred at the end of a day, had it the given status then and been bound
+     * by a statement then or not ({@code stated}): deferred while the sheet's today was on or before
+     * the day, until a date after it.
      */
-    public boolean isDeferredAsOf(ClaimStatus status, LocalDate day) {
-        return isDeferredOn(status, day) && (deferredOn == null || !deferredOn.isAfter(day));
+    public boolean isDeferredAsOf(ClaimStatus status, LocalDate day, boolean stated) {
+        return isDeferredOn(status, day, stated) && (deferredOn == null || !deferredOn.isAfter(day));
     }
 
     /**
@@ -553,7 +571,19 @@ public class Claim {
 
     /** Whether the claim would be deferred on the given day, had it the given status. */
     public boolean isDeferredOn(ClaimStatus status, LocalDate today) {
-        return status.isOpen() && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+        return isDeferredOn(status, today, stated);
+    }
+
+    /**
+     * Whether the claim would be deferred on the given day, had it the given status and been bound by
+     * a statement or not: a claim deferred while bound is not deferred while still bound, and once
+     * the binding ends is deferred whether open or settled.
+     */
+    private boolean isDeferredOn(ClaimStatus status, LocalDate today, boolean stated) {
+        if (deferredUntil == null || today == null || !today.isBefore(deferredUntil)) {
+            return false;
+        }
+        return deferredBound ? !stated && status.counts() : status.isOpen();
     }
 
     /**

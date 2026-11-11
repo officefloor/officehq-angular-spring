@@ -207,7 +207,7 @@ public class StatementService {
                                         .orElse(null));
                 charged = stated && claim.getStatedCharged() != null ? claim.getStatedCharged()
                         : LateCharge.withCharge(then, claim, person.gradeOn(claim.getDate(), day), figure,
-                                status.isOpen() && !claim.isDeferredAsOf(status, day));
+                                status.isOpen() && !claim.isDeferredAsOf(status, day, stated));
             }
             claim.bind(true, figure, status.isOpen() ? charged : null);
             if (charged != null) {

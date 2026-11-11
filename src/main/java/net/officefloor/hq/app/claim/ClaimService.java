@@ -666,7 +666,8 @@ public class ClaimService {
     /**
      * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it
      * the claim counts in no total, is not overdue and cannot be settled; a statement it is bound
-     * by stays as it is. Refused (409) for a claim that is not OPEN, (400) for a date
+     * by stays as it is. Deferred while a statement binds it, the claim stays in the totals, counts
+     * and can be settled while bound: the deferral takes effect only once the binding ends. Refused (409) for a claim that is not OPEN, (400) for a date
      * not after the sheet's today and (423) when dated inside a closed period.
      */
     @Transactional

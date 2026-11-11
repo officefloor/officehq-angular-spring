@@ -422,7 +422,7 @@ public class Person {
     public boolean countedAsOf(Claim claim, ClaimStatus status, LocalDate day, boolean stated) {
         boolean retired = (retiredFrom != null && (retiredOn == null || !retiredOn.isAfter(day))
                 && !day.isBefore(retiredFrom)) || pastRetirements.stream().anyMatch(r -> r.retiredAsOf(day));
-        return status.counts() && !claim.isDeferredAsOf(status, day)
+        return status.counts() && !claim.isDeferredAsOf(status, day, stated)
                 && (stated || !(status.isOpen() && retired));
     }
 

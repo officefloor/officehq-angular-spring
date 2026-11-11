@@ -6,6 +6,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.crew.CrewService;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.role.RoleService;
@@ -26,7 +28,8 @@ import org.springframework.web.server.ResponseStatusException;
  * are added to the other's (not the other themselves, no repeats), anyone naming them as patron names
  * the other instead (no repeats), and their pool memberships move to the other (shares added when the
  * other is already a member), as do their crew memberships and the crews they lead (dropped where the
- * other is already in the crew or leads it). Their holds, watchers and contact are dropped, and they leave the sheet.
+ * other is already in the crew or leads it). The figures fixed for them in closed or soft-closed periods,
+ * and their opening balances, are added to the other's. Their holds, watchers and contact are dropped, and they leave the sheet.
  */
 @Service
 public class PersonMergeService {
@@ -38,6 +41,7 @@ public class PersonMergeService {
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
     private final CrewService crews;
+    private final PeriodRepository periods;
     private final SheetService sheets;
     private final RoleService roles;
     private final RollupService rollup;
@@ -45,7 +49,9 @@ public class PersonMergeService {
 
     public PersonMergeService(PersonRepository people, PatronRepository patrons, WatchRepository watches,
             ClaimRepository claims, StatementRepository statements, PoolMemberRepository poolMembers,
-            CrewService crews, SheetService sheets, RoleService roles, RollupService rollup, Audit audit) {
+            CrewService crews, PeriodRepository periods, SheetService sheets, RoleService roles, RollupService rollup,
+            Audit audit) {
+        this.periods = periods;
         this.people = people;
         this.patrons = patrons;
         this.watches = watches;
@@ -126,6 +132,11 @@ public class PersonMergeService {
         }
         poolMembers.flush();
         crews.merge(from.getId(), into.getId());
+
+        // the figures fixed for them in closed periods, and their opening balances, go to the other
+        List<Period> theirPeriods = periods.findBySheetIdOrderByFromDateAsc(sheetId);
+        theirPeriods.forEach(p -> p.mergePerson(from.getId(), into.getId()));
+        periods.saveAllAndFlush(theirPeriods);
 
         statements.moveStatements(sheetId, from.getId(), sheetId, into.getId());
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));

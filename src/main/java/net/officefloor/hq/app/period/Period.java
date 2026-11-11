@@ -185,6 +185,23 @@ public class Period {
         }
     }
 
+    /**
+     * A person merged into another: the figures fixed for them when the period was closed and their
+     * opening balance are added to the other's.
+     */
+    public void mergePerson(long fromId, long intoId) {
+        fold(closedDues, fromId, intoId);
+        fold(closedCarried, fromId, intoId);
+        fold(openings, fromId, intoId);
+    }
+
+    private static void fold(Map<Long, BigDecimal> figures, long fromId, long intoId) {
+        BigDecimal moving = figures.remove(fromId);
+        if (moving != null) {
+            figures.merge(intoId, moving, BigDecimal::add);
+        }
+    }
+
     /** Give out the next claim number within this period. */
     public int nextClaimNumber() {
         return ++lastClaimNumber;
