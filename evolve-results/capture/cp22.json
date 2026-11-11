@@ -1,0 +1,64 @@
+{
+  "checkpoint": 22,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp22_hold",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person can be put on hold, and taken off hold again. While held, their OPEN claims count in no\nlive total: not their own claimed or due-total, not the sheet's totals, not a period's total. Their\nSETTLED claims still count. Show hold yes/no. Holding writes PERSON_HELD name=<name>; releasing\nwrites PERSON_RELEASED name=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person can be put on hold, and taken off hold again. While held, their OPEN claims count in no\nlive total: not their own claimed or due-total, not the sheet's totals, not a period's total. Their\nSETTLED claims still count. Show hold yes/no. Holding writes PERSON_HELD name=<name>; releasing\nwrites PERSON_RELEASED name=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2e93c6d1a3c4a5828f7e4eb3b9f3562dcf265a88",
+  "reset_sha": "",
+  "preagent_sha": "2918e96be216dab4c8b2c31801485e0485ef32a7",
+  "prev_sha": "2918e96be216dab4c8b2c31801485e0485ef32a7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8323632,
+    "input_tokens": 22,
+    "output_tokens": 7142,
+    "cache_read_tokens": 580976,
+    "cache_creation_tokens": 71655,
+    "num_turns": 12,
+    "duration_ms": 187079,
+    "duration_api_ms": 65009,
+    "model": "claude-opus-5-5",
+    "session_id": "ff732bf5-af40-4774-8e8c-b2ff381f4433",
+    "stop_reason": "success",
+    "result_text": "You can now put a person on hold and take them off it again, and all four tests in `bin/e2e` pass.\n\n**What it does:**\n- Each person's row shows `person-hold` as yes or no, with a Hold/Release button (`person-hold-toggle`) next to it.\n- While someone is held, their OPEN claims are left out of their claimed and due-total, the sheet's two totals, and any open period's due-total. Their SETTLED claims still count.\n- Holding writes `PERSON_HELD name=<name>` to the audit file and releasing writes `PERSON_RELEASED name=<name>`. When the totals change as a result, the usual `ROLLUP`/`TOTALS` lines follow.\n\n**Where the changes are:**\n- **Stored data:** a new migration, `V17__person_held.sql`, adds a `held` column to people, defaulting to false.\n- **Server:**\n  - `Person` has a single check for whether a claim counts while the person is held. `RollupService` uses it for the live totals and for period totals.\n  - `PersonService.toggleHold` flips the hold and writes the audit lines.\n  - A new endpoint, `POST /api/sheets/{sheetId}/people/{id}/hold`, calls it. The person data sent to the screen now includes `held`.\n- **Screen (`people.ts`):** the person, sheet and period totals use the same rule as the server. A refused hold shows the row's usual `person-error`.\n\n**Two decisions to check:**\n- **Statements are unchanged.** A statement records a person's due-total at that moment, so I didn't treat it as a live total, and it still includes a held person's OPEN claims. The tests don't cover this, so tell me if a hold should affect statements too.\n- **Hold dates aren't supported.** The test helpers allow for holds with from/to dates and a bulk hold, but the request only asks for a plain on/off switch, so I didn't build either.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8323632,
+        "num_turns": 12,
+        "duration_ms": 187079,
+        "duration_api_ms": 65009,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp22.agent.jsonl",
+  "agent_diff_file": "cp22.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
