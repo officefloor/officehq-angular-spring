@@ -503,6 +503,30 @@ public class ClaimService {
     }
 
     /**
+     * Remind an OPEN or PENDING claim: REMIND is written and the claim's reminded date becomes the sheet's today.
+     * Refused for any other status, and for a claim already reminded on the sheet's today.
+     */
+    @Transactional
+    public Claim remind(String sheetId, String user, Long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (claim.getStatus() != ClaimStatus.OPEN && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ClaimRemindException(id, "it is " + claim.getStatus()
+                    + ", only an OPEN or PENDING claim can be reminded");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (today.equals(claim.getRemindedOn())) {
+            throw new ClaimRemindException(id, "it was already reminded on " + today);
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        claim.setRemindedOn(today);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("REMIND", user, person, saved) + numberOf(saved.getNumber()));
+        return saved;
+    }
+
+    /**
      * A claim whose due (as the clerk limit weighs it) is above the proof threshold in force on its date cannot be
      * settled or approved while it has no proof; refused then. A due of n/a is within any threshold.
      */

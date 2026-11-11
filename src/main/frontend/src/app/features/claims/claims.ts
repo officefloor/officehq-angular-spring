@@ -44,6 +44,8 @@ export interface Claim {
   lockedBy: string | null;
   /** Whether the claim was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
+  /** The last day (yyyy-mm-dd) a reminder was written for the claim; null when it was never reminded. */
+  remindedOn: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
@@ -240,7 +242,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Log</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -273,6 +275,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-proofs">{{ c.proofs }}</td>
               <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
               <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</td>
+              <td data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</td>
               <td>
                 <ol class="claim-log">
                   @for (line of c.log; track $index) {
@@ -309,6 +312,14 @@ export function sumAmounts(amounts: string[]): string {
                   (click)="addProof(c)"
                 >
                   Add proof
+                </button>
+                <button
+                  type="button"
+                  data-testid="claim-remind"
+                  [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date"
+                  (click)="remind(c)"
+                >
+                  Remind
                 </button>
                 <label class="visually-hidden" [for]="'claim-split-amount-' + c.id">Amount to split off</label>
                 <input
@@ -717,6 +728,24 @@ export class Claims implements OnInit {
           : closed
             ? `This claim is due by a date in the closed period ${closed.name}: a proof cannot be added to it.`
             : 'A proof could not be added to this claim.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  /** Remind the claim; the store refuses a claim not OPEN or PENDING, and one already reminded on the sheet's today. */
+  protected async remind(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/remind`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, null, this.session.headers()));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch {
+      const message =
+        claim.status !== 'OPEN' && claim.status !== 'PENDING'
+          ? `This claim is ${claim.status}: only an OPEN or PENDING claim can be reminded.`
+          : 'This claim could not be reminded: it may already have been reminded today.';
       this.actionError.set({ id: claim.id, message });
     }
   }

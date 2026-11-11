@@ -91,6 +91,10 @@ public class Claim {
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 
+    /** The last day (the sheet's today then) a reminder was written for the claim; null when never reminded. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** The user whose open editor locks the claim against other users' edits; null when not locked. */
     @Column(name = "locked_by")
     private String lockedBy;
@@ -282,6 +286,14 @@ public class Claim {
 
     public void setLateEntry(boolean lateEntry) {
         this.lateEntry = lateEntry;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    public void setRemindedOn(LocalDate remindedOn) {
+        this.remindedOn = remindedOn;
     }
 
     public String getLockedBy() {

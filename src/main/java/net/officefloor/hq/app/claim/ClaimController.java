@@ -36,12 +36,12 @@ public class ClaimController {
      * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first); and
      * its status log, oldest first; and the date it is deferred until (null when never deferred); and how many proofs
      * it has; and the number of the claim it was split off (null unless it was); and the user whose open editor locks
-     * it (null when not locked).
+     * it (null when not locked); and the last day it was reminded (null when never).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
-            int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
+            int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn) {
 
         static ClaimView of(Claim claim, List<ClaimLog> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -53,7 +53,7 @@ public class ClaimController {
                     claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy(),
                     log.stream().map(ClaimLogView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
-                    claim.isLateEntry());
+                    claim.isLateEntry(), claim.getRemindedOn());
         }
     }
 
@@ -298,6 +298,14 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(service.addProof(sheetId.trim(), user.trim(), id));
+    }
+
+    /** Remind an OPEN or PENDING claim, at most once per sheet-today. */
+    @PostMapping("/claims/{id}/remind")
+    public ClaimView remind(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.remind(sheetId.trim(), user.trim(), id));
     }
 
     /** Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED one. */
