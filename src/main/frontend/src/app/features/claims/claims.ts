@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { dueOf } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -19,7 +20,7 @@ export function sumAmounts(amounts: string[]): string {
   return (cents / 100).toFixed(2);
 }
 
-// One person's claims, newest first, and the form that adds a claim or, once a claim's editor is
+// One person's claims, newest first, each with its due, and the form that adds a claim or, once a claim's editor is
 // opened, saves that claim. Rendered as a table cell inside the person's row.
 @Component({
   selector: 'td[app-claims]',
@@ -60,7 +61,7 @@ export function sumAmounts(amounts: string[]): string {
         <caption class="visually-hidden">Claims of {{ personName() }}</caption>
         <thead>
           <tr>
-            <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th>
+            <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -70,6 +71,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-amount">{{ c.amount }}</td>
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>
+              <td data-testid="claim-due">{{ due(c) }}</td>
               <td>
                 <button
                   type="button"
@@ -98,6 +100,8 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
+  /** The rate for the person's grade, or undefined when the grade has no rate. */
+  readonly pct = input<string>();
   /** A claim was added or saved. */
   readonly saved = output<Claim>();
 
@@ -110,6 +114,11 @@ export class Claims {
 
   protected fieldId(field: string): string {
     return `claim-form-${field}-${this.personId()}`;
+  }
+
+  /** The claim's amount times the rate, or n/a with no rate. */
+  protected due(claim: Claim): string {
+    return dueOf(claim.amount, this.pct());
   }
 
   protected value(event: Event): string {

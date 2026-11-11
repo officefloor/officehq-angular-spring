@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, sumAmounts } from '../claims/claims';
+import { Rate, Rates, dueOf, sumDues } from '../rates/rates';
 
 interface Person {
   id: number;
@@ -11,12 +12,13 @@ interface Person {
 }
 
 // The people on the active sheet, in the order they were added, each with their claims and what
-// they have claimed, the sheet's claimed-total, and the one form that adds a person or, once a
+// they have claimed and their due-total, the sheet's claimed-total and due-total, the grades' rates, and the one form that adds a person or, once a
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [Claims],
+  imports: [Claims, Rates],
   template: `
+    <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
@@ -51,7 +53,7 @@ interface Person {
       <table>
         <thead>
           <tr>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -61,6 +63,7 @@ interface Person {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
+              <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td>
                 <button
                   type="button"
@@ -76,6 +79,7 @@ interface Person {
                 [personId]="p.id"
                 [personName]="p.name"
                 [claims]="claimsOf(p.id)"
+                [pct]="rateOf(p.grade)"
                 (saved)="claimSaved($event)"
               ></td>
             </tr>
@@ -83,6 +87,7 @@ interface Person {
         </tbody>
       </table>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
     </section>
   `,
 })
@@ -104,6 +109,11 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
+  /** The sheet's rates, one per grade that has one. */
+  protected readonly rates = signal<Rate[]>([]);
+  private readonly rateByGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
+  /** Everyone's due-total added up, skipping the n/a ones. */
+  protected readonly dueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   /** The id of the person whose editor is open, or null when the form adds a person. */
@@ -118,6 +128,7 @@ export class People {
       untracked(() => {
         this.people.set([]);
         this.claims.set([]);
+        this.rates.set([]);
         this.reset();
         if (sheet) void this.read(sheet);
       });
@@ -135,6 +146,26 @@ export class People {
   /** The sum of the person's claims' amounts, with two decimals. */
   protected claimedBy(personId: number): string {
     return sumAmounts(this.claimsOf(personId).map((c) => c.amount));
+  }
+
+  /** The rate for a grade, or undefined when it has none. */
+  protected rateOf(grade: string): string | undefined {
+    return this.rateByGrade().get(grade);
+  }
+
+  /** The person's claimed times their grade's rate, or n/a when the grade has no rate. */
+  protected dueTotalOf(person: Person): string {
+    return dueOf(this.claimedBy(person.id), this.rateOf(person.grade));
+  }
+
+  /** Show a set rate at once, then re-read so the screen holds what the store does. */
+  protected rateSaved(rate: Rate): void {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.rates.update((list) =>
+      [...list.filter((r) => r.grade !== rate.grade), rate].sort((a, b) => a.grade.localeCompare(b.grade)),
+    );
+    void this.read(sheet);
   }
 
   /** Show an added or saved claim at once, then re-read so the screen holds what the store does. */
@@ -204,14 +235,16 @@ export class People {
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [list, claims] = await Promise.all([
+    const [list, claims, rates] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
       firstValueFrom(this.http.get<Claim[]>(`${url}/claims`, this.session.headers())),
-    ]).catch(() => [null, null]);
+      firstValueFrom(this.http.get<Rate[]>(`${url}/rates`, this.session.headers())),
+    ]).catch(() => [null, null, null]);
     // A later read wins over a slower earlier one.
-    if (list && claims && read === this.reads && this.session.sheet() === sheet) {
+    if (list && claims && rates && read === this.reads && this.session.sheet() === sheet) {
       this.people.set(list);
       this.claims.set(claims);
+      this.rates.set(rates);
     }
   }
 }
