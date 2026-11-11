@@ -1,0 +1,64 @@
+{
+  "checkpoint": 46,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp46_re-settle",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can re-settle a SETTLED claim (anyone else, or any other status, or a claim in a closed\nperiod, is refused with an error on the claim). Re-settling freezes the claim again at the figure\nit would have today as an open claim bound by no statement: today's rates, grades, floor and late\ncharge. The status log gains a SETTLED line for it, and CLAIM_RESETTLED is written, naming the\nclaim like every claim line, ending old=<previous figure> new=<new figure>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can re-settle a SETTLED claim (anyone else, or any other status, or a claim in a closed\nperiod, is refused with an error on the claim). Re-settling freezes the claim again at the figure\nit would have today as an open claim bound by no statement: today's rates, grades, floor and late\ncharge. The status log gains a SETTLED line for it, and CLAIM_RESETTLED is written, naming the\nclaim like every claim line, ending old=<previous figure> new=<new figure>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "edc7c5085d62884308b3af70e894e3008c981f5a",
+  "reset_sha": "",
+  "preagent_sha": "931dfd5e7f95365f83bfdae8ccb011387608a0fb",
+  "prev_sha": "931dfd5e7f95365f83bfdae8ccb011387608a0fb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7430299999999999,
+    "input_tokens": 30,
+    "output_tokens": 6018,
+    "cache_read_tokens": 694350,
+    "cache_creation_tokens": 60460,
+    "num_turns": 16,
+    "duration_ms": 234824,
+    "duration_api_ms": 63496,
+    "model": "claude-opus-5-5",
+    "session_id": "cf1a65b9-b0ae-43f1-a055-13924ff4806d",
+    "stop_reason": "success",
+    "result_text": "Stewards can now re-settle a SETTLED claim, and all 4 tests in the acceptance spec pass with `bin/e2e`.\n\n**What it does**\n- **Who and when:** only a steward can do it, only on a SETTLED claim, and not in a closed period. Anything else is refused with an error on the claim, and nothing is written to the store or the audit file.\n- **New figure:** the claim's due is set again to what it would be today as an open claim not bound by any statement. That uses the current rate for the person's grade, the floor and today's late charge. Corrections (negative claims) still get no floor and no late charge.\n- **Records:** the claim's status log gets a new `SETTLED` line, and the audit file gets `CLAIM_RESETTLED \u2026 number=<n> old=<previous figure> new=<new figure>`, followed by the usual `ROLLUP`/`TOTALS` lines.\n\n**Changes**\n- **Server:** a new `resettle` method in `ClaimService.java`, a `POST /api/sheets/{sheetId}/claims/{id}/resettle` endpoint in `ClaimController.java`, and a new `ClaimResettleForbiddenException` that returns 403 when the user is not a steward.\n- **Front end:** a \"Re-settle\" button (`claim-resettle`) on each claim row in `claims.ts`. A refusal shows in `claim-error` with a message for not being a steward, the wrong status, or a closed period.\n- **Data:** no schema change was needed, because the claim's existing settled-due column holds the new figure.\n\n**One reading to check:** \"today's rates, grades\" could mean the rate in force on the sheet's today or on the claim's own date. I used the same figure an open claim shows today, which takes the rate and grade in force on the claim's date as they're set now. The tests pass with that, but if you meant the rate and grade on the sheet's today, it's a small change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7430299999999999,
+        "num_turns": 16,
+        "duration_ms": 234824,
+        "duration_api_ms": 63496,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp46.agent.jsonl",
+  "agent_diff_file": "cp46.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

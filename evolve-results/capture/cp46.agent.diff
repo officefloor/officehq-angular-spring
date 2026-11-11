@@ -1,0 +1,132 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 753ad2559..1dc7928b6 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -139,7 +139,7 @@ export function overdue(claim: Claim, today: string | null): boolean {
+   return isOpen(claim) && today !== null && claim.dueBy < today;
+ }
+ 
+-type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
++type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
+ 
+ /** Sums amounts with two decimals exactly, in whole cents. */
+ export function sumAmounts(amounts: string[]): string {
+@@ -336,6 +336,7 @@ export class Claims {
+     { action: 'void', label: 'Void' },
+     { action: 'approve', label: 'Approve' },
+     { action: 'reject', label: 'Reject' },
++    { action: 'resettle', label: 'Re-settle' },
+   ];
+   /** The people other than this one, whom a claim may be reassigned to. */
+   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
+@@ -448,7 +449,7 @@ export class Claims {
+   }
+ 
+   /**
+-   * Open, settle, void, approve or reject a claim; the store refuses a change its status, or the user's role, does not
++   * Open, settle, void, approve, reject or re-settle a claim; the store refuses a change its status, or the user's role, does not
+    * allow. Rejecting takes the reason typed for the claim.
+    */
+   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
+@@ -472,10 +473,14 @@ export class Claims {
+         e instanceof HttpErrorResponse && e.status === 403
+           ? action === 'settle'
+             ? 'Whoever opened this claim cannot also settle it: another user must settle it.'
++            : action === 'resettle'
++            ? 'Only a steward can re-settle a claim.'
+             : 'Only a steward can approve or reject a pending claim, and not the one who opened it.'
+           : closed
+               ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
+-              : `This claim's status does not let it be ${pastOf[action]}.`;
++              : action === 'resettle'
++                ? `This claim is ${claim.status}: only a SETTLED claim can be re-settled.`
++                : `This claim's status does not let it be ${pastOf[action]}.`;
+       this.actionError.set({ id: claim.id, message });
+     }
+   }
+@@ -541,4 +546,5 @@ const pastOf: Record<ClaimAction, string> = {
+   void: 'voided',
+   approve: 'approved',
+   reject: 'rejected',
++  resettle: 're-settled',
+ };
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c41c28cf1..1ea1ac4fb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -164,6 +164,14 @@ public class ClaimController {
+         return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
+     }
+ 
++    /** Re-settle a SETTLED claim at its figure as of today: a steward only. */
++    @PostMapping("/claims/{id}/resettle")
++    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return view(service.resettle(sheetId.trim(), user.trim(), id));
++    }
++
+     /** A steward's reason for rejecting a PENDING claim. */
+     public record RejectRequest(@NotBlank @Size(max = 1000) String reason) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimResettleForbiddenException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimResettleForbiddenException.java
+new file mode 100644
+index 000000000..5c305c259
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimResettleForbiddenException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A claim re-settled by a user who may not: only a steward re-settles a claim. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class ClaimResettleForbiddenException extends RuntimeException {
++
++    public ClaimResettleForbiddenException(Long id, String user) {
++        super("Claim " + id + " cannot be re-settled by " + user + ": only a steward re-settles a claim");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e9fbad2c1..37ed00f40 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -254,6 +254,37 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * A steward re-settles a SETTLED claim: its due is frozen again at the figure it would have today as an OPEN claim
++     * bound by no statement (today's rates, grades and floor, with its late charge as of today). Refused for any other
++     * status, a closed period, or a user not a steward.
++     */
++    @Transactional
++    public Claim resettle(String sheetId, String user, Long id) {
++        Claim claim = claims.findForUpdate(id, sheetId)
++                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
++        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ClaimResettleForbiddenException(id, user);
++        }
++        if (claim.getStatus() != ClaimStatus.SETTLED) {
++            throw new ClaimStatusException(id, claim.getStatus(), ClaimStatus.SETTLED);
++        }
++        periods.requireOpen(sheetId, claim.getDate());
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        String old = shownDue(sheetId, person, claim);
++        BigDecimal figure = dueOf(sheetId, person, claim);
++        claim.setSettledDue(settings.get(sheetId).withLateCharge(figure, !claim.isCorrection(), claim.getDueBy(),
++                claim.getDate()));
++        Claim saved = claims.saveAndFlush(claim);
++        log(sheetId, user, person, saved);
++        audit.recordOnCommit(record("CLAIM_RESETTLED", user, person, saved) + numberOf(saved.getNumber())
++                + " old=" + old + " new=" + shownDue(sheetId, person, saved));
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
+     /** The PENDING claim a steward decides; refused for any other status, a closed period, or a user not a steward. */
+     private Claim pendingForDecision(String sheetId, String user, Long id, ClaimStatus to) {
+         Claim claim = claims.findForUpdate(id, sheetId)
