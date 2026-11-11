@@ -49,8 +49,8 @@ import org.springframework.web.server.ResponseStatusException;
  * the user who opened a claim cannot approve it. The user who last edited a claim (through its form or
  * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is bound by a statement
  * like any other claim that counts: while a statement binds it, it shows the bound figure. An overdue claim's due gains a late charge on its
- * figure (see {@link LateCharge}), and the floor is applied last: a claim's live due is never below
- * the sheet's floor. A statement binds only the rate figure, not the charge nor the floor, and settling fixes the charge into the settled due. A claim with
+ * figure raised to the floor (see {@link LateCharge}): the floor is applied first, so a claim's live due is its floored
+ * figure plus the charge on it. A statement binds the floored figure, and settling fixes the charge into the settled due. A claim with
  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
  * of the same person that it corrects. Its due has no floor and no late charge. A steward can move
  * a DRAFT, OPEN or PENDING claim to another person: it keeps its date, takes the next number (a
@@ -133,8 +133,8 @@ public class ClaimService {
 
     /**
      * A claim's due on the sheet's today: the due fixed when settled, else the due as shown that a
-     * statement bound (late charge included), else its figure with its late
-     * charge added on top, raised to the floor (see {@link LateCharge}); null when it has none.
+     * statement bound (late charge included), else its figure raised to the floor with its late
+     * charge on that added on top (see {@link LateCharge}); null when it has none.
      */
     public BigDecimal charged(String sheetId, Person person, Claim claim) {
         if (isFrozen(claim)) {

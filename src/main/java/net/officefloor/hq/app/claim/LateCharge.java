@@ -11,9 +11,9 @@ import net.officefloor.hq.app.sheet.Sheet;
  * on its date, see {@link Sheet#lateFrom}, on the sheet's today): for each full 30 days it is overdue, the late
  * percent in force on that boundary date (its due-by plus the grace, plus 30, 60, 90 ... days) of
  * its figure plus the charges of the boundaries before it (the charge compounds), rounded to the cent as the claim rounds (see {@link Rounding}), the charges added up. A correction has none, nor has a claim whose charge was waived. A statement binds the due as shown, charge included (see StatementService); settling a claim fixes it into its due.
- * The charge is worked out on the rate figure alone (or the figure a statement bound); the floor is applied last: a
- * claim's live due is the greater of the floor in force on its date and its figure plus its charge (a correction has
- * no floor).
+ * The floor is applied first: the figure is raised to the floor in force on the claim's date (a correction has no
+ * floor), and the charge is worked out on that floored figure (or the floored figure a statement bound); a claim's
+ * live due is its floored figure plus its charge.
  */
 public final class LateCharge {
 
@@ -23,30 +23,33 @@ public final class LateCharge {
     private LateCharge() {
     }
 
-    /** The figure with its late charge added on top, then raised to the floor; null when the figure is null. */
+    /** The figure raised to the floor, with its late charge on that added on top; null when the figure is null. */
     public static BigDecimal withCharge(Sheet sheet, Claim claim, String grade, BigDecimal figure) {
-        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, grade, figure)));
+        BigDecimal base = floored(sheet, claim, figure);
+        return base == null ? null : base.add(charge(sheet, claim, grade, base));
     }
 
     /**
-     * The figure with its late charge on the sheet's today added on top, then raised to the floor,
+     * The figure raised to the floor, with its late charge on that on the sheet's today added on top,
      * the claim open ({@code open}: OPEN or PENDING and not deferred) or not; null when the figure is null.
      */
     public static BigDecimal withCharge(Sheet sheet, Claim claim, String grade, BigDecimal figure, boolean open) {
-        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, grade, figure, open)));
+        BigDecimal base = floored(sheet, claim, figure);
+        return base == null ? null : base.add(charge(sheet, claim, grade, base, open));
     }
 
     /**
-     * The figure with the late charge it would have on the sheet's today were the claim open,
-     * whatever its status; null when the figure is null.
+     * The figure raised to the floor, with the late charge it would have on the sheet's today were the
+     * claim open, whatever its status; null when the figure is null.
      */
     public static BigDecimal withChargeAsOpen(Sheet sheet, Claim claim, String grade, BigDecimal figure) {
-        return figure == null ? null : floored(sheet, claim, figure.add(charge(sheet, claim, grade, figure, true)));
+        BigDecimal base = floored(sheet, claim, figure);
+        return base == null ? null : base.add(charge(sheet, claim, grade, base, true));
     }
 
-    /** A due raised to the floor in force on the claim's date; a correction's is not. */
-    private static BigDecimal floored(Sheet sheet, Claim claim, BigDecimal due) {
-        return claim.isCorrection() ? due : due.max(sheet.floorOn(claim.getDate()));
+    /** A figure raised to the floor in force on the claim's date; a correction's is not; null when it is null. */
+    public static BigDecimal floored(Sheet sheet, Claim claim, BigDecimal figure) {
+        return figure == null || claim.isCorrection() ? figure : figure.max(sheet.floorOn(claim.getDate()));
     }
 
     /** The late charge on a claim's figure on the sheet's today; zero when it is not overdue. */

@@ -35,7 +35,8 @@ import org.springframework.web.server.ResponseStatusException;
  * claim shows and totals that due, its late charge no longer following the sheet's today, and the
  * next statement binds it as it stands (a SETTLED claim's frozen due is unaffected). A claim of
  * theirs that does not count is unbound, so its figure and late charge are live again. The rate
- * figure under the charge is kept too (the floor is applied last, see {@link net.officefloor.hq.app.claim.LateCharge}).
+ * figure under the charge, raised to the floor, is kept too (the floor is applied before the charge, see
+ * {@link net.officefloor.hq.app.claim.LateCharge}).
  * A steward can cancel a person's last statement: the claims it bound are live again (a figure bound
  * by a statement before it is not restored), and the statement before it is the last one again.
  */
@@ -140,6 +141,9 @@ public class StatementService {
         for (Claim claim : theirs) {
             if (person.counts(claim, today)) {
                 BigDecimal figure = claimService.figure(sheetId, person, claim);
+                if (claim.getStatus() != ClaimStatus.SETTLED) {
+                    figure = LateCharge.floored(sheets.sheet(sheetId), claim, figure);
+                }
                 BigDecimal charged = claimService.charged(sheetId, person, claim);
                 claim.bind(true, figure, charged);
                 if (charged != null) {
@@ -188,11 +192,12 @@ public class StatementService {
                 charged = figure;
             } else {
                 figure = stated ? claim.getStatedDue()
-                        : RateChain.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim)
-                                .map(Rate::getPct)
-                                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
-                                        Rounding.mode(then, Rounding.dateOf(claim, theirs))))
-                                .orElse(null);
+                        : LateCharge.floored(then, claim,
+                                RateChain.inForce(ratesThen, person.gradeOn(claim.getDate(), day), claim)
+                                        .map(Rate::getPct)
+                                        .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2,
+                                                Rounding.mode(then, Rounding.dateOf(claim, theirs))))
+                                        .orElse(null));
                 charged = stated && claim.getStatedCharged() != null ? claim.getStatedCharged()
                         : LateCharge.withCharge(then, claim, person.gradeOn(claim.getDate(), day), figure,
                                 status.isOpen() && !claim.isDeferredAsOf(status, day));

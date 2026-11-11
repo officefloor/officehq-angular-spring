@@ -320,7 +320,7 @@ public class RollupService {
 
     /**
      * A claim's figure as the screen shows it: the due fixed when settled, else the due as shown bound by the
-     * last statement (late charge included), else its live due (rounded as the claim rounds, see {@link Rounding}), with its late charge added on top, then raised to the floor (a correction's is not);
+     * last statement (late charge included), else its live due (rounded as the claim rounds, see {@link Rounding}), raised to the floor (a correction's is not), with its late charge on that added on top;
      * null when none.
      */
     private static BigDecimal figure(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims, Person person,

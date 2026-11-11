@@ -190,10 +190,10 @@ export interface Lateness {
 /**
  * A claim's due in whole cents as shown: its figure (see {@link claimDueCents}) with, when it is
  * overdue, a late charge added on top: for each full 30 days overdue, the late percent in force on
- * that boundary date (its due-by plus its grace days, plus 30, 60, 90 ... days) of that figure plus the charges of the boundaries before it, rounded to whole cents,
+ * that boundary date (its due-by plus its grace days, plus 30, 60, 90 ... days) of that floored figure plus the charges of the boundaries before it, rounded to whole cents,
  * the charges added up. Both round as the claim rounds by `roundOn` (see {@link roundsHalfUp}).
- * The floor is applied last: the due is the greater of the floor in force on the claim's date and
- * the figure plus its charge. While a statement binds an open claim, its due is the one shown then,
+ * The floor is applied first: the figure is raised to the floor in force on the claim's date, and
+ * the charge is worked out on that floored figure. While a statement binds an open claim, its due is the one shown then,
  * late charge included; a settled claim's due is
  * frozen as it was settled, a correction has no floor and no charge, and a waived claim no charge. Null when it has no figure.
  */
@@ -211,16 +211,16 @@ export function chargedDueCents(
   // while bound, an open claim shows the due as shown when its statement bound it, late charge included
   if (c.stated && c.statedCharged !== null && isOpen(c)) return cents(c.statedCharged);
   if (isCorrection(c)) return figure;
-  const floor = cents(valueOn(floors, c.date, START_FLOOR));
-  if (!isOpen(c)) return Math.max(figure, floor);
+  const floored = Math.max(figure, cents(valueOn(floors, c.date, START_FLOOR)));
+  if (!isOpen(c)) return floored;
   const grace = graceOn(late.graces, grade, c.date);
   const periods = c.waived ? 0 : Math.floor(daysOverdue(c, late.today, grace) / 30);
   let charge = 0;
   for (let k = 1; k <= periods; k++) {
     const boundary = plusDays(dueBy(c), grace + 30 * k);
-    charge += dueCents(figure + charge, valueOn(late.latePcts, boundary, START_LATE_PCT), halfUp) ?? 0;
+    charge += dueCents(floored + charge, valueOn(late.latePcts, boundary, START_LATE_PCT), halfUp) ?? 0;
   }
-  return Math.max(figure + charge, floor);
+  return floored + charge;
 }
 
 /** A due in whole cents with two decimals, or n/a when there is no rate. */
