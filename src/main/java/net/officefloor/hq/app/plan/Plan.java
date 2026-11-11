@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,7 +25,7 @@ import java.util.Set;
  * A person's plan: an amount, a start date, every so many days or a day of the month, and an end date.
  * Its plan dates are the start, then every that many days, up to the end; or, monthly, that day in
  * every month from the start's month (a day beyond the month's length on its last day), dates before
- * the start left out. It keeps each date it has made a claim for, and each time it was paused: a plan
+ * the start left out. It keeps each date it has made a claim for, with that claim, and each time it was paused: a plan
  * date on or after a pause's day and before its resume's day is skipped, not postponed. Its amount
  * can be changed; each change is kept, oldest first, and applies to the claims generated after it.
  * It may name one of its sheet's descendants: its claims are then made on that sheet instead.
@@ -63,8 +64,7 @@ public class Plan {
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "plan_date", joinColumns = @JoinColumn(name = "plan_id"))
-    @Column(name = "claim_date", nullable = false)
-    private Set<LocalDate> made = new HashSet<>();
+    private Set<PlanDate> made = new HashSet<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
@@ -217,11 +217,17 @@ public class Plan {
 
     /** Whether the plan has made its claim for this date. */
     public boolean hasMade(LocalDate date) {
-        return made.contains(date);
+        return made.stream().anyMatch(m -> m.getClaimDate().equals(date));
     }
 
-    public void markMade(LocalDate date) {
-        made.add(date);
+    public void markMade(LocalDate date, long claimId) {
+        made.add(new PlanDate(date, claimId));
+    }
+
+    /** The ids of the claims the plan has made, in the order of their plan dates (those not kept left out). */
+    public List<Long> madeClaimIds() {
+        return made.stream().filter(m -> m.getClaimId() != null)
+                .sorted(Comparator.comparing(PlanDate::getClaimDate)).map(PlanDate::getClaimId).toList();
     }
 
     /** How many claims the plan has made so far. */

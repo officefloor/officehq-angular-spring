@@ -142,12 +142,18 @@ public class PlanService {
         return saved;
     }
 
+    /** A plan whose amount was changed, and the DRAFT claims it generated that took the new amount. */
+    public record AmountChanged(Plan plan, List<Claim> edited) {
+    }
+
     /**
-     * Change the plan's amount on the sheet's today: the claims generated from then on take it, those
-     * already generated keep theirs.
+     * Change the plan's amount on the sheet's today: the claims generated from then on take it, and so
+     * do those it already generated that are still DRAFT, in the order of their plan dates, each as the
+     * claim form's save would edit it (written as CLAIM_EDITED); a draft the form would refuse, and a
+     * claim in any other status, keeps its amount.
      */
     @Transactional
-    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+    public AmountChanged changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
@@ -159,7 +165,15 @@ public class PlanService {
         audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " start=" + saved.getStart() + " amount="
                 + saved.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
-        return saved;
+        String target = saved.getTargetSheetId() != null ? saved.getTargetSheetId() : sheetId;
+        BigDecimal newAmount = saved.getAmount().setScale(2, RoundingMode.UNNECESSARY);
+        List<Claim> edited = new ArrayList<>();
+        for (long claimId : saved.madeClaimIds()) {
+            if (claims.takesAmount(target, user, claimId, newAmount)) {
+                edited.add(claims.updateAmount(target, user, claimId, newAmount));
+            }
+        }
+        return new AmountChanged(saved, edited);
     }
 
     /** Make the claims the sheet's plans are due to have made by its today: the claims made, in order. */
@@ -195,9 +209,10 @@ public class PlanService {
                 if (plan.hasMade(day) || plan.skips(day) || !claims.takesDate(target, personId, day)) {
                     continue;
                 }
-                made.add(claims.add(target, user, personId,
-                        plan.getAmount().setScale(2, RoundingMode.UNNECESSARY), day, "", null, null, List.of()));
-                plan.markMade(day);
+                Claim claim = claims.add(target, user, personId,
+                        plan.getAmount().setScale(2, RoundingMode.UNNECESSARY), day, "", null, null, List.of());
+                made.add(claim);
+                plan.markMade(day, claim.getId());
             }
             plans.saveAndFlush(plan);
         }

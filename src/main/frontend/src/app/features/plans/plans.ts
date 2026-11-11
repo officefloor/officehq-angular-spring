@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import type { Claim } from '../claims/claims';
 
 /** A person's plan, with how many claims it has made so far. */
 export interface Plan {
@@ -153,6 +154,8 @@ export class PersonPlans {
   readonly added = output<Plan>();
   /** A plan paused or resumed, to replace where it is. */
   readonly changed = output<Plan>();
+  /** The DRAFT claims a plan's new amount reached, each to replace where it is. */
+  readonly claimsEdited = output<Claim[]>();
 
   protected readonly amountInput = signal('');
   protected readonly startInput = signal('');
@@ -201,7 +204,7 @@ export class PersonPlans {
     this.submitting = true;
     try {
       const saved = await firstValueFrom(
-        this.http.post<Plan>('/api/plans/amount', {
+        this.http.post<{ plan: Plan; claims: Claim[] }>('/api/plans/amount', {
           sheet,
           user: this.session.user(),
           planId: plan.id,
@@ -214,7 +217,8 @@ export class PersonPlans {
         delete rest[plan.id];
         return rest;
       });
-      this.changed.emit(saved);
+      this.changed.emit(saved.plan);
+      this.claimsEdited.emit(saved.claims);
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
       this.rowError.set({

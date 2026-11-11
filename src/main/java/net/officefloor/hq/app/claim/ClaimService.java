@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.PeriodService;
@@ -244,6 +245,27 @@ public class ClaimService {
         audit.recordOnCommit(record("CLAIM_EDITED", sheetId, user, person(sheetId, saved.getPersonId()), saved));
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Whether the claim form's save would take the claim on the sheet at a new amount (not below
+     * 0.00), its other fields kept: a DRAFT claim no other user is editing, on a sheet not archived,
+     * by a user who is no viewer, outside every closed period, its person not retired by its date, and with no lines
+     * unless the amount is unchanged.
+     */
+    @Transactional(readOnly = true)
+    public boolean takesAmount(String sheetId, String user, long id, BigDecimal amount) {
+        if (sheets.sheet(sheetId).isArchived() || Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return false;
+        }
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElse(null);
+        if (claim == null || claim.getStatus() != ClaimStatus.DRAFT || claim.isLockedAgainst(user)) {
+            return false;
+        }
+        Optional<Person> person = people.findByIdAndSheetId(claim.getPersonId(), sheetId);
+        return person.isPresent() && !periods.isClosed(sheetId, claim.getDueBy())
+                && !person.get().refusesClaimOn(claim.getDate())
+                && (claim.getLines().isEmpty() || amount.compareTo(claim.getAmount()) == 0);
     }
 
     /**

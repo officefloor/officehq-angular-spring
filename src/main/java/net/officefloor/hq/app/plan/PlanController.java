@@ -48,6 +48,10 @@ public class PlanController {
             @NotNull Long planId, @NotNull @Pattern(regexp = ClaimController.AMOUNT) String amount) {
     }
 
+    /** A plan whose amount was changed, and its DRAFT claims on this sheet that took the new amount. */
+    public record ChangeAmountResponse(PlanResponse plan, List<ClaimResponse> claims) {
+    }
+
     /** A plan, its amount's changes oldest first, each as {@code <date> amount=<amount>}. */
     public record PlanResponse(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
             LocalDate end, String target, int generated, String nextDates, boolean paused, List<String> changes) {
@@ -113,10 +117,14 @@ public class PlanController {
     }
 
     @PostMapping("/amount")
-    public PlanResponse changeAmount(@Valid @RequestBody ChangeAmountRequest req) {
+    public ChangeAmountResponse changeAmount(@Valid @RequestBody ChangeAmountRequest req) {
         String sheet = req.sheet().trim();
-        Plan plan = service.changeAmount(sheet, req.user().trim(), req.planId(), ClaimController.amount(req.amount()));
-        return response(plan, sheets.today(sheet));
+        PlanService.AmountChanged changed = service.changeAmount(sheet, req.user().trim(), req.planId(),
+                ClaimController.amount(req.amount()));
+        // the claims edited on a descendant sheet are listed on that sheet only
+        List<ClaimResponse> here = changed.edited().stream().filter(c -> c.getSheetId().equals(sheet))
+                .map(ClaimController::response).toList();
+        return new ChangeAmountResponse(response(changed.plan(), sheets.today(sheet)), here);
     }
 
     @PostMapping("/generate")
