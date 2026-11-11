@@ -73,8 +73,8 @@ public class RollupService {
         }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
-        BigDecimal dueTotal = zero();
-        BigDecimal overdueTotal = zero();
+        List<BigDecimal> dues = new ArrayList<>();
+        List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             List<Claim> theirs = counted.getOrDefault(person.getId(), List.of()).stream()
                     .filter(claim -> person.counts(claim, today))
@@ -101,17 +101,27 @@ public class RollupService {
                 }
             }
             claimedTotal = claimedTotal.add(claimed);
-            overdueTotal = overdueTotal.add(overdue);
+            overdues.add(overdue);
             if (anyDue && sheet != null) {
                 due = sheet.capped(due);
             }
             if (anyDue) {
-                dueTotal = dueTotal.add(due);
+                dues.add(due);
             }
             figures.put(person.getId(), new Figures(person.getName(), shown(claimed), anyDue ? shown(due) : "n/a",
                     shown(overdue)));
         }
-        return new Snapshot(figures, shown(claimedTotal), shown(dueTotal), shown(overdueTotal));
+        return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
+    }
+
+    /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+    private static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        List<BigDecimal> kept = new ArrayList<>(figures);
+        if (kept.size() >= 3) {
+            kept.sort(null);
+            kept = kept.subList(1, kept.size() - 1);
+        }
+        return kept.stream().reduce(zero(), BigDecimal::add);
     }
 
     /**

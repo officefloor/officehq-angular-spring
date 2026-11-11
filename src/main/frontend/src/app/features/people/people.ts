@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, statusOn, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { Rate, Rates, capped, excessOver, rateOn, sumDues } from '../rates/rates';
+import { Rate, Rates, capped, excessOver, rateOn, sumDues, trimmedSumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
 import { Header } from '../header/header';
 
@@ -421,14 +421,14 @@ export class People {
         this.periods().map((per) => [per.name, sumDues(this.people().map((p) => this.periodDueTotalOf(p, per)))]),
       ),
   );
-  /** Everyone's due-total added up, skipping the n/a ones. */
-  protected readonly dueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
+  /** Everyone's due-total added up, skipping the n/a ones and, with three or more, the highest and lowest. */
+  protected readonly dueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.dueTotalOf(p))));
   /** How many of everyone's counted claims are overdue. */
   protected readonly overdueCount = computed(() =>
     this.people().reduce((total, p) => total + this.overdueOf(p).length, 0),
   );
-  /** Everyone's overdue-total added up. */
-  protected readonly overdueTotal = computed(() => sumDues(this.people().map((p) => this.overdueTotalOf(p))));
+  /** Everyone's overdue-total added up, with three or more leaving out the highest and lowest. */
+  protected readonly overdueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.overdueTotalOf(p))));
   /** Per grade: the people not retired on it today, as the list shows their grade, and their due-totals added up. */
   protected readonly gradeSummary = computed<GradeSummary[]>(() =>
     this.grades.map((grade) => {

@@ -86,6 +86,14 @@ export function sumDues(dues: string[]): string {
   return decimalOf(dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n));
 }
 
+/** As {@link sumDues}, but leaving out the single highest and lowest figure when there are three or more. */
+export function trimmedSumDues(dues: string[]): string {
+  const figures = dues.filter((d) => d !== 'n/a').map(hundredths);
+  if (figures.length < 3) return sumDues(dues);
+  const sorted = [...figures].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return decimalOf(sorted.slice(1, -1).reduce((total, d) => total + d, 0n));
+}
+
 // The rate in force on the sheet's today for each grade, every rate with its from-date, and the form
 // that sets a grade's rate from a date.
 @Component({
