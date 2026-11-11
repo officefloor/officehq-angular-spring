@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 import java.math.RoundingMode;
 import net.officefloor.hq.app.Audit;
@@ -70,6 +71,35 @@ public class AuditViewService {
             }
         }
         Collections.reverse(found);
+        return found;
+    }
+
+    /**
+     * The sheet's activity: for every user and every event in the sheet's audit lines, one line
+     * {@code <user> <EVENT> <count>}, sorted by user then event. A line with no {@code by=} counts
+     * for no one.
+     */
+    public List<String> activity(String sheet) {
+        TreeMap<String, TreeMap<String, Integer>> counts = new TreeMap<>();
+        for (String line : audit.lines()) {
+            if (!ofSheet(line, sheet)) {
+                continue;
+            }
+            String[] fields = line.split(" ");
+            String by = null;
+            for (String field : fields) {
+                if (field.startsWith("by=")) {
+                    by = field.substring(3);
+                    break;
+                }
+            }
+            if (by == null || by.isEmpty()) {
+                continue;
+            }
+            counts.computeIfAbsent(by, u -> new TreeMap<>()).merge(fields[0], 1, Integer::sum);
+        }
+        List<String> found = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, count) -> found.add(user + " " + event + " " + count)));
         return found;
     }
 

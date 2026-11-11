@@ -35,6 +35,15 @@ public class AuditViewController {
         return new AuditViewResponse(service.lines(req.sheet().trim(), req.name()));
     }
 
+    public record ActivityRequest(@NotBlank @Size(max = 100) String sheet) {
+    }
+
+    /** The sheet's activity: one line per user and event with its count, by user then event. */
+    @PostMapping("/activity")
+    public AuditViewResponse activity(@Valid @RequestBody ActivityRequest req) {
+        return new AuditViewResponse(service.activity(req.sheet().trim()));
+    }
+
     /** A claim's timeline: the audit lines about it, newest first. */
     @PostMapping("/claim")
     public AuditViewResponse claim(@Valid @RequestBody ClaimTimelineRequest req) {

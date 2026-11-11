@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, plusDays, reviewLate, roundingDate, statusAt } from '../claims/claims';
 import { AuditView } from '../audit/audit-view';
+import { Activity } from '../audit/activity';
 import { TreeSearch } from '../search/tree-search';
 import { Holidays } from '../holidays/holidays';
 import { DatedDue, Period, Periods, classicPeriodDueTotal, periodDueTotal, periodOn, personPeriodCarried, personPeriodDueTotal } from '../periods/periods';
@@ -257,7 +258,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
 
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, AuditView, Header, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons],
+  imports: [FigurePipe, AuditView, Activity, Header, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -287,6 +288,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
     <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [periods]="periods()" [(pools)]="pools" />
     <app-crews [people]="crewPeople()" [(crews)]="crews" />
     <app-audit-view />
+    <app-activity />
     <app-tree-search />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
