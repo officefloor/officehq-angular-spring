@@ -14,6 +14,7 @@ const STARTING: Record<string, string> = { floor: '1.00', terms: '14', 'late-pct
 interface SheetView {
   id: string;
   today: string;
+  archived: boolean;
 }
 
 // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
@@ -26,6 +27,8 @@ export class Session {
   readonly sheet = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it. */
   readonly today = signal<string | null>(null);
+  /** Whether the active sheet is archived: everything stays visible and every change is refused. */
+  readonly archived = signal(false);
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
   /** Counts completed sheet loads, so the screen re-reads the sheet's data even for the same id. */
@@ -104,8 +107,21 @@ export class Session {
     if (this.sheet() === saved.id) this.show(saved);
   }
 
+  /** Archive the active sheet: a steward may; every change to it is refused from then on. */
+  async archive(): Promise<void> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null, {
+        headers: { 'X-User': this.user() ?? '' },
+      }),
+    );
+    if (this.sheet() === saved.id) this.show(saved);
+  }
+
   private show(view: SheetView): void {
     this.sheet.set(view.id);
     this.today.set(view.today);
+    this.archived.set(view.archived);
   }
 }

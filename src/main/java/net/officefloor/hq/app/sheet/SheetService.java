@@ -1,7 +1,10 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.LocalDate;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -18,11 +21,16 @@ public class SheetService {
     private final SheetRepository sheets;
     private final RollupService rollup;
     private final PeriodService periods;
+    private final RoleService roles;
+    private final Audit audit;
 
-    public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods) {
+    public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods, RoleService roles,
+            Audit audit) {
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
+        this.roles = roles;
+        this.audit = audit;
     }
 
     public Sheet load(String id, String user) {
@@ -36,6 +44,27 @@ public class SheetService {
     /** The sheet's today: use it for every date-dependent decision and default date. */
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(() -> new SheetNotFoundException(id));
+    }
+
+    /** Whether the sheet is archived: every change to it is refused. A sheet not started yet is not. */
+    public boolean isArchived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+    }
+
+    /** Archive the sheet: only a steward may, and only once. */
+    @Transactional
+    public Sheet archive(String id, String user) {
+        Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
+        if (sheet.isArchived()) {
+            throw new SheetArchivedException(id);
+        }
+        if (roles.roleOf(id, user) != Role.STEWARD) {
+            throw new ArchiveForbiddenException(id, user);
+        }
+        sheet.setArchived(true);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + user);
+        return saved;
     }
 
     /**

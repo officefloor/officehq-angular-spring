@@ -84,6 +84,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Whether a steward archived the sheet: everything stays visible and every change is refused. */
+    @Column(name = "archived", nullable = false)
+    private boolean archived;
+
     protected Sheet() {
     }
 
@@ -232,6 +236,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 
     /** Whether a claim opened now is numbered within its period: the setting is a date and today is on or after it. */

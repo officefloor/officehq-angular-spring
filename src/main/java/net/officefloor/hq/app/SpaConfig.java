@@ -2,6 +2,7 @@ package net.officefloor.hq.app;
 
 import java.io.IOException;
 import net.officefloor.hq.app.role.ViewerInterceptor;
+import net.officefloor.hq.app.sheet.ArchivedInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -19,15 +20,18 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
 public class SpaConfig implements WebMvcConfigurer {
 
     private final ViewerInterceptor viewer;
+    private final ArchivedInterceptor archived;
 
-    public SpaConfig(ViewerInterceptor viewer) {
+    public SpaConfig(ViewerInterceptor viewer, ArchivedInterceptor archived) {
         this.viewer = viewer;
+        this.archived = archived;
     }
 
-    /** A viewer may change nothing on a sheet. */
+    /** A viewer may change nothing on a sheet, and nobody may change an archived sheet. */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(viewer).addPathPatterns("/api/sheets/**");
+        registry.addInterceptor(archived).addPathPatterns("/api/sheets/**");
     }
 
     @Override

@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 
 /**
@@ -32,20 +33,22 @@ public class BulkSettleService {
     private final PersonRepository people;
     private final ClaimService service;
     private final RoleService roles;
+    private final SheetService sheets;
 
     public BulkSettleService(ClaimRepository claims, PersonRepository people, ClaimService service,
-            RoleService roles) {
+            RoleService roles, SheetService sheets) {
         this.claims = claims;
         this.people = people;
         this.service = service;
         this.roles = roles;
+        this.sheets = sheets;
     }
 
     /** Not transactional: each claim settles in its own change, so a refused one undoes none of the others. */
     public Result settle(String sheetId, String user, Collection<Long> ids) {
         Set<Long> selected = new HashSet<>(ids);
-        if (roles.isViewer(sheetId, user)) {
-            // A viewer changes nothing: every selected claim is refused.
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+            // A viewer, or anyone on an archived sheet, changes nothing: every selected claim is refused.
             return new Result(0, selected.size());
         }
         Map<Long, Integer> personOrder = new HashMap<>();
