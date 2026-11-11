@@ -29,7 +29,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class RollupService {
 
-    /** A person's figures as shown: claimed with two decimals, due-total with two decimals or n/a. */
+    /** A person's figures as shown: claimed with two decimals, due-total (held down to the cap) with two decimals or n/a. */
     public record Figures(String name, String claimed, String dueTotal) {
     }
 
@@ -88,6 +88,9 @@ public class RollupService {
                 }
             }
             claimedTotal = claimedTotal.add(claimed);
+            if (anyDue && sheet != null) {
+                due = sheet.capped(due);
+            }
             if (anyDue) {
                 dueTotal = dueTotal.add(due);
             }

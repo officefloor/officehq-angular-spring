@@ -48,6 +48,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The most a person's due-total can be; null when there is no cap. */
+    @Column(name = "due_cap", precision = 12, scale = 2)
+    private BigDecimal cap;
+
     protected Sheet() {
     }
 
@@ -87,6 +91,14 @@ public class Sheet {
 
     public void setFloor(BigDecimal floor) {
         this.floor = floor;
+    }
+
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
     }
 
     public int getTerms() {
@@ -157,6 +169,11 @@ public class Sheet {
     /** The figure with its late charge added on top when the claim is OPEN; null (n/a) stays null. */
     public BigDecimal withLateCharge(BigDecimal figure, boolean open, LocalDate dueBy, LocalDate date) {
         return figure == null || !open ? figure : figure.add(lateCharge(figure, dueBy, date));
+    }
+
+    /** A due-total held down to the cap; null (n/a), or no cap, leaves it as it is. */
+    public BigDecimal capped(BigDecimal dueTotal) {
+        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
     /** A live due raised to the floor; null (n/a) stays null. */

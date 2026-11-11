@@ -18,6 +18,8 @@ interface SettingsView {
   policyDate: string | null;
   /** The date (yyyy-mm-dd) from which, on the sheet's today, a claim opened is numbered within its period; null: off. */
   periodNumberingFrom: string | null;
+  /** The most a person's due-total can be, two decimals; null when there is no cap. */
+  cap: string | null;
 }
 
 interface RoleView {
@@ -29,7 +31,7 @@ interface RoleView {
 const ROLES = ['clerk', 'steward'];
 const GRADES = ['A', 'B', 'C'];
 
-// The sheet's settings (its clerk limit, its floor, its terms and each grade's own, its late percent, its policy date and its period numbering from) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (its clerk limit, its floor, its terms and each grade's own, its late percent, its policy date, its period numbering from and its cap) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -94,6 +96,14 @@ const GRADES = ['A', 'B', 'C'];
           [value]="periodNumberingFrom()"
           (input)="periodNumberingFrom.set(value($event)); periodNumberingFromEdited = true; settingsError.set(null)"
         />
+        <label for="setting-cap">Cap (the most a person's due-total can be; blank: no cap)</label>
+        <input
+          id="setting-cap"
+          data-testid="setting-cap"
+          inputmode="decimal"
+          [value]="cap()"
+          (input)="cap.set(value($event)); capEdited = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -108,6 +118,7 @@ const GRADES = ['A', 'B', 'C'];
       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' }}</strong></p>
       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
+      <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -173,6 +184,7 @@ export class Settings {
   protected readonly policyDate = signal('');
   protected readonly periodNumberingFrom = signal('');
   protected readonly periodNumberingFromCurrent = signal<string | null>(null);
+  protected readonly cap = signal('');
   /** Which settings were typed in since the form was last saved or read: a save sends only those. */
   protected clerkLimitEdited = false;
   protected floorEdited = false;
@@ -180,6 +192,7 @@ export class Settings {
   protected latePctEdited = false;
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
+  protected capEdited = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
   protected readonly roleUser = signal('');
@@ -202,6 +215,7 @@ export class Settings {
         this.session.latePct.set(null);
         this.session.policyDate.set(null);
         this.periodNumberingFromCurrent.set(null);
+        this.session.cap.set(null);
         this.roleList.set([]);
         this.settingsError.set(null);
         this.roleError.set(null);
@@ -226,19 +240,21 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     // Saving with nothing typed saves the clerk limit as it stands.
-    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited);
+    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.capEdited);
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
     const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g));
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
+    const saveCap = this.capEdited;
     const limit = this.clerkLimit().trim();
     const floor = this.floor().trim();
     const terms = this.terms().trim();
     const latePct = this.latePct().trim();
     const policyDate = this.policyDate().trim();
     const periodNumberingFrom = this.periodNumberingFrom().trim();
+    const cap = this.cap().trim();
     if (saveLimit && limit !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more with at most two decimals, or leave it blank for no limit.');
       return;
@@ -265,6 +281,10 @@ export class Settings {
     }
     if (savePeriodNumberingFrom && periodNumberingFrom !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(periodNumberingFrom)) {
       this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
+      return;
+    }
+    if (saveCap && cap !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(cap)) {
+      this.settingsError.set('Type a cap of 0.00 or more with at most two decimals, or leave it blank for no cap.');
       return;
     }
     this.savingSettings = true;
@@ -315,6 +335,12 @@ export class Settings {
           ),
         );
         this.periodNumberingFromEdited = false;
+      }
+      if (saveCap) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/cap`, { cap: cap === '' ? null : cap }, this.session.headers()),
+        );
+        this.capEdited = false;
       }
       if (saved && this.session.sheet() === sheet) this.show(saved);
     } catch {
@@ -391,6 +417,8 @@ export class Settings {
     this.policyDate.set(settings.policyDate ?? '');
     this.periodNumberingFromCurrent.set(settings.periodNumberingFrom ?? '');
     this.periodNumberingFrom.set(settings.periodNumberingFrom ?? '');
+    this.session.cap.set(settings.cap);
+    this.cap.set(settings.cap ?? '');
     this.clerkLimitEdited = false;
     this.floorEdited = false;
     this.termsEdited = false;
@@ -398,5 +426,6 @@ export class Settings {
     this.latePctEdited = false;
     this.policyDateEdited = false;
     this.periodNumberingFromEdited = false;
+    this.capEdited = false;
   }
 }

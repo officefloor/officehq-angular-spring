@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, dueFixed, gradeOn, isOpen, overdue, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
+import { Rate, Rates, capped, excessOver, rateOn, sumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
 import { Header } from '../header/header';
 
@@ -152,7 +152,7 @@ function csvField(value: string): string {
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -173,6 +173,7 @@ function csvField(value: string): string {
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) }}</td>
               <td>
                 <button
                   type="button"
@@ -482,9 +483,19 @@ export class People {
   /**
    * The sum of the person's OPEN, PENDING and SETTLED claims' dues, each already rounded, skipping the n/a ones; n/a when
    * their grade in force today has no rate in force today, unless a claim keeps a due fixed by settling or a statement
-   * or has a due and is dated on or before today.
+   * or has a due and is dated on or before today. Held down to the sheet's cap.
    */
   protected dueTotalOf(person: Person): string {
+    return capped(this.uncappedDueTotalOf(person), this.session.cap());
+  }
+
+  /** How far the sum of the person's dues is above the sheet's cap; 0.00 when it is not. */
+  protected excessOf(person: Person): string {
+    return excessOver(this.uncappedDueTotalOf(person), this.session.cap());
+  }
+
+  /** The sum of the person's dues as {@link dueTotalOf} has it, before the cap. */
+  private uncappedDueTotalOf(person: Person): string {
     const counted = this.claimsOf(person.id).filter((c) => live(c, person.holds));
     const dues = counted.map((c) => claimDue(c, this.rates(), person.grades, this.session));
     const today = this.session.today();

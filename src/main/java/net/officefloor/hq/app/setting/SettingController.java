@@ -29,17 +29,19 @@ public class SettingController {
      * The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals;
      * the terms in whole days; each grade's own terms in whole days, by grade (a grade without its own is left out);
      * the late percent with two decimals; the policy date as yyyy-mm-dd, null when blank (the
-     * sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off).
+     * sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off); the cap with two decimals, null
+     * when there is none.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
-            String latePct, LocalDate policyDate, LocalDate periodNumberingFrom) {
+            String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, String cap) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             return new SettingsView(sheet.getClerkLimit() == null ? null
                     : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getTerms(),
                     gradeTerms, sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getPolicyDate(),
-                    sheet.getPeriodNumberingFrom());
+                    sheet.getPeriodNumberingFrom(), sheet.getCap() == null ? null
+                    : sheet.getCap().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         }
     }
 
@@ -73,6 +75,15 @@ public class SettingController {
 
         BigDecimal latePctValue() {
             return new BigDecimal(latePct.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /** A cap of 0.00 or more with up to two decimals; blank or missing means no cap. */
+    public record CapRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String cap) {
+
+        BigDecimal capValue() {
+            return cap == null || cap.isBlank() ? null
+                    : new BigDecimal(cap.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
     }
 
@@ -144,6 +155,13 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody PeriodNumberingFromRequest request) {
         return view(service.setPeriodNumberingFrom(sheetId.trim(), user.trim(), request.periodNumberingFrom()));
+    }
+
+    @PutMapping("/cap")
+    public SettingsView setCap(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid CapRequest request) {
+        return view(service.setCap(sheetId.trim(), user.trim(), request.capValue()));
     }
 
     private SettingsView view(Sheet sheet) {

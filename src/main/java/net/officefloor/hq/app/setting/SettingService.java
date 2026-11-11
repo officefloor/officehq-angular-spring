@@ -12,7 +12,7 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the sheet's settings: its clerk limit, its floor, its terms, its late percent and its policy date. */
+/** Keeps the sheet's settings: its clerk limit, its floor, its terms, its late percent, its policy date and its cap. */
 @Service
 public class SettingService {
 
@@ -126,6 +126,19 @@ public class SettingService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=policy-date value="
                 + (policyDate == null ? "" : policyDate.toString()));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /** Set the cap, the most a person's due-total can be; null means none. Every save is recorded, then the figures it moved. */
+    @Transactional
+    public Sheet setCap(String sheetId, String user, BigDecimal cap) {
+        Sheet sheet = get(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setCap(cap);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=cap value="
+                + (cap == null ? "" : cap.toPlainString()));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

@@ -100,7 +100,7 @@ public class StatementService {
             claim.setStated(true, figure);
         }
         claims.saveAllAndFlush(theirs);
-        String dueTotal = anyDue ? total.toPlainString() : "n/a";
+        String dueTotal = anyDue ? sheet.capped(total).toPlainString() : "n/a";
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted);

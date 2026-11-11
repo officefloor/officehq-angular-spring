@@ -30,6 +30,9 @@ export class Session {
   /** The active sheet's policy date (yyyy-mm-dd): a claim dated before it rounds half up, on or after it half to even;
    *  blank means the sheet's today; null until the settings are read. */
   readonly policyDate = signal<string | null>(null);
+  /** The active sheet's cap (two decimals): a person's due-total is at most it; null when there is none or until the
+   *  settings are read. */
+  readonly cap = signal<string | null>(null);
   private loads = 0;
 
   signIn(name: string): void {

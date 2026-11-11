@@ -69,6 +69,18 @@ export function floored(due: string, floor: string | null): string {
   return hundredths(due) < hundredths(floor) ? floor : due;
 }
 
+/** The due-total held down to the cap when above it; n/a, or no cap, leaves it as it is. */
+export function capped(dueTotal: string, cap: string | null): string {
+  if (dueTotal === 'n/a' || cap === null) return dueTotal;
+  return hundredths(dueTotal) > hundredths(cap) ? cap : dueTotal;
+}
+
+/** How far the due-total is above the cap: 0.00 when it is not, or is n/a, or there is no cap. */
+export function excessOver(dueTotal: string, cap: string | null): string {
+  if (dueTotal === 'n/a' || cap === null || hundredths(dueTotal) <= hundredths(cap)) return '0.00';
+  return decimalOf(hundredths(dueTotal) - hundredths(cap));
+}
+
 /** Adds dues with two decimals exactly, a correction's negative ones too, skipping the n/a ones. */
 export function sumDues(dues: string[]): string {
   return decimalOf(dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n));
