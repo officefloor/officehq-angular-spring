@@ -1,0 +1,71 @@
+{
+  "checkpoint": 236,
+  "checkpoint_id": "cp236_deferred-bound-counts",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 5,
+  "branch": "evolve/202610271-as/just-solve/chain5",
+  "commit_sha": "3f6509a5da7c2e6b96ac31e977534d935e6bf3f3",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-11T01:41:55",
+  "seconds": 178,
+  "build_log_file": "cp236.test.log",
+  "replaced_tests": [
+    "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp54_viewer-role.spec.ts::viewer role scenario 2",
+    "cp89_claim-tags.spec.ts::claim tags scenario 3"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp236_deferred-bound-counts.spec.ts::deferred bound counts": true,
+      "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 1": true,
+      "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 2": true,
+      "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp236_deferred-bound-counts.spec.ts::deferred bound counts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17121,
+        "failure": ""
+      },
+      {
+        "test_id": "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26144,
+        "failure": ""
+      },
+      {
+        "test_id": "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25249,
+        "failure": ""
+      },
+      {
+        "test_id": "cp236_deferred-bound-counts.spec.ts::deferred bound counts scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38389,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

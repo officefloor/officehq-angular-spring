@@ -1,0 +1,70 @@
+{
+  "checkpoint": 96,
+  "checkpoint_id": "cp96_holidays-redate",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 5,
+  "branch": "evolve/202610271-as/just-solve/chain5",
+  "commit_sha": "a56e91530595b28a450a017ae52aaf330b90f80f",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-04T12:38:55",
+  "seconds": 85,
+  "build_log_file": "cp96.test.log",
+  "replaced_tests": [
+    "cp83_holidays.spec.ts::holidays",
+    "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 1",
+    "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 3"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp96_holidays-redate.spec.ts::holidays redate": true,
+      "cp96_holidays-redate.spec.ts::holidays redate scenario 1": true,
+      "cp96_holidays-redate.spec.ts::holidays redate scenario 2": true,
+      "cp96_holidays-redate.spec.ts::holidays redate scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp96_holidays-redate.spec.ts::holidays redate",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6640,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_holidays-redate.spec.ts::holidays redate scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11568,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_holidays-redate.spec.ts::holidays redate scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13362,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_holidays-redate.spec.ts::holidays redate scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26137,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

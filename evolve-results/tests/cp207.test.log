@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp207-hg91v2vi
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp207_year-end-rollover.spec.ts:6:7 › year end rollover › year end rollover (35.5s)
+  ✓  2 [chromium] › cp207_year-end-rollover.spec.ts:535:7 › year end rollover › year end rollover scenario 1 (42.1s)
+  ✘  3 [chromium] › cp207_year-end-rollover.spec.ts:1182:7 › year end rollover › year end rollover scenario 2 (29.7s)
+  ✓  4 [chromium] › cp207_year-end-rollover.spec.ts:1921:7 › year end rollover › year end rollover scenario 3 (37.7s)
+
+
+  1) [chromium] › cp207_year-end-rollover.spec.ts:1182:7 › year end rollover › year end rollover scenario 2 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-month-C-2026-04')
+    Expected string: [32m"12.50"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-month-C-2026-04')[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-C-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      1526 |     await expect(pg_wes.getByTestId("rate-month-C-2026-02")).toHaveText("7.50");
+      1527 |     await expect(pg_wes.getByTestId("rate-month-C-2026-03")).toHaveText("12.50");
+    > 1528 |     await expect(pg_wes.getByTestId("rate-month-C-2026-04")).toHaveText("12.50");
+           |                                                              ^
+      1529 |     await expect(pg_wes.getByTestId("rate-month-C-2026-05")).toHaveText("12.50");
+      1530 |     await expect(pg_wes.getByTestId("rate-month-C-2026-06")).toHaveText("12.50");
+      1531 |     await expect(pg_wes.getByTestId("rate-month-C-2026-07")).toHaveText("12.50");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp207_year-end-rollover.spec.ts:1528:62
+
+  1 failed
+    [chromium] › cp207_year-end-rollover.spec.ts:1182:7 › year end rollover › year end rollover scenario 2 
+  3 passed (2.5m)

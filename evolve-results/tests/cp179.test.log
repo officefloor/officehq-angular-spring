@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp179-jfhr_y1n
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp179_flags.spec.ts:6:7 › flags › flags (15.5s)
+  ✘  2 [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 (39.0s)
+  ✓  3 [chromium] › cp179_flags.spec.ts:527:7 › flags › flags scenario 2 (16.5s)
+  ✘  4 [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 (20.0s)
+
+
+  1) [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 ──────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('dash-pending-count')
+    Expected string: [32m""[39m
+    Received string: [31m"0"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('dash-pending-count')[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="dash-pending-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+
+
+      273 |     await expect(pg_uma.getByTestId("rate-month-C-2026-11")).toHaveText("n/a");
+      274 |     await expect(pg_uma.getByTestId("rate-month-C-2026-12")).toHaveText("n/a");
+    > 275 |     await expect(pg_uma.getByTestId("dash-pending-count")).toHaveText("");
+          |                                                            ^
+      276 |     await expect(pg_uma.getByTestId("dash-review-count")).toHaveText("");
+      277 |     await expect(pg_uma.getByTestId("dash-overdue-count")).toHaveText("");
+      278 |     await ui.expectAudit(sheet, [
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp179_flags.spec.ts:275:60
+
+  2) [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 ─────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-10').getByTestId('person-due-total')
+    Expected string: [32m"0.00"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-10').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      1105 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-grade")).toHaveText("A");
+      1106 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+    > 1107 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("0.00");
+           |                                                                                             ^
+      1108 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-statement-count")).toHaveText("1");
+      1109 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-stated-total")).toHaveText("0.00");
+      1110 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-statement-date")).toHaveText("2026-03-20");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp179_flags.spec.ts:1107:93
+
+  2 failed
+    [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 ───────────────────────────────
+    [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 ──────────────────────────────
+  2 passed (1.6m)

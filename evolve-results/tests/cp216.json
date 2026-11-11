@@ -1,0 +1,71 @@
+{
+  "checkpoint": 216,
+  "checkpoint_id": "cp216_cuts-frozen-at-close",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 5,
+  "branch": "evolve/202610271-as/just-solve/chain5",
+  "commit_sha": "fdfcc2828ed9a456fac49afb861f02aebe156776",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-10T18:57:08",
+  "seconds": 166,
+  "build_log_file": "cp216.test.log",
+  "replaced_tests": [
+    "cp187_cut-history.spec.ts::cut history",
+    "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2",
+    "cp201_consolidated-grades.spec.ts::consolidated grades scenario 3",
+    "cp213_parent-plans.spec.ts::parent plans scenario 3"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close": true,
+      "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 1": false,
+      "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 2": true,
+      "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14681,
+        "failure": ""
+      },
+      {
+        "test_id": "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 18847,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  114 |     expect(await ui.editPerson(pg_uma, p_cam, {\"grade\": \"B\"})).toBe(true);\n  115 |     const c_cam_0 = ui.must(await ui.claimFromTemplate(pg_uma, p_cam, \"T1\"));\n> 116 |     expect(await ui.editClaim(pg_uma, c_cam_0, {\"amount\": \"20.00\"})).toBe(true);\n      |                                                                      ^\n  117 |     expect(await ui.addLine(pg_uma, c_cam_0, {\"label\": \"y\", \"qty\": \"1\", \"unit\": \"2.50\"})).toBe(true);\n  118 |     await ui.refresh(pg_uma);\n  119 |     await expect(pg_uma.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp216_cuts-frozen-at-close.spec.ts:116:70 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34775,
+        "failure": ""
+      },
+      {
+        "test_id": "cp216_cuts-frozen-at-close.spec.ts::cuts frozen at close scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34331,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

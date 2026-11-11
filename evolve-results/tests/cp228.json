@@ -1,0 +1,71 @@
+{
+  "checkpoint": 228,
+  "checkpoint_id": "cp228_rollover-soft-closes",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 5,
+  "branch": "evolve/202610271-as/just-solve/chain5",
+  "commit_sha": "b8b1a5a74715a9775572445b97098ed91ac0a38a",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-10T22:04:28",
+  "seconds": 185,
+  "build_log_file": "cp228.test.log",
+  "replaced_tests": [
+    "cp207_year-end-rollover.spec.ts::year end rollover",
+    "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+    "cp219_rollover-undo.spec.ts::rollover undo",
+    "cp219_rollover-undo.spec.ts::rollover undo scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes": true,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 1": false,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 2": true,
+      "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21955,
+        "failure": ""
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 18954,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Cam  0.00\",\u001b[39m\n\u001b[31m+   \"Cam  n/a\",\u001b[39m\n\u001b[2m  ]\u001b[22m\n\n  457 |     const pl_cam_1 = ui.must(await ui.addPlan(pg_uma, p_cam, {\"amount\": \"1.00\", \"start\": \"2026-03-01\", \"end\": \"2026-04-30\", \"day\": \"15\"}));\n  458 |     expect(await ui.statement(pg_uma, p_cam)).toBe(true);\n> 459 |     expect(await ui.snapshotCompare(pg_uma, \"2026-03-20\", \"\")).toEqual([\"Cam  0.00\"]);\n      |                                                                ^\n  460 |     const c_cam_0 = ui.must(await ui.addClaim(pg_uma, p_cam, {\"amount\": \"0.40\", \"date\": \"2026-02-25\"}));\n  461 |     expect(await ui.claimAction(pg_uma, c_cam_0, \"void\")).toBe(false);\n  462 |     const c_cam_1 = ui.must(await ui.addClaim(pg_uma, p_cam, {\"amount\": \"7.77\", \"date\": \"2026-03-20\", \"note\": \"n\"}));\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp228_rollover-soft-closes.spec.ts:459:64 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 1\u001b[39m\n\n\u001b[2m  Array [\u001b[22m\n\u001b[32m-   \"Cam  0.00\",\u001b[39m\n\u001b[31m+   \"Cam  n/a\",\u001b[39m\n\u001b[2m  ]\u001b[22m"
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27100,
+        "failure": ""
+      },
+      {
+        "test_id": "cp228_rollover-soft-closes.spec.ts::rollover soft closes scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 37129,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('pool-member-C1-6').getByTestId('pool-share')\nExpected string: \u001b[32m\"33.34\"\u001b[39m\nReceived string: \u001b[31m\"50.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('pool-member-C1-6').getByTestId('pool-share')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\n\n  2050 |     await expect(pg_wes.getByTestId(\"pool-row-C1\").getByTestId(\"pool-total-share\")).toHaveText(\"100.00\");\n  2051 |     await expect(pg_wes.getByTestId(\"pool-row-C1\").getByTestId(\"pool-balanced\")).toHaveText(\"yes\");\n> 2052 |     await expect(pg_wes.getByTestId(\"pool-member-C1-\" + p_ada).getByTestId(\"pool-share\")).toHaveText(\"33.34\");\n       |                                                                                           ^\n  2053 |     await expect(pg_wes.getByTestId(\"pool-member-C1-\" + p_ada).getByTestId(\"pool-cut\")).toHaveText(\"\");\n  2054 |     await ui.clearAsOf(pg_wes);\n  2055 |     await ui.refresh(pg_wes);\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp228_rollover-soft-closes.spec.ts:2052:91 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('pool-member-C1-6').getByTestId('pool-share')\nExpected string: \u001b[32m\"33.34\"\u001b[39m\nReceived string: \u001b[31m\"50.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('pool-member-C1-6').getByTestId('pool-share')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"pool-share\">50.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"50.00\"\u001b[22m\n"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

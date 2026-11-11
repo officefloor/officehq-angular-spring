@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp216-hdk0fvm6
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp216_cuts-frozen-at-close.spec.ts:6:7 › cuts frozen at close › cuts frozen at close (14.7s)
+  ✘  2 [chromium] › cp216_cuts-frozen-at-close.spec.ts:72:7 › cuts frozen at close › cuts frozen at close scenario 1 (18.8s)
+  ✓  3 [chromium] › cp216_cuts-frozen-at-close.spec.ts:570:7 › cuts frozen at close › cuts frozen at close scenario 2 (34.8s)
+  ✓  4 [chromium] › cp216_cuts-frozen-at-close.spec.ts:1093:7 › cuts frozen at close › cuts frozen at close scenario 3 (34.3s)
+
+
+  1) [chromium] › cp216_cuts-frozen-at-close.spec.ts:72:7 › cuts frozen at close › cuts frozen at close scenario 1 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      114 |     expect(await ui.editPerson(pg_uma, p_cam, {"grade": "B"})).toBe(true);
+      115 |     const c_cam_0 = ui.must(await ui.claimFromTemplate(pg_uma, p_cam, "T1"));
+    > 116 |     expect(await ui.editClaim(pg_uma, c_cam_0, {"amount": "20.00"})).toBe(true);
+          |                                                                      ^
+      117 |     expect(await ui.addLine(pg_uma, c_cam_0, {"label": "y", "qty": "1", "unit": "2.50"})).toBe(true);
+      118 |     await ui.refresh(pg_uma);
+      119 |     await expect(pg_uma.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp216_cuts-frozen-at-close.spec.ts:116:70
+
+  1 failed
+    [chromium] › cp216_cuts-frozen-at-close.spec.ts:72:7 › cuts frozen at close › cuts frozen at close scenario 1 
+  3 passed (1.8m)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 95,
+  "checkpoint_id": "cp95_rate-preview",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 5,
+  "branch": "evolve/202610271-as/just-solve/chain5",
+  "commit_sha": "45676e92ff2e19182a248b71e94b295d77bf76cc",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-04T12:37:06",
+  "seconds": 109,
+  "build_log_file": "cp95.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp95_rate-preview.spec.ts::rate preview": true,
+      "cp95_rate-preview.spec.ts::rate preview scenario 1": true,
+      "cp95_rate-preview.spec.ts::rate preview scenario 2": true,
+      "cp95_rate-preview.spec.ts::rate preview scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp95_rate-preview.spec.ts::rate preview",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10265,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_rate-preview.spec.ts::rate preview scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16364,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_rate-preview.spec.ts::rate preview scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31924,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_rate-preview.spec.ts::rate preview scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22196,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

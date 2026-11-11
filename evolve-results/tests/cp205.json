@@ -1,0 +1,66 @@
+{
+  "checkpoint": 205,
+  "checkpoint_id": "cp205_plan-history",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 5,
+  "branch": "evolve/202610271-as/just-solve/chain5",
+  "commit_sha": "a7ba1b8afe949905c27c3be5894855c9f56bf7d4",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-10T16:01:26",
+  "seconds": 180,
+  "build_log_file": "cp205.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp205_plan-history.spec.ts::plan history": true,
+      "cp205_plan-history.spec.ts::plan history scenario 1": true,
+      "cp205_plan-history.spec.ts::plan history scenario 2": true,
+      "cp205_plan-history.spec.ts::plan history scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp205_plan-history.spec.ts::plan history",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp205_plan-history.spec.ts::plan history scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 39494,
+        "failure": ""
+      },
+      {
+        "test_id": "cp205_plan-history.spec.ts::plan history scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27992,
+        "failure": ""
+      },
+      {
+        "test_id": "cp205_plan-history.spec.ts::plan history scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23924,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

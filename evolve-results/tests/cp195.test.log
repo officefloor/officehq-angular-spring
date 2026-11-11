@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp195-bvilfe3f
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp195_statement-export.spec.ts:6:7 › statement export › statement export (8.4s)
+  ✓  2 [chromium] › cp195_statement-export.spec.ts:28:7 › statement export › statement export scenario 1 (26.5s)
+  ✓  3 [chromium] › cp195_statement-export.spec.ts:662:7 › statement export › statement export scenario 2 (22.0s)
+  ✘  4 [chromium] › cp195_statement-export.spec.ts:1136:7 › statement export › statement export scenario 3 (26.5s)
+
+
+  1) [chromium] › cp195_statement-export.spec.ts:1136:7 › statement export › statement export scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-month-A-2026-04')
+    Expected string: [32m"12.50"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-month-A-2026-04')[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-month-A-2026-04">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      1528 |     await expect(pg_vic.getByTestId("rate-month-A-2026-02")).toHaveText("10.00");
+      1529 |     await expect(pg_vic.getByTestId("rate-month-A-2026-03")).toHaveText("10.00");
+    > 1530 |     await expect(pg_vic.getByTestId("rate-month-A-2026-04")).toHaveText("12.50");
+           |                                                              ^
+      1531 |     await expect(pg_vic.getByTestId("rate-month-A-2026-05")).toHaveText("12.50");
+      1532 |     await expect(pg_vic.getByTestId("rate-month-A-2026-06")).toHaveText("12.50");
+      1533 |     await expect(pg_vic.getByTestId("rate-month-A-2026-07")).toHaveText("12.50");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp195_statement-export.spec.ts:1530:62
+
+  Slow test file: [chromium] › cp195_statement-export.spec.ts (1.4m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp195_statement-export.spec.ts:1136:7 › statement export › statement export scenario 3 
+  3 passed (1.4m)

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 126,
+  "checkpoint_id": "cp126_clone-sheet",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 5,
+  "branch": "evolve/202610271-as/just-solve/chain5",
+  "commit_sha": "457ea1e7bb2e811fd3a136023a72bc9eddc43bba",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-04T15:24:43",
+  "seconds": 105,
+  "build_log_file": "cp126.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp126_clone-sheet.spec.ts::clone sheet": true,
+      "cp126_clone-sheet.spec.ts::clone sheet scenario 1": true,
+      "cp126_clone-sheet.spec.ts::clone sheet scenario 2": true,
+      "cp126_clone-sheet.spec.ts::clone sheet scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp126_clone-sheet.spec.ts::clone sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15442,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_clone-sheet.spec.ts::clone sheet scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12589,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_clone-sheet.spec.ts::clone sheet scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15157,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_clone-sheet.spec.ts::clone sheet scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17406,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
