@@ -384,6 +384,24 @@ function csvField(value: string): string {
                 >
                   Edit
                 </button>
+                <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade of {{ p.name }} from today</label>
+                <select
+                  [id]="'person-inline-grade-' + p.id"
+                  data-testid="person-inline-grade"
+                  (change)="setInlineGrade(p.id, value($event))"
+                >
+                  @for (g of grades; track g) {
+                    <option [value]="g" [selected]="g === inlineGradeOf(p)">{{ g }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-inline-grade-save"
+                  [attr.aria-label]="'Save the grade of ' + p.name"
+                  (click)="saveInlineGrade(p)"
+                >
+                  Save grade
+                </button>
                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Take a statement of {{ p.name }} as of</label>
                 <input
                   [id]="'person-statement-asof-' + p.id"
@@ -743,6 +761,7 @@ export class People {
   });
   /** The date typed to retire each person from, by id; blank retires from the sheet's today. */
   protected readonly retireDates = signal<Record<number, string>>({});
+  protected readonly inlineGrades = signal<Record<number, string>>({});
   /** The alias typed on each person's row, by person id. */
   protected readonly aliasInputs = signal<Record<number, string>>({});
   /** The person chosen on each person's row to merge them into, by person id, as the chosen person's id. */
@@ -1013,6 +1032,7 @@ export class People {
         this.descendantFigures.set(NO_DESCENDANTS);
         this.liveConsolidated.set(null);
         this.retireDates.set({});
+        this.inlineGrades.set({});
         this.aliasInputs.set({});
         this.mergeChoices.set({});
         this.transferTos.set({});
@@ -1151,6 +1171,46 @@ export class People {
       }
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be transferred to ${to}.` });
+    }
+  }
+
+  /** The grade chosen in the person's row select: their grade in force until another is chosen. */
+  protected inlineGradeOf(person: Person): string {
+    return this.inlineGrades()[person.id] ?? this.gradeOf(person);
+  }
+
+  protected setInlineGrade(id: number, grade: string): void {
+    this.inlineGrades.update((grades) => ({ ...grades, [id]: grade }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Save the grade chosen in the person's row from the sheet's today, as the person form would save it. */
+  protected async saveInlineGrade(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const body = {
+      name: person.name,
+      grade: this.inlineGradeOf(person),
+      gradeFrom: null,
+      terms: person.terms === null ? null : String(person.terms),
+      contact: person.contact,
+      tags: null,
+      version: null,
+    };
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}`;
+    try {
+      const saved = await firstValueFrom(this.http.put<Person>(url, body, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        this.inlineGrades.update((grades) =>
+          Object.fromEntries(Object.entries(grades).filter(([id]) => Number(id) !== person.id)),
+        );
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `The grade of ${person.name} could not be saved.` });
     }
   }
 

@@ -30,8 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>After every change to a sheet, every row the sheet keeps (the sheet's own row, the rows carrying its id, and the
  * rows hanging off its people, periods and claims) is copied under the sheet's today then. Showing the sheet as of a
  * date replaces those rows, inside a transaction the caller rolls back, with the copy of the latest today on or before
- * the date (none: an empty sheet), and the date stands in for the sheet's today. The tables are found from the schema,
- * so a table a later change adds is kept as well.
+ * the date (none: an empty sheet), and the date stands in for the sheet's today. A kept row that has since moved to
+ * another sheet (a transferred person's, say) is taken back for that transaction. The tables are found from the
+ * schema, so a table a later change adds is kept as well.
  */
 @Service
 public class SheetSnapshotService {
@@ -39,8 +40,8 @@ public class SheetSnapshotService {
     private static final String SHEET = "SHEET";
     private static final Set<String> NOT_KEPT = Set.of("SHEET_SNAPSHOT", "FLYWAY_SCHEMA_HISTORY");
 
-    /** A table a sheet keeps rows in: the columns copied, and which of its rows are the sheet's. */
-    private record Table(String name, List<String> columns, String where) {
+    /** A table a sheet keeps rows in: the columns copied, which of its rows are the sheet's, and its key columns. */
+    private record Table(String name, List<String> columns, String where, List<String> keys) {
     }
 
     private final DataSource dataSource;
@@ -105,7 +106,10 @@ public class SheetSnapshotService {
             }
             for (Map<String, Object> row : kept) {
                 List<String> columns = table.columns().stream().filter(row::containsKey).toList();
-                jdbc.update("INSERT INTO " + table.name() + " (" + String.join(", ", columns) + ") VALUES ("
+                // A row since moved to another sheet keeps its key there: take it back rather than add it again.
+                boolean keyed = !table.keys().isEmpty() && columns.containsAll(table.keys());
+                jdbc.update((keyed ? "MERGE INTO " : "INSERT INTO ") + table.name() + " (" + String.join(", ", columns)
+                        + ")" + (keyed ? " KEY (" + String.join(", ", table.keys()) + ")" : "") + " VALUES ("
                         + String.join(", ", columns.stream().map(c -> "?").toList()) + ")",
                         columns.stream().map(row::get).toArray());
             }
@@ -174,6 +178,16 @@ public class SheetSnapshotService {
                 }
             }
         }
+        Map<String, List<String>> keys = new HashMap<>();
+        for (String name : columns.keySet()) {
+            List<String> key = new ArrayList<>();
+            try (ResultSet rs = meta.getPrimaryKeys(null, "PUBLIC", name)) {
+                while (rs.next()) {
+                    key.add(rs.getString("COLUMN_NAME").toUpperCase(Locale.ROOT));
+                }
+            }
+            keys.put(name, key);
+        }
         // Each table's references to other tables: its column -> the table referred to.
         Map<String, Map<String, String>> refs = new HashMap<>();
         for (String name : columns.keySet()) {
@@ -225,7 +239,7 @@ public class SheetSnapshotService {
                 throw new IllegalStateException("The sheet's tables refer to each other in a cycle");
             }
         }
-        return ordered.stream().map(n -> new Table(n, columns.get(n), where.get(n))).toList();
+        return ordered.stream().map(n -> new Table(n, columns.get(n), where.get(n), keys.get(n))).toList();
     }
 
     private static byte[] serialize(Object rows) {
