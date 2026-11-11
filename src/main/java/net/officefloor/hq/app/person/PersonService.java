@@ -274,7 +274,7 @@ public class PersonService {
     public Optional<Person> findByNameOrAlias(String sheetId, String name) {
         String key = Person.key(name);
         return people.findBySheetIdAndNameKey(sheetId, key)
-                .or(() -> aliases.findBySheetIdAndAliasKey(sheetId, key)
+                .or(() -> aliases.findFirstBySheetIdAndAliasKeyOrderByIdAsc(sheetId, key)
                         .flatMap(a -> people.findByIdAndSheetId(a.getPersonId(), sheetId)));
     }
 

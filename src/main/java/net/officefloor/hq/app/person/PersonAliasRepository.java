@@ -14,7 +14,12 @@ public interface PersonAliasRepository extends JpaRepository<PersonAlias, Long> 
 
     boolean existsBySheetIdAndAliasKey(String sheetId, String aliasKey);
 
-    Optional<PersonAlias> findBySheetIdAndAliasKey(String sheetId, String aliasKey);
+    /** The first alias on the sheet with the key (one joined by a transfer may share it). */
+    Optional<PersonAlias> findFirstBySheetIdAndAliasKeyOrderByIdAsc(String sheetId, String aliasKey);
+
+    /** The next free slot for the key on the sheet: 0 when no alias has it. */
+    @Query("select coalesce(max(a.aliasSlot) + 1, 0) from PersonAlias a where a.sheetId = :sheetId and a.aliasKey = :aliasKey")
+    int nextSlot(String sheetId, String aliasKey);
 
     /** Whether an alias on any of the sheets, of a person other than the one with this id, has the key. */
     boolean existsBySheetIdInAndAliasKeyAndPersonIdNot(Collection<String> sheetIds, String aliasKey, Long personId);

@@ -160,7 +160,8 @@ public class SheetCloneService {
         people.flush();
         for (PersonAlias alias : aliases.findBySheetId(sheetId).stream()
                 .sorted(Comparator.comparing(PersonAlias::getId)).toList()) {
-            aliases.save(new PersonAlias(to, personIds.get(alias.getPersonId()), alias.getAlias()));
+            aliases.save(new PersonAlias(to, personIds.get(alias.getPersonId()), alias.getAlias(),
+                    alias.getAliasSlot()));
         }
         for (PersonPatron patron : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
             patrons.save(new PersonPatron(to, personIds.get(patron.getPersonId()),

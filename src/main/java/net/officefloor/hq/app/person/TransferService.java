@@ -32,9 +32,12 @@ import org.springframework.transaction.annotation.Transactional;
  * archived one). The person arrives with every grade and its from-date, their terms, contact and aliases, and their
  * claims with their status, dates, notes, tags, frozen figures and logs; each claim that had a number takes the next
  * number of the other sheet, in the order the claims were opened (by the sheet's today when each was opened, then by
- * the order they were added). Figures a statement bound are lost and references are not carried. A name, alias or
- * contact the other sheet has already refuses the transfer. The person leaves this sheet entirely: their statements,
- * holds, patron links, pool memberships and watches are dropped.
+ * the order they were added). Figures a statement bound are lost and references are not carried. Where the other
+ * sheet has a person with their name or one of their aliases, the person arrives merged into them, as a merge does:
+ * their claims are listed after that person's, their name and aliases join that person's aliases, and their grades,
+ * terms and contact are dropped (two such people, or a retired one, refuse the transfer). Otherwise a name or alias
+ * used elsewhere in the other sheet's tree, or a contact the other sheet has already, refuses the transfer. The person
+ * leaves this sheet entirely: their statements, holds, patron links, pool memberships and watches are dropped.
  */
 @Service
 public class TransferService {
@@ -79,7 +82,10 @@ public class TransferService {
         this.personService = personService;
     }
 
-    /** Transfer the person to the other sheet (started when its id was never used); the person as they arrived. */
+    /**
+     * Transfer the person to the other sheet (started when its id was never used); the person as they arrived, or the
+     * person there they were merged into.
+     */
     @Transactional
     public Person transfer(String sheetId, String user, Long id, String toSheetId) {
         Person from = people.findForUpdate(id, sheetId)
@@ -102,32 +108,55 @@ public class TransferService {
         List<String> names = new ArrayList<>();
         names.add(from.getName());
         theirAliases.forEach(a -> names.add(a.getAlias()));
+        Person into = null;
         for (String name : names) {
-            String key = Person.key(name);
-            if (people.existsBySheetIdAndNameKey(to, key) || aliases.existsBySheetIdAndAliasKey(to, key)
-                    || personService.usedInTree(to, key, from.getId())) {
+            Person match = personService.findByNameOrAlias(to, name).orElse(null);
+            if (match != null && into != null && !match.getId().equals(into.getId())) {
+                throw new PersonTransferRefusedException(from.getName() + " matches both " + into.getName() + " and "
+                        + match.getName() + " on sheet " + to);
+            }
+            if (match != null) {
+                into = match;
+            } else if (personService.usedInTree(to, Person.key(name), from.getId())) {
                 throw new PersonTransferRefusedException("The name " + name + " is already in use on sheet " + to);
             }
         }
-        if (from.getContact() != null && people.existsBySheetIdAndContact(to, from.getContact())) {
+        if (into != null) {
+            Long intoId = into.getId();
+            into = people.findForUpdate(intoId, to).orElseThrow(() -> new PersonNotFoundException(to, intoId));
+            if (into.isRetired()) {
+                throw new PersonTransferRefusedException(from.getName() + " cannot be merged into " + into.getName()
+                        + ", who is retired");
+            }
+        } else if (from.getContact() != null && people.existsBySheetIdAndContact(to, from.getContact())) {
             throw new PersonTransferRefusedException("The contact " + from.getContact() + " is already in use on sheet " + to);
         }
         RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
         RollupService.Snapshot beforeThere = rollup.snapshot(to);
 
-        // The person, with every grade and its from-date, their terms and contact, and their aliases.
-        List<PersonGrade> grades = from.getGrades();
-        Person arrived = new Person(to, from.getName(), grades.get(0).getGrade());
-        grades.stream().skip(1).forEach(g -> arrived.setGrade(g.getGrade(), g.getFromDate()));
-        arrived.setTerms(from.getTerms());
-        arrived.setContact(from.getContact());
-        arrived.setAddedOn(toSheet.getToday());
-        arrived.setOriginSheet(sheetId);
-        arrived.setPosition(people.maxPosition(to) + 1);
-        Person saved = people.saveAndFlush(arrived);
         aliases.deleteAll(theirAliases);
         aliases.flush();
-        theirAliases.forEach(a -> aliases.save(new PersonAlias(to, saved.getId(), a.getAlias())));
+        Person saved;
+        if (into == null) {
+            // The person, with every grade and its from-date, their terms and contact, and their aliases.
+            List<PersonGrade> grades = from.getGrades();
+            Person arrived = new Person(to, from.getName(), grades.get(0).getGrade());
+            grades.stream().skip(1).forEach(g -> arrived.setGrade(g.getGrade(), g.getFromDate()));
+            arrived.setTerms(from.getTerms());
+            arrived.setContact(from.getContact());
+            arrived.setAddedOn(toSheet.getToday());
+            arrived.setOriginSheet(sheetId);
+            arrived.setPosition(people.maxPosition(to) + 1);
+            saved = people.saveAndFlush(arrived);
+            theirAliases.forEach(a -> aliases.save(
+                    new PersonAlias(to, saved.getId(), a.getAlias(), a.getAliasSlot())));
+        } else {
+            // Merged into the person with their name: their name and aliases join that person's aliases.
+            saved = into;
+            for (String name : names) {
+                aliases.saveAndFlush(new PersonAlias(to, saved.getId(), name, aliases.nextSlot(to, Person.key(name))));
+            }
+        }
 
         // The claims, listed in the order they were, and numbered anew in the order they were opened.
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId());
@@ -180,7 +209,11 @@ public class TransferService {
                 + " name=" + from.getName() + " to=" + to);
         rollup.recordChanges(sheetId, user, beforeHere);
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + to + " by=" + user
-                + " name=" + saved.getName() + " from=" + sheetId);
+                + " name=" + from.getName() + " from=" + sheetId);
+        if (into != null) {
+            audit.recordOnCommit("PERSON_MERGED sheet=" + to + " by=" + user
+                    + " from=" + from.getName() + " into=" + into.getName());
+        }
         rollup.recordChanges(to, user, beforeThere);
         return saved;
     }

@@ -29,6 +29,10 @@ public class PersonAlias {
     @Column(name = "alias_key", nullable = false)
     private String aliasKey;
 
+    /** 0 for an alias added; the next free slot for its key for one joined by a transfer that merged. */
+    @Column(name = "alias_slot", nullable = false)
+    private int aliasSlot;
+
     protected PersonAlias() {
     }
 
@@ -37,6 +41,11 @@ public class PersonAlias {
         this.personId = personId;
         this.alias = alias.trim();
         this.aliasKey = Person.key(alias);
+    }
+
+    public PersonAlias(String sheetId, Long personId, String alias, int aliasSlot) {
+        this(sheetId, personId, alias);
+        this.aliasSlot = aliasSlot;
     }
 
     public Long getId() {
@@ -62,5 +71,9 @@ public class PersonAlias {
 
     public String getAliasKey() {
         return aliasKey;
+    }
+
+    public int getAliasSlot() {
+        return aliasSlot;
     }
 }
