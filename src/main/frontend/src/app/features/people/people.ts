@@ -9,6 +9,8 @@ import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary 
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
 import { Pools } from '../pools/pools';
+import { PersonPlans } from '../plans/plans';
+import { Plans } from '../../core/plans';
 
 interface Person {
   id: number;
@@ -123,7 +125,7 @@ function csvField(value: string): string {
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Header, Periods, Pools, Rates, Summary],
+  imports: [Claims, Header, Periods, PersonPlans, Pools, Rates, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -221,6 +223,15 @@ function csvField(value: string): string {
           <p role="alert" data-testid="quick-error">{{ message }}</p>
         }
       </form>
+      <p>
+        <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+        @if (planGenerated() !== null) {
+          Made <strong data-testid="plan-generated-count">{{ planGenerated() }}</strong>
+        }
+      </p>
+      @if (planGenerateError(); as message) {
+        <p role="alert" data-testid="plan-generate-error">{{ message }}</p>
+      }
       <form aria-label="Paste claims" (submit)="pasteClaims($event)">
         <label for="paste-claims">Paste claims, one per line: name,amount,date,note (end the note with " #reference" to give a reference)</label>
         <textarea
@@ -525,6 +536,7 @@ function csvField(value: string): string {
                     <p role="alert" data-testid="person-patron-error">{{ e.message }}</p>
                   }
                 }
+                <app-person-plans [personId]="p.id" [personName]="p.name" />
               </td>
               <td
                 app-claims
@@ -879,6 +891,11 @@ export class People {
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteError = signal<string | null>(null);
   private pasting = false;
+  private readonly plans = inject(Plans);
+  /** How many claims the last generate of the plans made (null while it runs and before the first), its error. */
+  protected readonly planGenerated = signal<number | null>(null);
+  protected readonly planGenerateError = signal<string | null>(null);
+  private generating = false;
   /**
    * The import box: its lines, how many its last import added and updated (null while it runs and before the first),
    * its error.
@@ -971,6 +988,8 @@ export class People {
         this.pasteText.set('');
         this.pasteAdded.set(null);
         this.pasteError.set(null);
+        this.planGenerated.set(null);
+        this.planGenerateError.set(null);
         this.importText.set('');
         this.importAdded.set(null);
         this.importUpdated.set(null);
@@ -1814,6 +1833,28 @@ export class People {
       this.quickError.set('The claim could not be added.');
     } finally {
       this.quickAdding = false;
+    }
+  }
+
+  /** Make a DRAFT claim for every plan date due and not yet made, then show the claims and how many were made. */
+  protected async generatePlans(): Promise<void> {
+    if (this.generating) return;
+    this.planGenerateError.set(null);
+    this.planGenerated.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.generating = true;
+    try {
+      const made = await this.plans.generate();
+      if (this.session.sheet() !== sheet) return;
+      await this.read(sheet);
+      this.planGenerated.set(made);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+      this.planGenerateError.set('The plans could not be generated.' + detail);
+    } finally {
+      this.generating = false;
     }
   }
 
