@@ -80,6 +80,20 @@ public class PeriodController {
                 PeriodRequest.date(request.from()), PeriodRequest.date(request.to())));
     }
 
+    /** The from and to dates of a generate, as yyyy-mm-dd. */
+    public record GenerateRequest(@NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String from,
+            @NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String to) {
+    }
+
+    /** Generate a period per calendar month between the dates; the periods made. Refused when to is before from. */
+    @PostMapping("/generate")
+    public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GenerateRequest request) {
+        return service.generate(sheetId.trim(), user.trim(), PeriodRequest.date(request.from()),
+                PeriodRequest.date(request.to())).stream().map(PeriodView::of).toList();
+    }
+
     /** Close a period, fixing its due-total; refused when it is already closed. */
     @PostMapping("/{name}/close")
     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId,

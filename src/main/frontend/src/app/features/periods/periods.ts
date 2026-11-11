@@ -58,6 +58,31 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
           <p role="alert" data-testid="period-form-error">{{ message }}</p>
         }
       </form>
+      <form (submit)="generate($event)">
+        <label for="period-generate-from">Generate monthly from</label>
+        <input
+          id="period-generate-from"
+          data-testid="period-generate-from"
+          type="date"
+          [value]="generateFrom()"
+          (input)="generateFrom.set(value($event)); generateError.set(null)"
+        />
+        <label for="period-generate-to">to</label>
+        <input
+          id="period-generate-to"
+          data-testid="period-generate-to"
+          type="date"
+          [value]="generateTo()"
+          (input)="generateTo.set(value($event)); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate">Generate periods</button>
+        @if (generated() !== null) {
+          <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span> periods.</p>
+        }
+        @if (generateError(); as message) {
+          <p role="alert" data-testid="period-generate-error">{{ message }}</p>
+        }
+      </form>
       <table>
         <thead>
           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th>
@@ -109,7 +134,7 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total by its name: the due of the counting claims dated in it. */
   readonly dueTotals = input.required<Map<string, string>>();
-  /** A period was added, closed or reopened. */
+  /** A period was added, generated, closed or reopened. */
   readonly saved = output<Period>();
 
   protected readonly name = signal('');
@@ -118,6 +143,13 @@ export class Periods {
   protected readonly error = signal<string | null>(null);
   /** The error of the last close or reopen refused, and the period it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+  protected readonly generateFrom = signal('');
+  protected readonly generateTo = signal('');
+  /** How many periods the last generate made; null while one runs or before the first. */
+  protected readonly generated = signal<number | null>(null);
+  protected readonly generateError = signal<string | null>(null);
+  /** Whether a generate is waiting for its answer: a second meanwhile is ignored. */
+  private generating = false;
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
@@ -154,6 +186,45 @@ export class Periods {
           ? `Only a steward can reopen the period ${period.name}.`
           : `The period ${period.name} could not be reopened: it is not closed.`;
       this.rowError.set({ id: period.id, message });
+    }
+  }
+
+  /** Generate a period per calendar month between the dates; the store leaves out months taken or overlapped. */
+  protected async generate(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.generating) return;
+    this.generated.set(null);
+    this.generateError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const today = this.session.today() ?? '';
+    const from = this.generateFrom().trim() || today;
+    const to = this.generateTo().trim() || today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.generateError.set('Pick a from and a to date to generate periods.');
+      return;
+    }
+    if (to < from) {
+      this.generateError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/periods/generate`,
+          { from, to },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() === sheet) {
+        this.generated.set(made.length);
+        for (const period of made) this.saved.emit(period);
+      }
+    } catch {
+      this.generateError.set('The periods could not be generated.');
+    } finally {
+      this.generating = false;
     }
   }
 

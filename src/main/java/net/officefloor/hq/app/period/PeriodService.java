@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -61,6 +63,37 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
         return saved;
+    }
+
+    /**
+     * Generate one period per calendar month from the from-date's month to the to-date's month, each named yyyy-mm and
+     * running from the first to the last day of its month; a month whose name is taken or whose days overlap a period
+     * on the sheet is left out. Refused when the to-date is before the from-date. The periods made, in date order.
+     */
+    @Transactional
+    public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
+        if (sheets.lockById(sheetId) == 0) {
+            throw new SheetNotFoundException(sheetId);
+        }
+        if (to.isBefore(from)) {
+            throw new PeriodRefusedException("The to-date " + to + " is before the from-date " + from);
+        }
+        List<Period> existing = new ArrayList<>(list(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) {
+                continue;
+            }
+            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            existing.add(saved);
+            made.add(saved);
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                    + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+        }
+        return made;
     }
 
     /** Close a period, fixing every person's due-total for it, and so its own, as they are now; refused when it is already closed or the user's role may not close. */
