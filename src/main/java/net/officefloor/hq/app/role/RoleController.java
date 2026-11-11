@@ -25,7 +25,7 @@ public class RoleController {
 
     public record SetRoleRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotBlank @Size(max = 100) String name,
-            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
+            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER + "|" + Role.RESTRICTED) String role) {
     }
 
     public record RoleResponse(String user, String role) {

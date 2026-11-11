@@ -1151,7 +1151,8 @@ export class People {
   /** The listed people in the order this screen sorts them by; equal keys keep list order. Only the
    *  rows shown follow it: every total and action keeps to list order. */
   protected readonly sorted = computed(() => {
-    const listed = this.listed();
+    const seen = this.seenIds();
+    const listed = seen ? this.listed().filter((p) => seen.has(p.id)) : this.listed();
     const by = this.session.sortBy();
     if (by === 'added') return listed;
     const key = (p: Person): string | number | null =>
@@ -1438,6 +1439,26 @@ export class People {
       (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
     );
   });
+  /** The signed-in user's role on the sheet, as last read from the store. */
+  private readonly role = signal('');
+  /**
+   * The ids of the people a restricted user may see on the list: the person with the user's name
+   * and everyone in the crews they lead or belong to; null for any other role, who sees everyone.
+   * Only the rows shown are narrowed: every total and figure stays over everyone on the sheet.
+   */
+  private readonly seenIds = computed<ReadonlySet<number> | null>(() => {
+    if (this.role() !== 'restricted') return null;
+    const me = this.me();
+    const seen = new Set<number>();
+    if (!me) return seen;
+    seen.add(me.id);
+    for (const c of this.crews()) {
+      if (c.leadId !== me.id && !c.members.some((m) => m.personId === me.id)) continue;
+      if (c.leadId !== null) seen.add(c.leadId);
+      for (const m of c.members) seen.add(m.personId);
+    }
+    return seen;
+  });
   /** The due-totals of the crews the user's person leads, added up; blank when they lead none. */
   protected readonly myCrewDueTotal = computed(() => {
     const me = this.me();
@@ -1611,6 +1632,7 @@ export class People {
       const sheet = this.session.sheet();
       this.session.loads();
       this.people.set([]);
+      this.role.set('');
       this.claims.set([]);
       this.plans.set([]);
       this.planGenerated.set(null);
@@ -1675,7 +1697,7 @@ export class People {
 
   private async fetch(sheet: string): Promise<void> {
     try {
-      const [list, claims, statements, patrons, watched, tags, descendants, plans] = await Promise.all([
+      const [list, claims, statements, patrons, watched, tags, descendants, plans, mine] = await Promise.all([
         firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet })),
         firstValueFrom(this.http.post<Claim[]>('/api/claims/list', { sheet })),
         firstValueFrom(this.http.post<StatementSummary[]>('/api/statements/list', { sheet })),
@@ -1684,8 +1706,10 @@ export class People {
         firstValueFrom(this.http.post<string[]>('/api/claims/tags', { sheet })),
         firstValueFrom(this.http.post<Descendants>('/api/rollup/descendants/list', { sheet })),
         firstValueFrom(this.http.post<Plan[]>('/api/plans/list', { sheet })),
+        firstValueFrom(this.http.post<{ role: string }>('/api/roles/mine/list', { sheet, user: this.session.user() })),
       ]);
       if (this.session.sheet() === sheet) {
+        this.role.set(mine.role);
         this.claims.set(claims);
         this.plans.set(plans);
         this.descendants.set(descendants);

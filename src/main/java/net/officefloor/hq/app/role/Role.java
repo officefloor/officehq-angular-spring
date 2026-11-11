@@ -16,6 +16,11 @@ public class Role {
     public static final String STEWARD = "steward";
     /** Sees every screen and figure, and may change nothing. */
     public static final String VIEWER = "viewer";
+    /**
+     * Acts as a clerk, but sees on the people list only the people of the crews they lead or belong
+     * to (by a person with the user's name) and that person themselves.
+     */
+    public static final String RESTRICTED = "restricted";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

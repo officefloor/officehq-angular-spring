@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Delegations } from './delegations';
 
-// The roles the sheet assigns to user names: clerk (the default for any name), steward or viewer,
+// The roles the sheet assigns to user names: clerk (the default for any name), steward, viewer or
+// restricted (a clerk who sees on the people list only their crews' people and themselves),
 // and the form that assigns one. A steward settles any claim, and approves or rejects a PENDING
 // one; a clerk settling a claim above the clerk limit makes it PENDING; a viewer sees everything
 // and changes nothing (the server refuses each change; a bulk or generate action does nothing).
@@ -13,7 +14,7 @@ interface Role {
   role: string;
 }
 
-const ROLES = ['clerk', 'steward', 'viewer'];
+const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
 
 @Component({
   selector: 'app-roles',
@@ -29,7 +30,7 @@ const ROLES = ['clerk', 'steward', 'viewer'];
           [value]="userInput()"
           (input)="userInput.set($any($event.target).value); error.set(null)"
         />
-        <label for="role-form-role">Role (clerk, steward or viewer)</label>
+        <label for="role-form-role">Role (clerk, steward, viewer or restricted)</label>
         <input
           id="role-form-role"
           data-testid="role-form-role"
@@ -116,7 +117,7 @@ export class Roles {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.error.set('Choose a role of clerk, steward or viewer.');
+      this.error.set('Choose a role of clerk, steward, viewer or restricted.');
       return;
     }
     this.submitting = true;

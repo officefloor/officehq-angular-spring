@@ -12,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The roles a sheet assigns to user names: clerk (the default for any name), steward or viewer. A
+ * The roles a sheet assigns to user names: clerk (the default for any name), steward, viewer or
+ * restricted (a clerk who sees only their crews' people on the people list). A
  * steward can delegate the steward role to a user for a from-date to a to-date, inclusive: while
  * the sheet's today is inside it the user acts as a steward on the steward's behalf.
  */

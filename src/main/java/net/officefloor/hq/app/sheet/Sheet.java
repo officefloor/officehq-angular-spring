@@ -610,7 +610,9 @@ public class Sheet {
         }
         String entry = permissions.get(action);
         if (entry == null || entry.isBlank()) {
-            return STANDING_PERMISSIONS.getOrDefault(action, Set.of()).contains(role);
+            // a restricted user acts as a clerk; only the people list they see is narrower
+            String standing = "restricted".equals(role) ? "clerk" : role;
+            return STANDING_PERMISSIONS.getOrDefault(action, Set.of()).contains(standing);
         }
         return Arrays.stream(entry.split(",")).map(String::trim).anyMatch(r -> r.equalsIgnoreCase(role));
     }
