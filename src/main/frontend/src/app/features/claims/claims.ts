@@ -197,6 +197,12 @@ export class Claims {
     return periodOn(this.periods(), claim.date)?.name ?? '';
   }
 
+  /** The closed period the date falls in, or undefined when none does. */
+  private closedOn(date: string): Period | undefined {
+    const period = periodOn(this.periods(), date);
+    return period?.closed ? period : undefined;
+  }
+
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
   }
@@ -228,10 +234,13 @@ export class Claims {
       const saved = await firstValueFrom(this.http.post<Claim>(url, null, this.session.headers()));
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch (e) {
+      const closed = this.closedOn(claim.date);
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Whoever opened this claim cannot also settle it: another user must settle it.'
-          : `This claim's status does not let it be ${pastOf[action]}.`;
+          : closed
+            ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
+            : `This claim's status does not let it be ${pastOf[action]}.`;
       this.actionError.set({ id: claim.id, message });
     }
   }
@@ -267,7 +276,9 @@ export class Claims {
         this.saved.emit(saved);
       }
     } catch {
-      this.error.set(editing === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+      const closed = this.closedOn(date || (this.session.today() ?? ''));
+      const why = closed ? ` Its date is in the closed period ${closed.name}.` : '';
+      this.error.set((editing === null ? 'The claim could not be added.' : 'The claim could not be saved.') + why);
     } finally {
       this.submitting = false;
     }

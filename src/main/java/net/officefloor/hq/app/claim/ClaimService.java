@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
@@ -15,7 +16,10 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. */
+/**
+ * Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. A claim dated in a closed
+ * period cannot be added, edited or change status.
+ */
 @Service
 public class ClaimService {
 
@@ -25,9 +29,11 @@ public class ClaimService {
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final PeriodService periods;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Audit audit, RollupService rollup) {
+            Audit audit, RollupService rollup, PeriodService periods) {
+        this.periods = periods;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -45,7 +51,9 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
-        Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOr(sheetId, date), noteOf(note)));
+        LocalDate dated = dateOr(sheetId, date);
+        periods.requireOpen(sheetId, dated);
+        Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
         rollup.recordChanges(sheetId, user, before);
         return saved;
@@ -56,8 +64,11 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        LocalDate dated = dateOr(sheetId, date);
+        // Neither out of nor into a closed period.
+        periods.requireOpen(sheetId, claim.getDate(), dated);
         claim.setAmount(amount);
-        claim.setDate(dateOr(sheetId, date));
+        claim.setDate(dated);
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
@@ -75,6 +86,7 @@ public class ClaimService {
         if (!claim.getStatus().canMoveTo(status)) {
             throw new ClaimStatusException(id, claim.getStatus(), status);
         }
+        periods.requireOpen(sheetId, claim.getDate());
         // Four eyes: whoever opened a claim cannot also settle it.
         if (status == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ClaimSettledByOpenerException(id, user);

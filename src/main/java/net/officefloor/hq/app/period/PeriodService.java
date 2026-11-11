@@ -1,26 +1,30 @@
 package net.officefloor.hq.app.period;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the periods of each sheet: uniquely named, and no two overlapping. */
+/** Keeps the periods of each sheet: uniquely named, and no two overlapping; a closed period's claims are fixed. */
 @Service
 public class PeriodService {
 
     private final PeriodRepository periods;
     private final SheetRepository sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
-    public PeriodService(PeriodRepository periods, SheetRepository sheets, Audit audit) {
+    public PeriodService(PeriodRepository periods, SheetRepository sheets, Audit audit, RollupService rollup) {
         this.periods = periods;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     public List<Period> list(String sheetId) {
@@ -52,5 +56,43 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
         return saved;
+    }
+
+    /** Close a period, fixing its due-total as it is now; refused when it is already closed. */
+    @Transactional
+    public Period close(String sheetId, String user, String name) {
+        // Lock the sheet so no claim in the period changes while its total is fixed.
+        if (sheets.lockById(sheetId) == 0) {
+            throw new SheetNotFoundException(sheetId);
+        }
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new PeriodNotFoundException(sheetId, name));
+        if (period.isClosed()) {
+            throw new PeriodClosedException(name);
+        }
+        BigDecimal total = rollup.dueTotalBetween(sheetId, period.getFromDate(), period.getToDate());
+        period.close(total);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
+                + " total=" + total.toPlainString());
+        return saved;
+    }
+
+    /**
+     * Refuse a change to a claim dated on any of the dates when one falls in a closed period. The sheet is locked
+     * until the caller's transaction ends, so a period cannot close while the change is made.
+     */
+    @Transactional
+    public void requireOpen(String sheetId, LocalDate... dates) {
+        if (sheets.lockById(sheetId) == 0) {
+            throw new SheetNotFoundException(sheetId);
+        }
+        for (Period period : list(sheetId)) {
+            for (LocalDate date : dates) {
+                if (period.isClosed() && period.contains(date)) {
+                    throw new PeriodClosedException(period.getName(), date);
+                }
+            }
+        }
     }
 }

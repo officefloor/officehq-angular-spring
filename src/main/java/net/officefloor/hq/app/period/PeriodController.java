@@ -26,12 +26,13 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class PeriodController {
 
-    /** A period as shown, its dates as yyyy-mm-dd. */
-    public record PeriodView(Long id, String name, String from, String to) {
+    /** A period as shown, its dates as yyyy-mm-dd; once closed, the due-total fixed then (null while open). */
+    public record PeriodView(Long id, String name, String from, String to, boolean closed, String closedTotal) {
 
         static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate().toString(),
-                    period.getToDate().toString());
+                    period.getToDate().toString(), period.isClosed(),
+                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString());
         }
     }
 
@@ -69,5 +70,13 @@ public class PeriodController {
             @RequestBody @Valid PeriodRequest request) {
         return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name().trim(),
                 PeriodRequest.date(request.from()), PeriodRequest.date(request.to())));
+    }
+
+    /** Close a period, fixing its due-total; refused when it is already closed. */
+    @PostMapping("/{name}/close")
+    public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @NotBlank @Size(max = 100) String name,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.close(sheetId.trim(), user.trim(), name.trim()));
     }
 }

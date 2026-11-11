@@ -90,6 +90,31 @@ public class RollupService {
     }
 
     /**
+     * The due-total of the dates from and to, both inclusive, as the screen shows a period's: the dues of the OPEN
+     * and SETTLED claims dated in them, skipping those with no due.
+     */
+    public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            byId.put(person.getId(), person);
+        }
+        BigDecimal total = zero();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !claim.getStatus().counts() || claim.getDate().isBefore(from)
+                    || claim.getDate().isAfter(to)) {
+                continue;
+            }
+            Optional<BigDecimal> due = dueOf(sheetRates, person, claim);
+            if (due.isPresent()) {
+                total = total.add(due.get());
+            }
+        }
+        return total.setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    /**
      * Record, once the transaction commits, a ROLLUP line for each person whose figures moved since the snapshot (a
      * person new since then counting as moved), then a TOTALS line when the sheet's totals moved.
      */
