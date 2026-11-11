@@ -1,0 +1,64 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+new file mode 100644
+index 000000000..7d02f5e3c
+--- /dev/null
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -0,0 +1,30 @@
++import { Component, input } from '@angular/core';
++import { StatusSummary } from '../summary/summary';
++
++// The sheet's counters, shown at all times: its people (retired included), its claims per status as the summary
++// counts them, and its due-total and overdue-total as the sheet's totals show them.
++@Component({
++  selector: 'app-header',
++  template: `
++    <header aria-label="Sheet counters">
++      <dl>
++        <dt>People</dt>
++        <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
++        @for (s of statuses(); track s.status) {
++          <dt>{{ s.status }}</dt>
++          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
++        }
++        <dt>Due total</dt>
++        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++        <dt>Overdue total</dt>
++        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++      </dl>
++    </header>
++  `,
++})
++export class Header {
++  readonly peopleCount = input.required<number>();
++  readonly statuses = input.required<StatusSummary[]>();
++  readonly dueTotal = input.required<string>();
++  readonly overdueTotal = input.required<string>();
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d3c1ce428..442771a04 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -6,6 +6,7 @@ import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, dueFixed
+ import { Period, Periods, periodOn } from '../periods/periods';
+ import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
+ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
++import { Header } from '../header/header';
+ 
+ interface Person {
+   id: number;
+@@ -64,8 +65,14 @@ function csvField(value: string): string {
+ // person's editor is opened, saves that person.
+ @Component({
+   selector: 'app-people',
+-  imports: [Claims, Periods, Rates, Summary],
++  imports: [Claims, Header, Periods, Rates, Summary],
+   template: `
++    <app-header
++      [peopleCount]="people().length"
++      [statuses]="statusSummary()"
++      [dueTotal]="dueTotal()"
++      [overdueTotal]="overdueTotal()"
++    />
+     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+     <section aria-labelledby="people-heading">
