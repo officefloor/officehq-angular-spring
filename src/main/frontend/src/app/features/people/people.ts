@@ -2,14 +2,14 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, ownPart, sharePart, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, pendingLate, plusDays, reviewLate, roundingDate, statusAt } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, ClaimShareItem, cents, holderPart, ownPart, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, pendingLate, plusDays, reviewLate, roundingDate, statusAt } from '../claims/claims';
 import { AuditView } from '../audit/audit-view';
 import { Activity } from '../audit/activity';
 import { TreeSearch } from '../search/tree-search';
 import { Holidays } from '../holidays/holidays';
 import { Grades } from '../grades/grades';
 import { DatedDue, Period, Periods, classicPeriodDueTotal, periodDueTotal, periodOn, personPeriodCarried, personPeriodDueTotal } from '../periods/periods';
-import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
+import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, roundsHalfUp, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
 import { Settings } from '../settings/settings';
 import { Header } from '../header/header';
@@ -1959,13 +1959,24 @@ export class People {
       .filter((c) => countsFor(p, c, this.session.figureDay()))
       .map((c) => {
         const f = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
-        return f === null ? null : ownPart(c, f);
+        return f === null ? null : ownPart(c, f, (s) => this.partOf(c, f, s));
       });
     const held = this.heldParts().get(p.id);
     if (this.pctOf().get(this.gradeToday(p)) === undefined && figures.every((f) => f === null) && held === undefined) {
       return null;
     }
     return figures.reduce<number>((sum, f) => sum + (f ?? 0), 0) + (held ? held.settled + held.open : 0);
+  }
+
+  /**
+   * A holder's part of a claim, in whole cents (see {@link holderPart}): by the rate of the holder's
+   * own grade on the claim's date, rounded as the claim rounds.
+   */
+  private partOf(c: Claim, figure: number, s: ClaimShareItem): number | null {
+    const holder = this.peopleById().get(s.holder);
+    const pct = holder === undefined ? undefined : pctOn(this.rates(), gradeOn(holder.grades, c.date), c.date, c);
+    const late = this.lateness();
+    return holderPart(c, figure, s.share, pct, roundsHalfUp(this.roundOn(c), late.policyDate, late.today, late.roundings));
   }
 
   /**
@@ -1984,7 +1995,8 @@ export class People {
       if (figure === null) continue;
       for (const s of c.shares) {
         const held = parts.get(s.holder) ?? { settled: 0, open: 0 };
-        const part = sharePart(figure, s.share);
+        const part = this.partOf(c, figure, s);
+        if (part === null) continue;
         parts.set(s.holder, isOpen(c) ? { ...held, open: held.open + part } : { ...held, settled: held.settled + part });
       }
     }
@@ -2000,7 +2012,7 @@ export class People {
     for (const c of this.claimsOf(p.id)) {
       if (!countsFor(p, c, this.session.figureDay())) continue;
       const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
-      const own = figure === null ? 0 : ownPart(c, figure);
+      const own = figure === null ? 0 : ownPart(c, figure, (s) => this.partOf(c, figure, s));
       if (isOpen(c)) out.open += own;
       else out.settled += own;
     }

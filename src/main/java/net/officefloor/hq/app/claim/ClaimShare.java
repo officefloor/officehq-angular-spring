@@ -7,8 +7,8 @@ import java.math.RoundingMode;
 
 /**
  * A share of a claim held by another person on the sheet: the holder and their share percent (two
- * decimals, more than 0.00). The holder's part is the claim's due times the share divided by 100,
- * rounded half to even.
+ * decimals, more than 0.00). The holder's part is worked out by the rate of their own grade (see
+ * RollupService); a SETTLED claim's parts are frozen: its fixed due times the share divided by 100.
  */
 @Embeddable
 public class ClaimShare {
@@ -35,7 +35,7 @@ public class ClaimShare {
         return share;
     }
 
-    /** The holder's part of a due: the due times the share divided by 100, rounded half to even. */
+    /** The holder's frozen part of a settled due: the due times the share divided by 100, rounded half to even. */
     public BigDecimal partOf(BigDecimal due) {
         return due.multiply(share).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN);
     }

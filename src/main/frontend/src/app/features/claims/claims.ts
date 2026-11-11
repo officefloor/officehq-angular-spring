@@ -180,7 +180,7 @@ export interface ClaimShareItem {
 }
 
 /**
- * A holder's part of a claim's figure, in whole cents: the figure times the share divided by 100,
+ * A frozen part of a claim's figure, in whole cents: the figure times the share divided by 100,
  * rounded half to even.
  */
 export function sharePart(figure: number, share: string): number {
@@ -193,9 +193,29 @@ export function sharePart(figure: number, share: string): number {
   return sign * (rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole);
 }
 
+/**
+ * A holder's part of a claim, in whole cents: the claim's amount times their share divided by 100,
+ * times `pct` (the rate of the holder's own grade in force on the claim's date) divided by 100,
+ * rounded half up when `halfUp` (else half to even); null (0 off the claim, and no figure for the
+ * holder) when their grade has no rate. A SETTLED claim
+ * keeps its parts as frozen: its figure split by the share (see {@link sharePart}).
+ */
+export function holderPart(c: Claim, figure: number, share: string, pct: string | undefined, halfUp: boolean): number | null {
+  if (c.status === 'SETTLED' && c.settledDue !== null) return sharePart(figure, share);
+  if (pct === undefined) return null;
+  // amount cents x share hundredths x rate hundredths is 10^8 times the part in cents
+  const scaled = BigInt(cents(c.amount)) * BigInt(cents(share)) * BigInt(cents(pct));
+  const neg = scaled < 0n;
+  const abs = neg ? -scaled : scaled;
+  const whole = abs / 100000000n;
+  const rest = abs % 100000000n;
+  const part = Number(rest > 50000000n || (rest === 50000000n && (halfUp || whole % 2n === 1n)) ? whole + 1n : whole);
+  return neg ? -part : part;
+}
+
 /** The part of a claim's figure, in whole cents, its own person keeps: the figure less the holders' parts. */
-export function ownPart(c: Claim, figure: number): number {
-  return (c.shares ?? []).reduce((own, s) => own - sharePart(figure, s.share), figure);
+export function ownPart(c: Claim, figure: number, partOf: (s: ClaimShareItem) => number | null): number {
+  return (c.shares ?? []).reduce((own, s) => own - (partOf(s) ?? 0), figure);
 }
 
 /** One line of a claim: a label, a quantity and a unit amount. */

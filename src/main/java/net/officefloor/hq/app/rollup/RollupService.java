@@ -204,6 +204,7 @@ public class RollupService {
         Map<Long, Figures> figures = new LinkedHashMap<>();
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, BigDecimal> heldParts = heldParts(sheet, sheetRates, sheetClaims, sheetPeople);
+        Map<Long, Person> byId = byId(sheetPeople);
         Map<Long, BigDecimal> cutTotals = sheet.getCap() == null ? Map.of() : pools.getObject().cutTotalsNow(sheetId);
         for (Person person : sheetPeople) {
             BigDecimal claimed = zero();
@@ -223,7 +224,7 @@ public class RollupService {
                 BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
                 if (figure != null) {
                     anyFigure = true;
-                    due = due.add(ownPart(claim, figure));
+                    due = due.add(ownPart(sheet, sheetRates, sheetClaims, byId, claim, figure));
                     if (overdue(sheet, person, claim)) {
                         overdue = overdue.add(figure);
                     }
@@ -524,12 +525,41 @@ public class RollupService {
     }
 
     /** The part of a claim's figure its own person keeps: the figure less the parts of the people it is shared with. */
-    public static BigDecimal ownPart(Claim claim, BigDecimal figure) {
+    private static BigDecimal ownPart(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims,
+            Map<Long, Person> byId, Claim claim, BigDecimal figure) {
         BigDecimal own = figure;
         for (ClaimShare share : claim.getShares()) {
-            own = own.subtract(share.partOf(figure));
+            own = own.subtract(part(sheet, sheetRates, sheetClaims, byId, claim, share, figure).orElse(zero()));
         }
         return own;
+    }
+
+    /**
+     * A holder's part of a claim: the claim's amount times their share divided by 100, times the rate
+     * of the holder's own grade in force on the claim's date divided by 100, rounded as the claim
+     * rounds (see {@link Rounding}); none (0.00 off the claim, and no figure for the holder) when their
+     * grade has no rate then. A SETTLED claim keeps its parts as frozen: its fixed due times the share
+     * divided by 100 (see {@link ClaimShare#partOf}).
+     */
+    private static Optional<BigDecimal> part(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims,
+            Map<Long, Person> byId, Claim claim, ClaimShare share, BigDecimal figure) {
+        if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
+            return Optional.of(share.partOf(figure));
+        }
+        Person holder = byId.get(share.getHolderId());
+        if (holder == null) {
+            return Optional.empty();
+        }
+        return RateChain.inForce(sheetRates, holder.gradeOn(claim.getDate()), claim).map(Rate::getPct)
+                .map(pct -> claim.getAmount().multiply(share.getShare()).multiply(pct)
+                        .divide(BigDecimal.valueOf(10_000), 2,
+                                Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))));
+    }
+
+    private static Map<Long, Person> byId(List<Person> sheetPeople) {
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        sheetPeople.forEach(p -> byId.put(p.getId(), p));
+        return byId;
     }
 
     /** The parts a person holds now of others' claims (see {@link #heldParts}); empty when they hold none. */
@@ -545,8 +575,7 @@ public class RollupService {
      */
     private static Map<Long, BigDecimal> heldParts(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims,
             List<Person> sheetPeople) {
-        Map<Long, Person> byId = new LinkedHashMap<>();
-        sheetPeople.forEach(p -> byId.put(p.getId(), p));
+        Map<Long, Person> byId = byId(sheetPeople);
         Map<Long, BigDecimal> parts = new LinkedHashMap<>();
         for (Claim claim : sheetClaims) {
             Person owner = byId.get(claim.getPersonId());
@@ -558,7 +587,8 @@ public class RollupService {
                 continue;
             }
             for (ClaimShare share : claim.getShares()) {
-                parts.merge(share.getHolderId(), share.partOf(figure), BigDecimal::add);
+                part(sheet, sheetRates, sheetClaims, byId, claim, share, figure)
+                        .ifPresent(part -> parts.merge(share.getHolderId(), part, BigDecimal::add));
             }
         }
         return parts;
