@@ -54,6 +54,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(() -> new SheetNotFoundException(id));
     }
 
+    /** The default date of a new claim: the sheet's entry date while it is set, else its today. */
+    public LocalDate entryDate(String id) {
+        return get(id).entryDateOrToday();
+    }
+
     /** Whether the sheet is archived: every change to it is refused. A sheet not started yet is not. */
     public boolean isArchived(String id) {
         return sheets.findById(id).map(Sheet::isArchived).orElse(false);

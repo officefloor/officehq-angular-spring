@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Adds a DRAFT claim per pasted line of name,amount,date,note, in order. The name must be on the sheet (compared as
- * names are); the amount, date and note are taken as the claim form takes them (a blank date is the sheet's today, the
+ * names are); the amount, date and note are taken as the claim form takes them (a blank date is the sheet's entry date while set, else its today, the
  * note may hold commas or be absent). The whole is one change: if any line is refused, nothing is added.
  */
 @Service

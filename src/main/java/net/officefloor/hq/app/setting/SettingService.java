@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, its late percent, its cap and its proof threshold, each
- * dated (kept from a from-date); and its policy date, its period numbering from, its grace days and its
+ * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days and its
  * permission matrix, not dated.
  */
 @Service
@@ -197,6 +197,20 @@ public class SettingService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=period-numbering-from value="
                 + (from == null ? "" : from.toString()));
+        return saved;
+    }
+
+    /**
+     * Set the entry date, the default date of a new claim in place of the sheet's today; null means off. Every save is
+     * recorded, even of the same value. Claims already added keep their dates.
+     */
+    @Transactional
+    public Sheet setEntryDate(String sheetId, String user, LocalDate entryDate) {
+        Sheet sheet = get(sheetId);
+        sheet.setEntryDate(entryDate);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=entry-date value="
+                + (entryDate == null ? "" : entryDate.toString()));
         return saved;
     }
 }

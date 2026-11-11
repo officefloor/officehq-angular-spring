@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adds a DRAFT claim, dated the sheet's today with an empty note, for a person named by typed name; a name not on
+ * Adds a DRAFT claim, dated the sheet's entry date (while set, else its today) with an empty note, for a person named by typed name; a name not on
  * the sheet first adds the person with grade A. The whole is one change: a refused claim leaves no new person.
  */
 @Service

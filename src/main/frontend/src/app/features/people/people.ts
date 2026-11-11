@@ -1199,8 +1199,8 @@ export class People {
         this.claimSaved(added);
       }
     } catch {
-      const closed = periodOn(this.periods(), this.session.today() ?? '');
-      const why = closed?.closed ? ` Today is in the closed period ${closed.name}.` : '';
+      const closed = periodOn(this.periods(), this.session.newClaimDate() ?? '');
+      const why = closed?.closed ? ` The date of a new claim is in the closed period ${closed.name}.` : '';
       this.quickError.set('The claim could not be added.' + why);
     } finally {
       this.quickAdding = false;

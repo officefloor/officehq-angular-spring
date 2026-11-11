@@ -17,7 +17,8 @@ import org.springframework.web.servlet.HandlerMapping;
 public class ViewerInterceptor implements HandlerInterceptor {
 
     /** The changing requests a viewer may still make: their handlers decide what a viewer gets. */
-    private static final Set<String> LET_THROUGH = Set.of("/load", "/claims/bulk-open", "/claims/bulk-settle");
+    private static final Set<String> LET_THROUGH = Set.of("/load", "/claims/bulk-open", "/claims/bulk-settle",
+            "/people/bulk-grade");
 
     private final RoleService roles;
 

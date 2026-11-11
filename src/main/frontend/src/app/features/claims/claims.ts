@@ -882,7 +882,7 @@ export class Claims implements OnInit {
         this.saved.emit(saved);
       }
     } catch (e) {
-      const dated = date || (this.session.today() ?? '');
+      const dated = date || ((editing === null ? this.session.newClaimDate() : this.session.today()) ?? '');
       const closed = this.closedOn(dated);
       const retiredFrom = this.retiredFrom();
       const why = closed

@@ -24,7 +24,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. A claim dated in a closed
+ * Keeps the people's claims on a sheet. A new claim with no date is dated the sheet's entry date while it is set, else
+ * the sheet's today; an edited one with no date the sheet's today. A claim dated in a closed
  * period cannot be added, edited, deferred or change status. Only a DRAFT claim can be edited; a PENDING claim, waiting for a
  * steward to approve or reject it, is otherwise handled like an OPEN one. No claim
  * can be dated after the retirement date of its person. A claim whose due is above the proof threshold on its date
@@ -87,7 +88,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
-        LocalDate dated = dateOr(sheetId, date);
+        LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
         periods.requireOpen(sheetId, dated);
         person.requireClaimable(dated);
         LocalDate correctedDate = requireCorrection(sheetId, personId, amount, corrects);

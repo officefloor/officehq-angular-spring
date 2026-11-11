@@ -54,6 +54,11 @@ export class Session {
   /** The active sheet's policy date (yyyy-mm-dd): a claim dated before it rounds half up, on or after it half to even;
    *  blank means the sheet's today; null until the settings are read. */
   readonly policyDate = signal<string | null>(null);
+  /** The active sheet's entry date (yyyy-mm-dd): while set, the default date of a new claim; blank means off (the
+   *  sheet's today); null until the settings are read. */
+  readonly entryDate = signal<string | null>(null);
+  /** The default date of a new claim: the entry date while it is set, else the sheet's today. */
+  readonly newClaimDate = computed(() => this.entryDate() || this.today());
   /** The active sheet's cap (two decimals) in force on its today: a person's due-total is at most it; null when there
    *  is none or until the settings are read. */
   readonly cap = computed(() => this.settingOn('cap', this.today()));
