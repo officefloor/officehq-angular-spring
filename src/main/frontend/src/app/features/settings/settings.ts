@@ -44,6 +44,7 @@ const GRADES = ['A', 'B', 'C'];
           data-testid="setting-clerk-limit"
           inputmode="decimal"
           [value]="clerkLimit()"
+          (focus)="lastFocused = 'clerkLimit'"
           (input)="clerkLimit.set(value($event)); clerkLimitEdited = true; settingsError.set(null)"
         />
         <label for="setting-floor">Floor (the least a live due can be)</label>
@@ -52,6 +53,7 @@ const GRADES = ['A', 'B', 'C'];
           data-testid="setting-floor"
           inputmode="decimal"
           [value]="floor()"
+          (focus)="lastFocused = 'floor'"
           (input)="floor.set(value($event)); floorEdited = true; settingsError.set(null)"
         />
         <label for="setting-terms">Terms (days after its date a claim is due by)</label>
@@ -60,6 +62,7 @@ const GRADES = ['A', 'B', 'C'];
           data-testid="setting-terms"
           inputmode="numeric"
           [value]="terms()"
+          (focus)="lastFocused = 'terms'"
           (input)="terms.set(value($event)); termsEdited = true; settingsError.set(null)"
         />
         @for (g of grades; track g) {
@@ -78,6 +81,7 @@ const GRADES = ['A', 'B', 'C'];
           data-testid="setting-late-pct"
           inputmode="decimal"
           [value]="latePct()"
+          (focus)="lastFocused = 'latePct'"
           (input)="latePct.set(value($event)); latePctEdited = true; settingsError.set(null)"
         />
         <label for="setting-policy-date">Policy date (claims before it round half up, others half to even; blank: today)</label>
@@ -86,6 +90,7 @@ const GRADES = ['A', 'B', 'C'];
           data-testid="setting-policy-date"
           type="date"
           [value]="policyDate()"
+          (focus)="lastFocused = 'policyDate'"
           (input)="policyDate.set(value($event)); policyDateEdited = true; settingsError.set(null)"
         />
         <label for="setting-period-numbering-from">Period numbering from (claims opened from then are numbered within their period; blank: off)</label>
@@ -94,6 +99,7 @@ const GRADES = ['A', 'B', 'C'];
           data-testid="setting-period-numbering-from"
           type="date"
           [value]="periodNumberingFrom()"
+          (focus)="lastFocused = 'periodNumberingFrom'"
           (input)="periodNumberingFrom.set(value($event)); periodNumberingFromEdited = true; settingsError.set(null)"
         />
         <label for="setting-cap">Cap (the most a person's due-total can be; blank: no cap)</label>
@@ -102,6 +108,7 @@ const GRADES = ['A', 'B', 'C'];
           data-testid="setting-cap"
           inputmode="decimal"
           [value]="cap()"
+          (focus)="lastFocused = 'cap'"
           (input)="cap.set(value($event)); capEdited = true; settingsError.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
@@ -193,6 +200,9 @@ export class Settings {
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
   protected capEdited = false;
+  /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap' | null =
+    null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
   protected readonly roleUser = signal('');
@@ -239,8 +249,21 @@ export class Settings {
     this.settingsError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    // Saving with nothing typed saves the clerk limit as it stands.
-    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.capEdited);
+    // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
+    // nothing), else the clerk limit.
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.capEdited;
+    if (nothingTyped) {
+      switch (this.lastFocused) {
+        case 'clerkLimit': this.clerkLimitEdited = true; break;
+        case 'floor': this.floorEdited = true; break;
+        case 'terms': this.termsEdited = true; break;
+        case 'latePct': this.latePctEdited = true; break;
+        case 'policyDate': this.policyDateEdited = true; break;
+        case 'periodNumberingFrom': this.periodNumberingFromEdited = true; break;
+        case 'cap': this.capEdited = true; break;
+      }
+    }
+    const saveLimit = this.clerkLimitEdited || (nothingTyped && !this.lastFocused);
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
     const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g));

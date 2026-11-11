@@ -1,6 +1,5 @@
 package net.officefloor.hq.app.period;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -64,7 +63,7 @@ public class PeriodService {
         return saved;
     }
 
-    /** Close a period, fixing its due-total as it is now; refused when it is already closed. */
+    /** Close a period, fixing every person's due-total for it, and so its own, as they are now; refused when it is already closed. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
         // Lock the sheet so no claim in the period changes while its total is fixed.
@@ -76,11 +75,10 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodClosedException(name);
         }
-        BigDecimal total = rollup.dueTotalBetween(sheetId, period.getFromDate(), period.getToDate());
-        period.close(total);
+        period.close(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " total=" + total.toPlainString());
+                + " total=" + saved.getClosedTotal().toPlainString());
         return saved;
     }
 

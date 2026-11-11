@@ -1,13 +1,20 @@
 package net.officefloor.hq.app.period;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 
 /** A period of a sheet: a name unique on the sheet, and the from and to dates it covers, both inclusive. */
 @Entity
@@ -36,6 +43,13 @@ public class Period {
     /** The due-total fixed when the period was closed; null while it is open. */
     @Column(name = "closed_total", precision = 14, scale = 2)
     private BigDecimal closedTotal;
+
+    /** Each person's due-total for the period, by person id, fixed when it was closed; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_total", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "total", precision = 14, scale = 2)
+    private Map<Long, BigDecimal> personTotals = new HashMap<>();
 
     protected Period() {
     }
@@ -75,16 +89,23 @@ public class Period {
         return closedTotal;
     }
 
-    /** Close the period, fixing its due-total. */
-    public void close(BigDecimal total) {
+    public Map<Long, BigDecimal> getPersonTotals() {
+        return Map.copyOf(personTotals);
+    }
+
+    /** Close the period, fixing each person's due-total for it and its own, their sum. */
+    public void close(Map<Long, BigDecimal> totals) {
         this.closed = true;
-        this.closedTotal = total;
+        this.personTotals.clear();
+        this.personTotals.putAll(totals);
+        this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;
         this.closedTotal = null;
+        this.personTotals.clear();
     }
 
     /** Whether the date falls in the period, both ends inclusive. */

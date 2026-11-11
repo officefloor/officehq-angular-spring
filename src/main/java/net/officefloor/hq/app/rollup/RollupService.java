@@ -110,29 +110,29 @@ public class RollupService {
     }
 
     /**
-     * The due-total of the dates from and to, both inclusive, as the screen shows a period's: the dues of the OPEN
-     * and SETTLED claims dated in them, skipping those with no due and the OPEN ones a hold of their person leaves out.
+     * Each person's due-total of the dates from and to, both inclusive, by person id for every person on the sheet, as
+     * the screen shows a person's for a period: the dues of their OPEN and SETTLED claims dated in them, skipping those
+     * with no due and the OPEN ones a hold of theirs leaves out; 0.00 with none.
      */
-    public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+    public Map<Long, BigDecimal> dueTotalsBetween(String sheetId, LocalDate from, LocalDate to) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
         Map<Long, Person> byId = new LinkedHashMap<>();
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             byId.put(person.getId(), person);
+            totals.put(person.getId(), zero());
         }
-        BigDecimal total = zero();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
             if (person == null || !person.counts(claim) || claim.getDate().isBefore(from)
                     || claim.getDate().isAfter(to)) {
                 continue;
             }
-            Optional<BigDecimal> due = dueOf(sheet, sheetRates, person, claim);
-            if (due.isPresent()) {
-                total = total.add(due.get());
-            }
+            dueOf(sheet, sheetRates, person, claim).ifPresent(due -> totals.merge(person.getId(), due, BigDecimal::add));
         }
-        return total.setScale(2, RoundingMode.HALF_EVEN);
+        totals.replaceAll((id, total) -> total.setScale(2, RoundingMode.HALF_EVEN));
+        return totals;
     }
 
     /**

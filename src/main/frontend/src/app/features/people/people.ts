@@ -149,6 +149,9 @@ function csvField(value: string): string {
         <thead>
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            @for (per of periods(); track per.id) {
+              <th scope="col">Due in {{ per.name }}</th>
+            }
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
@@ -163,6 +166,9 @@ function csvField(value: string): string {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              @for (per of periods(); track per.id) {
+                <td [attr.data-testid]="'person-period-' + per.name + '-due-total'">{{ periodDueTotalOf(p, per) }}</td>
+              }
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
@@ -346,20 +352,34 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** The sheet's periods in date order. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each period's due-total by name: the dues of the OPEN, PENDING and SETTLED claims dated in it, skipping the n/a ones. */
-  protected readonly periodDueTotals = computed(() => {
+  /**
+   * Each person's live due-total for each period, by person id and then period name: the dues of their OPEN, PENDING
+   * and SETTLED claims dated in it, skipping the n/a ones; a period they have none in is missing.
+   */
+  private readonly livePersonPeriodDues = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
-    const dues = new Map<string, string[]>();
+    const dues = new Map<number, Map<string, string[]>>();
     for (const c of this.claims()) {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
       if (!period || person === undefined || !live(c, person.holds)) continue;
-      const list = dues.get(period.name) ?? [];
+      const theirs = dues.get(person.id) ?? new Map<string, string[]>();
+      const list = theirs.get(period.name) ?? [];
       list.push(claimDue(c, this.rates(), person.grades, this.session));
-      dues.set(period.name, list);
+      theirs.set(period.name, list);
+      dues.set(person.id, theirs);
     }
-    return new Map([...dues].map(([name, list]) => [name, sumDues(list)]));
+    return new Map(
+      [...dues].map(([id, theirs]) => [id, new Map([...theirs].map(([name, list]) => [name, sumDues(list)]))]),
+    );
   });
+  /** Each period's due-total by name: the sum of everyone's due-total for it. */
+  protected readonly periodDueTotals = computed(
+    () =>
+      new Map(
+        this.periods().map((per) => [per.name, sumDues(this.people().map((p) => this.periodDueTotalOf(p, per)))]),
+      ),
+  );
   /** Everyone's due-total added up, skipping the n/a ones. */
   protected readonly dueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
   /** How many of everyone's counted claims are overdue. */
@@ -502,6 +522,15 @@ export class People {
    */
   protected dueTotalOf(person: Person): string {
     return capped(this.uncappedDueTotalOf(person), this.session.cap());
+  }
+
+  /**
+   * The person's due-total for the period: once it is closed, the figure fixed then (0.00 for a person added since);
+   * while it is open, the dues of their counting claims dated in it.
+   */
+  protected periodDueTotalOf(person: Person, period: Period): string {
+    if (period.closed) return period.personTotals?.[person.id] ?? '0.00';
+    return this.livePersonPeriodDues().get(person.id)?.get(period.name) ?? '0.00';
   }
 
   /** How far the sum of the person's dues is above the sheet's cap; 0.00 when it is not. */

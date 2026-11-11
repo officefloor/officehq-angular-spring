@@ -8,6 +8,8 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,13 +28,19 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class PeriodController {
 
-    /** A period as shown, its dates as yyyy-mm-dd; once closed, the due-total fixed then (null while open). */
-    public record PeriodView(Long id, String name, String from, String to, boolean closed, String closedTotal) {
+    /**
+     * A period as shown, its dates as yyyy-mm-dd; once closed, the due-total fixed then (null while open) and each
+     * person's due-total for it fixed then, by person id (empty while open).
+     */
+    public record PeriodView(Long id, String name, String from, String to, boolean closed, String closedTotal,
+            Map<Long, String> personTotals) {
 
         static PeriodView of(Period period) {
+            Map<Long, String> personTotals = new TreeMap<>();
+            period.getPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate().toString(),
                     period.getToDate().toString(), period.isClosed(),
-                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString());
+                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(), personTotals);
         }
     }
 

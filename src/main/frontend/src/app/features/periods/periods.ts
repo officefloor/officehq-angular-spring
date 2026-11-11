@@ -14,6 +14,8 @@ export interface Period {
   closed: boolean;
   /** The due-total fixed when the period was closed; null while it is open. */
   closedTotal: string | null;
+  /** Each person's due-total for the period by person id, fixed when it was closed; empty while it is open. */
+  personTotals: Record<number, string>;
 }
 
 /** The period whose dates contain the date; undefined when none does. */
