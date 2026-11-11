@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6d2f6edc411047716c9678c673d6a3ccfe0a2917",
+  "reset_sha": "",
+  "preagent_sha": "aa5702381729d226be42217624d59d08c4601106",
+  "prev_sha": "aa5702381729d226be42217624d59d08c4601106",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.872371,
+    "input_tokens": 42,
+    "output_tokens": 8201,
+    "cache_read_tokens": 1129675,
+    "cache_creation_tokens": 60281,
+    "num_turns": 23,
+    "duration_ms": 331905,
+    "duration_api_ms": 82440,
+    "model": "claude-opus-5-5",
+    "session_id": "1f51df89-4c57-4931-ba3e-964a9f0ca2f5",
+    "stop_reason": "success",
+    "result_text": "The new \"restricted\" role works, and all 4 acceptance tests pass with `bin/e2e`.\n\n**What a restricted user sees:** the people list shows only the person with their name and everyone in the crews that person leads or belongs to. Nothing else is cut down: the totals row, header, summary, periods and pools still count everyone on the sheet. If no person on the sheet has the user's name, they see no rows at all.\n\n**Changes:**\n- **Stored data:** a new migration, `V108__role_restricted.sql`, rebuilds the `sheet_role` table so the role column accepts `restricted`. It follows the same pattern as the earlier `viewer` migration.\n- **Server:** added `Role.RESTRICTED`, and the set-role request now accepts `restricted`, so any other value such as `x` is still refused. The `ROLE_SET \u2026 role=restricted` audit line comes from the existing code.\n- **Front end:**\n  - The roles form offers `restricted` as a choice.\n  - `people.ts` now fetches the user's role along with the rest of the sheet. It decides which people the user may see and hides the other rows only where rows are drawn. Every total is still worked out over the full list, so no figure changes.\n\n**A choice you may want to change:** the request didn't say what a restricted user may *do*, so I let them act exactly like a clerk (open, settle, void and so on) in `Sheet.permits`. The tests have no restricted user taking an action, so they don't check this. If restricted users should have fewer rights, that is a one-line change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.872371,
+        "num_turns": 23,
+        "duration_ms": 331905,
+        "duration_api_ms": 82440,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

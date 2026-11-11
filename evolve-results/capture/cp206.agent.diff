@@ -1,0 +1,187 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 98b75a434..c7bf3e785 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1151,7 +1151,8 @@ export class People {
+   /** The listed people in the order this screen sorts them by; equal keys keep list order. Only the
+    *  rows shown follow it: every total and action keeps to list order. */
+   protected readonly sorted = computed(() => {
+-    const listed = this.listed();
++    const seen = this.seenIds();
++    const listed = seen ? this.listed().filter((p) => seen.has(p.id)) : this.listed();
+     const by = this.session.sortBy();
+     if (by === 'added') return listed;
+     const key = (p: Person): string | number | null =>
+@@ -1438,6 +1439,26 @@ export class People {
+       (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
+     );
+   });
++  /** The signed-in user's role on the sheet, as last read from the store. */
++  private readonly role = signal('');
++  /**
++   * The ids of the people a restricted user may see on the list: the person with the user's name
++   * and everyone in the crews they lead or belong to; null for any other role, who sees everyone.
++   * Only the rows shown are narrowed: every total and figure stays over everyone on the sheet.
++   */
++  private readonly seenIds = computed<ReadonlySet<number> | null>(() => {
++    if (this.role() !== 'restricted') return null;
++    const me = this.me();
++    const seen = new Set<number>();
++    if (!me) return seen;
++    seen.add(me.id);
++    for (const c of this.crews()) {
++      if (c.leadId !== me.id && !c.members.some((m) => m.personId === me.id)) continue;
++      if (c.leadId !== null) seen.add(c.leadId);
++      for (const m of c.members) seen.add(m.personId);
++    }
++    return seen;
++  });
+   /** The due-totals of the crews the user's person leads, added up; blank when they lead none. */
+   protected readonly myCrewDueTotal = computed(() => {
+     const me = this.me();
+@@ -1611,6 +1632,7 @@ export class People {
+       const sheet = this.session.sheet();
+       this.session.loads();
+       this.people.set([]);
++      this.role.set('');
+       this.claims.set([]);
+       this.plans.set([]);
+       this.planGenerated.set(null);
+@@ -1675,7 +1697,7 @@ export class People {
+ 
+   private async fetch(sheet: string): Promise<void> {
+     try {
+-      const [list, claims, statements, patrons, watched, tags, descendants, plans] = await Promise.all([
++      const [list, claims, statements, patrons, watched, tags, descendants, plans, mine] = await Promise.all([
+         firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet })),
+         firstValueFrom(this.http.post<Claim[]>('/api/claims/list', { sheet })),
+         firstValueFrom(this.http.post<StatementSummary[]>('/api/statements/list', { sheet })),
+@@ -1684,8 +1706,10 @@ export class People {
+         firstValueFrom(this.http.post<string[]>('/api/claims/tags', { sheet })),
+         firstValueFrom(this.http.post<Descendants>('/api/rollup/descendants/list', { sheet })),
+         firstValueFrom(this.http.post<Plan[]>('/api/plans/list', { sheet })),
++        firstValueFrom(this.http.post<{ role: string }>('/api/roles/mine/list', { sheet, user: this.session.user() })),
+       ]);
+       if (this.session.sheet() === sheet) {
++        this.role.set(mine.role);
+         this.claims.set(claims);
+         this.plans.set(plans);
+         this.descendants.set(descendants);
+diff --git a/src/main/frontend/src/app/features/roles/roles.ts b/src/main/frontend/src/app/features/roles/roles.ts
+index 661fd6a37..8a860e15e 100644
+--- a/src/main/frontend/src/app/features/roles/roles.ts
++++ b/src/main/frontend/src/app/features/roles/roles.ts
+@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Delegations } from './delegations';
+ 
+-// The roles the sheet assigns to user names: clerk (the default for any name), steward or viewer,
++// The roles the sheet assigns to user names: clerk (the default for any name), steward, viewer or
++// restricted (a clerk who sees on the people list only their crews' people and themselves),
+ // and the form that assigns one. A steward settles any claim, and approves or rejects a PENDING
+ // one; a clerk settling a claim above the clerk limit makes it PENDING; a viewer sees everything
+ // and changes nothing (the server refuses each change; a bulk or generate action does nothing).
+@@ -13,7 +14,7 @@ interface Role {
+   role: string;
+ }
+ 
+-const ROLES = ['clerk', 'steward', 'viewer'];
++const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
+ 
+ @Component({
+   selector: 'app-roles',
+@@ -29,7 +30,7 @@ const ROLES = ['clerk', 'steward', 'viewer'];
+           [value]="userInput()"
+           (input)="userInput.set($any($event.target).value); error.set(null)"
+         />
+-        <label for="role-form-role">Role (clerk, steward or viewer)</label>
++        <label for="role-form-role">Role (clerk, steward, viewer or restricted)</label>
+         <input
+           id="role-form-role"
+           data-testid="role-form-role"
+@@ -116,7 +117,7 @@ export class Roles {
+       return;
+     }
+     if (!ROLES.includes(role)) {
+-      this.error.set('Choose a role of clerk, steward or viewer.');
++      this.error.set('Choose a role of clerk, steward, viewer or restricted.');
+       return;
+     }
+     this.submitting = true;
+diff --git a/src/main/java/net/officefloor/hq/app/role/Role.java b/src/main/java/net/officefloor/hq/app/role/Role.java
+index 38a7c8572..464f8ceda 100644
+--- a/src/main/java/net/officefloor/hq/app/role/Role.java
++++ b/src/main/java/net/officefloor/hq/app/role/Role.java
+@@ -16,6 +16,11 @@ public class Role {
+     public static final String STEWARD = "steward";
+     /** Sees every screen and figure, and may change nothing. */
+     public static final String VIEWER = "viewer";
++    /**
++     * Acts as a clerk, but sees on the people list only the people of the crews they lead or belong
++     * to (by a person with the user's name) and that person themselves.
++     */
++    public static final String RESTRICTED = "restricted";
+ 
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index a7f7601d2..5bc093410 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -25,7 +25,7 @@ public class RoleController {
+ 
+     public record SetRoleRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+             @NotBlank @Size(max = 100) String name,
+-            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER) String role) {
++            @NotNull @Pattern(regexp = Role.CLERK + "|" + Role.STEWARD + "|" + Role.VIEWER + "|" + Role.RESTRICTED) String role) {
+     }
+ 
+     public record RoleResponse(String user, String role) {
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index e33f6a80e..b0c4ccd03 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -12,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+ /**
+- * The roles a sheet assigns to user names: clerk (the default for any name), steward or viewer. A
++ * The roles a sheet assigns to user names: clerk (the default for any name), steward, viewer or
++ * restricted (a clerk who sees only their crews' people on the people list). A
+  * steward can delegate the steward role to a user for a from-date to a to-date, inclusive: while
+  * the sheet's today is inside it the user acts as a steward on the steward's behalf.
+  */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index aabef8692..ccdc847db 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -610,7 +610,9 @@ public class Sheet {
+         }
+         String entry = permissions.get(action);
+         if (entry == null || entry.isBlank()) {
+-            return STANDING_PERMISSIONS.getOrDefault(action, Set.of()).contains(role);
++            // a restricted user acts as a clerk; only the people list they see is narrower
++            String standing = "restricted".equals(role) ? "clerk" : role;
++            return STANDING_PERMISSIONS.getOrDefault(action, Set.of()).contains(standing);
+         }
+         return Arrays.stream(entry.split(",")).map(String::trim).anyMatch(r -> r.equalsIgnoreCase(role));
+     }
+diff --git a/src/main/resources/db/migration/V108__role_restricted.sql b/src/main/resources/db/migration/V108__role_restricted.sql
+new file mode 100644
+index 000000000..1fe426b5c
+--- /dev/null
++++ b/src/main/resources/db/migration/V108__role_restricted.sql
+@@ -0,0 +1,13 @@
++-- A fourth role, restricted: sees on the people list only the people of the crews they lead or
++-- belong to, and themselves. The role check is unnamed, so the table is rebuilt with the wider check.
++CREATE TABLE sheet_role_new (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(100) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('clerk', 'steward', 'viewer', 'restricted'))
++);
++INSERT INTO sheet_role_new (id, sheet_id, user_name, role) SELECT id, sheet_id, user_name, role FROM sheet_role;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_new RENAME TO sheet_role;
++ALTER TABLE sheet_role ALTER COLUMN id RESTART WITH (SELECT COALESCE(MAX(id), 0) + 1 FROM sheet_role);
++CREATE UNIQUE INDEX sheet_role_sheet_user ON sheet_role (sheet_id, user_name);
