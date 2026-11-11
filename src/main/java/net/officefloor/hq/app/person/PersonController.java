@@ -70,6 +70,13 @@ public class PersonController {
         }
     }
 
+    /** The people to give a grade together, the grade, and the date it applies from (null: the sheet's today). */
+    public record BulkGradeRequest(
+            @NotNull @Size(max = 10000) List<@NotNull Long> ids,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {
+    }
+
     /** The date to retire from; null for the sheet's today. */
     public record RetireRequest(LocalDate from) {
     }
@@ -94,10 +101,12 @@ public class PersonController {
     private final StatementService statements;
     private final SheetService sheets;
     private final WatchService watches;
+    private final BulkGradeService bulkGrade;
 
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
-            WatchService watches) {
+            WatchService watches, BulkGradeService bulkGrade) {
         this.service = service;
+        this.bulkGrade = bulkGrade;
         this.watches = watches;
         this.statements = statements;
         this.sheets = sheets;
@@ -135,6 +144,14 @@ public class PersonController {
             @RequestBody @Valid PersonRequest request) {
         return view(service.update(sheetId.trim(), user.trim(), id, request.version(), request.name(),
                 request.grade(), request.gradeFrom(), request.termsValue()), user.trim());
+    }
+
+    /** Give the selected people a grade from a date, in list order, each as the person form would. */
+    @PostMapping("/bulk-grade")
+    public BulkGradeService.Result bulkGrade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkGradeRequest request) {
+        return bulkGrade.grade(sheetId.trim(), user.trim(), request.ids(), request.grade(), request.from());
     }
 
     /**

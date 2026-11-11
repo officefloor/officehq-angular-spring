@@ -202,6 +202,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
+            <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
@@ -216,6 +217,15 @@ function csvField(value: string): string {
         <tbody>
           @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
+              <td>
+                <input
+                  type="checkbox"
+                  data-testid="person-select"
+                  [attr.aria-label]="'Select ' + p.name"
+                  [checked]="selectedPeople().has(p.id)"
+                  (change)="selectPerson(p.id, checked($event))"
+                />
+              </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -393,6 +403,31 @@ function csvField(value: string): string {
       @if (bulkSettleError(); as message) {
         <p role="alert" data-testid="bulk-settle-error">{{ message }}</p>
       }
+      <p>
+        <label for="bulk-grade">Grade for selected people</label>
+        <select
+          id="bulk-grade"
+          data-testid="bulk-grade"
+          [value]="bulkGradeValue()"
+          (change)="bulkGradeValue.set(value($event)); clearBulkGradeError()"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === bulkGradeValue()">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">From (blank: today)</label>
+        <input
+          id="bulk-grade-from"
+          data-testid="bulk-grade-from"
+          type="date"
+          [value]="bulkGradeFrom()"
+          (input)="bulkGradeFrom.set(value($event)); clearBulkGradeError()"
+        />
+        <button type="button" data-testid="bulk-grade-apply" (click)="bulkGrade()">Grade selected people</button>
+        @if (bulkGraded() !== null) {
+          Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong>
+        }
+      </p>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
@@ -535,6 +570,13 @@ export class People {
   /** How many the last bulk settle settled and refused; null while it runs and before the first. */
   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
+  /** The ids of the people ticked to give a grade together. */
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  /** The grade, and its from-date (blank: the sheet's today), to give the ticked people. */
+  protected readonly bulkGradeValue = signal('A');
+  protected readonly bulkGradeFrom = signal('');
+  /** How many people the last bulk grade changed; null while it runs and before the first. */
+  protected readonly bulkGraded = signal<number | null>(null);
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
   private reads = 0;
 
@@ -554,6 +596,10 @@ export class People {
         this.patronChoices.set({});
         this.patronError.set(null);
         this.selectedClaims.set(new Set());
+        this.selectedPeople.set(new Set());
+        this.bulkGradeValue.set('A');
+        this.bulkGradeFrom.set('');
+        this.bulkGraded.set(null);
         this.bulkOpenResult.set(null);
         this.bulkOpenError.set(null);
         this.bulkSettleResult.set(null);
@@ -785,6 +831,60 @@ export class People {
     });
     this.bulkOpenError.set(null);
     this.bulkSettleError.set(null);
+  }
+
+  protected selectPerson(id: number, checked: boolean): void {
+    this.selectedPeople.update((ids) => {
+      const next = new Set(ids);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** A bulk grade's error shows on the row of the first ticked person; changing the form clears it. */
+  protected clearBulkGradeError(): void {
+    const error = this.rowError();
+    if (error && this.selectedPeople().has(error.id)) this.rowError.set(null);
+  }
+
+  /**
+   * Give the ticked people the chosen grade from the typed from-date (blank: the sheet's today), in list order, each as
+   * the person form would; then re-read so the totals show what the store holds.
+   */
+  protected async bulkGrade(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.rowError.set(null);
+    this.patronError.set(null);
+    this.bulkGraded.set(null);
+    const ids = this.people()
+      .filter((p) => this.selectedPeople().has(p.id))
+      .map((p) => p.id);
+    const first = ids.length > 0 ? ids[0] : null;
+    const from = this.bulkGradeFrom().trim();
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      if (first !== null) this.rowError.set({ id: first, message: 'Pick a date to grade from, or leave it blank for today.' });
+      return;
+    }
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ changed: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/bulk-grade`,
+          { ids, grade: this.bulkGradeValue(), from: from || null },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedPeople.set(new Set());
+      this.bulkGraded.set(result.changed);
+      await this.read(sheet);
+    } catch {
+      if (this.session.sheet() === sheet && first !== null) {
+        this.rowError.set({ id: first, message: 'The selected people could not be given the grade.' });
+      }
+    }
   }
 
   /** Open the ticked claims together, in list order; each that cannot be opened is left as it is. */
