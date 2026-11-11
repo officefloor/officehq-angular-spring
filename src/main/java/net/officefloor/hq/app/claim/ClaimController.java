@@ -28,12 +28,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as shown: the amount with two decimals, the date as yyyy-mm-dd. */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status) {
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+            Long number) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
         }
     }
 

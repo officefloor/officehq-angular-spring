@@ -35,6 +35,18 @@ public class SheetService {
         return sheets.saveAndFlush(sheet);
     }
 
+    /**
+     * The next claim number on the sheet: 1 for the first, then 2, and so on. The sheet's row is
+     * locked until the caller's transaction ends, so two claims opened at once get different numbers.
+     */
+    @Transactional
+    public long nextClaimNumber(String id) {
+        if (sheets.incrementLastClaimNumber(id) != 1) {
+            throw new SheetNotFoundException(id);
+        }
+        return sheets.lastClaimNumber(id);
+    }
+
     private Sheet start(String id, String user) {
         try {
             return sheets.saveAndFlush(new Sheet(id, user, LocalDate.now()));

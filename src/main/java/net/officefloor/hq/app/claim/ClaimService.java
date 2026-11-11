@@ -58,12 +58,20 @@ public class ClaimService {
     /** Move a claim to another status, if its current one allows it; refused otherwise. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status) {
-        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+        Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         if (!claim.getStatus().canMoveTo(status)) {
             throw new ClaimStatusException(id, claim.getStatus(), status);
         }
         claim.setStatus(status);
+        // The CLAIM_VOIDED record carries the number the claim had.
+        Long number = claim.getNumber();
+        if (status == ClaimStatus.OPEN) {
+            number = sheets.nextClaimNumber(sheetId);
+            claim.setNumber(number);
+        } else if (status == ClaimStatus.VOID) {
+            claim.setNumber(null);
+        }
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, saved.getPersonId()));
@@ -73,7 +81,7 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(record(event, user, person, saved));
+        audit.recordOnCommit(record(event, user, person, saved) + numberOf(number));
         return saved;
     }
 
@@ -82,6 +90,11 @@ public class ClaimService {
         return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString()
                 + " date=" + claim.getDate();
+    }
+
+    /** The claim's number at the end of an audit record, or nothing when it has none. */
+    private static String numberOf(Long number) {
+        return number == null ? "" : " number=" + number;
     }
 
     private LocalDate dateOr(String sheetId, LocalDate date) {
