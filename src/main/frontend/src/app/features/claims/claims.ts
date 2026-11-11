@@ -1222,6 +1222,7 @@ export class Claims implements OnInit {
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch (e) {
       const closed = this.closedOn(claim.dueBy);
+      const capped = periodOn(this.periods(), claim.dueBy);
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? action === 'settle'
@@ -1239,6 +1240,8 @@ export class Claims implements OnInit {
                 ? 'Choose a reason from the void reasons to void this claim.'
               : e instanceof HttpErrorResponse && e.status === 422 && (action === 'settle' || action === 'approve')
                 ? `This claim's due is above the proof threshold: add a proof before it can be ${pastOf[action]}.`
+              : e instanceof HttpErrorResponse && e.status === 409 && action === 'open' && claim.status === 'DRAFT' && capped?.cap != null
+                ? `This claim's person already has ${capped.cap} open claims in the period ${capped.name}, its cap: it cannot be opened.`
               : action === 'settle' && this.deferred(claim)
                 ? `This claim is deferred until ${claim.deferredUntil}: it cannot be settled before then.`
               : action === 'resettle'

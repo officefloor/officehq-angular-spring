@@ -40,15 +40,21 @@ public class PeriodService {
         return periods.findBySheetIdOrderByFromDateAscIdAsc(sheetId);
     }
 
-    /** Add a period; refused when its name is taken, its dates are reversed, or it overlaps another period. */
+    /**
+     * Add a period, with a cap on the OPEN or PENDING claims each person may have in it (null for none); refused when
+     * its name is taken, its dates are reversed, its cap is below 1, or it overlaps another period.
+     */
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         // Lock the sheet so two periods added at once are checked against each other.
         if (sheets.lockById(sheetId) == 0) {
             throw new SheetNotFoundException(sheetId);
         }
         if (to.isBefore(from)) {
             throw new PeriodRefusedException("The period " + name + " ends before it starts");
+        }
+        if (cap != null && cap < 1) {
+            throw new PeriodRefusedException("The period " + name + " cannot cap claims at " + cap);
         }
         if (periods.existsBySheetIdAndName(sheetId, name)) {
             throw new PeriodRefusedException("The period name " + name + " is already in use on sheet " + sheetId);
@@ -58,12 +64,13 @@ public class PeriodService {
         }
         Period saved;
         try {
-            saved = periods.saveAndFlush(new Period(sheetId, name, from, to));
+            saved = periods.saveAndFlush(new Period(sheetId, name, from, to, cap));
         } catch (DataIntegrityViolationException e) {
             throw new PeriodRefusedException("The period name " + name + " is already in use on sheet " + sheetId);
         }
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
+                + " from=" + saved.getFromDate() + " to=" + saved.getToDate()
+                + (saved.getCap() == null ? "" : " cap=" + saved.getCap()));
         return saved;
     }
 
@@ -210,6 +217,11 @@ public class PeriodService {
     /** The name of the period the date falls in; empty when it is in none. */
     public Optional<String> nameOn(String sheetId, LocalDate date) {
         return list(sheetId).stream().filter(p -> p.contains(date)).map(Period::getName).findFirst();
+    }
+
+    /** The period the date falls in; empty when it is in none. */
+    public Optional<Period> on(String sheetId, LocalDate date) {
+        return list(sheetId).stream().filter(p -> p.contains(date)).findFirst();
     }
 
     /** Whether the date falls in a soft-closed period of the sheet. */

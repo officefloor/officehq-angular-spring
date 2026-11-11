@@ -36,7 +36,7 @@ public class PeriodController {
      */
     public record PeriodView(Long id, String name, String from, String to, boolean closed, boolean softClosed,
             String closedTotal,
-            Map<Long, String> personTotals, String fy) {
+            Map<Long, String> personTotals, String fy, Integer cap) {
 
         static PeriodView of(Period period, Function<LocalDate, String> fiscalYears) {
             Map<Long, String> personTotals = new TreeMap<>();
@@ -44,14 +44,22 @@ public class PeriodController {
             return new PeriodView(period.getId(), period.getName(), period.getFromDate().toString(),
                     period.getToDate().toString(), period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(), personTotals,
-                    fiscalYears.apply(period.getFromDate()));
+                    fiscalYears.apply(period.getFromDate()), period.getCap());
         }
     }
 
-    /** A name of no spaces, and the from and to dates as yyyy-mm-dd. */
+    /**
+     * A name of no spaces, the from and to dates as yyyy-mm-dd, and the cap on each person's OPEN or PENDING claims in
+     * it as a whole number of 1 or more (null or blank for none).
+     */
     public record PeriodRequest(@NotBlank @Pattern(regexp = "\\s*\\S{1,100}\\s*") String name,
             @NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String from,
-            @NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String to) {
+            @NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String to,
+            @Pattern(regexp = "\\s*(0*[1-9]\\d{0,8})?\\s*") String cap) {
+
+        Integer capValue() {
+            return cap == null || cap.isBlank() ? null : Integer.valueOf(cap.trim());
+        }
 
         static LocalDate date(String value) {
             try {
@@ -81,7 +89,7 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PeriodRequest request) {
         return view(sheetId.trim(), service.add(sheetId.trim(), user.trim(), request.name().trim(),
-                PeriodRequest.date(request.from()), PeriodRequest.date(request.to())));
+                PeriodRequest.date(request.from()), PeriodRequest.date(request.to()), request.capValue()));
     }
 
     /** The from and to dates of a generate, as yyyy-mm-dd. */

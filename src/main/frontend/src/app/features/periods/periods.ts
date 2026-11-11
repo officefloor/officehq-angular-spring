@@ -20,6 +20,8 @@ export interface Period {
   personTotals: Record<number, string>;
   /** The fiscal year (FYyyyy) the from-date falls in, by the sheet's fiscal year start month. */
   fy: string;
+  /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
+  cap: number | null;
 }
 
 /** The period whose dates contain the date; undefined when none does. */
@@ -56,6 +58,14 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
           type="date"
           [value]="to()"
           (input)="to.set(value($event)); error.set(null)"
+        />
+        <label for="period-form-cap">Open claims cap per person</label>
+        <input
+          id="period-form-cap"
+          data-testid="period-form-cap"
+          inputmode="numeric"
+          [value]="cap()"
+          (input)="cap.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as message) {
@@ -100,7 +110,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
       }
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
@@ -112,6 +122,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
               <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.name) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ p.fy }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 <button
                   type="button"
@@ -164,6 +175,8 @@ export class Periods {
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
+  /** The cap typed: a whole number of 1 or more, or blank for none. */
+  protected readonly cap = signal('');
   protected readonly error = signal<string | null>(null);
   /** The error of the last close or reopen refused, and the period it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
@@ -326,12 +339,17 @@ export class Periods {
       this.error.set('The period cannot end before it starts.');
       return;
     }
+    const cap = this.cap().trim();
+    if (cap !== '' && !/^0*[1-9]\d{0,8}$/.test(cap)) {
+      this.error.set('The cap must be a whole number of 1 or more, or blank for none.');
+      return;
+    }
     this.submitting = true;
     try {
       const saved = await firstValueFrom(
         this.http.post<Period>(
           `/api/sheets/${encodeURIComponent(sheet)}/periods`,
-          { name, from, to },
+          { name, from, to, cap: cap === '' ? null : cap },
           this.session.headers(),
         ),
       );
@@ -339,6 +357,7 @@ export class Periods {
         this.name.set('');
         this.from.set('');
         this.to.set('');
+        this.cap.set('');
         this.saved.emit(saved);
       }
     } catch {

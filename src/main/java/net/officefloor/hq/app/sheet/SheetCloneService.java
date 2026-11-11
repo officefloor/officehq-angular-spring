@@ -148,7 +148,8 @@ public class SheetCloneService {
                 .forEach(t -> templates.save(new ClaimTemplate(to, t.getName(), t.getAmount(), t.getNote())));
         tags.findBySheetIdOrderByTagAsc(sheetId).forEach(t -> tags.save(new SheetTag(to, t.getTag())));
         for (Period period : periods.findBySheetIdOrderByFromDateAscIdAsc(sheetId)) {
-            periods.save(new Period(to, period.getName(), period.getFromDate(), period.getToDate()));
+            periods.save(new Period(to, period.getName(), period.getFromDate(), period.getToDate(),
+                    period.getCap()));
         }
 
         // The people as listed, with their aliases and patrons.

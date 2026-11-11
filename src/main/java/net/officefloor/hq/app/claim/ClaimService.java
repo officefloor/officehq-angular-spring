@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.person.Person;
@@ -387,6 +388,7 @@ public class ClaimService {
         }
         if (status == ClaimStatus.OPEN) {
             requireNote(sheetId, person, claim);
+            requireUnderCap(sheetId, claim);
         }
         // A clerk settles only a claim whose due (the one its statement bound it to, else worked out from the rate)
         // is at or below the clerk limit; one above it goes to PENDING. A due of n/a is within any limit.
@@ -825,6 +827,26 @@ public class ClaimService {
      * A claim whose due is above the note threshold in force on its date cannot be opened while its note is empty;
      * refused then. A due of n/a is within any threshold.
      */
+    /**
+     * Refuse opening a claim when the period its due-by falls in caps each person's claims and its person already has
+     * that many OPEN or PENDING claims due by a date in it. The sheet is locked by the caller, so two opens at once are
+     * counted against each other.
+     */
+    private void requireUnderCap(String sheetId, Claim claim) {
+        Period period = periods.on(sheetId, claim.getDueBy()).orElse(null);
+        if (period == null || period.getCap() == null) {
+            return;
+        }
+        long held = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()))
+                .filter(c -> c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                .filter(c -> c.getDueBy() != null && period.contains(c.getDueBy()))
+                .count();
+        if (held >= period.getCap()) {
+            throw new ClaimCapException(claim.getId(), period.getName(), period.getCap());
+        }
+    }
+
     private void requireNote(String sheetId, Person person, Claim claim) {
         BigDecimal threshold = settings.get(sheetId).noteThresholdOn(claim.getDate());
         if (threshold == null || !noteOf(claim.getNote()).isEmpty()) {
