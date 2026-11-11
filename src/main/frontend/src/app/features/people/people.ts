@@ -59,6 +59,15 @@ function heldOn(holds: PersonHold[], date: string): boolean {
   return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
 }
 
+/** The figures of a sheet's descendants added up: their people, due-totals and overdue-totals. */
+interface DescendantFigures {
+  people: number;
+  dueTotal: string;
+  overdueTotal: string;
+}
+
+const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+
 /** What decides which of a person's open claims leave the live totals: their holds and their retirement date. */
 type LeftOutBy = Pick<Person, 'holds' | 'retiredFrom'>;
 
@@ -110,6 +119,17 @@ function csvField(value: string): string {
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
     />
+    <section aria-labelledby="consolidated-heading">
+      <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
+      <dl>
+        <dt>People</dt>
+        <dd data-testid="consolidated-people-count">{{ consolidatedPeople() }}</dd>
+        <dt>Due total</dt>
+        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
+        <dt>Overdue total</dt>
+        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+      </dl>
+    </section>
     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
@@ -632,6 +652,18 @@ export class People {
   );
   /** Everyone's overdue-total added up, with three or more leaving out the highest and lowest. */
   protected readonly overdueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.overdueTotalOf(p))));
+  /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
+  private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+  /** The sheet's people and its descendants' added up. */
+  protected readonly consolidatedPeople = computed(() => this.people().length + this.descendantFigures().people);
+  /** The sheet's due-total as shown and its descendants' added up. */
+  protected readonly consolidatedDueTotal = computed(() =>
+    sumDues([this.dueTotal(), this.descendantFigures().dueTotal]),
+  );
+  /** The sheet's overdue-total as shown and its descendants' added up. */
+  protected readonly consolidatedOverdueTotal = computed(() =>
+    sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
+  );
   /** Every tag ever used on the sheet, sorted. */
   protected readonly tags = signal<string[]>([]);
   /**
@@ -760,6 +792,7 @@ export class People {
         this.rates.set([]);
         this.periods.set([]);
         this.tags.set([]);
+        this.descendantFigures.set(NO_DESCENDANTS);
         this.retireDates.set({});
         this.aliasInputs.set({});
         this.mergeChoices.set({});
@@ -1580,20 +1613,22 @@ export class People {
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [list, claims, rates, periods, tags] = await Promise.all([
+    const [list, claims, rates, periods, tags, descendants] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
       firstValueFrom(this.http.get<Claim[]>(`${url}/claims`, this.session.headers())),
       firstValueFrom(this.http.get<Rate[]>(`${url}/rates`, this.session.headers())),
       firstValueFrom(this.http.get<Period[]>(`${url}/periods`, this.session.headers())),
       firstValueFrom(this.http.get<string[]>(`${url}/claims/tags`, this.session.headers())),
-    ]).catch(() => [null, null, null, null, null]);
+      firstValueFrom(this.http.get<DescendantFigures>(`${url}/descendants/figures`, this.session.headers())),
+    ]).catch(() => [null, null, null, null, null, null]);
     // A later read wins over a slower earlier one.
-    if (list && claims && rates && periods && tags && read === this.reads && this.session.sheet() === sheet) {
+    if (list && claims && rates && periods && tags && descendants && read === this.reads && this.session.sheet() === sheet) {
       this.people.set(list);
       this.claims.set(claims);
       this.rates.set(rates);
       this.periods.set(periods);
       this.tags.set(tags);
+      this.descendantFigures.set(descendants);
     }
   }
 }

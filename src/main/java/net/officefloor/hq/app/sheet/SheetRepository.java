@@ -1,11 +1,15 @@
 package net.officefloor.hq.app.sheet;
 
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface SheetRepository extends JpaRepository<Sheet, String> {
+
+    /** The sheet's children: the sheets naming it as their parent. */
+    List<Sheet> findByParentOrderByIdAsc(String parent);
 
     /** Moves the sheet's last claim number on by one; the row stays locked until the transaction ends. */
     @Modifying

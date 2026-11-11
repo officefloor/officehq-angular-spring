@@ -120,6 +120,40 @@ public class RollupService {
         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
     }
 
+    /** Figures added up over sheets: the number of people, the due-totals and the overdue-totals (two decimals). */
+    public record Consolidated(int people, String dueTotal, String overdueTotal) {
+    }
+
+    /**
+     * The figures of the sheet's descendants (its children, their children and so on; the sheet itself left out), each
+     * sheet's people, due-total and overdue-total as that sheet shows them, added up.
+     */
+    public Consolidated descendantFigures(String sheetId) {
+        int count = 0;
+        BigDecimal due = zero();
+        BigDecimal overdue = zero();
+        for (String id : descendants(sheetId)) {
+            Snapshot figures = snapshot(id);
+            count += figures.people().size();
+            due = due.add(new BigDecimal(figures.dueTotal()));
+            overdue = overdue.add(new BigDecimal(figures.overdueTotal()));
+        }
+        return new Consolidated(count, shown(due), shown(overdue));
+    }
+
+    /** The ids of the sheet's descendants, each once, nearest first; a parent loop never brings back the sheet. */
+    private List<String> descendants(String sheetId) {
+        List<String> seen = new ArrayList<>(List.of(sheetId));
+        for (int i = 0; i < seen.size(); i++) {
+            for (Sheet child : sheets.findByParentOrderByIdAsc(seen.get(i))) {
+                if (!seen.contains(child.getId())) {
+                    seen.add(child.getId());
+                }
+            }
+        }
+        return seen.subList(1, seen.size());
+    }
+
     /** How many claims a candidate rate would change the due of, and the sum of new due minus current due (two decimals). */
     public record RatePreview(int count, String diff) {
     }
