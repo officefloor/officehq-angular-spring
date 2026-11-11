@@ -125,6 +125,11 @@ public class Sheet {
         return TERMS + "-" + grade;
     }
 
+    /** The key of a grade's own proof threshold (proof-threshold-A, proof-threshold-B, proof-threshold-C). */
+    public static String gradeProofThresholdKey(String grade) {
+        return PROOF_THRESHOLD + "-" + grade;
+    }
+
     /** The key of a grade's grace days. */
     public static String gradeGraceKey(String grade) {
         return GRACE + "-" + grade;
@@ -184,6 +189,15 @@ public class Sheet {
      */
     public BigDecimal proofThresholdOn(LocalDate date) {
         return decimalOn(PROOF_THRESHOLD, date).orElse(null);
+    }
+
+    /**
+     * The proof threshold for a claim dated on the date of a person of the grade (the one in force on the claim's
+     * date): the grade's own in force on the date when one is set, else the sheet's; null when there is none then.
+     */
+    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
+        return grade == null ? proofThresholdOn(date)
+                : decimalOn(gradeProofThresholdKey(grade), date).orElseGet(() -> proofThresholdOn(date));
     }
 
     /**

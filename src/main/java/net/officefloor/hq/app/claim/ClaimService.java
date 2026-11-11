@@ -658,11 +658,12 @@ public class ClaimService {
     }
 
     /**
-     * A claim whose due (as the clerk limit weighs it) is above the proof threshold in force on its date cannot be
-     * settled or approved while it has no proof; refused then. A due of n/a is within any threshold.
+     * A claim whose due (as the clerk limit weighs it) is above the proof threshold in force on its date (its person's
+     * grade's own then, else the sheet's) cannot be settled or approved while it has no proof; refused then. A due of
+     * n/a is within any threshold.
      */
     private void requireProof(String sheetId, Person person, Claim claim) {
-        BigDecimal threshold = settings.get(sheetId).proofThresholdOn(claim.getDate());
+        BigDecimal threshold = settings.get(sheetId).proofThresholdFor(person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold == null || claim.getProofs() > 0) {
             return;
         }

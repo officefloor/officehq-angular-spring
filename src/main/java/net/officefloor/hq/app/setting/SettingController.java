@@ -36,7 +36,7 @@ public class SettingController {
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
      * separated, null when blank (the standing rule).
      * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
-     * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, note-threshold), from-date first to last.
+     * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
@@ -276,6 +276,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ProofThresholdRequest request) {
         return view(service.setProofThreshold(sheetId.trim(), user.trim(), request.proofThresholdValue(),
+                request.from()));
+    }
+
+    @PutMapping("/proof-threshold/{grade}")
+    public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ProofThresholdRequest request) {
+        return view(service.setGradeProofThreshold(sheetId.trim(), user.trim(), grade, request.proofThresholdValue(),
                 request.from()));
     }
 

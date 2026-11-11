@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap and its proof threshold, each
+ * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, each
  * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days and its
  * permission matrix, not dated.
  */
@@ -126,6 +126,18 @@ public class SettingService {
     public Sheet setProofThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
         return record(sheetId, user, Sheet.PROOF_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from,
                 false);
+    }
+
+    /**
+     * Set a grade's own proof threshold from the date (null: the sheet's today): a claim dated from then of a person
+     * of the grade (on its date) is weighed against it in place of the sheet's; a null threshold means none (the
+     * sheet's applies). Every save is recorded, even of the same value.
+     */
+    @Transactional
+    public Sheet setGradeProofThreshold(String sheetId, String user, String grade, BigDecimal threshold,
+            LocalDate from) {
+        return record(sheetId, user, Sheet.gradeProofThresholdKey(grade),
+                threshold == null ? null : threshold.toPlainString(), from, false);
     }
 
     /**
