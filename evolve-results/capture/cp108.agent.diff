@@ -1,0 +1,175 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 743aa1844..a6f6d541f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
+ import { Period, Periods, periodOn } from '../periods/periods';
+-import { Rate, Rates, capped, excessOver, rateOn, sumDues, trimmedSumDues } from '../rates/rates';
++import { Rate, Rates, capped, excessOver, rateOn, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
+ import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { Header } from '../header/header';
+@@ -40,6 +40,8 @@ interface Person {
+   holds: PersonHold[];
+   /** The ids of the other people on the sheet the person has named as their patrons. */
+   patronIds: number[];
++  /** Each patron's share of 100.00, in the order of {@link patronIds}. */
++  patronShares: string[];
+   /** Whether the signed-in user watches the person. */
+   watched: boolean;
+   /** The other names the person goes by, sorted as names are compared. */
+@@ -974,28 +976,32 @@ export class People {
+     return [sumDues(buckets[0]), sumDues(buckets[1]), sumDues(buckets[2])];
+   }
+ 
+-  /** The names of the person's patrons, sorted, comma and space separated. */
++  /** Each of the person's patrons as their name and share, sorted by name, comma and space separated. */
+   protected patronsOf(person: Person): string {
+     return this.patronsListOf(person)
+-      .map((p) => p.name)
+-      .sort((a, b) => a.localeCompare(b))
++      .sort((a, b) => a.patron.name.localeCompare(b.patron.name))
++      .map((p) => `${p.patron.name} ${p.share}`)
+       .join(', ');
+   }
+ 
+   /**
+-   * The person's patrons' settled figures added up: each patron's SETTLED claims dated within the 90 days up to and
+-   * including the sheet's today, each at its frozen figure; 0.00 with none.
++   * The person's patrons' settled figures, each times the patron's share divided by 100, added up and rounded half to
++   * even: a patron's figure is their SETTLED claims dated within the 90 days up to and including the sheet's today,
++   * each at its frozen figure; 0.00 with none.
+    */
+   protected backingOf(person: Person): string {
+     const today = this.session.today();
+     if (today === null) return '0.00';
+     const since = plusDays(today, -89);
+-    return sumDues(
+-      this.patronsListOf(person).flatMap((p) =>
+-        this.claimsOf(p.id)
+-          .filter((c) => c.status === 'SETTLED' && since <= c.date && c.date <= today)
+-          .map((c) => claimDue(c, this.rates(), p.grades, this.session)),
+-      ),
++    return sumShared(
++      this.patronsListOf(person).map(({ patron, share }) => ({
++        share,
++        figure: sumDues(
++          this.claimsOf(patron.id)
++            .filter((c) => c.status === 'SETTLED' && since <= c.date && c.date <= today)
++            .map((c) => claimDue(c, this.rates(), patron.grades, this.session)),
++        ),
++      })),
+     );
+   }
+ 
+@@ -1034,8 +1040,12 @@ export class People {
+     }
+   }
+ 
+-  private patronsListOf(person: Person): Person[] {
+-    return person.patronIds.map((id) => this.byId().get(id)).filter((p): p is Person => p !== undefined);
++  /** The person's patrons, each with their share, in the order they were named. */
++  private patronsListOf(person: Person): { patron: Person; share: string }[] {
++    return person.patronIds.flatMap((id, i) => {
++      const patron = this.byId().get(id);
++      return patron === undefined ? [] : [{ patron, share: person.patronShares[i] ?? '0.00' }];
++    });
+   }
+ 
+   /** Show a set rate at once, then re-read so the screen holds what the store does. */
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index fc4a35a4f..5d8236a75 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -93,6 +93,22 @@ export function sumDues(dues: string[]): string {
+   return decimalOf(dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n));
+ }
+ 
++/**
++ * Each figure times its share divided by 100, added up exactly and rounded half to even to two decimals, a negative
++ * total as its size does; skipping the n/a figures.
++ */
++export function sumShared(figures: { figure: string; share: string }[]): string {
++  // cents times hundredths of a percent are millionths of a unit: add them up, then round to cents.
++  const signed = figures
++    .filter((f) => f.figure !== 'n/a')
++    .reduce((total, f) => total + hundredths(f.figure) * hundredths(f.share), 0n);
++  const millionths = signed < 0n ? -signed : signed;
++  const rest = millionths % 10000n;
++  let cents = millionths / 10000n;
++  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
++  return decimalOf(signed < 0n ? -cents : cents);
++}
++
+ /** As {@link sumDues}, but leaving out the single highest and lowest figure when there are three or more. */
+ export function trimmedSumDues(dues: string[]): string {
+   const figures = dues.filter((d) => d !== 'n/a').map(hundredths);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 9c79715ea..7884c4a98 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+@@ -43,7 +44,8 @@ public class PersonController {
+      * A person as shown, with their grade in force on the sheet's today and every grade with its from-date, with how many statements they have had and the due-total and date of the last one. */
+     public record PersonView(Long id, String name, String grade, Integer terms, String contact, long version, int statementCount,
+             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
+-            List<Long> patronIds, List<GradeView> grades, List<HoldView> holds, boolean watched, List<String> aliases) {
++            List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
++            List<String> aliases) {
+ 
+         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
+                 boolean watched, List<String> aliases) {
+@@ -51,6 +53,7 @@ public class PersonController {
+                     person.getContact(), person.getVersion(),
+                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
+                     person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds,
++                    PersonService.patronShares(patronIds.size()).stream().map(BigDecimal::toPlainString).toList(),
+                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+                     watched, aliases);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 525389488..bef7c5174 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,7 +1,10 @@
+ package net.officefloor.hq.app.person;
+ 
++import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.List;
+@@ -158,6 +161,21 @@ public class PersonService {
+         return byPerson;
+     }
+ 
++    /**
++     * The shares of a person's patrons, in the order they were named: 100.00 split equally, each rounded half to even
++     * to two decimals, with the remainder (100.00 minus the shares added up) given to the first-named patron.
++     */
++    public static List<BigDecimal> patronShares(int count) {
++        if (count == 0) {
++            return List.of();
++        }
++        BigDecimal whole = new BigDecimal("100.00");
++        BigDecimal share = whole.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_EVEN);
++        List<BigDecimal> shares = new ArrayList<>(Collections.nCopies(count, share));
++        shares.set(0, whole.subtract(share.multiply(BigDecimal.valueOf(count - 1))));
++        return shares;
++    }
++
+     /** The ids of the person's patrons in the order they were named. */
+     public List<Long> patronIdsOf(Long personId) {
+         return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(PersonPatron::getPatronId).toList();
