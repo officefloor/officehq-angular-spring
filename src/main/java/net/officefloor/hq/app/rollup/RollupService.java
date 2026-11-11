@@ -274,9 +274,37 @@ public class RollupService {
             audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total=" + after.claimedTotal()
                     + " due-total=" + after.dueTotal() + " overdue-total=" + after.overdueTotal());
         }
+        recordAlerts(sheetId, user, before, after);
     }
 
-    /** Record a ROLLUP line for every person on the sheet, in list order, then a TOTALS line. */
+    /**
+     * Record, once the transaction commits, an ALERT line, in list order, for each person whose due-total went from at
+     * or below the sheet's alert threshold (or none, or n/a) to above it; nothing while the threshold is off.
+     */
+    private void recordAlerts(String sheetId, String user, Snapshot before, Snapshot after) {
+        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+        if (threshold == null) {
+            return;
+        }
+        for (Map.Entry<Long, Figures> entry : after.people().entrySet()) {
+            Figures was = before.people().get(entry.getKey());
+            Figures now = entry.getValue();
+            if (above(now, threshold) && !above(was, threshold)) {
+                audit.recordOnCommit("ALERT sheet=" + sheetId + " by=" + user + " name=" + now.name()
+                        + " due-total=" + now.dueTotal());
+            }
+        }
+    }
+
+    private static boolean above(Figures figures, BigDecimal threshold) {
+        return figures != null && !"n/a".equals(figures.dueTotal())
+                && new BigDecimal(figures.dueTotal()).compareTo(threshold) > 0;
+    }
+
+    /**
+     * Record a ROLLUP line for every person on the sheet, in list order, then a TOTALS line, then an ALERT line for
+     * each above the alert threshold.
+     */
     public void recordAll(String sheetId, String user) {
         Snapshot now = snapshot(sheetId);
         for (Figures person : now.people().values()) {
@@ -286,6 +314,7 @@ public class RollupService {
         }
         audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total=" + now.claimedTotal()
                 + " due-total=" + now.dueTotal() + " overdue-total=" + now.overdueTotal());
+        recordAlerts(sheetId, user, new Snapshot(Map.of(), null, null, null), now);
     }
 
     /**

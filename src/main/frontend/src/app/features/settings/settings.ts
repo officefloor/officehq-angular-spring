@@ -32,6 +32,8 @@ interface SettingsView {
   noteThreshold: string | null;
   /** The pot shared out over each balanced pool's members by their shares, two decimals; null when there is none. */
   pot: string | null;
+  /** The due-total above which a person's due-total going is reported in an ALERT line, two decimals; null when off. */
+  alertThreshold: string | null;
   /** The parent sheet's id, whose rates a grade with none in force falls back on; null when there is none. */
   parent: string | null;
   /** The permission matrix, by action: the roles that may take it, comma separated; null: the standing rule. */
@@ -64,7 +66,7 @@ const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
 /** A date typed as yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, and its note threshold; not dated: its policy date, its period numbering from, its entry date, its grace days, its pot, its parent sheet and its permission matrix) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, and its note threshold; not dated: its policy date, its period numbering from, its entry date, its grace days, its pot, its alert threshold, its parent sheet and its permission matrix) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -229,6 +231,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'pot'"
           (input)="pot.set(value($event)); potEdited = true; settingsError.set(null)"
         />
+        <label for="setting-alert-threshold">Alert threshold (a person whose due-total goes above it is reported; blank: off)</label>
+        <input
+          id="setting-alert-threshold"
+          data-testid="setting-alert-threshold"
+          inputmode="decimal"
+          [value]="alertThreshold()"
+          (focus)="lastFocused = 'alertThreshold'"
+          (input)="alertThreshold.set(value($event)); alertThresholdEdited = true; settingsError.set(null)"
+        />
         <label for="setting-parent">Parent sheet (its rates apply to a grade with none in force here; blank: none)</label>
         <input
           id="setting-parent"
@@ -340,6 +351,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' }}</strong></p>
       <p>Fiscal year start month: <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonthCurrent() ?? '' }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
+      <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ alertThresholdCurrent() ?? '' }}</strong></p>
       <p>Parent sheet: <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
       @for (a of actions; track a) {
@@ -469,6 +481,8 @@ export class Settings {
   protected readonly fiscalStartMonth = signal('');
   protected readonly fiscalStartMonthCurrent = signal<string | null>(null);
   protected readonly pot = signal('');
+  protected readonly alertThreshold = signal('');
+  protected readonly alertThresholdCurrent = signal<string | null>(null);
   protected readonly parent = signal('');
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
@@ -486,12 +500,13 @@ export class Settings {
   protected graceDaysEdited = false;
   protected fiscalStartMonthEdited = false;
   protected potEdited = false;
+  protected alertThresholdEdited = false;
   protected parentEdited = false;
   protected capEdited = false;
   protected proofThresholdEdited = false;
   protected noteThresholdEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -521,6 +536,7 @@ export class Settings {
         this.graceDaysCurrent.set(null);
         this.fiscalStartMonthCurrent.set(null);
         this.session.pot.set(null);
+        this.alertThresholdCurrent.set(null);
         this.session.parent.set(null);
         this.permsCurrent.set({});
         this.roleList.set([]);
@@ -588,7 +604,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -601,6 +617,7 @@ export class Settings {
         case 'graceDays': this.graceDaysEdited = true; break;
         case 'fiscalStartMonth': this.fiscalStartMonthEdited = true; break;
         case 'pot': this.potEdited = true; break;
+        case 'alertThreshold': this.alertThresholdEdited = true; break;
         case 'parent': this.parentEdited = true; break;
         case 'cap': this.capEdited = true; break;
         case 'proofThreshold': this.proofThresholdEdited = true; break;
@@ -621,6 +638,7 @@ export class Settings {
     const saveGraceDays = this.graceDaysEdited;
     const saveFiscalStartMonth = this.fiscalStartMonthEdited;
     const savePot = this.potEdited;
+    const saveAlertThreshold = this.alertThresholdEdited;
     const saveParent = this.parentEdited;
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
@@ -636,6 +654,7 @@ export class Settings {
     const graceDays = this.graceDays().trim();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
     const pot = this.pot().trim();
+    const alertThreshold = this.alertThreshold().trim();
     const parent = this.parent().trim();
     const cap = this.cap().trim();
     const proofThreshold = this.proofThreshold().trim();
@@ -704,6 +723,10 @@ export class Settings {
     }
     if (savePot && pot !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(pot)) {
       this.settingsError.set('Type a pot of 0.00 or more with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveAlertThreshold && alertThreshold !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(alertThreshold)) {
+      this.settingsError.set('Type an alert threshold of 0.00 or more with at most two decimals, or leave it blank for off.');
       return;
     }
     if (saveParent && parent.length > 100) {
@@ -813,6 +836,12 @@ export class Settings {
           this.http.put<SettingsView>(`${url}/pot`, { pot: pot === '' ? null : pot }, this.session.headers()),
         );
         this.potEdited = false;
+      }
+      if (saveAlertThreshold) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/alert-threshold`, { alertThreshold: alertThreshold === '' ? null : alertThreshold }, this.session.headers()),
+        );
+        this.alertThresholdEdited = false;
       }
       if (saveParent) {
         saved = await firstValueFrom(
@@ -999,6 +1028,8 @@ export class Settings {
     this.fiscalStartMonth.set(String(settings.fiscalStartMonth));
     this.session.pot.set(settings.pot ?? '');
     this.pot.set(settings.pot ?? '');
+    this.alertThresholdCurrent.set(settings.alertThreshold ?? '');
+    this.alertThreshold.set(settings.alertThreshold ?? '');
     this.session.parent.set(settings.parent ?? '');
     this.parent.set(settings.parent ?? '');
     this.cap.set(settings.cap ?? '');
@@ -1022,6 +1053,7 @@ export class Settings {
     this.graceDaysEdited = false;
     this.fiscalStartMonthEdited = false;
     this.potEdited = false;
+    this.alertThresholdEdited = false;
     this.parentEdited = false;
     this.capEdited = false;
     this.proofThresholdEdited = false;

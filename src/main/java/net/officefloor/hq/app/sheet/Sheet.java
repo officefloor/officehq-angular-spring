@@ -99,6 +99,10 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** The due-total above which a person's due-total crossing it is reported in an ALERT line; null: off. Not dated. */
+    @Column(name = "alert_threshold")
+    private BigDecimal alertThreshold;
+
     /** The id of the parent sheet whose rates a grade with none in force here falls back on; null: none. Not dated. */
     @Column(name = "parent")
     private String parent;
@@ -134,6 +138,7 @@ public class Sheet {
         copy.graceDays = graceDays;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
+        copy.alertThreshold = alertThreshold;
         copy.parent = parent;
         return copy;
     }
@@ -361,6 +366,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     public String getParent() {
