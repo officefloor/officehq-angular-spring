@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Period, periodOn } from '../periods/periods';
 import { Rate, dueOf, rateOn } from '../rates/rates';
 
 export interface Claim {
@@ -98,7 +99,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -113,6 +114,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
+              <td data-testid="claim-period">{{ periodOf(c) }}</td>
               <td>
                 <button
                   type="button"
@@ -160,6 +162,8 @@ export class Claims {
   readonly grade = input.required<string>();
   /** The sheet's rates: a claim's due uses its grade's rate in force on the claim's date. */
   readonly rates = input.required<Rate[]>();
+  /** The sheet's periods: a claim belongs to the one whose dates contain its date. */
+  readonly periods = input.required<Period[]>();
   /** A claim was added, saved or changed status. */
   readonly saved = output<Claim>();
 
@@ -186,6 +190,11 @@ export class Claims {
   /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
   protected due(claim: Claim): string {
     return claimDue(claim, this.rates(), this.grade());
+  }
+
+  /** The name of the period the claim's date falls in, or blank when none. */
+  protected periodOf(claim: Claim): string {
+    return periodOn(this.periods(), claim.date)?.name ?? '';
   }
 
   protected value(event: Event): string {

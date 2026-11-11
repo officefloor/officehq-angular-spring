@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, claimDue, counts, dueFixed, sumAmounts } from '../claims/claims';
+import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
 
 interface Person {
@@ -24,9 +25,10 @@ interface Person {
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Rates],
+  imports: [Claims, Periods, Rates],
   template: `
     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
@@ -106,6 +108,7 @@ interface Person {
                 [claims]="claimsOf(p.id)"
                 [grade]="p.grade"
                 [rates]="rates()"
+                [periods]="periods()"
                 (saved)="claimSaved($event)"
               ></td>
             </tr>
@@ -137,6 +140,22 @@ export class People {
   protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
   /** The sheet's rates, by grade and then from-date. */
   protected readonly rates = signal<Rate[]>([]);
+  /** The sheet's periods in date order. */
+  protected readonly periods = signal<Period[]>([]);
+  /** Each period's due-total by name: the dues of the OPEN and SETTLED claims dated in it, skipping the n/a ones. */
+  protected readonly periodDueTotals = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const dues = new Map<string, string[]>();
+    for (const c of this.claims().filter(counts)) {
+      const period = periodOn(this.periods(), c.date);
+      const grade = grades.get(c.personId);
+      if (!period || grade === undefined) continue;
+      const list = dues.get(period.name) ?? [];
+      list.push(claimDue(c, this.rates(), grade));
+      dues.set(period.name, list);
+    }
+    return new Map([...dues].map(([name, list]) => [name, sumDues(list)]));
+  });
   /** Everyone's due-total added up, skipping the n/a ones. */
   protected readonly dueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
   protected readonly name = signal('');
@@ -160,6 +179,7 @@ export class People {
         this.people.set([]);
         this.claims.set([]);
         this.rates.set([]);
+        this.periods.set([]);
         this.reset();
         if (sheet) void this.read(sheet);
       });
@@ -203,6 +223,16 @@ export class People {
       [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate].sort(
         (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
       ),
+    );
+    void this.read(sheet);
+  }
+
+  /** Show an added period at once, then re-read so the screen holds what the store does. */
+  protected periodSaved(period: Period): void {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.periods.update((list) =>
+      [...list.filter((p) => p.id !== period.id), period].sort((a, b) => a.from.localeCompare(b.from)),
     );
     void this.read(sheet);
   }
@@ -311,16 +341,18 @@ export class People {
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [list, claims, rates] = await Promise.all([
+    const [list, claims, rates, periods] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
       firstValueFrom(this.http.get<Claim[]>(`${url}/claims`, this.session.headers())),
       firstValueFrom(this.http.get<Rate[]>(`${url}/rates`, this.session.headers())),
-    ]).catch(() => [null, null, null]);
+      firstValueFrom(this.http.get<Period[]>(`${url}/periods`, this.session.headers())),
+    ]).catch(() => [null, null, null, null]);
     // A later read wins over a slower earlier one.
-    if (list && claims && rates && read === this.reads && this.session.sheet() === sheet) {
+    if (list && claims && rates && periods && read === this.reads && this.session.sheet() === sheet) {
       this.people.set(list);
       this.claims.set(claims);
       this.rates.set(rates);
+      this.periods.set(periods);
     }
   }
 }

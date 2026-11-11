@@ -12,6 +12,11 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Query(value = "UPDATE sheet SET last_claim_number = last_claim_number + 1 WHERE id = :id", nativeQuery = true)
     int incrementLastClaimNumber(@Param("id") String id);
 
+    /** Locks the sheet's row until the transaction ends; 0 when the sheet does not exist. */
+    @Modifying
+    @Query(value = "UPDATE sheet SET id = id WHERE id = :id", nativeQuery = true)
+    int lockById(@Param("id") String id);
+
     @Query(value = "SELECT last_claim_number FROM sheet WHERE id = :id", nativeQuery = true)
     long lastClaimNumber(@Param("id") String id);
 }
