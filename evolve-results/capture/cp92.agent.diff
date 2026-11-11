@@ -1,0 +1,138 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+index c9f65ea0f..6418986cb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
+ /**
+  * Settles a selection of claims together, in list order: the people in the order they were added, each person's
+  * claims newest first. Each claim is settled on its own, as its Settle button would, so a clerk's claim above the
+- * clerk limit goes to PENDING and counts as settled; one that cannot be settled (not OPEN, opened by the same user,
++ * clerk limit goes to PENDING and counts as settled; one that cannot be settled (not OPEN, opened or last edited by the same user,
+  * dated in a closed period, above the proof threshold without a proof, or gone) is left as it is and counted as
+  * refused.
+  */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index bdfcaeebe..1539e4f46 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -51,6 +51,10 @@ public class Claim {
+     @Column(name = "opened_by")
+     private String openedBy;
+ 
++    /** The user who last edited the claim; null for one never edited. */
++    @Column(name = "edited_by")
++    private String editedBy;
++
+     /** Whether the claim is bound by its person's last statement. */
+     @Column(name = "stated", nullable = false)
+     private boolean stated;
+@@ -232,6 +236,14 @@ public class Claim {
+         this.openedBy = openedBy;
+     }
+ 
++    public String getEditedBy() {
++        return editedBy;
++    }
++
++    public void setEditedBy(String editedBy) {
++        this.editedBy = editedBy;
++    }
++
+     public boolean isStated() {
+         return stated;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index de4a2f63a..ac7841413 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -226,7 +226,7 @@ public class ClaimController {
+         return bulkSettle.settle(sheetId.trim(), user.trim(), request.ids());
+     }
+ 
+-    /** Settle an OPEN claim; refused to the user who opened it; PENDING instead when a clerk settles it above the clerk limit. */
++    /** Settle an OPEN claim; refused to the user who opened or last edited it; PENDING instead when a clerk settles it above the clerk limit. */
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+@@ -246,7 +246,7 @@ public class ClaimController {
+     public record RejectRequest(@NotBlank @Size(max = 1000) String reason) {
+     }
+ 
+-    /** Approve a PENDING claim: a steward only, and not the one who opened it. */
++    /** Approve a PENDING claim: a steward only, and not the one who opened or last edited it. */
+     @PostMapping("/claims/{id}/approve")
+     public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 33db90b90..9b56327ae 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -217,6 +217,7 @@ public class ClaimService {
+         claim.setDate(dated);
+         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
+         claim.setNote(noteOf(note));
++        claim.setEditedBy(user);
+         // Saving the editor releases its lock.
+         claim.setLockedBy(null);
+         Claim saved = claims.saveAndFlush(claim);
+@@ -299,9 +300,12 @@ public class ClaimService {
+         if (status == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+             throw new ClaimDeferException(id, "it is deferred until " + claim.getDeferredUntil());
+         }
+-        // Four eyes: whoever opened a claim cannot also settle it.
++        // Four eyes: whoever opened or last edited a claim cannot also settle it.
+         if (status == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+-            throw new ClaimSettledByOpenerException(id, user);
++            throw new ClaimSettledByOpenerException(id, user, "opened");
++        }
++        if (status == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
++            throw new ClaimSettledByOpenerException(id, user, "last edited");
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+@@ -372,7 +376,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * A steward other than its opener approves a PENDING claim: it becomes SETTLED, its due frozen at that moment from
++     * A steward other than its opener or last editor approves a PENDING claim: it becomes SETTLED, its due frozen at that moment from
+      * its live figure.
+      */
+     @Transactional
+@@ -381,6 +385,9 @@ public class ClaimService {
+         if (user.equals(claim.getOpenedBy())) {
+             throw new ClaimApprovalForbiddenException(id, user, "whoever opened a claim cannot approve it");
+         }
++        if (user.equals(claim.getEditedBy())) {
++            throw new ClaimApprovalForbiddenException(id, user, "whoever last edited a claim cannot approve it");
++        }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+         requireProof(sheetId, person, claim);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java
+index ec5393313..140d27590 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java
+@@ -3,11 +3,11 @@ package net.officefloor.hq.app.claim;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+-/** A claim's settling by the same user who opened it: another user must settle it. */
++/** A claim's settling by the same user who opened or last edited it: another user must settle it. */
+ @ResponseStatus(HttpStatus.FORBIDDEN)
+ public class ClaimSettledByOpenerException extends RuntimeException {
+ 
+-    public ClaimSettledByOpenerException(Long id, String user) {
+-        super("Claim " + id + " was opened by " + user + ", who cannot also settle it");
++    public ClaimSettledByOpenerException(Long id, String user, String how) {
++        super("Claim " + id + " was " + how + " by " + user + ", who cannot also settle it");
+     }
+ }
+diff --git a/src/main/resources/db/migration/V58__claim_edited_by.sql b/src/main/resources/db/migration/V58__claim_edited_by.sql
+new file mode 100644
+index 000000000..9b59cc8f7
+--- /dev/null
++++ b/src/main/resources/db/migration/V58__claim_edited_by.sql
+@@ -0,0 +1,2 @@
++-- The user who last edited a claim (through its form or its amount entry); null for one never edited.
++ALTER TABLE claim ADD COLUMN edited_by VARCHAR(100);
