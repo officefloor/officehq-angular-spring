@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.sheet;
 
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -10,11 +11,6 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     /** The sheet's children: the sheets naming it as their parent. */
     List<Sheet> findByParentOrderByIdAsc(String parent);
-
-    /** Moves the sheet's last claim number on by one; the row stays locked until the transaction ends. */
-    @Modifying
-    @Query(value = "UPDATE sheet SET last_claim_number = last_claim_number + 1 WHERE id = :id", nativeQuery = true)
-    int incrementLastClaimNumber(@Param("id") String id);
 
     /** Moves the sheet's last list place on by one; the row stays locked until the transaction ends. */
     @Modifying
@@ -44,6 +40,21 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query(value = "SELECT last_claim_number FROM sheet WHERE id = :id", nativeQuery = true)
     long lastClaimNumber(@Param("id") String id);
+
+    /** The last claim number given on any of the sheets; 0 when none has been given. */
+    @Query(value = "SELECT COALESCE(MAX(last_claim_number), 0) FROM sheet WHERE id IN (:ids)", nativeQuery = true)
+    long maxLastClaimNumber(@Param("ids") Collection<String> ids);
+
+    /** Sets the sheet's last claim number; the row stays locked until the transaction ends. */
+    @Modifying
+    @Query(value = "UPDATE sheet SET last_claim_number = :number WHERE id = :id", nativeQuery = true)
+    int setLastClaimNumber(@Param("id") String id, @Param("number") long number);
+
+    @Query(value = "SELECT parent FROM sheet WHERE id = :id", nativeQuery = true)
+    String parentOf(@Param("id") String id);
+
+    @Query(value = "SELECT id FROM sheet WHERE parent = :id ORDER BY id", nativeQuery = true)
+    List<String> childIdsOf(@Param("id") String id);
 
     /** Moves a sequence's last number on by one, starting it at 1; the sheet's row must be locked by the caller. */
     @Modifying

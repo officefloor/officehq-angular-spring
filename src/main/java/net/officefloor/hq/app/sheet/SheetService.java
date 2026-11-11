@@ -1,6 +1,13 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodService;
@@ -105,15 +112,40 @@ public class SheetService {
     }
 
     /**
-     * The next claim number on the sheet: 1 for the first, then 2, and so on. The sheet's row is
-     * locked until the caller's transaction ends, so two claims opened at once get different numbers.
+     * The next claim number on the sheet: the sheets of its tree (its root parent and all the root's descendants)
+     * share one sequence, so it is the number after the last given on any of them. The rows of the tree's sheets are
+     * locked, in id order, until the caller's transaction ends, so two claims opened at once get different numbers.
      */
     @Transactional
     public long nextClaimNumber(String id) {
-        if (sheets.incrementLastClaimNumber(id) != 1) {
-            throw new SheetNotFoundException(id);
+        SortedSet<String> tree = treeOf(id);
+        for (String member : tree) {
+            if (sheets.lockById(member) != 1 && member.equals(id)) {
+                throw new SheetNotFoundException(id);
+            }
         }
-        return sheets.lastClaimNumber(id);
+        long next = sheets.maxLastClaimNumber(tree) + 1;
+        sheets.setLastClaimNumber(id, next);
+        return next;
+    }
+
+    /** The ids of the sheets in the sheet's tree: its topmost ancestor and every sheet below it. */
+    private SortedSet<String> treeOf(String id) {
+        Set<String> seen = new HashSet<>();
+        String root = id;
+        seen.add(root);
+        for (String parent = sheets.parentOf(root); parent != null && seen.add(parent); parent = sheets.parentOf(root)) {
+            root = parent;
+        }
+        SortedSet<String> tree = new TreeSet<>();
+        Deque<String> todo = new ArrayDeque<>(List.of(root));
+        while (!todo.isEmpty()) {
+            String next = todo.pop();
+            if (tree.add(next)) {
+                todo.addAll(sheets.childIdsOf(next));
+            }
+        }
+        return tree;
     }
 
     /**
