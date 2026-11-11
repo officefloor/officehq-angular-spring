@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, claimDue, counts, dueFixed, gradeOn, overdue, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
+import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
 
 interface Person {
   id: number;
@@ -41,7 +42,7 @@ function live(claim: Claim, held: boolean): boolean {
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, Rates],
+  imports: [Claims, Periods, Rates, Summary],
   template: `
     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
@@ -235,6 +236,7 @@ function live(claim: Claim, held: boolean): boolean {
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
     </section>
+    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
   `,
 })
 export class People {
@@ -287,6 +289,27 @@ export class People {
   );
   /** Everyone's overdue-total added up. */
   protected readonly overdueTotal = computed(() => sumDues(this.people().map((p) => this.overdueTotalOf(p))));
+  /** Per grade: the people not retired on it today, as the list shows their grade, and their due-totals added up. */
+  protected readonly gradeSummary = computed<GradeSummary[]>(() =>
+    this.grades.map((grade) => {
+      const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
+      return { grade, count: on.length, dueTotal: sumDues(on.map((p) => this.dueTotalOf(p))) };
+    }),
+  );
+  /** Per period: its due-total as the period list shows it. */
+  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
+    this.periods().map((p) => ({
+      name: p.name,
+      dueTotal: p.closedTotal ?? this.periodDueTotals().get(p.name) ?? '0.00',
+    })),
+  );
+  /** Per status: how many of the sheet's claims have it. */
+  protected readonly statusSummary = computed<StatusSummary[]>(() =>
+    ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({
+      status,
+      count: this.claims().filter((c) => c.status === status).length,
+    })),
+  );
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   /** The date the form's grade applies from; blank for the sheet's today. */
