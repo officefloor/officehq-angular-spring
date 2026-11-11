@@ -1,0 +1,213 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index bad79c41e..63ace632c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -130,18 +130,18 @@ export function roundingOf(claim: Claim, session: Session): Rounding {
+ }
+ 
+ /**
+- * The due fixed when the claim was settled, else its figure (the one its person's last statement bound it to, else
+- * its amount times the rate of its person's grade on its date, both in force on its date, raised to the sheet's floor on its date, or n/a with no rate) with its late
+- * charge added on top. A correction has neither floor nor late charge.
++ * The due fixed when the claim was settled, else the greater of the floor in force on its date and its figure (the one
++ * its person's last statement bound it to, else its amount times the rate of its person's grade on its date, both in
++ * force on its date, or n/a with no rate) with its late charge added on top. A correction has neither floor nor late
++ * charge.
+  */
+ export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], session: Session): string {
+   if (claim.settledDue !== null) return claim.settledDue;
+   const grade = gradeOn(grades, claim.date);
+   const due = dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date), roundingOf(claim, session));
+-  const figure = bound(claim)
+-    ? (claim.statedDue ?? 'n/a')
+-    : isCorrection(claim) ? due : floored(due, session.settingOn('floor', claim.date));
+-  return figure === 'n/a' ? figure : sumDues([figure, lateCharge(claim, figure, session)]);
++  const figure = bound(claim) ? (claim.statedDue ?? 'n/a') : due;
++  if (figure === 'n/a' || isCorrection(claim)) return figure;
++  return floored(sumDues([figure, lateCharge(claim, figure, session)]), session.settingOn('floor', claim.date));
+ }
+ 
+ /**
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 1d2984e45..9f8d9b800 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -169,7 +169,7 @@ public class ClaimService {
+         // is at or below the clerk limit; one above it goes to PENDING. A due of n/a is within any limit.
+         if (status == ClaimStatus.SETTLED && roles.roleOf(sheetId, user) == Role.CLERK) {
+             BigDecimal limit = settings.get(sheetId).getClerkLimit();
+-            BigDecimal due = withLateCharge(sheetId, claim, figureOf(sheetId, person, claim));
++            BigDecimal due = liveDue(sheetId, claim, figureOf(sheetId, person, claim));
+             if (limit != null && due != null && due.compareTo(limit) > 0) {
+                 status = ClaimStatus.PENDING;
+             }
+@@ -310,7 +310,7 @@ public class ClaimService {
+ 
+     /**
+      * A steward re-settles a SETTLED claim: its due is frozen again at the figure it would have today as an OPEN claim
+-     * bound by no statement (today's rates, grades and floor, with its late charge as of today). Refused for any other
++     * bound by no statement (today's rates and grades with its late charge as of today, raised to the floor). Refused for any other
+      * status, a closed period, or a user not a steward.
+      */
+     @Transactional
+@@ -329,8 +329,9 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         String old = shownDue(sheetId, person, claim);
+         BigDecimal figure = dueOf(sheetId, person, claim);
+-        claim.setSettledDue(settings.get(sheetId).withLateCharge(figure, !claim.isCorrection(), claim.getDueBy(),
+-                claim.getDate()));
++        Sheet sheet = settings.get(sheetId);
++        claim.setSettledDue(claim.isCorrection() ? figure
++                : sheet.floored(sheet.withLateCharge(figure, true, claim.getDueBy(), claim.getDate()), claim.getDate()));
+         Claim saved = claims.saveAndFlush(claim);
+         log(sheetId, user, person, saved);
+         audit.recordOnCommit(record("CLAIM_RESETTLED", user, person, saved) + numberOf(saved.getNumber())
+@@ -418,7 +419,7 @@ public class ClaimService {
+         if (threshold == null || claim.getProofs() > 0) {
+             return;
+         }
+-        BigDecimal due = withLateCharge(sheetId, claim, figureOf(sheetId, person, claim));
++        BigDecimal due = liveDue(sheetId, claim, figureOf(sheetId, person, claim));
+         if (due != null && due.compareTo(threshold) > 0) {
+             throw new ClaimProofException(claim.getId(), "its due " + due.toPlainString()
+                     + " is above the proof threshold " + threshold.toPlainString() + " and it has no proof");
+@@ -441,13 +442,15 @@ public class ClaimService {
+ 
+     /**
+      * Fixes the due the claim shows as it settles: its figure (the one its statement binds it to, else worked out from
+-     * the rate on the claim's date) with its late charge frozen in; with no figure it stays live. Gives the due at the
++     * the rate on the claim's date) with its late charge, raised to the floor on its date, frozen in (a correction
++     * freezes its bare figure); with no figure it stays live. Gives the due at the
+      * end of its audit record.
+      */
+     private String settle(String sheetId, Person person, Claim claim) {
+         BigDecimal figure = figureOf(sheetId, person, claim);
++        Sheet sheet = settings.get(sheetId);
+         BigDecimal settledDue = figure == null || claim.isCorrection() ? figure
+-                : figure.add(settings.get(sheetId).lateCharge(figure, claim.getDueBy(), claim.getDate()));
++                : sheet.floored(figure.add(sheet.lateCharge(figure, claim.getDueBy(), claim.getDate())), claim.getDate());
+         claim.setSettledDue(settledDue);
+         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
+     }
+@@ -459,12 +462,11 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * The claim's due as shown: the one fixed when it was settled, else its figure with its late charge on top; two
+-     * decimals, or n/a.
++     * The claim's due as shown: the one fixed when it was settled, else its live due; two decimals, or n/a.
+      */
+     private String shownDue(String sheetId, Person person, Claim claim) {
+         BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
+-                : withLateCharge(sheetId, claim, figureOf(sheetId, person, claim));
++                : liveDue(sheetId, claim, figureOf(sheetId, person, claim));
+         return due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_EVEN).toPlainString();
+     }
+ 
+@@ -497,25 +499,28 @@ public class ClaimService {
+ 
+     /**
+      * The claim's amount at the rate its person's grade has on its date, two decimals rounded as the sheet's policy
+-     * date has the claim round, raised to the sheet's floor on its date unless it is a correction; null (n/a) with no rate.
++     * date has the claim round (the rate figure, with no floor); null (n/a) with no rate.
+      */
+     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+         Sheet sheet = settings.get(sheetId);
+-        BigDecimal due = rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
++        return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
+                 .map(Rate::getPct)
+                 .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
+                 .orElse(null);
+-        return claim.isCorrection() ? due : sheet.floored(due, claim.getDate());
+     }
+ 
+     /**
+-     * The due with the late charge of an OPEN or PENDING claim overdue on the sheet's today added on top (none on a
+-     * correction, nor on a claim deferred on the sheet's today); null (n/a) stays null.
++     * The live due on a figure: the greater of the floor in force on the claim's date and the figure with the late
++     * charge of an OPEN or PENDING claim overdue on the sheet's today added on top (no late charge on a claim deferred
++     * on the sheet's today; a correction has neither floor nor late charge); null (n/a) stays null.
+      */
+-    private BigDecimal withLateCharge(String sheetId, Claim claim, BigDecimal due) {
++    private BigDecimal liveDue(String sheetId, Claim claim, BigDecimal figure) {
+         Sheet sheet = settings.get(sheetId);
+-        return sheet.withLateCharge(due, claim.getStatus().isOpen() && !claim.isCorrection()
+-                && !claim.isDeferredOn(sheet.getToday()), claim.getDueBy(), claim.getDate());
++        if (claim.isCorrection()) {
++            return figure;
++        }
++        return sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen()
++                && !claim.isDeferredOn(sheet.getToday()), claim.getDueBy(), claim.getDate()), claim.getDate());
+     }
+ 
+     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 6720ea0c4..8492f7b8f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -184,8 +184,8 @@ public class RollupService {
+ 
+     /**
+      * As on the screen: the settled due, else the figure (the stated due, else the amount at the rate on the claim's
+-     * date, rounded as the sheet's policy date has the claim round, raised to the sheet's floor) with the late charge of an overdue claim added on top; a correction has neither
+-     * floor nor late charge.
++     * date, rounded as the sheet's policy date has the claim round) with the late charge of an overdue claim added on
++     * top, raised last to the floor in force on the claim's date; a correction has neither floor nor late charge.
+      */
+     private static Optional<BigDecimal> dueOf(Sheet sheet, List<Rate> sheetRates, Person person, Claim claim) {
+         if (claim.getSettledDue() != null) {
+@@ -196,11 +196,10 @@ public class RollupService {
+                         .map(Rate::getPct)
+                         .map(pct -> sheet == null
+                                 ? claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN)
+-                                : sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
+-                        .map(due -> sheet == null || claim.isCorrection() ? due : sheet.floored(due, claim.getDate()));
+-        return sheet == null ? figure
+-                : figure.map(f -> sheet.withLateCharge(f,
+-                        claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDueBy(), claim.getDate()));
++                                : sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()));
++        return sheet == null || claim.isCorrection() ? figure
++                : figure.map(f -> sheet.floored(sheet.withLateCharge(f, claim.getStatus().isOpen(), claim.getDueBy(),
++                        claim.getDate()), claim.getDate()));
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index b2c239414..523f3b936 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -85,11 +85,12 @@ public class StatementService {
+             if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
+                 anyDue = true;
+             }
+-            // The statement binds the figure under the claim's due; its late charge keeps following the sheet's today.
++            // The statement binds the rate figure under the claim's due; its late charge keeps following the sheet's
++            // today, and the floor is applied last.
+             BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
+-            BigDecimal due = claim.getSettledDue() != null ? figure
+-                    : sheet.withLateCharge(figure, claim.getStatus().isOpen() && !claim.isCorrection(),
+-                            claim.getDueBy(), claim.getDate());
++            BigDecimal due = claim.getSettledDue() != null || claim.isCorrection() ? figure
++                    : sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen(), claim.getDueBy(),
++                            claim.getDate()), claim.getDate());
+             if (due != null) {
+                 total = total.add(due);
+                 // A due under a grade the person had on an earlier date counts too.
+@@ -110,7 +111,7 @@ public class StatementService {
+ 
+     /**
+      * The figure under the claim's due: the due fixed when it was settled, else the one its last statement bound it
+-     * to, else its amount times its grade's rate on its date raised to the sheet's floor (unless a correction); empty when it has none (n/a).
++     * to, else its amount times its grade's rate on its date (no floor); empty when it has none (n/a).
+      */
+     private Optional<BigDecimal> figureOf(String sheetId, Person person, Claim claim) {
+         if (claim.getSettledDue() != null) {
+@@ -121,7 +122,6 @@ public class StatementService {
+         }
+         return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
+                 .map(Rate::getPct)
+-                .map(pct -> sheets.get(sheetId).rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
+-                .map(due -> claim.isCorrection() ? due : sheets.get(sheetId).floored(due, claim.getDate()));
++                .map(pct -> sheets.get(sheetId).rateStep(claim.getAmount(), pct, claim.getRoundingDate()));
+     }
+ }
