@@ -66,7 +66,8 @@ public class VoidReasonService {
      * The reason to void a claim with, trimmed (none when not given): refused (422) when the sheet
      * has void reasons and none of them is given, or when one is given that is not on the list.
      */
-    @Transactional(readOnly = true)
+    // a refusal leaves the caller's transaction usable (a bulk void refuses one claim and goes on)
+    @Transactional(readOnly = true, noRollbackFor = ResponseStatusException.class)
     public String refuseUnlessListed(String sheetId, String reason) {
         String text = reason == null || reason.isBlank() ? null : reason.trim();
         if (text == null) {

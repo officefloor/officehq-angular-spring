@@ -1142,6 +1142,32 @@ public class ClaimService {
         return new BulkRedated(redated.size(), refused, redated);
     }
 
+    /** What a bulk void did: how many claims were voided and how many refused, and the claims voided. */
+    public record BulkVoided(int voided, int refused, List<Claim> claims) {
+    }
+
+    /**
+     * Void the given claims together with one reason, in list order (the order people were added,
+     * newest claim first within a person), each by exactly the rules of voiding one claim (see
+     * {@link #voidClaim}). A claim that cannot be voided is refused and left as it is.
+     */
+    @Transactional
+    public BulkVoided bulkVoid(String sheetId, String user, Collection<Long> ids, String voidReason) {
+        List<Claim> selected = inListOrder(sheetId, ids);
+        int refused = (int) ids.stream().distinct().count() - selected.size();
+        List<Claim> voided = new ArrayList<>();
+        for (Claim claim : selected) {
+            try {
+                voided.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.VOID, null, false, voidReason,
+                        false));
+            } catch (ResponseStatusException refusedOne) {
+                // every refusal is checked before the claim is changed, so it is left as it is
+                refused++;
+            }
+        }
+        return new BulkVoided(voided.size(), refused, voided);
+    }
+
     /** The given claims on the sheet in list order: people by position, newest claim first within a person. */
     private List<Claim> inListOrder(String sheetId, Collection<Long> ids) {
         Map<Long, Integer> personOrder = new HashMap<>();

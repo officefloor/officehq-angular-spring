@@ -128,6 +128,13 @@ public class ClaimController {
     public record BulkRedateResponse(int redated, int refused, List<ClaimResponse> claims) {
     }
 
+    public record BulkVoidRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull @Size(max = 1000) List<@NotNull Long> ids, @Size(max = 200) String reason) {
+    }
+
+    public record BulkVoidResponse(int voided, int refused, List<ClaimResponse> claims) {
+    }
+
     /** {@code lastBatch}: the sheet's last settle batch number after the bulk settle; none when there has been none. */
     public record BulkSettleResponse(int settled, int refused, List<ClaimResponse> claims, Integer lastBatch) {
     }
@@ -392,6 +399,14 @@ public class ClaimController {
         ClaimService.BulkRedated done = service.bulkRedate(req.sheet().trim(), req.user().trim(), req.ids(),
                 req.date());
         return new BulkRedateResponse(done.redated(), done.refused(),
+                done.claims().stream().map(ClaimController::response).toList());
+    }
+
+    @PostMapping("/bulk-void")
+    public BulkVoidResponse bulkVoid(@Valid @RequestBody BulkVoidRequest req) {
+        ClaimService.BulkVoided done = service.bulkVoid(req.sheet().trim(), req.user().trim(), req.ids(),
+                req.reason());
+        return new BulkVoidResponse(done.voided(), done.refused(),
                 done.claims().stream().map(ClaimController::response).toList());
     }
 
