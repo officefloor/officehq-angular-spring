@@ -24,6 +24,8 @@ interface Person {
   retiredFrom: string | null;
   /** Whether the person is on hold: their OPEN claims then count in no live total; their SETTLED ones still do. */
   held: boolean;
+  /** The ids of the other people on the sheet the person has named as their patrons. */
+  patronIds: number[];
 }
 
 /** Whether the claim counts in the live totals: an OPEN or SETTLED one, but an OPEN one not while its person is held. */
@@ -109,6 +111,7 @@ function live(claim: Claim, held: boolean): boolean {
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -127,6 +130,8 @@ function live(claim: Claim, held: boolean): boolean {
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
+              <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
+              <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td>
                 <button
                   type="button"
@@ -171,6 +176,31 @@ function live(claim: Claim, held: boolean): boolean {
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ e.message }}</p>
+                  }
+                }
+                <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron of {{ p.name }}</label>
+                <select
+                  [id]="'person-patron-select-' + p.id"
+                  data-testid="person-patron-select"
+                  [value]="patronChoices()[p.id] ?? ''"
+                  (change)="setPatronChoice(p.id, value($event))"
+                >
+                  <option value="" [selected]="!patronChoices()[p.id]">Choose a patron</option>
+                  @for (o of patronOptions(p); track o.id) {
+                    <option [value]="'' + o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-patron-add"
+                  [attr.aria-label]="'Add a patron of ' + p.name"
+                  (click)="addPatron(p)"
+                >
+                  Add patron
+                </button>
+                @if (patronError(); as e) {
+                  @if (e.id === p.id) {
+                    <p role="alert" data-testid="person-patron-error">{{ e.message }}</p>
                   }
                 }
               </td>
@@ -263,6 +293,11 @@ export class People {
   private quickAdding = false;
   /** The error of the last action on a person's row that was refused, and the person it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+  /** The patron chosen on each person's row, by person id, as the chosen person's id; blank with none chosen. */
+  protected readonly patronChoices = signal<Record<number, string>>({});
+  /** The error of the last refused add of a patron, and the person it belongs to. */
+  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
+  private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
   private reads = 0;
 
   constructor() {
@@ -275,6 +310,8 @@ export class People {
         this.rates.set([]);
         this.periods.set([]);
         this.retireDates.set({});
+        this.patronChoices.set({});
+        this.patronError.set(null);
         this.reset();
         this.quickName.set('');
         this.quickAmount.set('');
@@ -335,6 +372,58 @@ export class People {
     return sumDues(this.overdueOf(person).map((c) => claimDue(c, this.rates(), person.grade, this.session)));
   }
 
+  /** The names of the person's patrons, sorted, comma and space separated. */
+  protected patronsOf(person: Person): string {
+    return this.patronsListOf(person)
+      .map((p) => p.name)
+      .sort((a, b) => a.localeCompare(b))
+      .join(', ');
+  }
+
+  /** The person's patrons' due-totals added up, skipping the n/a ones; 0.00 with no patrons. */
+  protected backingOf(person: Person): string {
+    return sumDues(this.patronsListOf(person).map((p) => this.dueTotalOf(p)));
+  }
+
+  /** The people the person could still name as a patron: everyone else on the sheet not already named. */
+  protected patronOptions(person: Person): Person[] {
+    return this.people().filter((p) => p.id !== person.id && !person.patronIds.includes(p.id));
+  }
+
+  protected setPatronChoice(id: number, choice: string): void {
+    this.patronChoices.update((choices) => ({ ...choices, [id]: choice }));
+    if (this.patronError()?.id === id) this.patronError.set(null);
+  }
+
+  /** Name the chosen person as the person's patron, then re-read so the backing shows what the store holds. */
+  protected async addPatron(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const patronId = Number(this.patronChoices()[person.id] ?? '');
+    if (!patronId) {
+      this.patronError.set({ id: person.id, message: 'Choose a person to name as a patron.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/patrons`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { patronId }, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        this.patronChoices.update((choices) => ({ ...choices, [person.id]: '' }));
+        void this.read(sheet);
+      }
+    } catch {
+      const patron = this.byId().get(patronId)?.name ?? 'That person';
+      this.patronError.set({ id: person.id, message: `${patron} could not be named a patron of ${person.name}.` });
+    }
+  }
+
+  private patronsListOf(person: Person): Person[] {
+    return person.patronIds.map((id) => this.byId().get(id)).filter((p): p is Person => p !== undefined);
+  }
+
   /** Show a set rate at once, then re-read so the screen holds what the store does. */
   protected rateSaved(rate: Rate): void {
     const sheet = this.session.sheet();
@@ -372,6 +461,7 @@ export class People {
   /** Take a statement of the person, then re-read so their claims show the dues it bound them to. */
   protected async statement(person: Person): Promise<void> {
     this.rowError.set(null);
+    this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
@@ -389,6 +479,7 @@ export class People {
   /** Retire the person from the typed date, or from the sheet's today when none is typed. */
   protected async retire(person: Person): Promise<void> {
     this.rowError.set(null);
+    this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const from = (this.retireDates()[person.id] ?? '').trim();
@@ -412,6 +503,7 @@ export class People {
   /** Put the person on hold, or take them off it, then re-read so the totals show what the store holds. */
   protected async toggleHold(person: Person): Promise<void> {
     this.rowError.set(null);
+    this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/hold`;
@@ -428,6 +520,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.rowError.set(null);
+    this.patronError.set(null);
     this.editing.set(person.id);
     this.editingVersion = person.version;
     this.name.set(person.name);

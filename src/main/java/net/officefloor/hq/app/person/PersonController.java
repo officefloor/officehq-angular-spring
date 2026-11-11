@@ -30,12 +30,13 @@ public class PersonController {
 
     /** A person as shown, with how many statements they have had and the due-total and date of the last one. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held) {
+            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
+            List<Long> patronIds) {
 
-        static PersonView of(Person person, StatementSummary statements) {
+        static PersonView of(Person person, StatementSummary statements, List<Long> patronIds) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
-                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds);
         }
     }
 
@@ -47,6 +48,10 @@ public class PersonController {
 
     /** The date to retire from; null for the sheet's today. */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** The person to name as a patron. */
+    public record PatronRequest(@NotNull Long patronId) {
     }
 
     private final PersonService service;
@@ -62,8 +67,10 @@ public class PersonController {
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, StatementSummary> summaries = statements.summaries(sheetId.trim());
+        Map<Long, List<Long>> patronIds = service.patronIds(sheetId.trim());
         return service.list(sheetId.trim()).stream()
-                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE)))
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
+                        patronIds.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -110,7 +117,17 @@ public class PersonController {
         return view(service.toggleHold(sheetId.trim(), user.trim(), id));
     }
 
+    /** Name another person on the sheet as the person's patron. */
+    @PostMapping("/{id}/patrons")
+    public PersonView addPatron(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PatronRequest request) {
+        return view(service.addPatron(sheetId.trim(), user.trim(), id, request.patronId()));
+    }
+
     private PersonView view(Person person) {
-        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()));
+        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()),
+                service.patronIdsOf(person.getId()));
     }
 }
