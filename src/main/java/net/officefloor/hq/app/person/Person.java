@@ -17,6 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
 
 /** A person on a sheet. */
@@ -47,9 +48,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: their OPEN claims then count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** The person's holds: their OPEN claims dated within one, not bound by a statement, count in no live total. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private List<PersonHold> holds = new ArrayList<>();
 
     /** Raised by one on each save; a save of an older version is refused. */
     @Version
@@ -131,17 +133,33 @@ public class Person {
         this.retiredFrom = retiredFrom;
     }
 
+    /** Whether the person has any hold. */
     public boolean isHeld() {
-        return held;
+        return !holds.isEmpty();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** The person's holds by from-date, in the order they were added. */
+    public List<PersonHold> getHolds() {
+        return holds.stream().sorted(Comparator.comparing(PersonHold::getFromDate)).toList();
     }
 
-    /** Whether a claim of the person in the status counts in the live totals: an OPEN or PENDING one not while held. */
-    public boolean counts(ClaimStatus status) {
-        return status.counts() && !(held && status.isOpen());
+    /** Add a hold from the date to the date (null: it does not end). */
+    public void addHold(LocalDate fromDate, LocalDate toDate) {
+        holds.add(new PersonHold(fromDate, toDate));
+    }
+
+    /** Whether the date is within any of the person's holds. */
+    public boolean heldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    /**
+     * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one dated
+     * within a hold not unless a statement binds it.
+     */
+    public boolean counts(Claim claim) {
+        ClaimStatus status = claim.getStatus();
+        return status.counts() && !(status.isOpen() && !claim.isBound() && heldOn(claim.getDate()));
     }
 
     /** Refused when the person is retired and the date is after their retirement date. */

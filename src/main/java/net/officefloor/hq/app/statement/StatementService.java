@@ -77,7 +77,7 @@ public class StatementService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!person.counts(claim.getStatus())) {
+            if (!person.counts(claim)) {
                 claim.setStated(false, null);
                 continue;
             }

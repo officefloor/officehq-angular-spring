@@ -29,6 +29,10 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PersonController {
 
+    /** One of a person's holds, from its from-date to its to-date (null: it does not end). */
+    public record HoldView(LocalDate from, LocalDate to) {
+    }
+
     /** One of a person's grades, from its from-date (null: from the beginning of time). */
     public record GradeView(String grade, LocalDate from) {
     }
@@ -37,13 +41,14 @@ public class PersonController {
      * A person as shown, with their grade in force on the sheet's today and every grade with its from-date, with how many statements they have had and the due-total and date of the last one. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
-            List<Long> patronIds, List<GradeView> grades) {
+            List<Long> patronIds, List<GradeView> grades, List<HoldView> holds) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds,
-                    person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList());
+                    person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
+                    person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList());
         }
     }
 
@@ -56,6 +61,10 @@ public class PersonController {
 
     /** The date to retire from; null for the sheet's today. */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** The dates a hold runs from (null: the sheet's today) and to (null: it does not end). */
+    public record HoldRequest(LocalDate from, LocalDate to) {
     }
 
     /** The person to name as a patron. */
@@ -121,12 +130,13 @@ public class PersonController {
         return view(service.retire(sheetId.trim(), user.trim(), id, request.from()));
     }
 
-    /** Put the person on hold, or take them off it. */
+    /** Add a hold of the person over dates. */
     @PostMapping("/{id}/hold")
     public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(service.toggleHold(sheetId.trim(), user.trim(), id));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody HoldRequest request) {
+        return view(service.hold(sheetId.trim(), user.trim(), id, request.from(), request.to()));
     }
 
     /** Name another person on the sheet as the person's patron. */

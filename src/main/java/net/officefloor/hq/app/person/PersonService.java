@@ -94,16 +94,20 @@ public class PersonService {
         return saved;
     }
 
-    /** Put the person on hold, or take them off it when they are held. */
+    /** Hold the person from the date (null: the sheet's today) to the date (null: it does not end). */
     @Transactional
-    public Person toggleHold(String sheetId, String user, Long id) {
+    public Person hold(String sheetId, String user, Long id, LocalDate from, LocalDate to) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
-        person.setHeld(!person.isHeld());
+        LocalDate fromDate = from != null ? from : sheetService.today(sheetId);
+        if (to != null && to.isBefore(fromDate)) {
+            throw new HoldRefusedException("A hold of " + person.getName() + " cannot end before it starts");
+        }
+        person.addHold(fromDate, to);
         Person saved = save(person);
-        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
-                + " by=" + user + " name=" + saved.getName());
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " from=" + fromDate);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
