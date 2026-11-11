@@ -1,0 +1,72 @@
+{
+  "checkpoint": 120,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp120_hold-pauses-cuts",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    115,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp115_nested-pools.spec.ts::nested pools",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "A person with a hold in force on the sheet's today (a hold whose dates include today) gets no cut\nfrom any pool, and their share is spread over the other members with a cut in proportion to those\nmembers' shares: each member's cut is the pot times their share divided by the shares of the members\nwith a cut, added up, rounded half to even, with the remainder to the largest share as before (when\nno member is left with a cut, each shows 0.00). The pool's total share and balance are unchanged by\nthe hold.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person with a hold in force on the sheet's today (a hold whose dates include today) gets no cut\nfrom any pool, and their share is spread over the other members with a cut in proportion to those\nmembers' shares: each member's cut is the pot times their share divided by the shares of the members\nwith a cut, added up, rounded half to even, with the remainder to the largest share as before (when\nno member is left with a cut, each shows 0.00). The pool's total share and balance are unchanged by\nthe hold.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b319bc4df50d04d5afb83cb300807edb639839e6",
+  "reset_sha": "",
+  "preagent_sha": "188a7f7fc6cfcfcd9087781248034a88f2b4387a",
+  "prev_sha": "188a7f7fc6cfcfcd9087781248034a88f2b4387a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45602899999999996,
+    "input_tokens": 22,
+    "output_tokens": 4316,
+    "cache_read_tokens": 352865,
+    "cache_creation_tokens": 37381,
+    "num_turns": 11,
+    "duration_ms": 297369,
+    "duration_api_ms": 45788,
+    "model": "claude-opus-5-5",
+    "session_id": "0fa36e52-17f1-45fd-ab8d-67a0551dbb2c",
+    "stop_reason": "success",
+    "result_text": "Pool cuts now follow the hold rule, and all 4 acceptance tests pass in `bin/e2e`.\n\nThe change is all in `src/main/frontend/src/app/features/pools/pools.ts`, the file that already worked out pool cuts. The server, stored data and audit records are unchanged.\n\n- **Who gets no cut:** a person whose hold covers the sheet's today gets 0.00 in every pool. Any hold (with or without an end date) counts if today falls within it. A hold that has already ended doesn't count, though the person still shows \"On hold: yes\".\n- **How the pot is shared:** each remaining member gets the pot \u00d7 their share \u00f7 the shares of the members still getting a cut, rounded half to even. Anything left over from rounding goes to the largest share among them. If nobody is left with a cut, everyone shows 0.00.\n  - Example from the test: with a pot of 10.00, shares of 50/30/20 and the 30 held, the cuts are 7.14 / 0.00 / 2.86.\n- **What doesn't change:** the pool's total share and balanced flag ignore holds, as asked.\n\nWhen no member is held or retired, the result is exactly what it was before. Retired members are treated the same way as held ones, so their share is now spread over the others as well. Before, their share still counted 0.00 toward the total, but the cuts were figured over all 100.00, so the remainder went to the largest share. Removing a retired member's share brings the total below 100.00, so the pool can no longer be balanced and shows no cuts. I think that only matters if a pool counts a retired member's share as non-zero somewhere I didn't find.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45602899999999996,
+        "num_turns": 11,
+        "duration_ms": 297369,
+        "duration_api_ms": 45788,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp120.agent.jsonl",
+  "agent_diff_file": "cp120.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

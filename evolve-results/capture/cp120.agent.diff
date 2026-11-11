@@ -1,0 +1,95 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index f66cb4341..0629f61b8 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -17,11 +17,18 @@ interface PoolView {
+   members: PoolMemberView[];
+ }
+ 
+-/** What a pool needs to know of a person: their name, and whether they have a retirement date. */
++/** A hold from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
++interface PoolHold {
++  from: string;
++  to: string | null;
++}
++
++/** What a pool needs to know of a person: their name, whether they have a retirement date, and their holds. */
+ export interface PoolPerson {
+   id: number;
+   name: string;
+   retired: boolean;
++  holds: PoolHold[];
+ }
+ 
+ /** A share: more than 0.00 and at most 100.00, with at most two decimals. */
+@@ -42,25 +49,30 @@ function fromCents(n: number): string {
+   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+ }
+ 
+-/** The pot (in cents) times the share (in hundredths of a percent) divided by 100, in cents rounded half to even. */
+-function cutOf(pot: number, share: number): number {
++/** The pot (in cents) times the share divided by the shares added up (both in hundredths of a percent), in cents
++ *  rounded half to even. */
++function cutOf(pot: number, share: number, shares: number): number {
+   const product = BigInt(pot) * BigInt(share);
+-  const whole = product / 10000n;
+-  const rest = (product % 10000n) * 2n;
+-  const up = rest > 10000n || (rest === 10000n && whole % 2n === 1n);
++  const total = BigInt(shares);
++  const whole = product / total;
++  const rest = (product % total) * 2n;
++  const up = rest > total || (rest === total && whole % 2n === 1n);
+   return Number(up ? whole + 1n : whole);
+ }
+ 
+ /**
+- * Each member's cut of the pot (in cents), in member order: their share of it rounded half to even, a retired
+- * member's 0; the remainder, the pot minus the cuts added up, goes to the member with the largest share (the earliest
+- * added on a tie), so the cuts total exactly the pot.
++ * Each member's cut of the pot (in cents), in member order: the pot times their share divided by the shares of the
++ * members with a cut added up, rounded half to even; a member without a cut (retired, or on hold on the sheet's today)
++ * gets 0. The remainder, the pot minus the cuts added up, goes to the member with a cut with the largest share (the
++ * earliest added on a tie), so the cuts total exactly the pot; with no member left with a cut, each is 0.
+  */
+-function cuts(pot: number, members: { share: number; retired: boolean }[]): number[] {
+-  const out = members.map((m) => (m.retired ? 0 : cutOf(pot, m.share)));
++function cuts(pot: number, members: { share: number; excluded: boolean }[]): number[] {
++  const shares = members.reduce((sum, m) => sum + (m.excluded ? 0 : m.share), 0);
++  if (shares === 0) return members.map(() => 0);
++  const out = members.map((m) => (m.excluded ? 0 : cutOf(pot, m.share, shares)));
+   let largest = -1;
+   members.forEach((m, i) => {
+-    if (!m.retired && (largest < 0 || m.share > members[largest].share)) largest = i;
++    if (!m.excluded && (largest < 0 || m.share > members[largest].share)) largest = i;
+   });
+   if (largest >= 0) out[largest] += pot - out.reduce((sum, c) => sum + c, 0);
+   return out;
+@@ -162,6 +174,7 @@ export class Pools {
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     const poolsById = new Map(this.pools().map((p) => [p.id, p]));
+     const potText = this.session.pot();
++    const today = this.session.today();
+     const sheetPot = potText ? cents(potText) : null;
+     const above = new Map<number, number>();
+     for (const pool of this.pools()) {
+@@ -175,6 +188,11 @@ export class Pools {
+       const retired = pool.members.map((m) => (m.personId !== null ? (byId.get(m.personId)?.retired ?? false) : false));
+       const total = pool.members.reduce((sum, m, i) => sum + (retired[i] ? 0 : cents(m.share)), 0);
+       const balanced = total === 10000;
++      // A person on hold on the sheet's today gets no cut; their share is spread over the members with a cut.
++      const held = pool.members.map((m) => {
++        const holds = m.personId !== null ? (byId.get(m.personId)?.holds ?? []) : [];
++        return today !== null && holds.some((h) => h.from <= today && (h.to === null || today <= h.to));
++      });
+       let pot: number | null = sheetPot;
+       const parent = above.has(pool.id) ? poolsById.get(above.get(pool.id)!) : undefined;
+       if (parent && depth < 10) {
+@@ -187,7 +205,7 @@ export class Pools {
+         balanced,
+         cuts:
+           balanced && pot !== null
+-            ? cuts(pot, pool.members.map((m, i) => ({ share: cents(m.share), retired: retired[i] })))
++            ? cuts(pot, pool.members.map((m, i) => ({ share: cents(m.share), excluded: retired[i] || held[i] })))
+             : null,
+       };
+       figures.set(pool.id, result);
