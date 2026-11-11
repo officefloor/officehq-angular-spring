@@ -9,7 +9,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +20,11 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit) {
         this.claims = claims;
         this.people = people;
@@ -71,10 +71,10 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
         claim.setStatus(status);
-        // Settling fixes the due at the rate the person's grade has now; with no rate it stays live.
+        // Settling fixes the due at the rate the person's grade has on the claim's date; with no rate it stays live.
         String due = "";
         if (status == ClaimStatus.SETTLED) {
-            BigDecimal settledDue = rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+            BigDecimal settledDue = rates.rateOn(sheetId, person.getGrade(), claim.getDate())
                     .map(Rate::getPct)
                     .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
                     .orElse(null);

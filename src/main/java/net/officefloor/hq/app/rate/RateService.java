@@ -2,7 +2,10 @@ package net.officefloor.hq.app.rate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -10,7 +13,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the rate for each grade on a sheet. */
+/** Keeps the rates for each grade on a sheet, each in force from its from-date. */
 @Service
 public class RateService {
 
@@ -25,18 +28,28 @@ public class RateService {
     }
 
     public List<Rate> list(String sheetId) {
-        return rates.findBySheetIdOrderByGradeAsc(sheetId);
+        return rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
     }
 
-    /** Set the grade's rate, replacing the one it had. */
+    /**
+     * The grade's rate in force on the date: the one with the latest from-date on or before it, an
+     * undated rate counting as from the beginning of time. Empty when the date is before every rate.
+     */
+    public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date) {
+        return rates.findBySheetIdAndGrade(sheetId, grade).stream()
+                .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
+                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())));
+    }
+
+    /** Set the grade's rate from the from-date (null: from the beginning of time), replacing the one it had. */
     @Transactional
-    public Rate set(String sheetId, String user, String grade, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate fromDate, BigDecimal pct) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException(sheetId);
         }
-        Rate rate = rates.findBySheetIdAndGrade(sheetId, grade).orElse(null);
+        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, fromDate).orElse(null);
         if (rate == null) {
-            rate = new Rate(sheetId, grade, pct);
+            rate = new Rate(sheetId, grade, fromDate, pct);
         } else {
             rate.setPct(pct);
         }
@@ -47,7 +60,8 @@ public class RateService {
             throw new RateTakenException(sheetId, grade);
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + saved.getGrade()
-                + " rate=" + saved.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                + " rate=" + saved.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()
+                + (saved.getFromDate() == null ? "" : " from=" + saved.getFromDate()));
         return saved;
     }
 }

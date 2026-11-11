@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, counts, sumAmounts } from '../claims/claims';
-import { Rate, Rates, dueOf, sumDues } from '../rates/rates';
+import { Rate, Rates, dueOf, rateOn, sumDues } from '../rates/rates';
 
 interface Person {
   id: number;
@@ -79,7 +79,8 @@ interface Person {
                 [personId]="p.id"
                 [personName]="p.name"
                 [claims]="claimsOf(p.id)"
-                [pct]="rateOf(p.grade)"
+                [grade]="p.grade"
+                [rates]="rates()"
                 (saved)="claimSaved($event)"
               ></td>
             </tr>
@@ -109,9 +110,8 @@ export class People {
     return by;
   });
   protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
-  /** The sheet's rates, one per grade that has one. */
+  /** The sheet's rates, by grade and then from-date. */
   protected readonly rates = signal<Rate[]>([]);
-  private readonly rateByGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
   /** Everyone's due-total added up, skipping the n/a ones. */
   protected readonly dueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
   protected readonly name = signal('');
@@ -148,12 +148,13 @@ export class People {
     return sumAmounts(this.claimsOf(personId).filter(counts).map((c) => c.amount));
   }
 
-  /** The rate for a grade, or undefined when it has none. */
+  /** The grade's rate in force on the sheet's today, or undefined when none is. */
   protected rateOf(grade: string): string | undefined {
-    return this.rateByGrade().get(grade);
+    const today = this.session.today();
+    return today === null ? undefined : rateOn(this.rates(), grade, today);
   }
 
-  /** The person's claimed times their grade's rate, or n/a when the grade has no rate. */
+  /** The person's claimed times their grade's rate in force today, or n/a when none is. */
   protected dueTotalOf(person: Person): string {
     return dueOf(this.claimedBy(person.id), this.rateOf(person.grade));
   }
@@ -163,7 +164,9 @@ export class People {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.rates.update((list) =>
-      [...list.filter((r) => r.grade !== rate.grade), rate].sort((a, b) => a.grade.localeCompare(b.grade)),
+      [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate].sort(
+        (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
+      ),
     );
     void this.read(sheet);
   }

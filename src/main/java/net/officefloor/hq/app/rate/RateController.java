@@ -7,7 +7,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,26 +19,43 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
-/** The rate for each grade on a sheet. The signed-in user's name travels in the {@code X-User} header. */
+/** The rates for each grade on a sheet, each from its from-date. The signed-in user's name travels in the {@code X-User} header. */
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/rates")
 @Validated
 public class RateController {
 
-    /** A rate as shown: the percent with two decimals. */
-    public record RateView(String grade, String pct) {
+    /** A rate as shown: the percent with two decimals, and its from-date as yyyy-mm-dd (null when it has none). */
+    public record RateView(String grade, String pct, String from) {
 
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+            return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                    rate.getFromDate() == null ? null : rate.getFromDate().toString());
         }
     }
 
-    /** A percent of 0.00 up to 999.99 with up to two decimals. */
-    public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String pct) {
+    /**
+     * A percent of 0.00 up to 999.99 with up to two decimals, and an optional from-date as yyyy-mm-dd;
+     * a blank or missing from-date means the rate applies from the beginning of time.
+     */
+    public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String pct,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
 
         BigDecimal pctValue() {
             return new BigDecimal(pct.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+
+        LocalDate fromValue() {
+            if (from == null || from.isBlank()) {
+                return null;
+            }
+            try {
+                return LocalDate.parse(from.trim());
+            } catch (DateTimeParseException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + from.trim());
+            }
         }
     }
 
@@ -45,7 +65,7 @@ public class RateController {
         this.service = service;
     }
 
-    /** The sheet's rates in grade order; a grade with no rate is left out. */
+    /** The sheet's rates in grade order, then by from-date (the undated one first); a grade with no rate is left out. */
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
@@ -57,6 +77,6 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
-        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.pctValue()));
+        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.fromValue(), request.pctValue()));
     }
 }

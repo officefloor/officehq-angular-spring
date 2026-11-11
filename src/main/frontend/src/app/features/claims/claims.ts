@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { dueOf } from '../rates/rates';
+import { Rate, dueOf, rateOn } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -133,8 +133,10 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** The rate for the person's grade, or undefined when the grade has no rate. */
-  readonly pct = input<string>();
+  /** The person's grade. */
+  readonly grade = input.required<string>();
+  /** The sheet's rates: a claim's due uses its grade's rate in force on the claim's date. */
+  readonly rates = input.required<Rate[]>();
   /** A claim was added, saved or changed status. */
   readonly saved = output<Claim>();
 
@@ -156,9 +158,9 @@ export class Claims {
     return `claim-form-${field}-${this.personId()}`;
   }
 
-  /** The due fixed when the claim was settled, else its amount times the rate, or n/a with no rate. */
+  /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
   protected due(claim: Claim): string {
-    return claim.settledDue ?? dueOf(claim.amount, this.pct());
+    return claim.settledDue ?? dueOf(claim.amount, rateOn(this.rates(), this.grade(), claim.date));
   }
 
   protected value(event: Event): string {
