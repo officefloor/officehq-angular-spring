@@ -1,0 +1,232 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d126207dd..753b3a0f0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -149,6 +149,8 @@ interface Person {
+   snapshots: SnapshotLine[];
+   /** The reason of the person's flag while it is in force on the sheet's today, or null. */
+   flag: string | null;
++  /** The user who may approve or reject the person's PENDING claims as a steward may, or null. */
++  approver: string | null;
+ }
+ 
+ /** One of a person's snapshot lines: the day being left and their due-total then ('n/a' when none). */
+@@ -753,6 +755,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+                   }
+                 </ul>
+                 <span>Flag: <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span></span>
++                <span>Approver: <span data-testid="person-approver">{{ p.approver ?? '' }}</span></span>
+                 <ul aria-label="Snapshots">
+                   @for (n of p.snapshots; track $index) {
+                     <li data-testid="person-snapshot-line">{{ n.day }} {{ n.dueTotal }}</li>
+@@ -993,6 +996,22 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+                 >
+                   Flag
+                 </button>
++                <label [for]="'person-approver-input-' + p.id">Approver</label>
++                <input
++                  type="text"
++                  [id]="'person-approver-input-' + p.id"
++                  data-testid="person-approver-input"
++                  [value]="approverInputs().get(p.id) ?? ''"
++                  (input)="setApproverInput(p.id, $any($event.target).value)"
++                />
++                <button
++                  type="button"
++                  data-testid="person-approver-save"
++                  [attr.aria-label]="'Set the approver of ' + p.name"
++                  (click)="saveApprover(p)"
++                >
++                  Set approver
++                </button>
+                 <label [for]="'person-hold-from-' + p.id">Hold from</label>
+                 <input
+                   type="date"
+@@ -1114,6 +1133,8 @@ export class People {
+   /** The flag reason and until-date typed on each person's row, by person id. */
+   protected readonly flagReasons = signal<ReadonlyMap<number, string>>(new Map());
+   protected readonly flagUntils = signal<ReadonlyMap<number, string>>(new Map());
++  /** The approver typed on each person's row, by person id. */
++  protected readonly approverInputs = signal<ReadonlyMap<number, string>>(new Map());
+   /** The alias typed on each person's row, by person id. */
+   protected readonly aliasInputs = signal<ReadonlyMap<number, string>>(new Map());
+   /** The hold from- and to-dates typed on each person's row, by person id. */
+@@ -1555,6 +1576,7 @@ export class People {
+       this.holdFroms.set(new Map());
+       this.flagReasons.set(new Map());
+       this.flagUntils.set(new Map());
++      this.approverInputs.set(new Map());
+       this.aliasInputs.set(new Map());
+       this.statementAsOfs.set(new Map());
+       this.holdTos.set(new Map());
+@@ -2130,6 +2152,29 @@ export class People {
+     }
+   }
+ 
++  protected setApproverInput(id: number, approver: string): void {
++    this.approverInputs.update((m) => new Map(m).set(id, approver));
++    this.clearRowError(id);
++  }
++
++  /** Give the person the approver typed on their row (blank: none). */
++  protected async saveApprover(p: Person): Promise<void> {
++    this.clearRowError(p.id);
++    const sheet = this.session.sheet();
++    const approver = (this.approverInputs().get(p.id) ?? '').trim();
++    try {
++      const saved = await firstValueFrom(
++        this.http.post<Person>('/api/people/approver', { sheet, user: this.session.user(), id: p.id, approver }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
++      if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not set the approver of ' + p.name + '.'));
++    }
++  }
++
+   protected setHoldFrom(id: number, date: string): void {
+     this.holdFroms.update((m) => new Map(m).set(id, date));
+     this.clearRowError(id);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 7c2c5821f..4b8691a57 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -45,7 +45,7 @@ import org.springframework.web.server.ResponseStatusException;
+  * and before the to-date of one of their past retirements. A clerk settles a claim
+  * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
+  * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
+- * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
++ * (as may the person's approver) approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
+  * the user who opened a claim cannot approve it. The user who last edited a claim (through its form or
+  * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is bound by a statement
+  * like any other claim that counts: while a statement binds it, it shows the bound figure. An overdue claim's due gains a late charge on its
+@@ -415,12 +415,12 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                     "The user who last edited a claim cannot " + (review ? "approve" : "settle") + " it.");
+         }
+-        if (review && !isSteward(sheetId, user)) {
++        Person person = person(sheetId, claim.getPersonId());
++        if (review && !isSteward(sheetId, user) && !user.equals(person.getApprover())) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+-                    "Only a steward can approve or reject a PENDING claim.");
++                    "Only a steward or the person's approver can approve or reject a PENDING claim.");
+         }
+         String voidedWith = next == ClaimStatus.VOID ? voidReasons.refuseUnlessListed(sheetId, voidReason) : null;
+-        Person person = person(sheetId, claim.getPersonId());
+         if (next == ClaimStatus.OPEN && !review && flaggedAgainst(sheetId, user, person)) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                     "This person is flagged: only a steward can open their claims.");
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 6d6210cc9..b2641115e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -114,6 +114,10 @@ public class Person {
+     @Column(name = "flag_until")
+     private LocalDate flagUntil;
+ 
++    /** The user who may approve or reject the person's PENDING claims as a steward may; null for none. */
++    @Column(name = "approver")
++    private String approver;
++
+     /** Bumped on every save; an edit must carry the version it was made from. */
+     @Version
+     @Column(name = "version", nullable = false)
+@@ -345,7 +349,14 @@ public class Person {
+         return flaggedOn(date) ? flagReason : null;
+     }
+ 
+-    /** The holds recorded, by from-date. */
++    public String getApprover() {
++        return approver;
++    }
++
++    public void setApprover(String approver) {
++        this.approver = approver;
++    }
++
+     /** The person's aliases, sorted as names are compared: without regard to case. */
+     public List<String> getAliases() {
+         return aliases.stream().sorted(Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT))
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index aa6b76fb0..a28875086 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -104,6 +104,10 @@ public class PersonController {
+             @NotNull LocalDate until) {
+     }
+ 
++    public record SetApproverRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull @Size(max = 100) String approver) {
++    }
++
+     public record AddPatronRequest(@NotBlank @Size(max = 100) String sheet,
+             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long patronId) {
+     }
+@@ -139,7 +143,7 @@ public class PersonController {
+     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
+             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
+             List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements, List<String> tags,
+-            List<SnapshotResponse> snapshots, String flag) {
++            List<SnapshotResponse> snapshots, String flag, String approver) {
+     }
+ 
+     public static PersonResponse response(Person person, boolean clashing, LocalDate today) {
+@@ -153,7 +157,7 @@ public class PersonController {
+                 person.getTags(),
+                 person.getSnapshots().stream().map(n -> new SnapshotResponse(n.getDay(), n.getDueTotal() == null ? "n/a"
+                         : n.getDueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())).toList(),
+-                person.flagShownOn(today));
++                person.flagShownOn(today), person.getApprover());
+     }
+ 
+     /** The person, with whether they clash on the sheet's tree. */
+@@ -279,6 +283,12 @@ public class PersonController {
+                 req.reason() == null ? null : req.reason().trim(), req.until()));
+     }
+ 
++    @PostMapping("/approver")
++    public PersonResponse setApprover(@Valid @RequestBody SetApproverRequest req) {
++        return response(req.sheet().trim(), service.setApprover(req.sheet().trim(), req.user().trim(), req.id(),
++                req.approver().trim()));
++    }
++
+     @PostMapping("/patrons/list")
+     public List<PatronResponse> patrons(@Valid @RequestBody ListPeopleRequest req) {
+         return service.patrons(req.sheet().trim()).stream()
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 3a538a531..950c7f8bb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -436,6 +436,22 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /**
++     * Give the person an approver (a blank name: none), who may approve or reject their PENDING
++     * claims as a steward may; refused (403) for a viewer.
++     */
++    @Transactional
++    public Person setApprover(String sheetId, String user, long id, String approver) {
++        roles.refuseViewer(sheetId, user);
++        Person person = people.lockByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
++        person.setApprover(approver.isEmpty() ? null : approver);
++        Person saved = save(person);
++        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
++                + " user=" + approver);
++        return saved;
++    }
++
+     @Transactional(readOnly = true)
+     public List<Patron> patrons(String sheetId) {
+         return patrons.findBySheetIdOrderByIdAsc(sheetId);
+diff --git a/src/main/resources/db/migration/V105__person_approver.sql b/src/main/resources/db/migration/V105__person_approver.sql
+new file mode 100644
+index 000000000..dd7601f7f
+--- /dev/null
++++ b/src/main/resources/db/migration/V105__person_approver.sql
+@@ -0,0 +1,2 @@
++-- The user who may approve or reject the person's PENDING claims as a steward may; null for none.
++ALTER TABLE person ADD COLUMN approver VARCHAR(100);
