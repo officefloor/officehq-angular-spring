@@ -69,6 +69,10 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonHold> holds = new ArrayList<>();
 
+    /** The sheet the person was transferred from; null when they were not transferred here. */
+    @Column(name = "origin_sheet")
+    private String originSheet;
+
     /** Where the person stands in the list: listed by it, then by id. */
     @Column(name = "position", nullable = false)
     private long position;
@@ -173,6 +177,14 @@ public class Person {
 
     public void setRetiredFrom(LocalDate retiredFrom) {
         this.retiredFrom = retiredFrom;
+    }
+
+    public String getOriginSheet() {
+        return originSheet;
+    }
+
+    public void setOriginSheet(String originSheet) {
+        this.originSheet = originSheet;
     }
 
     public long getPosition() {

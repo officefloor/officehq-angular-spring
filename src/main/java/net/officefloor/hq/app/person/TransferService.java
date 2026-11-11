@@ -122,6 +122,7 @@ public class TransferService {
         arrived.setTerms(from.getTerms());
         arrived.setContact(from.getContact());
         arrived.setAddedOn(toSheet.getToday());
+        arrived.setOriginSheet(sheetId);
         arrived.setPosition(people.maxPosition(to) + 1);
         Person saved = people.saveAndFlush(arrived);
         aliases.deleteAll(theirAliases);

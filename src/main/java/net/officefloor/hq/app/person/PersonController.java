@@ -45,7 +45,7 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, Integer terms, String contact, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
-            List<String> aliases, boolean clashing) {
+            List<String> aliases, boolean clashing, String origin) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
                 boolean watched, List<String> aliases, Set<String> keysInTree) {
@@ -56,7 +56,7 @@ public class PersonController {
                     PersonService.patronShares(patronIds.size()).stream().map(BigDecimal::toPlainString).toList(),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    watched, aliases, PersonService.clashing(person, aliases, keysInTree));
+                    watched, aliases, PersonService.clashing(person, aliases, keysInTree), person.getOriginSheet());
         }
     }
 

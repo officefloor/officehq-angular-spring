@@ -49,6 +49,8 @@ interface Person {
   /** Whether the person's name or an alias is used on another sheet of the sheet's tree: every edit of them is
    *  refused until a rename clears it. */
   clashing: boolean;
+  /** The sheet the person was transferred from; null for anyone else. */
+  origin: string | null;
 }
 
 /** A hold of a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
@@ -259,7 +261,7 @@ function csvField(value: string): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">From sheet</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
             }
@@ -288,6 +290,7 @@ function csvField(value: string): string {
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+              <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
