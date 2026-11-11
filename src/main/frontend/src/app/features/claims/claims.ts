@@ -15,7 +15,7 @@ export interface Claim {
   note: string;
   status: ClaimStatus;
   /** Given when the claim is opened; null for a DRAFT and once voided. */
-  number: number | null;
+  number: string | null;
   /** The due fixed when the claim was settled, two decimals; null when it has none and its due is live. */
   settledDue: string | null;
   /** The user who opened the claim; null for a DRAFT. That user cannot settle it. */
@@ -25,7 +25,7 @@ export interface Claim {
   /** The due the last statement bound the claim to, two decimals; null when unbound, or bound with none (n/a). */
   statedDue: string | null;
   /** The number of the SETTLED claim of the same person this claim corrects; null unless it is a correction. */
-  corrects: number | null;
+  corrects: string | null;
   /** The date (yyyy-mm-dd) that decides how its live figures round: its own, or a correction's corrected claim's. */
   roundingDate: string;
 }
@@ -155,7 +155,6 @@ export function sumAmounts(amounts: string[]): string {
       <input
         [id]="fieldId('corrects')"
         data-testid="claim-form-corrects"
-        inputmode="numeric"
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set(null)"
       />
@@ -328,7 +327,7 @@ export class Claims {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
-    this.corrects.set(claim.corrects === null ? '' : String(claim.corrects));
+    this.corrects.set(claim.corrects ?? '');
     this.error.set(null);
     this.actionError.set(null);
   }
@@ -377,7 +376,7 @@ export class Claims {
       return;
     }
     const corrects = this.corrects().trim();
-    if (corrects && !/^\d+$/.test(corrects)) {
+    if (corrects.length > 255) {
       this.error.set('Type the number of the settled claim the correction corrects.');
       return;
     }

@@ -27,15 +27,17 @@ public class SettingController {
     /**
      * The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals;
      * the terms in whole days; the late percent with two decimals; the policy date as yyyy-mm-dd, null when blank (the
-     * sheet's today).
+     * sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off).
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate) {
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+            LocalDate periodNumberingFrom) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null
                     : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getTerms(),
-                    sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getPolicyDate());
+                    sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getPolicyDate(),
+                    sheet.getPeriodNumberingFrom());
         }
     }
 
@@ -74,6 +76,10 @@ public class SettingController {
 
     /** A policy date as yyyy-mm-dd; null (blank) means the sheet's today. */
     public record PolicyDateRequest(LocalDate policyDate) {
+    }
+
+    /** A period numbering from as yyyy-mm-dd; null (blank) means off. */
+    public record PeriodNumberingFromRequest(LocalDate periodNumberingFrom) {
     }
 
     private final SettingService service;
@@ -121,5 +127,13 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody PolicyDateRequest request) {
         return SettingsView.of(service.setPolicyDate(sheetId.trim(), user.trim(), request.policyDate()));
+    }
+
+    @PutMapping("/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody PeriodNumberingFromRequest request) {
+        return SettingsView.of(
+                service.setPeriodNumberingFrom(sheetId.trim(), user.trim(), request.periodNumberingFrom()));
     }
 }

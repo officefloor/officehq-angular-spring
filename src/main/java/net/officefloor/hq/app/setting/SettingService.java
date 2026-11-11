@@ -98,4 +98,18 @@ public class SettingService {
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
+
+    /**
+     * Set the period numbering from; null means off. Every save is recorded, even of the same value. Claims already
+     * opened keep their numbers.
+     */
+    @Transactional
+    public Sheet setPeriodNumberingFrom(String sheetId, String user, LocalDate from) {
+        Sheet sheet = get(sheetId);
+        sheet.setPeriodNumberingFrom(from);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=period-numbering-from value="
+                + (from == null ? "" : from.toString()));
+        return saved;
+    }
 }

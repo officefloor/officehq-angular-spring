@@ -19,4 +19,17 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
 
     @Query(value = "SELECT last_claim_number FROM sheet WHERE id = :id", nativeQuery = true)
     long lastClaimNumber(@Param("id") String id);
+
+    /** Moves a sequence's last number on by one, starting it at 1; the sheet's row must be locked by the caller. */
+    @Modifying
+    @Query(value = "MERGE INTO claim_number_sequence s USING (VALUES (:id, :key)) v (sheet_id, sequence_key)"
+            + " ON s.sheet_id = v.sheet_id AND s.sequence_key = v.sequence_key"
+            + " WHEN MATCHED THEN UPDATE SET last_number = s.last_number + 1"
+            + " WHEN NOT MATCHED THEN INSERT (sheet_id, sequence_key, last_number) VALUES (v.sheet_id, v.sequence_key, 1)",
+            nativeQuery = true)
+    int incrementSequence(@Param("id") String id, @Param("key") String key);
+
+    @Query(value = "SELECT last_number FROM claim_number_sequence WHERE sheet_id = :id AND sequence_key = :key",
+            nativeQuery = true)
+    long lastSequenceNumber(@Param("id") String id, @Param("key") String key);
 }

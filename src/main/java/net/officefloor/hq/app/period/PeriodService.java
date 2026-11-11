@@ -3,6 +3,7 @@ package net.officefloor.hq.app.period;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
@@ -101,6 +102,11 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
         return saved;
+    }
+
+    /** The name of the period the date falls in; empty when it is in none. */
+    public Optional<String> nameOn(String sheetId, LocalDate date) {
+        return list(sheetId).stream().filter(p -> p.contains(date)).map(Period::getName).findFirst();
     }
 
     /**

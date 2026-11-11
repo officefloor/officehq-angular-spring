@@ -41,7 +41,7 @@ public class Claim {
 
     /** Given when the claim is opened and kept once voided; null for a claim never opened. */
     @Column(name = "claim_number")
-    private Long number;
+    private String number;
 
     /** The due fixed when the claim is settled; null otherwise, or when the grade had no rate then. */
     @Column(name = "settled_due", precision = 14, scale = 2)
@@ -61,7 +61,7 @@ public class Claim {
 
     /** The number of the SETTLED claim of the same person this claim corrects; null unless it is a correction. */
     @Column(name = "corrects")
-    private Long corrects;
+    private String corrects;
 
     /** The date that decides how the claim's live figures round: its own date, or a correction's corrected claim's. */
     @Column(name = "rounding_date", nullable = false)
@@ -99,11 +99,11 @@ public class Claim {
         this.amount = amount;
     }
 
-    public Long getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Long corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 
@@ -144,11 +144,11 @@ public class Claim {
         this.status = status;
     }
 
-    public Long getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Long number) {
+    public void setNumber(String number) {
         this.number = number;
     }
 

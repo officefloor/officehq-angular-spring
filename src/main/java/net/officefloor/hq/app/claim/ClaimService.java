@@ -58,7 +58,7 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
-            Long corrects) {
+            String corrects) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
@@ -77,7 +77,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note,
-            Long corrects) {
+            String corrects) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
@@ -143,9 +143,9 @@ public class ClaimService {
             due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
         }
         // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
-        Long number = claim.getNumber();
+        String number = claim.getNumber();
         if (status == ClaimStatus.OPEN) {
-            number = sheets.nextClaimNumber(sheetId);
+            number = nextNumber(sheetId, claim.getDate());
             claim.setNumber(number);
             claim.setOpenedBy(user);
         }
@@ -166,7 +166,7 @@ public class ClaimService {
      * names none. Refused otherwise. Gives the date of the claim a correction corrects (it rounds by that date), null
      * for any other claim.
      */
-    private LocalDate requireCorrection(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+    private LocalDate requireCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ClaimCorrectionException("Only a correction (a negative amount) corrects a claim");
@@ -213,8 +213,19 @@ public class ClaimService {
     }
 
     /** The claim's number at the end of an audit record, or nothing when it has none. */
-    private static String numberOf(Long number) {
+    private static String numberOf(String number) {
         return number == null ? "" : " number=" + number;
+    }
+
+    /**
+     * The number a claim dated on the date gets when opened: while the sheet numbers by period, the next in its
+     * period's own sequence (X for no period); otherwise the next sheet-wide number.
+     */
+    private String nextNumber(String sheetId, LocalDate date) {
+        if (settings.get(sheetId).numbersByPeriod()) {
+            return sheets.nextSequenceNumber(sheetId, periods.nameOn(sheetId, date).orElse("X"));
+        }
+        return String.valueOf(sheets.nextClaimNumber(sheetId));
     }
 
     private LocalDate dateOr(String sheetId, LocalDate date) {

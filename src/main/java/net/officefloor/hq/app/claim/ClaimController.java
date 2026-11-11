@@ -35,7 +35,7 @@ public class ClaimController {
      * own, or a correction's corrected claim's).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number, String settledDue, String openedBy, boolean stated, String statedDue, Long corrects,
+            String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate) {
 
         static ClaimView of(Claim claim) {
@@ -57,14 +57,19 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "\\s*-?\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Pattern(regexp = "\\s*\\d{0,18}\\s*") String corrects) {
+            @Size(max = 255) String corrects) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
 
-        Long correctsValue() {
-            return corrects == null || corrects.isBlank() ? null : Long.valueOf(corrects.trim());
+        String correctsValue() {
+            if (corrects == null || corrects.isBlank()) {
+                return null;
+            }
+            // A sheet-wide number is written without leading zeros; a period number (P1-1, X-1) as typed.
+            String trimmed = corrects.trim();
+            return trimmed.matches("\\d{1,18}") ? String.valueOf(Long.parseLong(trimmed)) : trimmed;
         }
     }
 

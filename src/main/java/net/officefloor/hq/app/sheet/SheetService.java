@@ -58,6 +58,19 @@ public class SheetService {
         return sheets.lastClaimNumber(id);
     }
 
+    /**
+     * The next number in a sequence of its own on the sheet (a period's, or X for no period): the key, a dash, then
+     * 1 for the first, then 2, and so on. The sheet's row is locked until the caller's transaction ends.
+     */
+    @Transactional
+    public String nextSequenceNumber(String id, String key) {
+        if (sheets.lockById(id) != 1) {
+            throw new SheetNotFoundException(id);
+        }
+        sheets.incrementSequence(id, key);
+        return key + "-" + sheets.lastSequenceNumber(id, key);
+    }
+
     private Sheet start(String id, String user) {
         try {
             return sheets.saveAndFlush(new Sheet(id, user, LocalDate.now()));
