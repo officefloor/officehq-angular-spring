@@ -1,0 +1,575 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index c405a39bb..313ed5465 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -154,6 +154,19 @@ export class Session {
+     if (this.sheet() === saved.id) this.show(saved);
+   }
+ 
++  /** Clone the active sheet to another id never used: a steward may. */
++  async cloneSheet(to: string): Promise<void> {
++    const id = this.sheet();
++    if (!id) throw new Error('No sheet loaded.');
++    await firstValueFrom(
++      this.http.post<SheetView>(
++        `/api/sheets/${encodeURIComponent(id)}/clone`,
++        { to },
++        { headers: { 'X-User': this.user() ?? '' } },
++      ),
++    );
++  }
++
+   private show(view: SheetView): void {
+     this.sheet.set(view.id);
+     this.today.set(view.today);
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 46ba2ea29..6d6cb4350 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -60,6 +60,17 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+         <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
+         <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
++        <form (submit)="cloneSheet($event)">
++          <label for="sheet-clone-to">Clone to sheet id</label>
++          <input
++            id="sheet-clone-to"
++            data-testid="sheet-clone-to"
++            [value]="cloneTo()"
++            (input)="cloneTo.set(value($event)); sheetError.set(null)"
++          />
++          <button type="submit" data-testid="sheet-clone">Clone sheet</button>
++        </form>
++        <p>Cloned to <strong data-testid="sheet-cloned-to">{{ clonedTo() ?? '' }}</strong></p>
+         <app-settings />
+         <app-holidays />
+         <app-void-reasons />
+@@ -93,6 +104,9 @@ export class Home {
+   protected readonly todayInput = signal('');
+   protected readonly asOfInput = signal('');
+   protected readonly asOfError = signal<string | null>(null);
++  protected readonly cloneTo = signal('');
++  /** The id the active sheet was last cloned to from this screen; cleared while a clone is asked for. */
++  protected readonly clonedTo = signal<string | null>(null);
+ 
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement).value;
+@@ -117,6 +131,7 @@ export class Home {
+       this.sheetError.set('Type a sheet id to load.');
+       return;
+     }
++    this.clonedTo.set(null);
+     try {
+       await this.session.loadSheet(id);
+     } catch {
+@@ -133,6 +148,23 @@ export class Home {
+     }
+   }
+ 
++  protected async cloneSheet(event: Event): Promise<void> {
++    event.preventDefault();
++    const to = this.cloneTo().trim();
++    this.sheetError.set(null);
++    this.clonedTo.set(null);
++    if (!to) {
++      this.sheetError.set('Type a sheet id to clone to.');
++      return;
++    }
++    try {
++      await this.session.cloneSheet(to);
++      this.clonedTo.set(to);
++    } catch {
++      this.sheetError.set(`The sheet could not be cloned to ${to}.`);
++    }
++  }
++
+   protected async setAsOf(event: Event): Promise<void> {
+     event.preventDefault();
+     const date = this.asOfInput().trim();
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 57600ef47..0202e67f6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -382,6 +382,32 @@ public class Claim {
+         this.settleBatch = settleBatch;
+     }
+ 
++    /**
++     * A copy of the claim for a person on another sheet, with its status, frozen figures, dates, note, tags and the
++     * numbers it corrects or was split from as they are; it has no number, no statement binding, no settle batch and
++     * no editor lock.
++     */
++    public Claim copyTo(String sheetId, Long personId) {
++        Claim copy = new Claim(sheetId, personId, amount, date, note);
++        copy.status = status;
++        copy.settledDue = settledDue;
++        copy.openedBy = openedBy;
++        copy.editedBy = editedBy;
++        copy.corrects = corrects;
++        copy.dueBy = dueBy;
++        copy.terms = terms;
++        copy.roundingDate = roundingDate;
++        copy.deferredUntil = deferredUntil;
++        copy.proofs = proofs;
++        copy.splitFrom = splitFrom;
++        copy.lateEntry = lateEntry;
++        copy.remindedOn = remindedOn;
++        copy.ref = ref;
++        copy.tags = tags;
++        copy.voidReason = voidReason;
++        return copy;
++    }
++
+     /** Whether a user other than this one has the claim's editor open. */
+     public boolean isLockedAgainst(String user) {
+         return lockedBy != null && !lockedBy.equals(user);
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 333ccc1a9..fb8d8b4c7 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -309,6 +309,26 @@ public class Person {
+         }
+     }
+ 
++    /**
++     * A copy of the person on another sheet: their grades, terms, contact, retirement and past retirements, holds,
++     * place in the list, origin and the day they were added.
++     */
++    public Person copyTo(String sheetId) {
++        List<PersonGrade> theirGrades = getGrades();
++        Person copy = new Person(sheetId, name, theirGrades.get(0).getGrade());
++        theirGrades.stream().skip(1).forEach(g -> copy.setGrade(g.getGrade(), g.getFromDate()));
++        copy.terms = terms;
++        copy.contact = contact;
++        copy.retiredFrom = retiredFrom;
++        copy.retiredOn = retiredOn;
++        copy.addedOn = addedOn;
++        copy.originSheet = originSheet;
++        copy.position = position;
++        holds.forEach(h -> copy.holds.add(new PersonHold(h.getFromDate(), h.getToDate(), h.getMadeOn())));
++        retirements.forEach(r -> copy.retirements.add(new PersonRetirement(r.getFromDate(), r.getToDate())));
++        return copy;
++    }
++
+     public long getVersion() {
+         return version;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonHold.java b/src/main/java/net/officefloor/hq/app/person/PersonHold.java
+index ec7af1f72..5cc44d64b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonHold.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonHold.java
+@@ -49,6 +49,10 @@ public class PersonHold {
+         return toDate;
+     }
+ 
++    public LocalDate getMadeOn() {
++        return madeOn;
++    }
++
+     /** Whether the hold was added while the sheet's today was on or before the date. */
+     public boolean madeBy(LocalDate date) {
+         return madeOn == null || !madeOn.isAfter(date);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateLog.java b/src/main/java/net/officefloor/hq/app/rate/RateLog.java
+index 885e1e466..3ccf691d1 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateLog.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateLog.java
+@@ -53,6 +53,18 @@ public class RateLog {
+         this.setOn = setOn;
+     }
+ 
++    /** A copy of the log line on another sheet. */
++    public RateLog copyTo(String sheetId) {
++        RateLog copy = new RateLog();
++        copy.sheetId = sheetId;
++        copy.grade = grade;
++        copy.fromDate = fromDate;
++        copy.toDate = toDate;
++        copy.pct = pct;
++        copy.setOn = setOn;
++        return copy;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index ca23e37c6..cbd383476 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -276,6 +276,18 @@ public class RollupService {
+         }
+     }
+ 
++    /** Record a ROLLUP line for every person on the sheet, in list order, then a TOTALS line. */
++    public void recordAll(String sheetId, String user) {
++        Snapshot now = snapshot(sheetId);
++        for (Figures person : now.people().values()) {
++            audit.recordOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + person.name()
++                    + " claimed=" + person.claimed() + " due-total=" + person.dueTotal()
++                    + " overdue-total=" + person.overdueTotal());
++        }
++        audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total=" + now.claimedTotal()
++                + " due-total=" + now.dueTotal() + " overdue-total=" + now.overdueTotal());
++    }
++
+     /**
+      * As on the screen: the settled due, else the figure (the stated due, else the amount at the rate on the claim's
+      * date, rounded as the sheet's policy date has the claim round) with the late charge of an overdue claim added on
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index f56505c7d..11a0f8253 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -116,6 +116,23 @@ public class Sheet {
+         this.today = today;
+     }
+ 
++    /**
++     * A copy of the sheet under another id: its today, dated settings, permission matrix and other settings; not
++     * archived, with no settle batch yet.
++     */
++    public Sheet copyTo(String id, String createdBy) {
++        Sheet copy = new Sheet(id, createdBy, today);
++        dated.forEach(d -> copy.dated.add(new DatedSetting(copy, d.getKey(), d.getFromDate(), d.getValue())));
++        copy.permissions.putAll(permissions);
++        copy.policyDate = policyDate;
++        copy.periodNumberingFrom = periodNumberingFrom;
++        copy.entryDate = entryDate;
++        copy.graceDays = graceDays;
++        copy.pot = pot;
++        copy.parent = parent;
++        return copy;
++    }
++
+     public String getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneRefusedException.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneRefusedException.java
+new file mode 100644
+index 000000000..9e406f9c5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneRefusedException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.sheet;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A clone refused: not by a steward, or to a sheet id already used. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class SheetCloneRefusedException extends RuntimeException {
++
++    public SheetCloneRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+new file mode 100644
+index 000000000..4095064ed
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -0,0 +1,252 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.persistence.EntityManager;
++import jakarta.persistence.PersistenceException;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimLog;
++import net.officefloor.hq.app.claim.ClaimLogRepository;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.claim.ClaimTemplate;
++import net.officefloor.hq.app.claim.ClaimTemplateRepository;
++import net.officefloor.hq.app.claim.SheetTag;
++import net.officefloor.hq.app.claim.SheetTagRepository;
++import net.officefloor.hq.app.holiday.Holiday;
++import net.officefloor.hq.app.holiday.HolidayRepository;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonAlias;
++import net.officefloor.hq.app.person.PersonAliasRepository;
++import net.officefloor.hq.app.person.PersonPatron;
++import net.officefloor.hq.app.person.PersonPatronRepository;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.Pool;
++import net.officefloor.hq.app.pool.PoolMember;
++import net.officefloor.hq.app.pool.PoolRepository;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.rate.RateLogRepository;
++import net.officefloor.hq.app.rate.RateRepository;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleRepository;
++import net.officefloor.hq.app.role.RoleService;
++import net.officefloor.hq.app.role.SheetRole;
++import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.voidreason.VoidReason;
++import net.officefloor.hq.app.voidreason.VoidReasonRepository;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Clones a sheet to another id never used (a steward only). The clone gets the sheet's today, settings, roles, rates,
++ * holidays, void reasons, templates, people (grades, terms, contacts, aliases, holds, retirements, patrons), pools,
++ * periods (all open) and claims with their status, frozen figures, dates, notes and logs. Each claim that had a number
++ * takes the next number of the clone, in the order the originals were opened (by the sheet's today when each was
++ * opened, then by the order they were added to the clone: person by person as listed, each person's claims in the
++ * order they were added). Statements are not copied, so no claim of the clone is bound by one.
++ */
++@Service
++public class SheetCloneService {
++
++    private final SheetRepository sheets;
++    private final EntityManager entities;
++    private final RoleService roleService;
++    private final RoleRepository roles;
++    private final RateRepository rates;
++    private final RateLogRepository rateLogs;
++    private final HolidayRepository holidays;
++    private final VoidReasonRepository voidReasons;
++    private final ClaimTemplateRepository templates;
++    private final SheetTagRepository tags;
++    private final PersonRepository people;
++    private final PersonAliasRepository aliases;
++    private final PersonPatronRepository patrons;
++    private final PoolRepository pools;
++    private final PeriodRepository periods;
++    private final ClaimRepository claims;
++    private final ClaimLogRepository logs;
++    private final ClaimService claimService;
++    private final RollupService rollup;
++    private final Audit audit;
++
++    public SheetCloneService(SheetRepository sheets, EntityManager entities, RoleService roleService,
++            RoleRepository roles, RateRepository rates, RateLogRepository rateLogs, HolidayRepository holidays,
++            VoidReasonRepository voidReasons, ClaimTemplateRepository templates, SheetTagRepository tags,
++            PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
++            PoolRepository pools, PeriodRepository periods, ClaimRepository claims, ClaimLogRepository logs,
++            ClaimService claimService, RollupService rollup, Audit audit) {
++        this.sheets = sheets;
++        this.entities = entities;
++        this.roleService = roleService;
++        this.roles = roles;
++        this.rates = rates;
++        this.rateLogs = rateLogs;
++        this.holidays = holidays;
++        this.voidReasons = voidReasons;
++        this.templates = templates;
++        this.tags = tags;
++        this.people = people;
++        this.aliases = aliases;
++        this.patrons = patrons;
++        this.pools = pools;
++        this.periods = periods;
++        this.claims = claims;
++        this.logs = logs;
++        this.claimService = claimService;
++        this.rollup = rollup;
++        this.audit = audit;
++    }
++
++    /** Clone the sheet to the other id; the clone as made. */
++    @Transactional
++    public Sheet cloneTo(String sheetId, String user, String toSheetId) {
++        Sheet from = sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId));
++        if (roleService.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new SheetCloneRefusedException("Only a steward can clone the sheet");
++        }
++        String to = toSheetId == null ? "" : toSheetId.trim();
++        if (to.isEmpty()) {
++            throw new SheetCloneRefusedException("Type the id of the sheet to clone to");
++        }
++        if (to.length() > 100) {
++            throw new SheetCloneRefusedException("A sheet id is at most 100 characters");
++        }
++        if (sheets.existsById(to)) {
++            throw new SheetCloneRefusedException("Sheet " + to + " is already in use");
++        }
++        Sheet clone = from.copyTo(to, user);
++        try {
++            entities.persist(clone);
++            entities.flush();
++        } catch (PersistenceException | DataIntegrityViolationException e) {
++            // Someone started the same sheet at the same moment.
++            throw new SheetCloneRefusedException("Sheet " + to + " is already in use");
++        }
++
++        for (SheetRole role : roles.findBySheetIdOrderByUserNameAsc(sheetId)) {
++            roles.save(new SheetRole(to, role.getUserName(), role.getRole()));
++        }
++        for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId)) {
++            Rate copy = new Rate(to, rate.getGrade(), rate.getFromDate(), rate.getPct());
++            copy.setToDate(rate.getToDate());
++            rates.save(copy);
++        }
++        rateLogs.findBySheetIdOrderByIdAsc(sheetId).forEach(l -> rateLogs.save(l.copyTo(to)));
++        holidays.findBySheetIdOrderByDateAsc(sheetId).forEach(h -> holidays.save(new Holiday(to, h.getDate())));
++        voidReasons.findBySheetIdOrderByIdAsc(sheetId)
++                .forEach(r -> voidReasons.save(new VoidReason(to, r.getReason())));
++        templates.findBySheetIdOrderByNameAsc(sheetId)
++                .forEach(t -> templates.save(new ClaimTemplate(to, t.getName(), t.getAmount(), t.getNote())));
++        tags.findBySheetIdOrderByTagAsc(sheetId).forEach(t -> tags.save(new SheetTag(to, t.getTag())));
++        for (Period period : periods.findBySheetIdOrderByFromDateAscIdAsc(sheetId)) {
++            periods.save(new Period(to, period.getName(), period.getFromDate(), period.getToDate()));
++        }
++
++        // The people as listed, with their aliases and patrons.
++        Map<Long, Long> personIds = new HashMap<>();
++        List<Person> theirPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
++        for (Person person : theirPeople) {
++            personIds.put(person.getId(), people.save(person.copyTo(to)).getId());
++        }
++        people.flush();
++        for (PersonAlias alias : aliases.findBySheetId(sheetId).stream()
++                .sorted(Comparator.comparing(PersonAlias::getId)).toList()) {
++            aliases.save(new PersonAlias(to, personIds.get(alias.getPersonId()), alias.getAlias()));
++        }
++        for (PersonPatron patron : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
++            patrons.save(new PersonPatron(to, personIds.get(patron.getPersonId()),
++                    personIds.get(patron.getPatronId())));
++        }
++
++        // The pools, then their members: a member may be another pool.
++        List<Pool> theirPools = pools.findBySheetIdOrderByIdAsc(sheetId);
++        Map<Long, Pool> poolCopies = new HashMap<>();
++        for (Pool pool : theirPools) {
++            poolCopies.put(pool.getId(), pools.saveAndFlush(new Pool(to, pool.getName())));
++        }
++        for (Pool pool : theirPools) {
++            Pool copy = poolCopies.get(pool.getId());
++            for (PoolMember member : pool.getMembers()) {
++                PoolMember copied = member.getMemberPoolId() != null
++                        ? PoolMember.ofPool(poolCopies.get(member.getMemberPoolId()).getId(), member.getShare())
++                        : new PoolMember(personIds.get(member.getPersonId()), member.getShare());
++                copied.setDates(member.getFromDate(), member.getToDate());
++                copy.getMembers().add(copied);
++            }
++            pools.saveAndFlush(copy);
++        }
++
++        // The claims, person by person as listed, each person's in the order they were added, listed as they were.
++        Map<Long, List<ClaimLog>> logOf = new HashMap<>();
++        logs.findBySheetIdOrderByIdAsc(sheetId)
++                .forEach(l -> logOf.computeIfAbsent(l.getClaimId(), k -> new ArrayList<>()).add(l));
++        Map<Long, List<Claim>> claimsOf = new HashMap<>();
++        claims.findBySheetIdOrderByIdDesc(sheetId)
++                .forEach(c -> claimsOf.computeIfAbsent(c.getPersonId(), k -> new ArrayList<>()).add(c));
++        List<Claim> originals = new ArrayList<>();
++        for (Person person : theirPeople) {
++            originals.addAll(claimsOf.getOrDefault(person.getId(), List.of()).stream()
++                    .sorted(Comparator.comparing(Claim::getId)).toList());
++        }
++        Map<Claim, Claim> copies = new HashMap<>();
++        List<Claim> added = new ArrayList<>();
++        for (Claim claim : originals) {
++            Claim copy = claim.copyTo(to, personIds.get(claim.getPersonId()));
++            copy.setListed(claim.getListed());
++            Claim saved = claims.save(copy);
++            copies.put(claim, saved);
++            added.add(saved);
++        }
++        claims.flush();
++        sheets.setLastListed(to, sheets.lastListed(sheetId));
++
++        // Numbered anew in the order the originals were opened, by the clone's own numbering.
++        Map<String, String> numbers = new HashMap<>();
++        Map<Claim, LocalDate> openedOn = new HashMap<>();
++        originals.forEach(c -> openedOn.put(copies.get(c), openedOn(c, logOf.getOrDefault(c.getId(), List.of()))));
++        for (Claim claim : originals.stream().filter(c -> c.getNumber() != null)
++                .sorted(Comparator.comparing((Claim c) -> openedOn.get(copies.get(c)))
++                        .thenComparing(c -> copies.get(c).getId()))
++                .toList()) {
++            Claim copy = copies.get(claim);
++            copy.setNumber(claimService.nextNumber(to, copy.getDueBy()));
++            numbers.put(claim.getNumber(), copy.getNumber());
++        }
++        for (Claim copy : added) {
++            if (copy.getCorrects() != null) {
++                copy.setCorrects(numbers.getOrDefault(copy.getCorrects(), copy.getCorrects()));
++            }
++            if (copy.getSplitFrom() != null) {
++                copy.setSplitFrom(numbers.getOrDefault(copy.getSplitFrom(), copy.getSplitFrom()));
++            }
++        }
++        claims.saveAllAndFlush(added);
++        for (Claim claim : originals) {
++            Long copyId = copies.get(claim).getId();
++            for (ClaimLog log : logOf.getOrDefault(claim.getId(), List.of())) {
++                logs.save(new ClaimLog(to, copyId, log.getStatus(), log.getBy(), log.getDate(), log.getDue()));
++            }
++        }
++        logs.flush();
++
++        audit.recordOnCommit("SHEET_CLONE_MADE sheet=" + sheetId + " by=" + user + " to=" + to);
++        audit.recordOnCommit("SHEET_CLONED sheet=" + to + " by=" + user + " from=" + sheetId);
++        rollup.recordAll(to, user);
++        return clone;
++    }
++
++    /** The sheet's today when the claim was opened: its first log line past DRAFT, else its date. */
++    private static LocalDate openedOn(Claim claim, List<ClaimLog> log) {
++        return log.stream().filter(l -> l.getStatus() != ClaimStatus.DRAFT && l.getStatus() != ClaimStatus.DELETED)
++                .map(ClaimLog::getDate).findFirst().orElse(claim.getDate());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 585100ca8..7dcf61073 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -35,10 +35,15 @@ public class SheetController {
+     public record TodayRequest(@NotNull LocalDate today) {
+     }
+ 
++    public record CloneRequest(String to) {
++    }
++
+     private final SheetService service;
++    private final SheetCloneService clones;
+ 
+-    public SheetController(SheetService service) {
++    public SheetController(SheetService service, SheetCloneService clones) {
+         this.service = service;
++        this.clones = clones;
+     }
+ 
+     /** Load a sheet by id; an id never used before starts an empty sheet. */
+@@ -63,6 +68,15 @@ public class SheetController {
+         return view(service.archive(id.trim(), user.trim()), user.trim());
+     }
+ 
++    /** Clone the sheet to another id never used: a steward may. Gives this sheet as it is. */
++    @PostMapping("/{id}/clone")
++    public SheetView cloneTo(@PathVariable @NotBlank @Size(max = 100) String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody CloneRequest request) {
++        clones.cloneTo(id.trim(), user.trim(), request.to());
++        return view(service.get(id.trim()), user.trim());
++    }
++
+     private SheetView view(Sheet sheet, String user) {
+         return SheetView.of(sheet, service.isViewer(sheet.getId(), user));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index 9d1637601..d1674ef40 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -21,6 +21,11 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Query(value = "UPDATE sheet SET last_listed = last_listed + 1 WHERE id = :id", nativeQuery = true)
+     int incrementLastListed(@Param("id") String id);
+ 
++    /** Sets the sheet's last list place, for a sheet whose claims were given their places as they were elsewhere. */
++    @Modifying
++    @Query(value = "UPDATE sheet SET last_listed = :listed WHERE id = :id", nativeQuery = true)
++    int setLastListed(@Param("id") String id, @Param("listed") long listed);
++
+     @Query(value = "SELECT last_listed FROM sheet WHERE id = :id", nativeQuery = true)
+     long lastListed(@Param("id") String id);
+ 
