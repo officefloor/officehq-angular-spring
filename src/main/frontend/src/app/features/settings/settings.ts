@@ -24,6 +24,8 @@ interface SettingsView {
   cap: string | null;
   /** The days past its to-date after which a change of today closes an open period; null: off. */
   graceDays: number | null;
+  /** The month (1 to 12) the sheet's fiscal year starts in. */
+  fiscalStartMonth: number;
   /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
   proofThreshold: string | null;
   /** The due above which a claim cannot be opened with an empty note, two decimals; null when there is none. */
@@ -209,6 +211,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'graceDays'"
           (input)="graceDays.set(value($event)); graceDaysEdited = true; settingsError.set(null)"
         />
+        <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
+        <input
+          id="setting-fiscal-start-month"
+          data-testid="setting-fiscal-start-month"
+          inputmode="numeric"
+          [value]="fiscalStartMonth()"
+          (focus)="lastFocused = 'fiscalStartMonth'"
+          (input)="fiscalStartMonth.set(value($event)); fiscalStartMonthEdited = true; settingsError.set(null)"
+        />
         <label for="setting-pot">Pot (shared out over each balanced pool's members by their shares; blank: none)</label>
         <input
           id="setting-pot"
@@ -327,6 +338,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' }}</strong></p>
+      <p>Fiscal year start month: <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonthCurrent() ?? '' }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
       <p>Parent sheet: <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
@@ -454,6 +466,8 @@ export class Settings {
   protected readonly entryDate = signal('');
   protected readonly graceDays = signal('');
   protected readonly graceDaysCurrent = signal<string | null>(null);
+  protected readonly fiscalStartMonth = signal('');
+  protected readonly fiscalStartMonthCurrent = signal<string | null>(null);
   protected readonly pot = signal('');
   protected readonly parent = signal('');
   protected readonly cap = signal('');
@@ -470,13 +484,14 @@ export class Settings {
   protected periodNumberingFromEdited = false;
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
+  protected fiscalStartMonthEdited = false;
   protected potEdited = false;
   protected parentEdited = false;
   protected capEdited = false;
   protected proofThresholdEdited = false;
   protected noteThresholdEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -504,6 +519,7 @@ export class Settings {
         this.periodNumberingFromCurrent.set(null);
         this.session.entryDate.set(null);
         this.graceDaysCurrent.set(null);
+        this.fiscalStartMonthCurrent.set(null);
         this.session.pot.set(null);
         this.session.parent.set(null);
         this.permsCurrent.set({});
@@ -572,7 +588,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -583,6 +599,7 @@ export class Settings {
         case 'periodNumberingFrom': this.periodNumberingFromEdited = true; break;
         case 'entryDate': this.entryDateEdited = true; break;
         case 'graceDays': this.graceDaysEdited = true; break;
+        case 'fiscalStartMonth': this.fiscalStartMonthEdited = true; break;
         case 'pot': this.potEdited = true; break;
         case 'parent': this.parentEdited = true; break;
         case 'cap': this.capEdited = true; break;
@@ -602,6 +619,7 @@ export class Settings {
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
+    const saveFiscalStartMonth = this.fiscalStartMonthEdited;
     const savePot = this.potEdited;
     const saveParent = this.parentEdited;
     const saveCap = this.capEdited;
@@ -616,6 +634,7 @@ export class Settings {
     const periodNumberingFrom = this.periodNumberingFrom().trim();
     const entryDate = this.entryDate().trim();
     const graceDays = this.graceDays().trim();
+    const fiscalStartMonth = this.fiscalStartMonth().trim();
     const pot = this.pot().trim();
     const parent = this.parent().trim();
     const cap = this.cap().trim();
@@ -677,6 +696,10 @@ export class Settings {
     }
     if (saveGraceDays && graceDays !== '' && !/^\d{1,5}$/.test(graceDays)) {
       this.settingsError.set('Type grace days of 0 or more whole days, or leave it blank for off.');
+      return;
+    }
+    if (saveFiscalStartMonth && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
+      this.settingsError.set('Type a fiscal year start month from 1 to 12.');
       return;
     }
     if (savePot && pot !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(pot)) {
@@ -778,6 +801,12 @@ export class Settings {
           this.http.put<SettingsView>(`${url}/grace-days`, { graceDays: graceDays === '' ? null : graceDays }, this.session.headers()),
         );
         this.graceDaysEdited = false;
+      }
+      if (saveFiscalStartMonth) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/fiscal-start-month`, { fiscalStartMonth }, this.session.headers()),
+        );
+        this.fiscalStartMonthEdited = false;
       }
       if (savePot) {
         saved = await firstValueFrom(
@@ -966,6 +995,8 @@ export class Settings {
     this.entryDate.set(settings.entryDate ?? '');
     this.graceDaysCurrent.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
+    this.fiscalStartMonthCurrent.set(String(settings.fiscalStartMonth));
+    this.fiscalStartMonth.set(String(settings.fiscalStartMonth));
     this.session.pot.set(settings.pot ?? '');
     this.pot.set(settings.pot ?? '');
     this.session.parent.set(settings.parent ?? '');
@@ -989,6 +1020,7 @@ export class Settings {
     this.periodNumberingFromEdited = false;
     this.entryDateEdited = false;
     this.graceDaysEdited = false;
+    this.fiscalStartMonthEdited = false;
     this.potEdited = false;
     this.parentEdited = false;
     this.capEdited = false;

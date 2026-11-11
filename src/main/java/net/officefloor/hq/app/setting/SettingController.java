@@ -32,7 +32,7 @@ public class SettingController {
      * when there is none; the floor with two decimals; the terms in whole days; each grade's own terms in whole days,
      * by grade (a grade without its own is left out); the late percent with two decimals; the policy date as
      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
-     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the parent sheet's id, null when there is none;
+     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the fiscal year start month (1 to 12); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the parent sheet's id, null when there is none;
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
      * separated, null when blank (the standing rule).
      * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
@@ -40,7 +40,7 @@ public class SettingController {
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
-            Integer graceDays, String proofThreshold, String noteThreshold, String pot, String parent, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
+            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String pot, String parent, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
@@ -51,7 +51,7 @@ public class SettingController {
             Sheet.PERMISSION_ACTIONS.forEach(action -> permissions.put(action, sheet.permission(action)));
             return new SettingsView(shown(sheet.getClerkLimit()), shown(sheet.floorOn(today)), sheet.termsOn(today),
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
-                    sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), shown(sheet.proofThresholdOn(today)),
+                    sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), sheet.getFiscalStartMonth(), shown(sheet.proofThresholdOn(today)),
                     shown(sheet.noteThresholdOn(today)), shown(sheet.getPot()), sheet.getParent(), permissions,
                     dated);
         }
@@ -173,6 +173,14 @@ public class SettingController {
         }
     }
 
+    /** A fiscal year start month, 1 to 12. */
+    public record FiscalStartMonthRequest(@NotNull @Pattern(regexp = "\\s*(0?[1-9]|1[0-2])\\s*") String fiscalStartMonth) {
+
+        int fiscalStartMonthValue() {
+            return Integer.parseInt(fiscalStartMonth.trim());
+        }
+    }
+
     /** A pot of 0.00 or more with up to two decimals; blank or missing means none. */
     public record PotRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String pot) {
 
@@ -279,6 +287,13 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GraceDaysRequest request) {
         return view(service.setGraceDays(sheetId.trim(), user.trim(), request.graceDaysValue()));
+    }
+
+    @PutMapping("/fiscal-start-month")
+    public SettingsView setFiscalStartMonth(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid FiscalStartMonthRequest request) {
+        return view(service.setFiscalStartMonth(sheetId.trim(), user.trim(), request.fiscalStartMonthValue()));
     }
 
     @PutMapping("/pot")

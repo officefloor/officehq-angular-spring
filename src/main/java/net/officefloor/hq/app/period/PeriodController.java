@@ -10,6 +10,7 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Function;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,18 +31,20 @@ public class PeriodController {
 
     /**
      * A period as shown, its dates as yyyy-mm-dd; once closed, the due-total fixed then (null while open) and each
-     * person's due-total for it fixed then, by person id (empty while open).
+     * person's due-total for it fixed then, by person id (empty while open); the fiscal year (FYyyyy) its from-date
+     * falls in.
      */
     public record PeriodView(Long id, String name, String from, String to, boolean closed, boolean softClosed,
             String closedTotal,
-            Map<Long, String> personTotals) {
+            Map<Long, String> personTotals, String fy) {
 
-        static PeriodView of(Period period) {
+        static PeriodView of(Period period, Function<LocalDate, String> fiscalYears) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate().toString(),
                     period.getToDate().toString(), period.isClosed(), period.isSoftClosed(),
-                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(), personTotals);
+                    period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(), personTotals,
+                    fiscalYears.apply(period.getFromDate()));
         }
     }
 
@@ -69,7 +72,7 @@ public class PeriodController {
     @GetMapping
     public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
+        return views(sheetId.trim(), service.list(sheetId.trim()));
     }
 
     @PostMapping
@@ -77,7 +80,7 @@ public class PeriodController {
     public PeriodView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PeriodRequest request) {
-        return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name().trim(),
+        return view(sheetId.trim(), service.add(sheetId.trim(), user.trim(), request.name().trim(),
                 PeriodRequest.date(request.from()), PeriodRequest.date(request.to())));
     }
 
@@ -91,8 +94,31 @@ public class PeriodController {
     public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GenerateRequest request) {
-        return service.generate(sheetId.trim(), user.trim(), PeriodRequest.date(request.from()),
-                PeriodRequest.date(request.to())).stream().map(PeriodView::of).toList();
+        return views(sheetId.trim(), service.generate(sheetId.trim(), user.trim(), PeriodRequest.date(request.from()),
+                PeriodRequest.date(request.to())));
+    }
+
+    /** A fiscal year to generate, as yyyy. */
+    public record GenerateFiscalYearRequest(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+    }
+
+    /** Generate the twelve monthly periods of the fiscal year, as a generate over its dates would; the periods made. */
+    @PostMapping("/generate-fy")
+    public List<PeriodView> generateFiscalYear(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GenerateFiscalYearRequest request) {
+        String sheet = sheetId.trim();
+        List<Period> made = service.generateFiscalYear(sheet, user.trim(), Integer.parseInt(request.year().trim()));
+        return views(sheet, made);
+    }
+
+    private List<PeriodView> views(String sheetId, List<Period> periods) {
+        Function<LocalDate, String> fiscalYears = service.fiscalYears(sheetId);
+        return periods.stream().map(p -> PeriodView.of(p, fiscalYears)).toList();
+    }
+
+    private PeriodView view(String sheetId, Period period) {
+        return PeriodView.of(period, service.fiscalYears(sheetId));
     }
 
     /** Close a period, fixing its due-total; refused when it is already closed. */
@@ -100,7 +126,7 @@ public class PeriodController {
     public PeriodView close(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable @NotBlank @Size(max = 100) String name,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return PeriodView.of(service.close(sheetId.trim(), user.trim(), name.trim()));
+        return view(sheetId.trim(), service.close(sheetId.trim(), user.trim(), name.trim()));
     }
 
     /** Soft-close a period, fixing its figures while its claims can still change; refused when closed or soft-closed. */
@@ -108,7 +134,7 @@ public class PeriodController {
     public PeriodView softClose(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable @NotBlank @Size(max = 100) String name,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return PeriodView.of(service.softClose(sheetId.trim(), user.trim(), name.trim()));
+        return view(sheetId.trim(), service.softClose(sheetId.trim(), user.trim(), name.trim()));
     }
 
     /** Reopen a closed period, making its due-total live again; refused for a non-steward or a period not closed. */
@@ -116,6 +142,6 @@ public class PeriodController {
     public PeriodView reopen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable @NotBlank @Size(max = 100) String name,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), name.trim()));
+        return view(sheetId.trim(), service.reopen(sheetId.trim(), user.trim(), name.trim()));
     }
 }

@@ -18,6 +18,8 @@ export interface Period {
   closedTotal: string | null;
   /** Each person's due-total for the period by person id, fixed when it was closed or soft-closed; empty while it is open. */
   personTotals: Record<number, string>;
+  /** The fiscal year (FYyyyy) the from-date falls in, by the sheet's fiscal year start month. */
+  fy: string;
 }
 
 /** The period whose dates contain the date; undefined when none does. */
@@ -78,16 +80,27 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
           (input)="generateTo.set(value($event)); generateError.set(null)"
         />
         <button type="submit" data-testid="period-generate">Generate periods</button>
-        @if (generated() !== null) {
-          <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span> periods.</p>
-        }
-        @if (generateError(); as message) {
-          <p role="alert" data-testid="period-generate-error">{{ message }}</p>
-        }
       </form>
+      <form (submit)="generateFy($event)">
+        <label for="period-generate-fy-year">Generate the fiscal year</label>
+        <input
+          id="period-generate-fy-year"
+          data-testid="period-generate-fy-year"
+          inputmode="numeric"
+          [value]="generateFyYear()"
+          (input)="generateFyYear.set(value($event)); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
+      @if (generated() !== null) {
+        <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span> periods.</p>
+      }
+      @if (generateError(); as message) {
+        <p role="alert" data-testid="period-generate-error">{{ message }}</p>
+      }
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
@@ -98,6 +111,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.name) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+              <td data-testid="period-fy">{{ p.fy }}</td>
               <td>
                 <button
                   type="button"
@@ -155,6 +169,8 @@ export class Periods {
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
+  /** The fiscal year typed (yyyy) to generate the twelve monthly periods of. */
+  protected readonly generateFyYear = signal('');
   /** How many periods the last generate made; null while one runs or before the first. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -251,6 +267,39 @@ export class Periods {
       }
     } catch {
       this.generateError.set('The periods could not be generated.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Generate the twelve monthly periods of a fiscal year, as a generate over its dates would. */
+  protected async generateFy(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.generating) return;
+    this.generated.set(null);
+    this.generateError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const year = this.generateFyYear().trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateError.set('Type the fiscal year as yyyy.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/periods/generate-fy`,
+          { year },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() === sheet) {
+        this.generated.set(made.length);
+        for (const period of made) this.saved.emit(period);
+      }
+    } catch {
+      this.generateError.set('The fiscal year could not be generated.');
     } finally {
       this.generating = false;
     }

@@ -91,6 +91,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The month (1 to 12) the sheet's fiscal year starts in. Not dated. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** The pot shared out over each balanced pool's members by their shares; null: none. Not dated. */
     @Column(name = "pot")
     private BigDecimal pot;
@@ -128,6 +132,7 @@ public class Sheet {
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.entryDate = entryDate;
         copy.graceDays = graceDays;
+        copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
         copy.parent = parent;
         return copy;
@@ -330,6 +335,24 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
+    }
+
+    /** The name (FYyyyy) of the fiscal year the date falls in: the calendar year of that fiscal year's first day. */
+    public String fiscalYearOf(LocalDate date) {
+        return fiscalYearOf(date, fiscalStartMonth);
+    }
+
+    /** The name (FYyyyy) of the fiscal year the date falls in when fiscal years start in the month (1 to 12). */
+    public static String fiscalYearOf(LocalDate date, int startMonth) {
+        return "FY" + (date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1);
     }
 
     public BigDecimal getPot() {

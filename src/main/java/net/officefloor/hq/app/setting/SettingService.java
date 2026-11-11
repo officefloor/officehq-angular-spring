@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, each
- * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its pot, its parent sheet and
+ * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its fiscal year start month, its pot, its parent sheet and
  * its permission matrix, not dated.
  */
 @Service
@@ -207,6 +207,16 @@ public class SettingService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=grace-days value="
                 + (graceDays == null ? "" : graceDays.toString()));
+        return saved;
+    }
+
+    /** Set the fiscal year start month (1 to 12). Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setFiscalStartMonth(String sheetId, String user, int month) {
+        Sheet sheet = get(sheetId);
+        sheet.setFiscalStartMonth(month);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=fiscal-start-month value=" + month);
         return saved;
     }
 

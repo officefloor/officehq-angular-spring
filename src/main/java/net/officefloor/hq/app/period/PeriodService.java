@@ -6,9 +6,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -94,6 +96,23 @@ public class PeriodService {
                     + " from=" + saved.getFromDate() + " to=" + saved.getToDate());
         }
         return made;
+    }
+
+    /**
+     * Generate the twelve monthly periods of the fiscal year named FY{@code year}, from the first day of the sheet's
+     * fiscal year start month in that year, as a generate over its dates would. The periods made, in date order.
+     */
+    @Transactional
+    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId));
+        YearMonth first = YearMonth.of(year, sheet.getFiscalStartMonth());
+        return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
+    }
+
+    /** The name (FYyyyy) of the fiscal year a date falls in on the sheet; by a January start when there is no such sheet. */
+    public Function<LocalDate, String> fiscalYears(String sheetId) {
+        int startMonth = sheets.findById(sheetId).map(Sheet::getFiscalStartMonth).orElse(1);
+        return date -> Sheet.fiscalYearOf(date, startMonth);
     }
 
     /** Close a period, fixing every person's due-total for it, and so its own, as they are now; refused when it is already closed or the user's role may not close; a soft-closed period's figures are fixed afresh. */
