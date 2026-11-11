@@ -185,7 +185,7 @@ public class TransferService {
 
     /** The sheet's today when the claim was opened: its first log line past DRAFT, else its date. */
     private static LocalDate openedOn(Claim claim, List<ClaimLog> log) {
-        return log.stream().filter(l -> l.getStatus() != ClaimStatus.DRAFT).map(ClaimLog::getDate)
+        return log.stream().filter(l -> l.getStatus() != ClaimStatus.DRAFT && l.getStatus() != ClaimStatus.DELETED).map(ClaimLog::getDate)
                 .findFirst().orElse(claim.getDate());
     }
 }

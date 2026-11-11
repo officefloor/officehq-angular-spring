@@ -369,6 +369,22 @@ public class ClaimController {
                 request == null ? null : request.reason()));
     }
 
+    /** Delete a DRAFT claim. */
+    @PostMapping("/claims/{id}/delete")
+    public ClaimView delete(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.delete(sheetId.trim(), user.trim(), id));
+    }
+
+    /** Restore a DELETED claim to DRAFT, on the sheet's today it was deleted. */
+    @PostMapping("/claims/{id}/restore")
+    public ClaimView restore(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.restore(sheetId.trim(), user.trim(), id));
+    }
+
     /** The text of a comment on a claim: not blank. */
     public record CommentRequest(@NotNull @Size(max = 1000) String text) {
     }

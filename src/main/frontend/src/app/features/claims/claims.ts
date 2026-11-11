@@ -85,9 +85,10 @@ export function byListed(a: Claim, b: Claim): number {
 /**
  * DRAFT when added, then OPEN, then SETTLED; a clerk settling above the clerk limit makes it PENDING until a steward
  * approves (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING claim may be VOID, and a steward may void a
- * SETTLED one within 7 days of its settlement.
+ * SETTLED one within 7 days of its settlement. A DRAFT claim may be DELETED, counting nowhere, and restored to DRAFT on
+ * the sheet's today it was deleted.
  */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
 
 /** The claim's tags, sorted; none when it has none. */
 export function tagsOf(claim: Claim): string[] {
@@ -222,7 +223,7 @@ export function overdue(claim: Claim, grades: PersonGrade[], session: Session): 
   return isOpen(claim) && today !== null && overdueBy(claim, grades, session) < today && !deferred(claim, today);
 }
 
-type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
+type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore';
 
 /** Sums amounts with two decimals exactly, in whole cents. */
 export function sumAmounts(amounts: string[]): string {
@@ -586,6 +587,8 @@ export class Claims implements OnInit {
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
     { action: 'resettle', label: 'Re-settle' },
+    { action: 'delete', label: 'Delete' },
+    { action: 'restore', label: 'Restore' },
   ];
   /** The people other than this one, whom a claim may be reassigned to. */
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
@@ -1062,7 +1065,7 @@ export class Claims implements OnInit {
   }
 
   /**
-   * Open, settle, void, approve, reject or re-settle a claim; the store refuses a change its status, or the user's role, does not
+   * Open, settle, void, approve, reject, re-settle, delete or restore a claim; the store refuses a change its status, or the user's role, does not
    * allow. Rejecting takes the reason typed for the claim.
    */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
@@ -1112,6 +1115,12 @@ export class Claims implements OnInit {
                 ? `This claim is ${claim.status}: only a SETTLED claim can be re-settled.`
               : action === 'void' && claim.status === 'SETTLED'
                 ? 'A settled claim can only be voided within 7 days of its settlement.'
+              : action === 'delete'
+                ? `This claim is ${claim.status}: only a DRAFT claim can be deleted.`
+              : action === 'restore' && claim.status === 'DELETED'
+                ? 'A deleted claim can only be restored on the day it was deleted.'
+              : action === 'restore'
+                ? `This claim is ${claim.status}: only a DELETED claim can be restored.`
                 : `This claim's status does not let it be ${pastOf[action]}.`;
       this.actionError.set({ id: claim.id, message });
     }
@@ -1239,4 +1248,6 @@ const pastOf: Record<ClaimAction, string> = {
   approve: 'approved',
   reject: 'rejected',
   resettle: 're-settled',
+  delete: 'deleted',
+  restore: 'restored',
 };
