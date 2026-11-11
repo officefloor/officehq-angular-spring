@@ -116,6 +116,8 @@ import { FigurePipe } from '../../core/figure';
 // frozen figures, corrections included) and their open-total (the figures of their OPEN and PENDING
 // claims that count); together they make the sum of their figures before the cap. The sheet's
 // settled-total and open-total add up everyone's, untrimmed.
+// Each person shows their score: their settled-total divided by 100, minus 5 for every overdue claim
+// of theirs that counts, rounded half to even to a whole number.
 interface Person {
   id: number;
   name: string;
@@ -710,6 +712,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
             <th scope="col">Aged 31–60</th>
             <th scope="col">Aged 61+</th>
             <th scope="col">Overdue</th>
+            <th scope="col">Score</th>
             <th scope="col">Active</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
@@ -768,6 +771,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                   <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p).cents) | figure }}</span></span>
                 }
               </td>
+              <td data-testid="person-score">{{ scoreOf(p) }}</td>
               <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
               <td>
                 @if (shown('statement-count')) {
@@ -1152,7 +1156,8 @@ export class People {
    *  rows shown follow it: every total and action keeps to list order. */
   protected readonly sorted = computed(() => {
     const seen = this.seenIds();
-    const listed = seen ? this.listed().filter((p) => seen.has(p.id)) : this.listed();
+    const added = this.addedHere();
+    const listed = seen ? this.listed().filter((p) => seen.has(p.id) || added.has(p.id)) : this.listed();
     const by = this.session.sortBy();
     if (by === 'added') return listed;
     const key = (p: Person): string | number | null =>
@@ -1439,6 +1444,8 @@ export class People {
       (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
     );
   });
+  /** The people this screen added since the sheet was last loaded: a restricted user sees them until the next load. */
+  private readonly addedHere = signal<ReadonlySet<number>>(new Set());
   /** The signed-in user's role on the sheet, as last read from the store. */
   private readonly role = signal('');
   /**
@@ -1632,6 +1639,7 @@ export class People {
       const sheet = this.session.sheet();
       this.session.loads();
       this.people.set([]);
+      this.addedHere.set(new Set());
       this.role.set('');
       this.claims.set([]);
       this.plans.set([]);
@@ -1868,6 +1876,19 @@ export class People {
       count: late.length,
       cents: late.reduce((sum, c) => sum + (chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0), 0),
     };
+  }
+
+  /**
+   * The person's score: their settled-total divided by 100, minus 5 for every overdue claim of theirs
+   * that counts, rounded half to even to a whole number.
+   */
+  protected scoreOf(p: Person): number {
+    // in ten-thousandths of a point: settled cents are hundredths of money, and money / 100 is points
+    const units = this.settledOpenOf(p).settled - 50000 * this.overdueOf(p).count;
+    const whole = Math.floor(units / 10000);
+    const rest = units - whole * 10000;
+    const score = rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;
+    return score === 0 ? 0 : score;
   }
 
   protected statementOf(personId: number): StatementSummary | undefined {
@@ -2785,6 +2806,7 @@ export class People {
       );
       if (this.session.sheet() !== sheet) return;
       this.people.update((list) => (list.some((p) => p.id === added.person.id) ? list : [...list, added.person]));
+      if (added.created) this.addedHere.update((ids) => new Set(ids).add(added.person.id));
       this.claimSaved(added.claim);
       this.quickName.set('');
       this.quickAmount.set('');
@@ -2962,6 +2984,7 @@ export class People {
         const added = await firstValueFrom(this.http.post<Person>('/api/people/add', body));
         if (this.session.sheet() !== sheet) return;
         this.people.update((list) => [...list, added]);
+        this.addedHere.update((ids) => new Set(ids).add(added.id));
       } else {
         const saved = await firstValueFrom(
           this.http.post<Person>('/api/people/update', { ...body, gradeFrom: gradeFrom || null, id, version: this.editingVersion }),
