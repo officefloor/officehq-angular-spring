@@ -645,6 +645,21 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
           }
         </ul>
       </form>
+      <form aria-label="Compare with another sheet" (submit)="compareWithSheet($event)">
+        <label for="compare-sheet">Compare this sheet with sheet</label>
+        <input
+          id="compare-sheet"
+          data-testid="compare-sheet"
+          [value]="compareSheet()"
+          (input)="compareSheet.set($any($event.target).value)"
+        />
+        <button type="submit" data-testid="compare">Compare sheets</button>
+        <ul aria-label="Sheet comparison">
+          @for (line of compareLines(); track $index) {
+            <li data-testid="compare-line">{{ line }}</li>
+          }
+        </ul>
+      </form>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Settled in total <strong data-testid="rollup-settled-total">{{ money(settledOpenTotals().settled) | figure }}</strong></p>
@@ -1236,6 +1251,9 @@ export class People {
   protected readonly snapshotFrom = signal('');
   protected readonly snapshotTo = signal('');
   protected readonly snapshotLines = signal<string[]>([]);
+  /** The other sheet to compare this one with, and the comparison's lines once compared. */
+  protected readonly compareSheet = signal('');
+  protected readonly compareLines = signal<string[]>([]);
   protected readonly bulkRetireError = signal<string | null>(null);
   protected readonly importText = signal('');
   /** How many people the last import added; cleared while the next one runs. */
@@ -1791,6 +1809,33 @@ export class People {
       this.listed().map((p) =>
         [p.name, on(p, from), to ? on(p, to) : dueText(this.dueOf(p))].join(' ').trim(),
       ),
+    );
+  }
+
+  /**
+   * Compare this sheet with another: per grade of this sheet's summary, the grade, this sheet's
+   * due-total for it and the other sheet's (0.00 when no one is on it there); no lines when the
+   * other sheet does not exist.
+   */
+  protected async compareWithSheet(event: Event): Promise<void> {
+    event.preventDefault();
+    const sheet = this.session.sheet();
+    const other = this.compareSheet().trim();
+    this.compareLines.set([]);
+    if (!other) return;
+    let theirs: { exists: boolean; gradeDueTotals: Record<string, string> };
+    try {
+      theirs = await firstValueFrom(
+        this.http.post<{ exists: boolean; gradeDueTotals: Record<string, string> }>('/api/rollup/compare/list', {
+          sheet: other,
+        }),
+      );
+    } catch {
+      return;
+    }
+    if (this.session.sheet() !== sheet || !theirs.exists) return;
+    this.compareLines.set(
+      this.gradeSummary().map((g) => `${g.grade} ${g.dueTotal} ${theirs.gradeDueTotals[g.grade] ?? '0.00'}`),
     );
   }
 

@@ -35,6 +35,13 @@ public class RollupController {
             List<TreePerson> people) {
     }
 
+    public record CompareRequest(@NotBlank @Size(max = 100) String sheet) {
+    }
+
+    /** Whether the sheet exists and, when it does, per grade its people's due-totals (only grades someone is on). */
+    public record CompareResponse(boolean exists, Map<String, String> gradeDueTotals) {
+    }
+
     private final RollupService service;
 
     public RollupController(RollupService service) {
@@ -52,6 +59,14 @@ public class RollupController {
                 new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal()),
                         money(own.gradeDueTotals()), service.statusCounts(sheet), people(service.treePeople(sheet))),
                 people(figures.people()));
+    }
+
+    // ends in /list: it only reads another sheet's figures
+    @PostMapping("/compare/list")
+    public CompareResponse compare(@Valid @RequestBody CompareRequest req) {
+        return service.gradeDueTotals(req.sheet().trim())
+                .map(totals -> new CompareResponse(true, money(totals)))
+                .orElseGet(() -> new CompareResponse(false, Map.of()));
     }
 
     private static List<TreePerson> people(List<RollupService.TreePerson> people) {

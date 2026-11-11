@@ -182,6 +182,11 @@ public class RollupService {
         this.audit = audit;
     }
 
+    /** Per grade, the sheet's due-totals as {@link Snapshot#gradeDueTotals} gives them; empty when the sheet does not exist. */
+    public Optional<Map<String, BigDecimal>> gradeDueTotals(String sheetId) {
+        return sheets.existsById(sheetId) ? Optional.of(snapshot(sheetId).gradeDueTotals()) : Optional.empty();
+    }
+
     /** The sheet's figures as the store holds them now. */
     public Snapshot snapshot(String sheetId) {
         Sheet sheet = sheet(sheetId);
