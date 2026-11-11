@@ -1,0 +1,426 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 163598d2f..753ad2559 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -32,6 +32,17 @@ export interface Claim {
+   listed: number;
+   /** The day (yyyy-mm-dd) the claim is due by, fixed when it was added from the terms of its person's grade on its date. */
+   dueBy: string;
++  /** Its status log, oldest first: one line per status it has had. */
++  log: ClaimLogLine[];
++}
++
++/** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
++export interface ClaimLogLine {
++  status: ClaimStatus;
++  by: string;
++  /** yyyy-mm-dd */
++  date: string;
++  due: string;
+ }
+ 
+ /** Claims as listed: the latest list place first. */
+@@ -185,7 +196,7 @@ export function sumAmounts(amounts: string[]): string {
+         <thead>
+           <tr>
+             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
+-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th>
++            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Log</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -213,6 +224,13 @@ export function sumAmounts(amounts: string[]): string {
+               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
+               <td data-testid="claim-period">{{ periodOf(c) }}</td>
+               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
++              <td>
++                <ol class="claim-log">
++                  @for (line of c.log; track $index) {
++                    <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due }}</li>
++                  }
++                </ol>
++              </td>
+               <td>
+                 <button
+                   type="button"
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 4db4f7b51..dfe40de5a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -9,6 +9,7 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -32,20 +33,30 @@ public class ClaimController {
+      * settled (null when it has none, so its due is worked out from the current rate), and who opened it;
+      * whether the person's last statement bound it, and the due it bound it to (null: none, so n/a); and the number of
+      * the claim it corrects (null unless it is a correction); and the date that decides how its live figures round (its
+-     * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first).
++     * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first); and
++     * its status log, oldest first.
+      */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+-            LocalDate roundingDate, long listed, LocalDate dueBy) {
++            LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log) {
+ 
+-        static ClaimView of(Claim claim) {
++        static ClaimView of(Claim claim, List<ClaimLog> log) {
+             return new ClaimView(claim.getId(), claim.getPersonId(),
+                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+-                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy());
++                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy(),
++                    log.stream().map(ClaimLogView::of).toList());
++        }
++    }
++
++    /** A line of a claim's status log: the status, who changed it, the sheet's today then, and its due then (or n/a). */
++    public record ClaimLogView(ClaimStatus status, String by, LocalDate date, String due) {
++
++        static ClaimLogView of(ClaimLog line) {
++            return new ClaimLogView(line.getStatus(), line.getBy(), line.getDate(), line.getDue());
+         }
+     }
+ 
+@@ -89,7 +100,10 @@ public class ClaimController {
+     @GetMapping("/claims")
+     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
++        Map<Long, List<ClaimLog>> logs = service.logs(sheetId.trim());
++        return service.list(sheetId.trim()).stream()
++                .map(claim -> ClaimView.of(claim, logs.getOrDefault(claim.getId(), List.of())))
++                .toList();
+     }
+ 
+     @PostMapping("/people/{personId}/claims")
+@@ -98,7 +112,7 @@ public class ClaimController {
+             @PathVariable Long personId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid ClaimRequest request) {
+-        return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
++        return view(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
+                 request.note(), request.correctsValue()));
+     }
+ 
+@@ -108,7 +122,7 @@ public class ClaimController {
+             @PathVariable Long id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid ClaimRequest request) {
+-        return ClaimView.of(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
++        return view(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
+                 request.note(), request.correctsValue()));
+     }
+ 
+@@ -117,7 +131,7 @@ public class ClaimController {
+     public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
++        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
+     }
+ 
+     /** Open the selected claims in list order; each one that cannot be opened is left as it is. */
+@@ -133,7 +147,7 @@ public class ClaimController {
+     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
++        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
+     }
+ 
+     /** A steward's reason for rejecting a PENDING claim. */
+@@ -145,7 +159,7 @@ public class ClaimController {
+     public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return ClaimView.of(service.approve(sheetId.trim(), user.trim(), id));
++        return view(service.approve(sheetId.trim(), user.trim(), id));
+     }
+ 
+     /** Reject a PENDING claim with a reason, back to OPEN: a steward only. */
+@@ -156,7 +170,7 @@ public class ClaimController {
+             @RequestBody @Valid RejectRequest request) {
+         // One line in the audit file: any run of white space in the reason becomes a single space.
+         String reason = request.reason().trim().replaceAll("\\s+", " ");
+-        return ClaimView.of(service.reject(sheetId.trim(), user.trim(), id, reason));
++        return view(service.reject(sheetId.trim(), user.trim(), id, reason));
+     }
+ 
+     /** The person a claim is moved to. */
+@@ -169,7 +183,7 @@ public class ClaimController {
+             @PathVariable Long id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid ReassignRequest request) {
+-        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), id, request.personId()));
++        return view(service.reassign(sheetId.trim(), user.trim(), id, request.personId()));
+     }
+ 
+     /** Void a DRAFT, OPEN or PENDING claim. */
+@@ -177,6 +191,11 @@ public class ClaimController {
+     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.VOID));
++        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.VOID));
++    }
++
++    /** The claim as shown, with its status log. */
++    ClaimView view(Claim claim) {
++        return ClaimView.of(claim, service.logOf(claim));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimLog.java b/src/main/java/net/officefloor/hq/app/claim/ClaimLog.java
+new file mode 100644
+index 000000000..e71f67694
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimLog.java
+@@ -0,0 +1,77 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** One line of a claim's status log: a status it took, who changed it, the sheet's today then, and its due then. */
++@Entity
++@Table(name = "claim_log")
++public class ClaimLog {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "claim_id", nullable = false)
++    private Long claimId;
++
++    @Enumerated(EnumType.STRING)
++    @Column(name = "status", nullable = false)
++    private ClaimStatus status;
++
++    @Column(name = "by_user", nullable = false)
++    private String by;
++
++    @Column(name = "logged_on", nullable = false)
++    private LocalDate date;
++
++    /** The claim's due at that moment, two decimals, or n/a. */
++    @Column(name = "due", nullable = false)
++    private String due;
++
++    protected ClaimLog() {
++    }
++
++    public ClaimLog(String sheetId, Long claimId, ClaimStatus status, String by, LocalDate date, String due) {
++        this.sheetId = sheetId;
++        this.claimId = claimId;
++        this.status = status;
++        this.by = by;
++        this.date = date;
++        this.due = due;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClaimId() {
++        return claimId;
++    }
++
++    public ClaimStatus getStatus() {
++        return status;
++    }
++
++    public String getBy() {
++        return by;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++
++    public String getDue() {
++        return due;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimLogRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimLogRepository.java
+new file mode 100644
+index 000000000..dfd445989
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimLogRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ClaimLogRepository extends JpaRepository<ClaimLog, Long> {
++
++    /** A sheet's claim log lines, oldest first. */
++    List<ClaimLog> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** A claim's log lines, oldest first. */
++    List<ClaimLog> findByClaimIdOrderByIdAsc(Long claimId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 19cba6255..e9fbad2c1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -4,6 +4,8 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.period.PeriodService;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -39,9 +41,12 @@ public class ClaimService {
+     private final PeriodService periods;
+     private final RoleService roles;
+     private final SettingService settings;
++    private final ClaimLogRepository logs;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
+-            Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings) {
++            Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
++            ClaimLogRepository logs) {
++        this.logs = logs;
+         this.periods = periods;
+         this.roles = roles;
+         this.settings = settings;
+@@ -57,6 +62,17 @@ public class ClaimService {
+         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+     }
+ 
++    /** The status logs of the sheet's claims by claim id, each oldest first. */
++    public Map<Long, List<ClaimLog>> logs(String sheetId) {
++        return logs.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .collect(Collectors.groupingBy(ClaimLog::getClaimId, Collectors.toList()));
++    }
++
++    /** The claim's status log, oldest first. */
++    public List<ClaimLog> logOf(Claim claim) {
++        return logs.findByClaimIdOrderByIdAsc(claim.getId());
++    }
++
+     @Transactional
+     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+             String corrects) {
+@@ -74,6 +90,7 @@ public class ClaimService {
+         claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated))));
+         claim.setListed(sheets.nextListed(sheetId));
+         Claim saved = claims.saveAndFlush(claim);
++        log(sheetId, user, person, saved);
+         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
+@@ -147,6 +164,7 @@ public class ClaimService {
+             claim.setOpenedBy(user);
+         }
+         Claim saved = claims.saveAndFlush(claim);
++        log(sheetId, user, person, saved);
+         String event = switch (status) {
+             case OPEN -> "CLAIM_OPENED";
+             case PENDING -> "CLAIM_PENDING";
+@@ -175,6 +193,7 @@ public class ClaimService {
+         String due = settle(sheetId, person, claim);
+         claim.setStatus(ClaimStatus.SETTLED);
+         Claim saved = claims.saveAndFlush(claim);
++        log(sheetId, user, person, saved);
+         audit.recordOnCommit(record("CLAIM_APPROVED", user, person, saved) + numberOf(saved.getNumber()) + due);
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
+@@ -192,6 +211,7 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         claim.setStatus(ClaimStatus.OPEN);
+         Claim saved = claims.saveAndFlush(claim);
++        log(sheetId, user, person, saved);
+         audit.recordOnCommit(record("CLAIM_REJECTED", user, person, saved) + numberOf(saved.getNumber())
+                 + " reason=" + reason);
+         rollup.recordChanges(sheetId, user, before);
+@@ -261,6 +281,22 @@ public class ClaimService {
+         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
+     }
+ 
++    /** Logs the claim's status now: who changed it, the sheet's today, and its due as computed at this moment. */
++    private void log(String sheetId, String user, Person person, Claim claim) {
++        logs.save(new ClaimLog(sheetId, claim.getId(), claim.getStatus(), user, sheets.today(sheetId),
++                shownDue(sheetId, person, claim)));
++    }
++
++    /**
++     * The claim's due as shown: the one fixed when it was settled, else its figure with its late charge on top; two
++     * decimals, or n/a.
++     */
++    private String shownDue(String sheetId, Person person, Claim claim) {
++        BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
++                : withLateCharge(sheetId, claim, figureOf(sheetId, person, claim));
++        return due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_EVEN).toPlainString();
++    }
++
+     /** The figure under the claim's due: the one its statement binds it to now, else worked out from the rate. */
+     private BigDecimal figureOf(String sheetId, Person person, Claim claim) {
+         return claim.isBound() ? claim.getStatedDue() : dueOf(sheetId, person, claim);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/QuickAddController.java b/src/main/java/net/officefloor/hq/app/claim/QuickAddController.java
+index 1a48a61a2..ffed06168 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/QuickAddController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/QuickAddController.java
+@@ -35,9 +35,11 @@ public class QuickAddController {
+     }
+ 
+     private final QuickAddService service;
++    private final ClaimService claims;
+ 
+-    public QuickAddController(QuickAddService service) {
++    public QuickAddController(QuickAddService service, ClaimService claims) {
+         this.service = service;
++        this.claims = claims;
+     }
+ 
+     @PostMapping
+@@ -45,6 +47,7 @@ public class QuickAddController {
+     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid QuickAddRequest request) {
+-        return ClaimView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.amountValue()));
++        Claim claim = service.add(sheetId.trim(), user.trim(), request.name(), request.amountValue());
++        return ClaimView.of(claim, claims.logOf(claim));
+     }
+ }
+diff --git a/src/main/resources/db/migration/V30__claim_log.sql b/src/main/resources/db/migration/V30__claim_log.sql
+new file mode 100644
+index 000000000..43ae768fa
+--- /dev/null
++++ b/src/main/resources/db/migration/V30__claim_log.sql
+@@ -0,0 +1,12 @@
++-- A claim's status log: one line per status it has had, in the order of their ids. Each keeps who made the change,
++-- the sheet's today then, and the claim's due as it was computed at that moment (two decimals, or n/a).
++CREATE TABLE claim_log (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    claim_id  BIGINT       NOT NULL REFERENCES claim (id),
++    status    VARCHAR(10)  NOT NULL,
++    by_user   VARCHAR(100) NOT NULL,
++    logged_on DATE         NOT NULL,
++    due       VARCHAR(20)  NOT NULL
++);
++CREATE INDEX claim_log_sheet ON claim_log (sheet_id, id);
