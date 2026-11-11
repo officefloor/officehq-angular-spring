@@ -1,0 +1,70 @@
+{
+  "checkpoint": 220,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp220_plan-amount-reaches-drafts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    205,
+    212
+  ],
+  "replaced_tests": [
+    "cp205_plan-history.spec.ts::plan history",
+    "cp212_score-without-corrections.spec.ts::score without corrections scenario 2"
+  ],
+  "request": {
+    "spec": "Changing a plan's amount now also changes the amount of the claims it generated that are still\nDRAFT (each as the claim form would edit it, writing CLAIM_EDITED); claims in any other status keep\ntheirs.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nChanging a plan's amount now also changes the amount of the claims it generated that are still\nDRAFT (each as the claim form would edit it, writing CLAIM_EDITED); claims in any other status keep\ntheirs.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8689915c6aa76217af7e552a028e05f481957c27",
+  "reset_sha": "",
+  "preagent_sha": "39c71a696dc7ceac3d7cd2d14bfb01ef9244a41d",
+  "prev_sha": "39c71a696dc7ceac3d7cd2d14bfb01ef9244a41d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0756802,
+    "input_tokens": 58,
+    "output_tokens": 14599,
+    "cache_read_tokens": 1488581,
+    "cache_creation_tokens": 60719,
+    "num_turns": 31,
+    "duration_ms": 497550,
+    "duration_api_ms": 143551,
+    "model": "claude-opus-5-5",
+    "session_id": "089850f3-4ac0-4b14-9cc7-2707cf3f946b",
+    "stop_reason": "success",
+    "result_text": "Changing a plan's amount now also changes the amount on the claims that plan generated that are still DRAFT. Each one is edited the way the claim form would edit it and writes a `CLAIM_EDITED` audit line. Claims in any other status keep their amount. All 4 tests in `bin/e2e` pass.\n\n**What changed:**\n- **Stored data:** the plan used to remember only the dates it generated claims for, not which claims they were. A new migration, `V117__plan_date_claim.sql`, adds the claim's id to each of those dates. Dates generated before this change have no id, so their claims won't pick up a later amount change.\n- **Server:**\n  - `PlanService.changeAmount` writes `PLAN_CHANGED` as before. It then goes through the plan's claims in date order and edits each draft the claim form would accept. For a plan that sends its claims to a descendant sheet, the edits happen on that sheet.\n  - A new check, `ClaimService.takesAmount`, decides whether the form would accept the edit before trying it.\n  - The `/api/plans/amount` endpoint now returns `{ plan, claims }` rather than just the plan, so the screen can update.\n- **Front end:** the plan row passes the edited claims up to the people screen. Their new amounts show straight away, without reloading the sheet.\n\n**Decision for you:** the request didn't say what should happen when the claim form would refuse to edit a draft. That's the case if another user has it open, it falls in a closed period, the person is retired by its date, it has lines, the sheet is archived, or the user is a viewer there. I made those drafts keep their old amount while the plan change itself still goes through. The alternative would be to refuse the whole plan change. No test covers this case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0756802,
+        "num_turns": 31,
+        "duration_ms": 497550,
+        "duration_api_ms": 143551,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp220.agent.jsonl",
+  "agent_diff_file": "cp220.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

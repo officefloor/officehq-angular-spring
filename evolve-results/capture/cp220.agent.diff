@@ -1,0 +1,305 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 05defd57d..8268b24e4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -940,6 +940,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+                   [plans]="plansOf(p.id)"
+                   (added)="planAdded($event)"
+                   (changed)="planChanged($event)"
++                  (claimsEdited)="planClaimsEdited($event)"
+                 />
+               </td>
+               <td>
+@@ -2583,6 +2584,11 @@ export class People {
+     this.plans.update((list) => list.map((pl) => (pl.id === plan.id ? plan : pl)));
+   }
+ 
++  /** The DRAFT claims a plan's new amount reached: each replaced where it is listed. */
++  protected planClaimsEdited(claims: Claim[]): void {
++    for (const c of claims) this.claimSaved(c);
++  }
++
+   /** Make the DRAFT claims the sheet's plans are due: the server adds them in order, and the
+    *  screen lists each as its person's newest claim and shows how many were made. */
+   protected async generatePlans(): Promise<void> {
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index e2db8a0b5..3f2a59b26 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, input, output, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import type { Claim } from '../claims/claims';
+ 
+ /** A person's plan, with how many claims it has made so far. */
+ export interface Plan {
+@@ -153,6 +154,8 @@ export class PersonPlans {
+   readonly added = output<Plan>();
+   /** A plan paused or resumed, to replace where it is. */
+   readonly changed = output<Plan>();
++  /** The DRAFT claims a plan's new amount reached, each to replace where it is. */
++  readonly claimsEdited = output<Claim[]>();
+ 
+   protected readonly amountInput = signal('');
+   protected readonly startInput = signal('');
+@@ -201,7 +204,7 @@ export class PersonPlans {
+     this.submitting = true;
+     try {
+       const saved = await firstValueFrom(
+-        this.http.post<Plan>('/api/plans/amount', {
++        this.http.post<{ plan: Plan; claims: Claim[] }>('/api/plans/amount', {
+           sheet,
+           user: this.session.user(),
+           planId: plan.id,
+@@ -214,7 +217,8 @@ export class PersonPlans {
+         delete rest[plan.id];
+         return rest;
+       });
+-      this.changed.emit(saved);
++      this.changed.emit(saved.plan);
++      this.claimsEdited.emit(saved.claims);
+     } catch (e) {
+       if (this.session.sheet() !== sheet) return;
+       this.rowError.set({
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 69d3f7634..5b3528c95 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -9,6 +9,7 @@ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.period.PeriodService;
+@@ -246,6 +247,27 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /**
++     * Whether the claim form's save would take the claim on the sheet at a new amount (not below
++     * 0.00), its other fields kept: a DRAFT claim no other user is editing, on a sheet not archived,
++     * by a user who is no viewer, outside every closed period, its person not retired by its date, and with no lines
++     * unless the amount is unchanged.
++     */
++    @Transactional(readOnly = true)
++    public boolean takesAmount(String sheetId, String user, long id, BigDecimal amount) {
++        if (sheets.sheet(sheetId).isArchived() || Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
++            return false;
++        }
++        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElse(null);
++        if (claim == null || claim.getStatus() != ClaimStatus.DRAFT || claim.isLockedAgainst(user)) {
++            return false;
++        }
++        Optional<Person> person = people.findByIdAndSheetId(claim.getPersonId(), sheetId);
++        return person.isPresent() && !periods.isClosed(sheetId, claim.getDueBy())
++                && !person.get().refusesClaimOn(claim.getDate())
++                && (claim.getLines().isEmpty() || amount.compareTo(claim.getAmount()) == 0);
++    }
++
+     /**
+      * Change a DRAFT claim's amount in its row, keeping its date, note and correction: refused
+      * exactly as the claim form's save is, and recorded as CLAIM_EDITED as it is. An editor the
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 65a11eab4..0b07a7f6c 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -16,6 +16,7 @@ import java.time.LocalDate;
+ import java.time.YearMonth;
+ import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
++import java.util.Comparator;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
+@@ -24,7 +25,7 @@ import java.util.Set;
+  * A person's plan: an amount, a start date, every so many days or a day of the month, and an end date.
+  * Its plan dates are the start, then every that many days, up to the end; or, monthly, that day in
+  * every month from the start's month (a day beyond the month's length on its last day), dates before
+- * the start left out. It keeps each date it has made a claim for, and each time it was paused: a plan
++ * the start left out. It keeps each date it has made a claim for, with that claim, and each time it was paused: a plan
+  * date on or after a pause's day and before its resume's day is skipped, not postponed. Its amount
+  * can be changed; each change is kept, oldest first, and applies to the claims generated after it.
+  * It may name one of its sheet's descendants: its claims are then made on that sheet instead.
+@@ -63,8 +64,7 @@ public class Plan {
+ 
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "plan_date", joinColumns = @JoinColumn(name = "plan_id"))
+-    @Column(name = "claim_date", nullable = false)
+-    private Set<LocalDate> made = new HashSet<>();
++    private Set<PlanDate> made = new HashSet<>();
+ 
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+@@ -217,11 +217,17 @@ public class Plan {
+ 
+     /** Whether the plan has made its claim for this date. */
+     public boolean hasMade(LocalDate date) {
+-        return made.contains(date);
++        return made.stream().anyMatch(m -> m.getClaimDate().equals(date));
+     }
+ 
+-    public void markMade(LocalDate date) {
+-        made.add(date);
++    public void markMade(LocalDate date, long claimId) {
++        made.add(new PlanDate(date, claimId));
++    }
++
++    /** The ids of the claims the plan has made, in the order of their plan dates (those not kept left out). */
++    public List<Long> madeClaimIds() {
++        return made.stream().filter(m -> m.getClaimId() != null)
++                .sorted(Comparator.comparing(PlanDate::getClaimDate)).map(PlanDate::getClaimId).toList();
+     }
+ 
+     /** How many claims the plan has made so far. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 3e7472436..473a318ce 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -48,6 +48,10 @@ public class PlanController {
+             @NotNull Long planId, @NotNull @Pattern(regexp = ClaimController.AMOUNT) String amount) {
+     }
+ 
++    /** A plan whose amount was changed, and its DRAFT claims on this sheet that took the new amount. */
++    public record ChangeAmountResponse(PlanResponse plan, List<ClaimResponse> claims) {
++    }
++
+     /** A plan, its amount's changes oldest first, each as {@code <date> amount=<amount>}. */
+     public record PlanResponse(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+             LocalDate end, String target, int generated, String nextDates, boolean paused, List<String> changes) {
+@@ -113,10 +117,14 @@ public class PlanController {
+     }
+ 
+     @PostMapping("/amount")
+-    public PlanResponse changeAmount(@Valid @RequestBody ChangeAmountRequest req) {
++    public ChangeAmountResponse changeAmount(@Valid @RequestBody ChangeAmountRequest req) {
+         String sheet = req.sheet().trim();
+-        Plan plan = service.changeAmount(sheet, req.user().trim(), req.planId(), ClaimController.amount(req.amount()));
+-        return response(plan, sheets.today(sheet));
++        PlanService.AmountChanged changed = service.changeAmount(sheet, req.user().trim(), req.planId(),
++                ClaimController.amount(req.amount()));
++        // the claims edited on a descendant sheet are listed on that sheet only
++        List<ClaimResponse> here = changed.edited().stream().filter(c -> c.getSheetId().equals(sheet))
++                .map(ClaimController::response).toList();
++        return new ChangeAmountResponse(response(changed.plan(), sheets.today(sheet)), here);
+     }
+ 
+     @PostMapping("/generate")
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanDate.java b/src/main/java/net/officefloor/hq/app/plan/PlanDate.java
+new file mode 100644
+index 000000000..b784ceab8
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanDate.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.time.LocalDate;
++import java.util.Objects;
++
++/** A plan date the plan has made its claim for, and that claim (null when made before it was kept). */
++@Embeddable
++public class PlanDate {
++
++    @Column(name = "claim_date", nullable = false)
++    private LocalDate claimDate;
++
++    @Column(name = "claim_id")
++    private Long claimId;
++
++    protected PlanDate() {
++    }
++
++    PlanDate(LocalDate claimDate, Long claimId) {
++        this.claimDate = claimDate;
++        this.claimId = claimId;
++    }
++
++    public LocalDate getClaimDate() {
++        return claimDate;
++    }
++
++    public Long getClaimId() {
++        return claimId;
++    }
++
++    @Override
++    public boolean equals(Object o) {
++        return o instanceof PlanDate other && claimDate.equals(other.claimDate)
++                && Objects.equals(claimId, other.claimId);
++    }
++
++    @Override
++    public int hashCode() {
++        return Objects.hash(claimDate, claimId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 6e618d630..0c2c9e4ad 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -142,12 +142,18 @@ public class PlanService {
+         return saved;
+     }
+ 
++    /** A plan whose amount was changed, and the DRAFT claims it generated that took the new amount. */
++    public record AmountChanged(Plan plan, List<Claim> edited) {
++    }
++
+     /**
+-     * Change the plan's amount on the sheet's today: the claims generated from then on take it, those
+-     * already generated keep theirs.
++     * Change the plan's amount on the sheet's today: the claims generated from then on take it, and so
++     * do those it already generated that are still DRAFT, in the order of their plan dates, each as the
++     * claim form's save would edit it (written as CLAIM_EDITED); a draft the form would refuse, and a
++     * claim in any other status, keeps its amount.
+      */
+     @Transactional
+-    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
++    public AmountChanged changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+         roles.refuseViewer(sheetId, user);
+         sheets.load(sheetId, user);
+         Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+@@ -159,7 +165,15 @@ public class PlanService {
+         audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                 + " start=" + saved.getStart() + " amount="
+                 + saved.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+-        return saved;
++        String target = saved.getTargetSheetId() != null ? saved.getTargetSheetId() : sheetId;
++        BigDecimal newAmount = saved.getAmount().setScale(2, RoundingMode.UNNECESSARY);
++        List<Claim> edited = new ArrayList<>();
++        for (long claimId : saved.madeClaimIds()) {
++            if (claims.takesAmount(target, user, claimId, newAmount)) {
++                edited.add(claims.updateAmount(target, user, claimId, newAmount));
++            }
++        }
++        return new AmountChanged(saved, edited);
+     }
+ 
+     /** Make the claims the sheet's plans are due to have made by its today: the claims made, in order. */
+@@ -195,9 +209,10 @@ public class PlanService {
+                 if (plan.hasMade(day) || plan.skips(day) || !claims.takesDate(target, personId, day)) {
+                     continue;
+                 }
+-                made.add(claims.add(target, user, personId,
+-                        plan.getAmount().setScale(2, RoundingMode.UNNECESSARY), day, "", null, null, List.of()));
+-                plan.markMade(day);
++                Claim claim = claims.add(target, user, personId,
++                        plan.getAmount().setScale(2, RoundingMode.UNNECESSARY), day, "", null, null, List.of());
++                made.add(claim);
++                plan.markMade(day, claim.getId());
+             }
+             plans.saveAndFlush(plan);
+         }
+diff --git a/src/main/resources/db/migration/V117__plan_date_claim.sql b/src/main/resources/db/migration/V117__plan_date_claim.sql
+new file mode 100644
+index 000000000..686ef95eb
+--- /dev/null
++++ b/src/main/resources/db/migration/V117__plan_date_claim.sql
+@@ -0,0 +1,3 @@
++-- Each plan date keeps the claim the plan made for it, so changing the plan's amount can change the
++-- claims it generated that are still DRAFT. Null for the dates made before this was kept.
++ALTER TABLE plan_date ADD COLUMN claim_id BIGINT;
