@@ -76,7 +76,7 @@ public class ClaimService {
         if (status == ClaimStatus.SETTLED) {
             BigDecimal settledDue = rates.rateOn(sheetId, person.getGrade(), claim.getDate())
                     .map(Rate::getPct)
-                    .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
+                    .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                     .orElse(null);
             claim.setSettledDue(settledDue);
             due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());

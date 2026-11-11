@@ -2,8 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, counts, sumAmounts } from '../claims/claims';
-import { Rate, Rates, dueOf, rateOn, sumDues } from '../rates/rates';
+import { Claim, Claims, claimDue, counts, sumAmounts } from '../claims/claims';
+import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
 
 interface Person {
   id: number;
@@ -154,9 +154,14 @@ export class People {
     return today === null ? undefined : rateOn(this.rates(), grade, today);
   }
 
-  /** The person's claimed times their grade's rate in force today, or n/a when none is. */
+  /**
+   * The sum of the person's OPEN and SETTLED claims' dues, each already rounded, skipping the n/a ones; n/a when
+   * their grade has no rate in force today, unless a settled claim keeps a fixed due.
+   */
   protected dueTotalOf(person: Person): string {
-    return dueOf(this.claimedBy(person.id), this.rateOf(person.grade));
+    const counted = this.claimsOf(person.id).filter(counts);
+    if (this.rateOf(person.grade) === undefined && !counted.some((c) => c.settledDue !== null)) return 'n/a';
+    return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade)));
   }
 
   /** Show a set rate at once, then re-read so the screen holds what the store does. */

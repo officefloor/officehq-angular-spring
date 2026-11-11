@@ -31,11 +31,14 @@ function hundredths(value: string): bigint {
   return BigInt(whole || '0') * 100n + BigInt((fraction + '00').slice(0, 2));
 }
 
-/** An amount times a percent, divided by 100 and rounded half up to two decimals; n/a with no rate. */
+/** An amount times a percent, divided by 100 and rounded half to even to two decimals; n/a with no rate. */
 export function dueOf(amount: string, pct: string | undefined): string {
   if (pct === undefined) return 'n/a';
-  // cents times hundredths of a percent are millionths of a unit: round them to cents.
-  const cents = (hundredths(amount) * hundredths(pct) + 5000n) / 10000n;
+  // cents times hundredths of a percent are millionths of a unit: round them to cents, a half to the even cent.
+  const millionths = hundredths(amount) * hundredths(pct);
+  const rest = millionths % 10000n;
+  let cents = millionths / 10000n;
+  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
   return `${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`;
 }
 

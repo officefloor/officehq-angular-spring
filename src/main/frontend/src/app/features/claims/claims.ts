@@ -27,6 +27,11 @@ export function counts(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
+/** The due fixed when the claim was settled, else its amount times its grade's rate on its date, or n/a with no rate. */
+export function claimDue(claim: Claim, rates: Rate[], grade: string): string {
+  return claim.settledDue ?? dueOf(claim.amount, rateOn(rates, grade, claim.date));
+}
+
 type ClaimAction = 'open' | 'settle' | 'void';
 
 /** Sums amounts with two decimals exactly, in whole cents. */
@@ -160,7 +165,7 @@ export class Claims {
 
   /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
   protected due(claim: Claim): string {
-    return claim.settledDue ?? dueOf(claim.amount, rateOn(this.rates(), this.grade(), claim.date));
+    return claimDue(claim, this.rates(), this.grade());
   }
 
   protected value(event: Event): string {
