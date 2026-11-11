@@ -53,6 +53,16 @@ export interface Claim {
   tags: string | null;
   /** The reason the claim was voided with, from the sheet's list; null when none. */
   voidReason: string | null;
+  /** Its comments, oldest first. */
+  comments: ClaimComment[];
+}
+
+/** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+export interface ClaimComment {
+  by: string;
+  /** yyyy-mm-dd */
+  date: string;
+  text: string;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
@@ -280,7 +290,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -322,6 +332,29 @@ export function sumAmounts(amounts: string[]): string {
                     <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due }}</li>
                   }
                 </ol>
+              </td>
+              <td>
+                <ol class="claim-comments">
+                  @for (comment of c.comments; track $index) {
+                    <li data-testid="claim-comments-line">{{ comment.by }} on {{ comment.date }}: {{ comment.text }}</li>
+                  }
+                </ol>
+                <label class="visually-hidden" [for]="'claim-comment-text-' + c.id">Comment</label>
+                <input
+                  [id]="'claim-comment-text-' + c.id"
+                  data-testid="claim-comment-text"
+                  placeholder="Comment"
+                  [value]="commentTexts()[c.id] ?? ''"
+                  (input)="setCommentText(c.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-comment-add"
+                  [attr.aria-label]="'Comment claim of ' + c.amount + ' on ' + c.date"
+                  (click)="addComment(c)"
+                >
+                  Comment
+                </button>
               </td>
               <td>
                 <button
@@ -547,6 +580,8 @@ export class Claims implements OnInit {
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The comment typed for each claim, by claim id. */
+  protected readonly commentTexts = signal<Record<number, string>>({});
   /** The new amount typed for each DRAFT claim in its row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
 
@@ -848,6 +883,35 @@ export class Claims implements OnInit {
           ? `This claim is ${claim.status}: only an OPEN or PENDING claim can be reminded.`
           : 'This claim could not be reminded: it may already have been reminded today.';
       this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  protected setCommentText(id: number, text: string): void {
+    this.commentTexts.update((all) => ({ ...all, [id]: text }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /** Comment the claim; refused for an empty comment, and by the store like any change. */
+  protected async addComment(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = (this.commentTexts()[claim.id] ?? '').trim();
+    if (text === '') {
+      this.actionError.set({ id: claim.id, message: 'Type a comment: an empty one cannot be added.' });
+      return;
+    }
+    if (text.length > 1000) {
+      this.actionError.set({ id: claim.id, message: 'Type a comment of at most 1000 characters.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/comments`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { text }, this.session.headers()));
+      this.setCommentText(claim.id, '');
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch {
+      this.actionError.set({ id: claim.id, message: 'This comment could not be added to the claim.' });
     }
   }
 

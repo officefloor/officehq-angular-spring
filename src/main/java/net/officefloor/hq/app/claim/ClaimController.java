@@ -38,15 +38,20 @@ public class ClaimController {
      * it has; and the number of the claim it was split off (null unless it was); and the user whose open editor locks
      * it (null when not locked); and the last day it was reminded (null when never); and its external reference (null
      * when it has none); and its tags, sorted and comma separated (null when it has none); and the reason it was voided
-     * with (null when none).
+     * with (null when none); and its comments, oldest first.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
-            String tags, String voidReason) {
+            String tags, String voidReason, List<ClaimCommentView> comments) {
 
+        /** A claim with no comments yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
+            return of(claim, log, List.of());
+        }
+
+        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -57,7 +62,16 @@ public class ClaimController {
                     log.stream().map(ClaimLogView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
-                    claim.getTags(), claim.getVoidReason());
+                    claim.getTags(), claim.getVoidReason(),
+                    comments.stream().map(ClaimCommentView::of).toList());
+        }
+    }
+
+    /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+    public record ClaimCommentView(String by, LocalDate date, String text) {
+
+        static ClaimCommentView of(ClaimComment comment) {
+            return new ClaimCommentView(comment.getBy(), comment.getDate(), comment.getText());
         }
     }
 
@@ -130,8 +144,10 @@ public class ClaimController {
     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, List<ClaimLog>> logs = service.logs(sheetId.trim());
+        Map<Long, List<ClaimComment>> comments = service.comments(sheetId.trim());
         return service.list(sheetId.trim()).stream()
-                .map(claim -> ClaimView.of(claim, logs.getOrDefault(claim.getId(), List.of())))
+                .map(claim -> ClaimView.of(claim, logs.getOrDefault(claim.getId(), List.of()),
+                        comments.getOrDefault(claim.getId(), List.of())))
                 .toList();
     }
 
@@ -339,8 +355,23 @@ public class ClaimController {
                 request == null ? null : request.reason()));
     }
 
-    /** The claim as shown, with its status log. */
+    /** The text of a comment on a claim: not blank. */
+    public record CommentRequest(@NotNull @Size(max = 1000) String text) {
+    }
+
+    /** Comment a claim of any status; refused for an empty comment. */
+    @PostMapping("/claims/{id}/comments")
+    public ClaimView comment(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid CommentRequest request) {
+        // One line in the audit file: any run of white space in the comment becomes a single space.
+        String text = request.text().trim().replaceAll("\\s+", " ");
+        return view(service.comment(sheetId.trim(), user.trim(), id, text));
+    }
+
+    /** The claim as shown, with its status log and comments. */
     ClaimView view(Claim claim) {
-        return ClaimView.of(claim, service.logOf(claim));
+        return ClaimView.of(claim, service.logOf(claim), service.commentsOf(claim));
     }
 }

@@ -58,11 +58,13 @@ public class ClaimService {
     private final HolidayService holidays;
     private final SheetTagRepository tags;
     private final VoidReasonService voidReasons;
+    private final ClaimCommentRepository comments;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
             ClaimLogRepository logs, WatchService watches, HolidayService holidays, SheetTagRepository tags,
-            VoidReasonService voidReasons) {
+            VoidReasonService voidReasons, ClaimCommentRepository comments) {
+        this.comments = comments;
         this.voidReasons = voidReasons;
         this.tags = tags;
         this.holidays = holidays;
@@ -97,6 +99,36 @@ public class ClaimService {
     /** The claim's status log, oldest first. */
     public List<ClaimLog> logOf(Claim claim) {
         return logs.findByClaimIdOrderByIdAsc(claim.getId());
+    }
+
+    /** The comments on the sheet's claims by claim id, each oldest first. */
+    public Map<Long, List<ClaimComment>> comments(String sheetId) {
+        return comments.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(ClaimComment::getClaimId, Collectors.toList()));
+    }
+
+    /** The claim's comments, oldest first. */
+    public List<ClaimComment> commentsOf(Claim claim) {
+        return comments.findByClaimIdOrderByIdAsc(claim.getId());
+    }
+
+    /**
+     * Comment a claim of any status: the comment keeps the user and the sheet's today. Refused for an empty comment.
+     */
+    @Transactional
+    public Claim comment(String sheetId, String user, Long id, String text) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        String written = text == null ? "" : text.trim();
+        if (written.isEmpty()) {
+            throw new ClaimCommentException(id, "a comment cannot be empty");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        comments.save(new ClaimComment(sheetId, id, user, sheets.today(sheetId), written));
+        audit.recordOnCommit(record("COMMENT_ADDED", user, person, claim) + numberOf(claim.getNumber())
+                + " text=" + written);
+        return claim;
     }
 
     @Transactional
