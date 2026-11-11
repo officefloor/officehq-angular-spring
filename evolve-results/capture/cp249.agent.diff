@@ -1,0 +1,195 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3a15dec67..c0072f998 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,6 +16,7 @@ import { Header } from '../header/header';
+ import { Dashboard } from '../dashboard/dashboard';
+ import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+ import { VoidReasons } from '../void-reasons/void-reasons';
++import { PolicyViewer } from '../policy/policy-viewer';
+ import { Templates } from '../templates/templates';
+ import { Notes } from '../notes/notes';
+ import { Pool, Pools } from '../pools/pools';
+@@ -297,7 +298,7 @@ const PERSON_COUNTED_STATUSES = ['OPEN', 'SETTLED'] as const;
+ 
+ @Component({
+   selector: 'app-people',
+-  imports: [FigurePipe, AuditView, Activity, Header, Dashboard, Holidays, Grades, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons],
++  imports: [FigurePipe, AuditView, Activity, Header, Dashboard, Holidays, Grades, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons, PolicyViewer],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -330,6 +331,7 @@ const PERSON_COUNTED_STATUSES = ['OPEN', 'SETTLED'] as const;
+     <app-periods [(periods)]="periods" [dues]="dues()" [claimDueBys]="claimDueBys()" />
+     <app-holidays />
+     <app-void-reasons />
++    <app-policy-viewer />
+     <app-templates />
+     <app-notes />
+     <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [periods]="periods()" [(pools)]="pools" />
+diff --git a/src/main/frontend/src/app/features/policy/policy-viewer.ts b/src/main/frontend/src/app/features/policy/policy-viewer.ts
+new file mode 100644
+index 000000000..b996b262d
+--- /dev/null
++++ b/src/main/frontend/src/app/features/policy/policy-viewer.ts
+@@ -0,0 +1,55 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The sheet's policy versions, shown on request: one line per version, oldest first, as
++// <version> <from-date, or start> <key>=<value> <how many claims have it as their policy version>.
++// Showing again re-reads them; the old lines are gone while they load.
++@Component({
++  selector: 'app-policy-viewer',
++  template: `
++    <section aria-labelledby="policy-viewer-heading">
++      <h2 id="policy-viewer-heading">Policy versions</h2>
++      <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++      @if (error(); as err) {
++        <p role="alert" data-testid="policy-error">{{ err }}</p>
++      }
++      <ol aria-label="Policy versions">
++        @for (line of lines(); track $index) {
++          <li data-testid="policy-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class PolicyViewer {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++
++  constructor() {
++    effect(() => {
++      this.session.sheet();
++      this.session.loads();
++      this.lines.set([]);
++      this.error.set(null);
++    });
++  }
++
++  protected async show(): Promise<void> {
++    const sheet = this.session.sheet();
++    this.lines.set([]);
++    this.error.set(null);
++    try {
++      const lines = await firstValueFrom(
++        this.http.post<string[]>('/api/settings/policy', { sheet, user: this.session.user() }),
++      );
++      if (this.session.sheet() === sheet) this.lines.set(lines);
++    } catch {
++      if (this.session.sheet() === sheet) this.error.set('The policy versions could not be read.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 3fc56b947..1df6ebeb5 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -193,6 +193,11 @@ public class SettingController {
+         return response(service.get(req.sheet().trim(), req.user().trim()));
+     }
+ 
++    @PostMapping("/policy")
++    public List<String> policy(@Valid @RequestBody GetSettingsRequest req) {
++        return service.policyLines(req.sheet().trim(), req.user().trim());
++    }
++
+     @PostMapping("/set")
+     public SettingsResponse set(@Valid @RequestBody SetSettingsRequest req) {
+         String policy = req.policyDate() == null ? "" : req.policyDate().trim();
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 256a26c90..0f6ec736c 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -3,13 +3,19 @@ package net.officefloor.hq.app.setting;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.Rounding;
+ import net.officefloor.hq.app.rate.RateChain;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.sheet.LoggedSetting;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -103,9 +109,11 @@ public class SettingService {
+     private final Audit audit;
+     private final RoleService roles;
+     private final RateChain rateChain;
++    private final ClaimRepository claims;
+ 
+     public SettingService(SheetService sheets, SheetRepository sheetStore, RollupService rollup, Audit audit,
+-            RoleService roles, RateChain rateChain) {
++            RoleService roles, RateChain rateChain, ClaimRepository claims) {
++        this.claims = claims;
+         this.rateChain = rateChain;
+         this.roles = roles;
+         this.sheets = sheets;
+@@ -119,6 +127,35 @@ public class SettingService {
+         return sheets.load(sheetId, user);
+     }
+ 
++    /**
++     * The policy versions, oldest first, one line each: {@code <version> <from or start> <key>=<value>
++     * <count>}, the value blank for none, the count the sheet's claims (not deleted) whose policy
++     * version (the one in force on the claim's date) it is.
++     */
++    @Transactional
++    public List<String> policyLines(String sheetId, String user) {
++        Sheet sheet = sheets.load(sheetId, user);
++        List<LoggedSetting> log = sheet.getPolicyLog();
++        int[] counts = new int[log.size() + 1];
++        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (c.getStatus() != ClaimStatus.DELETED && c.getDate() != null) counts[sheet.policyVersionOn(c.getDate())]++;
++        }
++        List<String> lines = new ArrayList<>();
++        for (int i = 0; i < log.size(); i++) {
++            LoggedSetting s = log.get(i);
++            lines.add((i + 1) + " " + (s.getFromDate() == null ? "start" : s.getFromDate().toString()) + " "
++                    + s.getKey() + "=" + policyValue(s) + " " + counts[i + 1]);
++        }
++        return lines;
++    }
++
++    private static String policyValue(LoggedSetting s) {
++        if (s.getValue() == null) return "";
++        if (s.getKey().equals(ROUNDING)) return Sheet.roundingName(s.getValue());
++        if (s.getKey().equals(TERMS)) return String.valueOf(s.getValue().intValue());
++        return text(s.getValue());
++    }
++
+     /**
+      * A value to record for a setting that carries a figure (null for none: no limit, no cap) from
+      * a from-date (null: from the sheet's today, and the record names no from-date).
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index df3c2c1da..f261cd254 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -314,6 +314,11 @@ public class Sheet {
+         return settingLog.stream().filter(s -> POLICY_KEYS.contains(s.getKey())).map(LoggedSetting::getFromDate).toList();
+     }
+ 
++    /** The values recorded for the policy settings, in the order made: one per policy version. */
++    public List<LoggedSetting> getPolicyLog() {
++        return settingLog.stream().filter(s -> POLICY_KEYS.contains(s.getKey())).toList();
++    }
++
+     /** The current policy version: how many have been made; 0 for none. */
+     public int getPolicyVersion() {
+         return getPolicyVersions().size();
