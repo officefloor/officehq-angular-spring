@@ -1,0 +1,141 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c0a9191b1..53f50a52b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
+ import { Claim, Claims, PersonGrade, claimDue, counts, dueFixed, gradeOn, overdue, sumAmounts } from '../claims/claims';
+ import { Period, Periods, periodOn } from '../periods/periods';
+ import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
++import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+ 
+ interface Person {
+   id: number;
+@@ -41,7 +42,7 @@ function live(claim: Claim, held: boolean): boolean {
+ // person's editor is opened, saves that person.
+ @Component({
+   selector: 'app-people',
+-  imports: [Claims, Periods, Rates],
++  imports: [Claims, Periods, Rates, Summary],
+   template: `
+     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+@@ -235,6 +236,7 @@ function live(claim: Claim, held: boolean): boolean {
+       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+     </section>
++    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+   `,
+ })
+ export class People {
+@@ -287,6 +289,27 @@ export class People {
+   );
+   /** Everyone's overdue-total added up. */
+   protected readonly overdueTotal = computed(() => sumDues(this.people().map((p) => this.overdueTotalOf(p))));
++  /** Per grade: the people not retired on it today, as the list shows their grade, and their due-totals added up. */
++  protected readonly gradeSummary = computed<GradeSummary[]>(() =>
++    this.grades.map((grade) => {
++      const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
++      return { grade, count: on.length, dueTotal: sumDues(on.map((p) => this.dueTotalOf(p))) };
++    }),
++  );
++  /** Per period: its due-total as the period list shows it. */
++  protected readonly periodSummary = computed<PeriodSummary[]>(() =>
++    this.periods().map((p) => ({
++      name: p.name,
++      dueTotal: p.closedTotal ?? this.periodDueTotals().get(p.name) ?? '0.00',
++    })),
++  );
++  /** Per status: how many of the sheet's claims have it. */
++  protected readonly statusSummary = computed<StatusSummary[]>(() =>
++    ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({
++      status,
++      count: this.claims().filter((c) => c.status === status).length,
++    })),
++  );
+   protected readonly name = signal('');
+   protected readonly grade = signal('A');
+   /** The date the form's grade applies from; blank for the sheet's today. */
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+new file mode 100644
+index 000000000..d74a40f12
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -0,0 +1,78 @@
++import { Component, input } from '@angular/core';
++
++/** A grade's line of the summary: how many people not retired are on it today, and their due-totals added up. */
++export interface GradeSummary {
++  grade: string;
++  count: number;
++  dueTotal: string;
++}
++
++/** A period's line of the summary: its due-total as the period list shows it. */
++export interface PeriodSummary {
++  name: string;
++  dueTotal: string;
++}
++
++/** A status's line of the summary: how many of the sheet's claims have it. */
++export interface StatusSummary {
++  status: string;
++  count: number;
++}
++
++// The sheet at a glance: figures per grade, per period and per claim status, each agreeing with the lists.
++@Component({
++  selector: 'app-summary',
++  template: `
++    <section aria-labelledby="summary-heading">
++      <h2 id="summary-heading">Summary</h2>
++      <table>
++        <caption>By grade (retired people excluded)</caption>
++        <thead>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (g of grades(); track g.grade) {
++            <tr>
++              <th scope="row">{{ g.grade }}</th>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>By period</caption>
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (p of periods(); track p.name) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table>
++        <caption>By claim status</caption>
++        <thead>
++          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
++        </thead>
++        <tbody>
++          @for (s of statuses(); track s.status) {
++            <tr>
++              <th scope="row">{{ s.status }}</th>
++              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Summary {
++  readonly grades = input.required<GradeSummary[]>();
++  readonly periods = input.required<PeriodSummary[]>();
++  readonly statuses = input.required<StatusSummary[]>();
++}
