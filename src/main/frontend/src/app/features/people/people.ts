@@ -589,6 +589,20 @@ function csvField(value: string): string {
           Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong>
         }
       </p>
+      <p>
+        <label for="bulk-retire-date">Retire selected people from (blank: today)</label>
+        <input
+          id="bulk-retire-date"
+          data-testid="bulk-retire-date"
+          type="date"
+          [value]="bulkRetireFrom()"
+          (input)="bulkRetireFrom.set(value($event)); clearBulkGradeError()"
+        />
+        <button type="button" data-testid="bulk-retire" (click)="bulkRetire()">Retire selected people</button>
+        @if (bulkRetired() !== null) {
+          Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong>
+        }
+      </p>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
@@ -850,6 +864,10 @@ export class People {
   protected readonly bulkGradeFrom = signal('');
   /** How many people the last bulk grade changed; null while it runs and before the first. */
   protected readonly bulkGraded = signal<number | null>(null);
+  /** The date to retire the ticked people from (blank: the sheet's today). */
+  protected readonly bulkRetireFrom = signal('');
+  /** How many people the last bulk retire retired; null while it runs and before the first. */
+  protected readonly bulkRetired = signal<number | null>(null);
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
   private reads = 0;
 
@@ -887,6 +905,8 @@ export class People {
         this.bulkGradeValue.set('A');
         this.bulkGradeFrom.set('');
         this.bulkGraded.set(null);
+        this.bulkRetireFrom.set('');
+        this.bulkRetired.set(null);
         this.bulkOpenResult.set(null);
         this.bulkOpenError.set(null);
         this.bulkSettleResult.set(null);
@@ -1313,6 +1333,44 @@ export class People {
     } catch {
       if (this.session.sheet() === sheet && first !== null) {
         this.rowError.set({ id: first, message: 'The selected people could not be given the grade.' });
+      }
+    }
+  }
+
+  /**
+   * Retire the ticked people from the typed date (blank: the sheet's today), in list order, each as the row's retire
+   * would; then re-read so the totals show what the store holds.
+   */
+  protected async bulkRetire(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.rowError.set(null);
+    this.patronError.set(null);
+    this.bulkRetired.set(null);
+    const ids = this.people()
+      .filter((p) => this.selectedPeople().has(p.id))
+      .map((p) => p.id);
+    const first = ids.length > 0 ? ids[0] : null;
+    const from = this.bulkRetireFrom().trim();
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      if (first !== null) this.rowError.set({ id: first, message: 'Pick a date to retire from, or leave it blank for today.' });
+      return;
+    }
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ retired: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/bulk-retire`,
+          { ids, from: from || null },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedPeople.set(new Set());
+      this.bulkRetired.set(result.retired);
+      await this.read(sheet);
+    } catch {
+      if (this.session.sheet() === sheet && first !== null) {
+        this.rowError.set({ id: first, message: 'The selected people could not be retired.' });
       }
     }
   }

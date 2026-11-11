@@ -81,6 +81,12 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** The people to retire together, and the date they are retired from (null: the sheet's today). */
+    public record BulkRetireRequest(
+            @NotNull @Size(max = 10000) List<@NotNull Long> ids,
+            LocalDate from) {
+    }
+
     /** Which way to move a person in the list. */
     public record MoveRequest(@NotNull @Pattern(regexp = "up|down") String direction) {
     }
@@ -126,18 +132,20 @@ public class PersonController {
     private final SheetService sheets;
     private final WatchService watches;
     private final BulkGradeService bulkGrade;
+    private final BulkRetireService bulkRetire;
     private final MergeService merges;
     private final TransferService transfers;
     private final ImportPeopleService imports;
 
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
-            WatchService watches, BulkGradeService bulkGrade, MergeService merges, TransferService transfers,
-            ImportPeopleService imports) {
+            WatchService watches, BulkGradeService bulkGrade, BulkRetireService bulkRetire, MergeService merges,
+            TransferService transfers, ImportPeopleService imports) {
         this.imports = imports;
         this.transfers = transfers;
         this.service = service;
         this.merges = merges;
         this.bulkGrade = bulkGrade;
+        this.bulkRetire = bulkRetire;
         this.watches = watches;
         this.statements = statements;
         this.sheets = sheets;
@@ -197,6 +205,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid BulkGradeRequest request) {
         return bulkGrade.grade(sheetId.trim(), user.trim(), request.ids(), request.grade(), request.from());
+    }
+
+    /** Retire the selected people from a date, in list order, each as the row's retire would. */
+    @PostMapping("/bulk-retire")
+    public BulkRetireService.Result bulkRetire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkRetireRequest request) {
+        return bulkRetire.retire(sheetId.trim(), user.trim(), request.ids(), request.from());
     }
 
     /**
