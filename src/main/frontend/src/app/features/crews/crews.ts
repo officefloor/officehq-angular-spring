@@ -7,7 +7,7 @@ import { money } from '../claims/claims';
 
 // The sheet's crews: each a name (trimmed, not blank, at most once on the sheet) and a lead chosen
 // from the sheet's people, and its members, each a person on the sheet at most once per crew and
-// never its lead (the store refuses each). Each crew shows its lead and its due-total: the lead's
+// never its lead (the store refuses each). Each crew shows its lead as "<name> (<grade>)" and its due-total: the lead's
 // and the members' due-totals as the people list shows them, added up, n/a skipped. Re-read from
 // the store on every sheet load and whenever the people change.
 export interface CrewMember {
@@ -28,6 +28,8 @@ export interface Crew {
 export interface CrewPerson {
   id: number;
   name: string;
+  /** The name as the screen shows it, with the grade in force on the sheet's today. */
+  shown: string;
   due: number | null;
 }
 
@@ -51,7 +53,7 @@ function refusal(e: unknown, what: string): string {
     <article [attr.data-testid]="'crew-row-' + crew().name">
       <h3>{{ crew().name }}</h3>
       <p>
-        Lead <strong data-testid="crew-lead">{{ crew().lead }}</strong>
+        Lead <strong data-testid="crew-lead">{{ lead() }}</strong>
         Due in total <strong data-testid="crew-due-total">{{ dueTotal() | figure }}</strong>
       </p>
       <ul [attr.aria-label]="'Members of ' + crew().name">
@@ -92,6 +94,12 @@ export class CrewRow {
   protected readonly personInput = signal('');
   protected readonly error = signal<string | null>(null);
   private submitting = false;
+
+  /** The lead's name as the screen shows it, with their grade in force on the sheet's today. */
+  protected readonly lead = computed(() => {
+    const id = this.crew().leadId;
+    return this.people().find((p) => p.id === id)?.shown ?? this.crew().lead;
+  });
 
   /** The lead's and the members' due-totals added up, n/a skipped. */
   protected readonly dueTotal = computed(() => money(crewDueCents(this.crew(), this.people())));

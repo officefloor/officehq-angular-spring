@@ -2,6 +2,7 @@ package net.officefloor.hq.app.search;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -16,13 +17,16 @@ import org.springframework.transaction.annotation.Transactional;
  * Searching a sheet's tree (the sheet and every other sheet of its tree, see {@link SheetService#tree})
  * for the people whose name or an alias contains a text, case ignored: the sheet's people first in
  * list order, then the other sheets' by sheet id, each sheet's in its list order. Each comes with
- * their due-total as their own sheet shows it now. It only reads.
+ * their due-total as their own sheet shows it now and their grade in force on its today. It only reads.
  */
 @Service
 public class TreeSearchService {
 
-    /** A person found: the sheet they are on, their name and their due-total (n/a for none). */
-    public record Found(String sheet, String name, String dueTotal) {
+    /**
+     * A person found: the sheet they are on, their name, their due-total (n/a for none) and their grade
+     * in force on their sheet's today.
+     */
+    public record Found(String sheet, String name, String dueTotal, String grade) {
     }
 
     private final SheetService sheets;
@@ -44,15 +48,18 @@ public class TreeSearchService {
         List<Found> found = new ArrayList<>();
         for (String id : ids) {
             RollupService.Snapshot figures = null;
+            LocalDate today = null;
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
                 if (!matches(person, wanted)) {
                     continue;
                 }
                 if (figures == null) {
                     figures = rollup.snapshot(id);
+                    today = sheets.today(id);
                 }
                 RollupService.Figures own = figures.people().get(person.getId());
-                found.add(new Found(id, person.getName(), money(own == null ? null : own.dueTotal())));
+                found.add(new Found(id, person.getName(), money(own == null ? null : own.dueTotal()),
+                        person.gradeOn(today)));
             }
         }
         return found;

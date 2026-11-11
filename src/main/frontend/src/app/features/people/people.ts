@@ -87,7 +87,7 @@ import { FigurePipe } from '../../core/figure';
 // A person can name other people on the sheet as their patrons, one at a time from their row (not
 // themselves, and not the same person twice). The patrons carry shares: 100.00 split equally among
 // them in the order they were named, each rounded half to even to two decimals, the remainder going
-// to the first-named. Each row shows the person's patrons as "<name> <share>", sorted by name, and
+// to the first-named. Each row shows the person's patrons as "<name> (<grade>) <share>", sorted by name, and
 // their backing: the sum over the patrons of the patron's figure (their settled figures over their
 // SETTLED claims dated within the 90 days up to and including the sheet's today, each at its frozen
 // figure) times their share divided by 100, rounded half to even; 0.00 with none.
@@ -678,7 +678,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                   (change)="selectPerson(p.id, $any($event.target).checked)"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-name">{{ shownName(p) }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               @if (shown('terms')) {
                 <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -1180,7 +1180,7 @@ export class People {
   protected readonly crews = signal<Crew[]>([]);
   /** Everyone with their due-total as shown, for the crews' due-totals. */
   protected readonly crewPeople = computed<CrewPerson[]>(() =>
-    this.people().map((p) => ({ id: p.id, name: p.name, due: this.dueOf(p) })),
+    this.people().map((p) => ({ id: p.id, name: p.name, shown: this.shownName(p), due: this.dueOf(p) })),
   );
   /** Per person id: their cuts across every pool they are a member of, in whole cents. */
   private readonly cutTotals = computed(() => {
@@ -1551,6 +1551,11 @@ export class People {
     return gradeOn(p.grades, this.session.today());
   }
 
+  /** The person's name as the screen shows it: "<name> (<grade in force on the sheet's today>)". */
+  protected shownName(p: Person): string {
+    return `${p.name} (${this.gradeToday(p)})`;
+  }
+
   /** The date a claim's live figures round by (see {@link roundingDate}). */
   private roundOn(c: Claim): string {
     return roundingDate(c, this.claimsOf(c.personId));
@@ -1665,9 +1670,9 @@ export class People {
   /** The person's patrons as "<name> <share>", sorted by name, comma and space separated. */
   protected patronNamesOf(personId: number): string {
     return this.sharesOf(personId)
-      .map(({ patron, share }) => ({ name: patron.name, share }))
+      .map(({ patron, share }) => ({ name: patron.name, shown: this.shownName(patron), share }))
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-      .map(({ name, share }) => name + ' ' + money(share))
+      .map(({ shown, share }) => shown + ' ' + money(share))
       .join(', ');
   }
 

@@ -7,10 +7,11 @@ interface Found {
   sheet: string;
   name: string;
   dueTotal: string;
+  grade: string;
 }
 
 // The tree search: every person on the sheet and on every other sheet of its tree whose name or an
-// alias contains the typed text (case ignored), one line each as <sheet id> <name> <due-total>,
+// alias contains the typed text (case ignored), one line each as <sheet id> <name> (<grade>) <due-total>,
 // the sheet's people first in list order, then the other sheets' by sheet id. It only reads.
 @Component({
   selector: 'app-tree-search',
@@ -71,7 +72,7 @@ export class TreeSearch {
         this.http.post<{ people: Found[] }>('/api/search/tree/list', { sheet, text: this.textInput() }),
       );
       if (press !== this.pressed) return;
-      this.lines.set(res.people.map((p) => `${p.sheet} ${p.name} ${p.dueTotal}`));
+      this.lines.set(res.people.map((p) => `${p.sheet} ${p.name} (${p.grade}) ${p.dueTotal}`));
       this.count.set(String(res.people.length));
     } catch {
       if (press === this.pressed) this.error.set('Could not search the tree.');
