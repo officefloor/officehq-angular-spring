@@ -40,21 +40,24 @@ function decimalOf(cents: bigint): string {
   return `${cents < 0n ? '-' : ''}${size / 100n}.${(size % 100n).toString().padStart(2, '0')}`;
 }
 
-/** An amount times a percent, divided by 100 and rounded half to even to two decimals; n/a with no rate. */
-export function dueOf(amount: string, pct: string | undefined): string {
+/** How a figure rounds a half cent: up (away from zero), or to the even cent. */
+export type Rounding = 'half-up' | 'half-even';
+
+/** An amount times a percent, divided by 100 and rounded to two decimals as given; n/a with no rate. */
+export function dueOf(amount: string, pct: string | undefined, rounding: Rounding = 'half-even'): string {
   if (pct === undefined) return 'n/a';
-  return percentOf(amount, pct, 1);
+  return percentOf(amount, pct, 1, rounding);
 }
 
-/** The pct percent of the amount, times the given count, rounded to cents, a half to the even cent. */
-export function percentOf(amount: string, pct: string, times: number): string {
-  // cents times hundredths of a percent are millionths of a unit: round them to cents, a half to the even cent.
-  // A negative amount (a correction) rounds as its size does, so a half goes to the even cent either way.
+/** The pct percent of the amount, times the given count, rounded to cents, a half up or to the even cent. */
+export function percentOf(amount: string, pct: string, times: number, rounding: Rounding = 'half-even'): string {
+  // cents times hundredths of a percent are millionths of a unit: round them to cents.
+  // A negative amount (a correction) rounds as its size does, so a half goes away from zero, or to the even cent.
   const signed = hundredths(amount) * hundredths(pct) * BigInt(times);
   const millionths = signed < 0n ? -signed : signed;
   const rest = millionths % 10000n;
   let cents = millionths / 10000n;
-  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
+  if (rest > 5000n || (rest === 5000n && (rounding === 'half-up' || cents % 2n === 1n))) cents += 1n;
   return decimalOf(signed < 0n ? -cents : cents);
 }
 

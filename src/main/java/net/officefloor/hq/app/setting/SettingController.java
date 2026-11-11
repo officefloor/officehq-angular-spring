@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,15 +26,16 @@ public class SettingController {
 
     /**
      * The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals;
-     * the terms in whole days; the late percent with two decimals.
+     * the terms in whole days; the late percent with two decimals; the policy date as yyyy-mm-dd, null when blank (the
+     * sheet's today).
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct) {
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null
                     : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getTerms(),
-                    sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getPolicyDate());
         }
     }
 
@@ -68,6 +70,10 @@ public class SettingController {
         BigDecimal latePctValue() {
             return new BigDecimal(latePct.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
+    }
+
+    /** A policy date as yyyy-mm-dd; null (blank) means the sheet's today. */
+    public record PolicyDateRequest(LocalDate policyDate) {
     }
 
     private final SettingService service;
@@ -108,5 +114,12 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid LatePctRequest request) {
         return SettingsView.of(service.setLatePct(sheetId.trim(), user.trim(), request.latePctValue()));
+    }
+
+    @PutMapping("/policy-date")
+    public SettingsView setPolicyDate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody PolicyDateRequest request) {
+        return SettingsView.of(service.setPolicyDate(sheetId.trim(), user.trim(), request.policyDate()));
     }
 }

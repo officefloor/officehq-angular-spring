@@ -31,10 +31,12 @@ public class ClaimController {
      * A claim as shown: the amount with two decimals, the date as yyyy-mm-dd, and the due fixed when it was
      * settled (null when it has none, so its due is worked out from the current rate), and who opened it;
      * whether the person's last statement bound it, and the due it bound it to (null: none, so n/a); and the number of
-     * the claim it corrects (null unless it is a correction).
+     * the claim it corrects (null unless it is a correction); and the date that decides how its live figures round (its
+     * own, or a correction's corrected claim's).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number, String settledDue, String openedBy, boolean stated, String statedDue, Long corrects) {
+            Long number, String settledDue, String openedBy, boolean stated, String statedDue, Long corrects,
+            LocalDate roundingDate) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -43,7 +45,7 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects());
+                    claim.getCorrects(), claim.getRoundingDate());
         }
     }
 

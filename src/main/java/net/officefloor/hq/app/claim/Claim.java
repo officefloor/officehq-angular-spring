@@ -63,6 +63,10 @@ public class Claim {
     @Column(name = "corrects")
     private Long corrects;
 
+    /** The date that decides how the claim's live figures round: its own date, or a correction's corrected claim's. */
+    @Column(name = "rounding_date", nullable = false)
+    private LocalDate roundingDate;
+
     protected Claim() {
     }
 
@@ -71,6 +75,7 @@ public class Claim {
         this.personId = personId;
         this.amount = amount;
         this.date = date;
+        this.roundingDate = date;
         this.note = note;
     }
 
@@ -113,6 +118,14 @@ public class Claim {
 
     public void setDate(LocalDate date) {
         this.date = date;
+    }
+
+    public LocalDate getRoundingDate() {
+        return roundingDate;
+    }
+
+    public void setRoundingDate(LocalDate roundingDate) {
+        this.roundingDate = roundingDate;
     }
 
     public String getNote() {

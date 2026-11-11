@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -9,7 +10,7 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the sheet's settings: its clerk limit, its floor, its terms and its late percent. */
+/** Keeps the sheet's settings: its clerk limit, its floor, its terms, its late percent and its policy date. */
 @Service
 public class SettingService {
 
@@ -78,6 +79,22 @@ public class SettingService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=late-pct value="
                 + latePct.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Set the policy date, which decides how each claim's live figures round; null means the sheet's today. Every save
+     * is recorded, even of the same value, then the figures it moved.
+     */
+    @Transactional
+    public Sheet setPolicyDate(String sheetId, String user, LocalDate policyDate) {
+        Sheet sheet = get(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setPolicyDate(policyDate);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=policy-date value="
+                + (policyDate == null ? "" : policyDate.toString()));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

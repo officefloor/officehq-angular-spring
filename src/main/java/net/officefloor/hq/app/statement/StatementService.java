@@ -1,7 +1,6 @@
 package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -123,7 +122,7 @@ public class StatementService {
         }
         return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(pct -> sheets.get(sheetId).rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
                 .map(due -> claim.isCorrection() ? due : sheets.get(sheetId).floored(due));
     }
 }

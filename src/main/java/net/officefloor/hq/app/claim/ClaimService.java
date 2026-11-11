@@ -15,6 +15,7 @@ import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.setting.SettingService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,9 +65,10 @@ public class ClaimService {
         LocalDate dated = dateOr(sheetId, date);
         periods.requireOpen(sheetId, dated);
         person.requireClaimable(dated);
-        requireCorrection(sheetId, personId, amount, corrects);
+        LocalDate correctedDate = requireCorrection(sheetId, personId, amount, corrects);
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note));
         claim.setCorrects(corrects);
+        claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
         rollup.recordChanges(sheetId, user, before);
@@ -89,10 +91,11 @@ public class ClaimService {
         people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()))
                 .requireClaimable(dated);
-        requireCorrection(sheetId, claim.getPersonId(), amount, corrects);
+        LocalDate correctedDate = requireCorrection(sheetId, claim.getPersonId(), amount, corrects);
         claim.setAmount(amount);
         claim.setCorrects(corrects);
         claim.setDate(dated);
+        claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
@@ -160,36 +163,37 @@ public class ClaimService {
 
     /**
      * A negative amount (a correction) must name, by number, a SETTLED claim of the same person; any other amount
-     * names none. Refused otherwise.
+     * names none. Refused otherwise. Gives the date of the claim a correction corrects (it rounds by that date), null
+     * for any other claim.
      */
-    private void requireCorrection(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+    private LocalDate requireCorrection(String sheetId, Long personId, BigDecimal amount, Long corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ClaimCorrectionException("Only a correction (a negative amount) corrects a claim");
             }
-            return;
+            return null;
         }
         if (corrects == null) {
             throw new ClaimCorrectionException("A negative amount must name the settled claim it corrects");
         }
-        boolean settled = claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+        return claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
                 .filter(c -> c.getStatus() == ClaimStatus.SETTLED)
-                .isPresent();
-        if (!settled) {
-            throw new ClaimCorrectionException("Claim " + corrects + " is not a settled claim of the same person");
-        }
+                .map(Claim::getDate)
+                .orElseThrow(() -> new ClaimCorrectionException(
+                        "Claim " + corrects + " is not a settled claim of the same person"));
     }
 
     /**
-     * The claim's amount at the rate its person's grade has on its date, two decimals, raised to the sheet's floor
-     * unless it is a correction; null (n/a) with no rate.
+     * The claim's amount at the rate its person's grade has on its date, two decimals rounded as the sheet's policy
+     * date has the claim round, raised to the sheet's floor unless it is a correction; null (n/a) with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+        Sheet sheet = settings.get(sheetId);
         BigDecimal due = rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
                 .orElse(null);
-        return claim.isCorrection() ? due : settings.get(sheetId).floored(due);
+        return claim.isCorrection() ? due : sheet.floored(due);
     }
 
     /**

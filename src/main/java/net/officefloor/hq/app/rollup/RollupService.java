@@ -147,7 +147,7 @@ public class RollupService {
 
     /**
      * As on the screen: the settled due, else the figure (the stated due, else the amount at the rate on the claim's
-     * date raised to the sheet's floor) with the late charge of an overdue claim added on top; a correction has neither
+     * date, rounded as the sheet's policy date has the claim round, raised to the sheet's floor) with the late charge of an overdue claim added on top; a correction has neither
      * floor nor late charge.
      */
     private static Optional<BigDecimal> dueOf(Sheet sheet, List<Rate> sheetRates, Person person, Claim claim) {
@@ -157,8 +157,9 @@ public class RollupService {
         Optional<BigDecimal> figure = claim.isStated() ? Optional.ofNullable(claim.getStatedDue())
                 : rateOn(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                         .map(Rate::getPct)
-                        .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2)
-                                .setScale(2, RoundingMode.HALF_EVEN))
+                        .map(pct -> sheet == null
+                                ? claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN)
+                                : sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
                         .map(due -> sheet == null || claim.isCorrection() ? due : sheet.floored(due));
         return sheet == null ? figure
                 : figure.map(f -> sheet.withLateCharge(f,

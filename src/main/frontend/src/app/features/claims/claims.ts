@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods';
-import { Rate, dueOf, floored, percentOf, rateOn, sumDues } from '../rates/rates';
+import { Rate, Rounding, dueOf, floored, percentOf, rateOn, sumDues } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -26,6 +26,8 @@ export interface Claim {
   statedDue: string | null;
   /** The number of the SETTLED claim of the same person this claim corrects; null unless it is a correction. */
   corrects: number | null;
+  /** The date (yyyy-mm-dd) that decides how its live figures round: its own, or a correction's corrected claim's. */
+  roundingDate: string;
 }
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
@@ -58,6 +60,15 @@ export function gradeOn(grades: PersonGrade[], date: string): string | undefined
 }
 
 /**
+ * How the claim's live figures round: half up when its rounding date is before the sheet's policy date (the sheet's
+ * today when blank), half to even on or after it.
+ */
+export function roundingOf(claim: Claim, session: Session): Rounding {
+  const policy = session.policyDate() || session.today();
+  return policy !== null && claim.roundingDate < policy ? 'half-up' : 'half-even';
+}
+
+/**
  * The due fixed when the claim was settled, else its figure (the one its person's last statement bound it to, else
  * its amount times the rate of its person's grade on its date, both in force on its date, raised to the sheet's floor, or n/a with no rate) with its late
  * charge added on top. A correction has neither floor nor late charge.
@@ -65,7 +76,7 @@ export function gradeOn(grades: PersonGrade[], date: string): string | undefined
 export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], session: Session): string {
   if (claim.settledDue !== null) return claim.settledDue;
   const grade = gradeOn(grades, claim.date);
-  const due = dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date));
+  const due = dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date), roundingOf(claim, session));
   const figure = claim.stated
     ? (claim.statedDue ?? 'n/a')
     : isCorrection(claim) ? due : floored(due, session.floor());
@@ -74,7 +85,7 @@ export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], ses
 
 /**
  * The late percent of the figure for every full 30 days an OPEN claim is past its due-by on the sheet's today,
- * rounded like a due; 0.00 when it is not overdue, and on a correction.
+ * rounded like the claim's due; 0.00 when it is not overdue, and on a correction.
  */
 export function lateCharge(claim: Claim, figure: string, session: Session): string {
   const by = dueBy(claim, session.terms());
@@ -82,7 +93,7 @@ export function lateCharge(claim: Claim, figure: string, session: Session): stri
   const pct = session.latePct();
   if (claim.status !== 'OPEN' || isCorrection(claim) || by === '' || today === null || pct === null) return '0.00';
   const days = Math.round((Date.parse(today) - Date.parse(by)) / 86_400_000);
-  return days > 0 ? percentOf(figure, pct, Math.floor(days / 30)) : '0.00';
+  return days > 0 ? percentOf(figure, pct, Math.floor(days / 30), roundingOf(claim, session)) : '0.00';
 }
 
 /** Whether the claim's due is fixed, by settling or by a statement, rather than worked out from the rates. */
