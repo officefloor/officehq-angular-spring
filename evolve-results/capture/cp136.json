@@ -1,0 +1,74 @@
+{
+  "checkpoint": 136,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp136_bindings-follow",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    107,
+    108,
+    111,
+    128
+  ],
+  "replaced_tests": [
+    "cp107_merge-people.spec.ts::merge people",
+    "cp108_patron-shares.spec.ts::patron shares scenario 1",
+    "cp111_transfer-person.spec.ts::transfer person",
+    "cp128_transfer-merges.spec.ts::transfer merges"
+  ],
+  "request": {
+    "spec": "Claims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims that move with a merge or a transfer now keep the figure a statement bound them to, and\nthe receiving person's statement count becomes their own plus the other's; the receiving person's\nlast statement stays theirs (or, having none, becomes the other's).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "85d8a26b355df0435ceb3ccc1a5dcbf64d3d56ae",
+  "reset_sha": "",
+  "preagent_sha": "3964fae1e6431a4a0bf86f2c3656d7bc0f129793",
+  "prev_sha": "3964fae1e6431a4a0bf86f2c3656d7bc0f129793",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6661279999999998,
+    "input_tokens": 26,
+    "output_tokens": 8496,
+    "cache_read_tokens": 551080,
+    "cache_creation_tokens": 48236,
+    "num_turns": 14,
+    "duration_ms": 300940,
+    "duration_api_ms": 84053,
+    "model": "claude-opus-5-5",
+    "session_id": "c5f385d1-c4bc-4dfa-8bbe-389818050301",
+    "stop_reason": "success",
+    "result_text": "When a person is merged into someone, or transferred to another sheet, their claims now keep the figure a statement bound them to. Their statements move with them as well. All 4 tests in `bin/e2e` pass.\n\n**What happens now:**\n- **Claims:** the merge and transfer code no longer clears a claim's binding as the claim moves (`MergeService`, `TransferService`).\n- **Statement count:** the person's statements now move to the receiving person, on the receiving person's sheet. Before, they were deleted. The receiver's count is their own plus the other's.\n- **Last statement:** the moved statements are placed before the receiver's own, so the receiver's last statement stays theirs. If the receiver had none, the other person's last statement becomes theirs.\n- **Plain transfer:** a transfer where nobody on the other sheet matches the person also keeps their statements and bound figures.\n\n**Stored data:** a new migration, `V76__statement_seq.sql`, adds a `seq` column to `statement` that sets the order of a person's statements. Existing rows get `seq = id`, so their current order doesn't change. Ordering by id alone couldn't put the moved statements before the receiver's. All statement lookups now sort by `seq`, then `id`. A new statement goes after the person's last one. The moving is done by `StatementRepository.follow`.\n\nI updated the descriptions at the top of `MergeService` and `TransferService` to match. The front end needed no changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6661279999999998,
+        "num_turns": 14,
+        "duration_ms": 300940,
+        "duration_api_ms": 84053,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp136.agent.jsonl",
+  "agent_diff_file": "cp136.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
