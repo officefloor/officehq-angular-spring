@@ -38,6 +38,9 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    /** The rounding mode: half-up or half-even; none (null) leaves the policy date to decide. */
+    public static final String ROUNDING = "rounding";
+    public static final List<String> ROUNDING_MODES = List.of("half-up", "half-even");
     /** The prefix of a grade's grace days key (grace-A, grace-B, grace-C). */
     public static final String GRACE = "grace";
 
@@ -397,27 +400,40 @@ public class Sheet {
         return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
     }
 
+    /** The rounding mode (half-up or half-even) in force on the date; empty when there is none then. */
+    public Optional<String> roundingModeOn(LocalDate date) {
+        return valueOn(ROUNDING, date);
+    }
+
     /**
-     * How a claim rounding by {@code date} rounds its live figures: half up when dated before the policy date (the
-     * sheet's today when it has none), half to even on or after it.
+     * How a claim dated {@code date} rounding by {@code roundingDate} rounds its live figures: by the rounding mode in
+     * force on its date when there is one, else half up when the rounding date is before the policy date (the sheet's
+     * today when it has none), half to even on or after it.
      */
-    public RoundingMode rounding(LocalDate date) {
-        return rounding(date, today);
+    public RoundingMode rounding(LocalDate date, LocalDate roundingDate) {
+        return rounding(date, roundingDate, today);
     }
 
-    /** How a claim rounding by {@code date} rounds, with {@code asOf} standing in for the sheet's today. */
-    public RoundingMode rounding(LocalDate date, LocalDate asOf) {
-        return date.isBefore(policyDate != null ? policyDate : asOf) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+    /** How a claim rounds, with {@code asOf} standing in for the sheet's today. */
+    public RoundingMode rounding(LocalDate date, LocalDate roundingDate, LocalDate asOf) {
+        return roundingModeOn(date)
+                .map(mode -> mode.equals("half-up") ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN)
+                .orElseGet(() -> roundingDate.isBefore(policyDate != null ? policyDate : asOf) ? RoundingMode.HALF_UP
+                        : RoundingMode.HALF_EVEN);
     }
 
-    /** The rate step: the amount at the percent, to two decimals rounded as a claim rounding by the date does. */
-    public BigDecimal rateStep(BigDecimal amount, BigDecimal pct, LocalDate roundingDate) {
-        return rateStep(amount, pct, roundingDate, today);
+    /**
+     * The rate step: the amount at the percent, to two decimals rounded as a claim dated {@code date} rounding by the
+     * rounding date does.
+     */
+    public BigDecimal rateStep(BigDecimal amount, BigDecimal pct, LocalDate date, LocalDate roundingDate) {
+        return rateStep(amount, pct, date, roundingDate, today);
     }
 
     /** The rate step with {@code asOf} standing in for the sheet's today. */
-    public BigDecimal rateStep(BigDecimal amount, BigDecimal pct, LocalDate roundingDate, LocalDate asOf) {
-        return amount.multiply(pct).movePointLeft(2).setScale(2, rounding(roundingDate, asOf));
+    public BigDecimal rateStep(BigDecimal amount, BigDecimal pct, LocalDate date, LocalDate roundingDate,
+            LocalDate asOf) {
+        return amount.multiply(pct).movePointLeft(2).setScale(2, rounding(date, roundingDate, asOf));
     }
 
     /**
@@ -440,7 +456,7 @@ public class Sheet {
         BigDecimal charge = BigDecimal.ZERO.setScale(2);
         for (long boundary = 1; boundary <= periods; boundary++) {
             charge = charge.add(figure.add(charge).multiply(latePctOn(dueBy.plusDays(30 * boundary))).movePointLeft(2)
-                    .setScale(2, rounding(date, asOf)));
+                    .setScale(2, rounding(date, date, asOf)));
         }
         return charge;
     }

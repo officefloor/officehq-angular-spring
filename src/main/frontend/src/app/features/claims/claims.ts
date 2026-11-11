@@ -170,10 +170,12 @@ export function gradeOn(grades: PersonGrade[], date: string): string | undefined
 }
 
 /**
- * How the claim's live figures round: half up when its rounding date is before the sheet's policy date (the sheet's
- * today when blank), half to even on or after it.
+ * How the claim's live figures round: by the rounding mode in force on its date when there is one, else half up when
+ * its rounding date is before the sheet's policy date (the sheet's today when blank), half to even on or after it.
  */
 export function roundingOf(claim: Claim, session: Session): Rounding {
+  const mode = session.settingOn('rounding', claim.date);
+  if (mode === 'half-up' || mode === 'half-even') return mode;
   const policy = session.policyDate() || session.today();
   return policy !== null && claim.roundingDate < policy ? 'half-up' : 'half-even';
 }

@@ -317,6 +317,22 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="froms()['note-threshold'] ?? ''"
           (input)="setFrom('note-threshold', value($event))"
         />
+        <label for="setting-rounding">Rounding mode (half-up or half-even; blank: by the policy date)</label>
+        <input
+          id="setting-rounding"
+          data-testid="setting-rounding"
+          [value]="rounding()"
+          (focus)="lastFocused = 'rounding'"
+          (input)="rounding.set(value($event)); roundingEdited = true; settingsError.set(null)"
+        />
+        <label for="setting-rounding-from">From (blank: the sheet's today)</label>
+        <input
+          id="setting-rounding-from"
+          data-testid="setting-rounding-from"
+          type="date"
+          [value]="froms()['rounding'] ?? ''"
+          (input)="setFrom('rounding', value($event))"
+        />
         <fieldset>
           <legend>Permissions (roles that may take each action, comma separated; blank: the standing rule)</legend>
           @for (a of actions; track a) {
@@ -362,6 +378,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <p>Proof threshold for grade {{ g }} in force: <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ session.settingOn('proof-threshold-' + g, session.today()) ?? '' }}</strong></p>
       }
       <p>Note threshold in force: <strong data-testid="setting-note-threshold-current">{{ session.settingOn('note-threshold', session.today()) ?? '' }}</strong></p>
+      <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ session.settingOn('rounding', session.today()) ?? '' }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -487,6 +504,7 @@ export class Settings {
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
   protected readonly noteThreshold = signal('');
+  protected readonly rounding = signal('');
   /** The from-date typed for each dated setting, by key; blank: the sheet's today. */
   protected readonly froms = signal<Record<string, string>>({});
   /** Which settings were typed in since the form was last saved or read: a save sends only those. */
@@ -505,8 +523,9 @@ export class Settings {
   protected capEdited = false;
   protected proofThresholdEdited = false;
   protected noteThresholdEdited = false;
+  protected roundingEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'rounding' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -588,6 +607,7 @@ export class Settings {
       case 'cap': this.capEdited = true; break;
       case 'proof-threshold': this.proofThresholdEdited = true; break;
       case 'note-threshold': this.noteThresholdEdited = true; break;
+      case 'rounding': this.roundingEdited = true; break;
       default:
         if (key.startsWith('proof-threshold-')) this.gradeProofThresholdEdited.add(key.slice('proof-threshold-'.length));
         else if (key.startsWith('grace-')) this.gradeGraceEdited.add(key.slice('grace-'.length));
@@ -604,7 +624,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -622,6 +642,7 @@ export class Settings {
         case 'cap': this.capEdited = true; break;
         case 'proofThreshold': this.proofThresholdEdited = true; break;
         case 'noteThreshold': this.noteThresholdEdited = true; break;
+        case 'rounding': this.roundingEdited = true; break;
         default: if (this.lastFocused) this.permsEdited.add(this.lastFocused.slice('perm-'.length));
       }
     }
@@ -643,6 +664,7 @@ export class Settings {
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
+    const saveRounding = this.roundingEdited;
     const savePerms = ACTIONS.filter((a) => this.permsEdited.has(a));
     const limit = this.clerkLimit().trim();
     const floor = this.floor().trim();
@@ -659,6 +681,7 @@ export class Settings {
     const cap = this.cap().trim();
     const proofThreshold = this.proofThreshold().trim();
     const noteThreshold = this.noteThreshold().trim();
+    const rounding = this.rounding().trim();
     const froms = this.froms();
     const fromOf = (key: string): string | null => (froms[key] ?? '').trim() || null;
     const saving = [
@@ -672,6 +695,7 @@ export class Settings {
       ...(saveProofThreshold ? ['proof-threshold'] : []),
       ...saveGradeProofThreshold.map((g) => 'proof-threshold-' + g),
       ...(saveNoteThreshold ? ['note-threshold'] : []),
+      ...(saveRounding ? ['rounding'] : []),
     ];
     if (saving.some((key) => { const from = fromOf(key); return from !== null && !DATE.test(from); })) {
       this.settingsError.set('Type a from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
@@ -747,6 +771,10 @@ export class Settings {
     }
     if (saveNoteThreshold && noteThreshold !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(noteThreshold)) {
       this.settingsError.set('Type a note threshold of 0.00 or more with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveRounding && rounding !== '' && rounding !== 'half-up' && rounding !== 'half-even') {
+      this.settingsError.set('Type a rounding mode of half-up or half-even, or leave it blank for none.');
       return;
     }
     if (savePerms.some((a) => !PERM.test((this.perms()[a] ?? '').trim()))) {
@@ -885,6 +913,16 @@ export class Settings {
           ),
         );
         this.noteThresholdEdited = false;
+      }
+      if (saveRounding) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(
+            `${url}/rounding`,
+            { rounding: rounding === '' ? null : rounding, from: fromOf('rounding') },
+            this.session.headers(),
+          ),
+        );
+        this.roundingEdited = false;
       }
       for (const a of savePerms) {
         const roles = (this.perms()[a] ?? '').trim();
@@ -1035,6 +1073,7 @@ export class Settings {
     this.cap.set(settings.cap ?? '');
     this.proofThreshold.set(settings.proofThreshold ?? '');
     this.noteThreshold.set(settings.noteThreshold ?? '');
+    this.rounding.set(this.session.settingOn('rounding', this.session.today()) ?? '');
     this.permsCurrent.set(settings.permissions);
     const perms: Record<string, string> = {};
     for (const a of ACTIONS) perms[a] = settings.permissions[a] ?? '';
@@ -1058,5 +1097,6 @@ export class Settings {
     this.capEdited = false;
     this.proofThresholdEdited = false;
     this.noteThresholdEdited = false;
+    this.roundingEdited = false;
   }
 }

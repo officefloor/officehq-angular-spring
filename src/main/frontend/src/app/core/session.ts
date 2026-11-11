@@ -43,7 +43,7 @@ export class Session {
   /** Counts completed sheet loads, so the screen re-reads the sheet's data even for the same id. */
   readonly loaded = signal(0);
   /** Every value recorded of each dated setting of the active sheet (clerk-limit, floor, terms, terms-A, terms-B,
-   *  terms-C, late-pct, cap, proof-threshold, note-threshold), from-date first to last; null until the settings are read. */
+   *  terms-C, late-pct, cap, proof-threshold, note-threshold, rounding), from-date first to last; null until the settings are read. */
   readonly dated = signal<Record<string, DatedValue[]> | null>(null);
   /** The active sheet's floor (two decimals) in force on its today: a live due is at least it; null until the settings are read. */
   readonly floor = computed(() => this.settingOn('floor', this.today()));

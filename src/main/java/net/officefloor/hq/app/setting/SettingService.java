@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, each
+ * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, its rounding mode, each
  * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its fiscal year start month, its pot, its alert threshold, its parent sheet and
  * its permission matrix, not dated.
  */
@@ -150,6 +150,16 @@ public class SettingService {
     public Sheet setNoteThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
         return record(sheetId, user, Sheet.NOTE_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from,
                 false);
+    }
+
+    /**
+     * Set the rounding mode (half-up or half-even) from the date (null: the sheet's today); null means none (a claim
+     * dated then rounds by the policy date). A claim whose date has a mode in force rounds every live figure by it.
+     * Every save is recorded, then the figures it moved.
+     */
+    @Transactional
+    public Sheet setRounding(String sheetId, String user, String mode, LocalDate from) {
+        return record(sheetId, user, Sheet.ROUNDING, mode, from, true);
     }
 
     /**

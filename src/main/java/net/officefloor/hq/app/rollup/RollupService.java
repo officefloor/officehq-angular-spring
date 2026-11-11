@@ -393,7 +393,7 @@ public class RollupService {
                         .map(Rate::getPct)
                         .map(pct -> sheet == null
                                 ? claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN)
-                                : sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()));
+                                : sheet.rateStep(claim.getAmount(), pct, claim.getDate(), claim.getRoundingDate()));
         return sheet == null || claim.isCorrection() ? figure
                 : figure.map(f -> sheet.floored(sheet.withLateCharge(f, claim.getStatus().isOpen(),
                         sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()),

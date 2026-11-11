@@ -36,7 +36,7 @@ public class SettingController {
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
      * separated, null when blank (the standing rule).
      * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
-     * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold), from-date first to last.
+     * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold, rounding), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
@@ -149,6 +149,16 @@ public class SettingController {
         BigDecimal noteThresholdValue() {
             return noteThreshold == null || noteThreshold.isBlank() ? null
                     : new BigDecimal(noteThreshold.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /**
+     * A rounding mode, half-up or half-even, blank or missing meaning none, from the date (missing: the sheet's today).
+     */
+    public record RoundingRequest(@Pattern(regexp = "\\s*(half-up|half-even)?\\s*") String rounding, LocalDate from) {
+
+        String roundingValue() {
+            return rounding == null || rounding.isBlank() ? null : rounding.trim();
         }
     }
 
@@ -356,6 +366,13 @@ public class SettingController {
             @RequestBody @Valid NoteThresholdRequest request) {
         return view(service.setNoteThreshold(sheetId.trim(), user.trim(), request.noteThresholdValue(),
                 request.from()));
+    }
+
+    @PutMapping("/rounding")
+    public SettingsView setRounding(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid RoundingRequest request) {
+        return view(service.setRounding(sheetId.trim(), user.trim(), request.roundingValue(), request.from()));
     }
 
     @PutMapping("/perm/{action}")

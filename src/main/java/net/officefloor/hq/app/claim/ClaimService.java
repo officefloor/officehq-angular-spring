@@ -958,7 +958,7 @@ public class ClaimService {
         Sheet sheet = settings.get(sheetId);
         return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
+                .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getDate(), claim.getRoundingDate()))
                 .orElse(null);
     }
 
