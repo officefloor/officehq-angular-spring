@@ -139,8 +139,9 @@ public class PeriodService {
     }
 
     /**
-     * Close, in order of their to-dates, every open period whose to-date plus the grace days is before the today, as
-     * a close by hand would, each recorded as closed automatically; none when the grace days are off (null).
+     * Close, in order of their to-dates, every open period (neither closed nor soft-closed) whose to-date plus the
+     * grace days is before the today, as a close by hand would, each recorded as closed automatically; none when the
+     * grace days are off (null).
      */
     @Transactional
     public void autoClose(String sheetId, String user, LocalDate today, Integer graceDays) {
@@ -151,7 +152,7 @@ public class PeriodService {
             throw new SheetNotFoundException(sheetId);
         }
         list(sheetId).stream()
-                .filter(p -> !p.isClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
+                .filter(p -> !p.isClosed() && !p.isSoftClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
                 .sorted(Comparator.comparing(Period::getToDate))
                 .forEach(p -> closeNow(sheetId, user, p, true));
     }

@@ -14,6 +14,7 @@ import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.statement.StatementSummary;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -138,6 +139,14 @@ public class PersonController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(statements.take(sheetId.trim(), user.trim(), id), user.trim());
+    }
+
+    /** Cancel the person's last statement (a steward only): the claims it bound are live again. */
+    @DeleteMapping("/{id}/statement")
+    public PersonView cancelStatement(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(statements.cancelLast(sheetId.trim(), user.trim(), id), user.trim());
     }
 
     /** Retire the person from a date. */

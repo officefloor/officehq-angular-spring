@@ -15,6 +15,8 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -34,9 +36,11 @@ public class StatementService {
     private final SheetService sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final RoleService roles;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            RateService rates, SheetService sheets, Audit audit, RollupService rollup) {
+            RateService rates, SheetService sheets, Audit audit, RollupService rollup, RoleService roles) {
+        this.roles = roles;
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -105,6 +109,37 @@ public class StatementService {
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted);
+        rollup.recordChanges(sheetId, user, before);
+        return person;
+    }
+
+    /**
+     * A steward cancels the person's last statement: it is removed, so the statement before it (if any) is the last,
+     * and the claims it bound are live again; a figure an earlier statement bound them to is not restored. Refused
+     * for anyone else, and for a person with no statement.
+     */
+    @Transactional
+    public Person cancelLast(String sheetId, String user, Long personId) {
+        Person person = people.findForUpdate(personId, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new StatementCancelForbiddenException(sheetId, user);
+        }
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        if (theirs.isEmpty()) {
+            throw new NoStatementException(sheetId, personId);
+        }
+        Statement last = theirs.get(theirs.size() - 1);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        List<Claim> bound = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        for (Claim claim : bound) {
+            claim.setStated(false, null);
+        }
+        claims.saveAllAndFlush(bound);
+        statements.delete(last);
+        statements.flush();
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + last.getDueTotal());
         rollup.recordChanges(sheetId, user, before);
         return person;
     }

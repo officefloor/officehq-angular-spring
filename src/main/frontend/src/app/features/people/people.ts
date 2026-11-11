@@ -250,6 +250,14 @@ function csvField(value: string): string {
                 >
                   Statement
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-unstate"
+                  [attr.aria-label]="'Cancel the last statement of ' + p.name"
+                  (click)="unstate(p)"
+                >
+                  Cancel statement
+                </button>
                 <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
                 <input
                   [id]="'person-retire-date-' + p.id"
@@ -833,6 +841,24 @@ export class People {
       }
     } catch {
       this.rowError.set({ id: person.id, message: `A statement of ${person.name} could not be taken.` });
+    }
+  }
+
+  /** Cancel the person's last statement, then re-read so their claims show their live dues again. */
+  protected async unstate(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
+    try {
+      const saved = await firstValueFrom(this.http.delete<Person>(url, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `The last statement of ${person.name} could not be cancelled.` });
     }
   }
 
