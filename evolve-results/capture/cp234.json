@@ -1,0 +1,64 @@
+{
+  "checkpoint": 234,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp234_tree-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d5844e20a14086ebeb7a9da76de6e5040a187edf",
+  "reset_sha": "",
+  "preagent_sha": "6ddf6ad27eaa691834fb7bea5e9fb9139f5f7ff3",
+  "prev_sha": "6ddf6ad27eaa691834fb7bea5e9fb9139f5f7ff3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5197784,
+    "input_tokens": 30,
+    "output_tokens": 5052,
+    "cache_read_tokens": 495212,
+    "cache_creation_tokens": 39947,
+    "num_turns": 15,
+    "duration_ms": 302871,
+    "duration_api_ms": 55005,
+    "model": "claude-opus-5-5",
+    "session_id": "0011a195-fffa-46af-9aed-08d1b0ce9c82",
+    "stop_reason": "success",
+    "result_text": "I added an \"Export the tree's people (CSV)\" button (`data-testid=\"export-tree\"`), and `bin/e2e` passes all 4 acceptance tests.\n\n**How it works:** the button is in the tree search section, in `src/main/frontend/src/app/features/search/tree-search.ts`. It calls the existing tree search endpoint (`/api/search/tree/list`) with empty search text, which returns every person in the tree. The file starts with `sheet,name,grade,due-total`, then lists the loaded sheet's people first and the other sheets after them, by sheet id. Grade and due-total are taken as each person's own sheet shows them, and due-total is `n/a` when there isn't one. Values containing commas or quotes are escaped the same way as in the other CSV exports.\n\n**Things to know:**\n- **No server change.** I reused the search endpoint as it is.\n- **Order within a sheet:** people come out in the server's stored order (`OrderByPositionAscIdAsc`), not the people list's \"Sort by\" choice. That matches the default view the test uses. If someone has re-sorted the list on screen, the file won't follow their sort.\n- **Extra error element:** if reading the tree fails, an error appears under the button (`data-testid=\"export-tree-error\"`). The test doesn't use it.\n- **No audit record:** the export only reads data.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5197784,
+        "num_turns": 15,
+        "duration_ms": 302871,
+        "duration_api_ms": 55005,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp234.agent.jsonl",
+  "agent_diff_file": "cp234.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
