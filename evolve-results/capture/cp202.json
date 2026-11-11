@@ -1,0 +1,64 @@
+{
+  "checkpoint": 202,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp202_snapshot-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Two snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTwo snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2a3eeedf217c6ceecd5dba384c5dde4e9911d3c7",
+  "reset_sha": "",
+  "preagent_sha": "f76c6457a12268c341d7322add421b4b1535a012",
+  "prev_sha": "f76c6457a12268c341d7322add421b4b1535a012",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6479946,
+    "input_tokens": 4,
+    "output_tokens": 90,
+    "cache_read_tokens": 53401,
+    "cache_creation_tokens": 1017,
+    "num_turns": 1,
+    "duration_ms": 1911,
+    "duration_api_ms": 75659,
+    "model": "claude-opus-5-5",
+    "session_id": "40e898f1-92ee-466d-bdd5-0055d2fe6f04",
+    "stop_reason": "success",
+    "result_text": "That notice is only my leftover wait-for-the-test loop, which I stopped on purpose; it wasn't a test failure. The last `bin/e2e` run passed all 4 tests, and the change is finished.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6479946,
+        "num_turns": 1,
+        "duration_ms": 1911,
+        "duration_api_ms": 75659,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp202.agent.jsonl",
+  "agent_diff_file": "cp202.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
