@@ -119,6 +119,16 @@ public class SettingService {
     }
 
     /**
+     * Set the note threshold from the date (null: the sheet's today): a claim dated from then whose due is above it
+     * cannot be opened with an empty note; a null threshold means none. Every save is recorded, even of the same value.
+     */
+    @Transactional
+    public Sheet setNoteThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        return record(sheetId, user, Sheet.NOTE_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from,
+                false);
+    }
+
+    /**
      * Record a dated setting's value from the date (null: the sheet's today), replacing one recorded from that date,
      * then the SETTING_CHANGED record (with the from-date when one was given) and, when the setting moves figures,
      * the figures it moved.

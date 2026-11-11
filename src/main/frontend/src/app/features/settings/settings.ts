@@ -24,6 +24,8 @@ interface SettingsView {
   graceDays: number | null;
   /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
   proofThreshold: string | null;
+  /** The due above which a claim cannot be opened with an empty note, two decimals; null when there is none. */
+  noteThreshold: string | null;
   /** The permission matrix, by action: the roles that may take it, comma separated; null: the standing rule. */
   permissions: Record<string, string | null>;
   /** Every value recorded of each dated setting, by key, from-date first to last. */
@@ -54,7 +56,7 @@ const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
 /** A date typed as yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, its late percent, its cap and its proof threshold; not dated: its policy date, its period numbering from, its grace days and its permission matrix) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, its late percent, its cap, its proof threshold and its note threshold; not dated: its policy date, its period numbering from, its grace days and its permission matrix) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -208,6 +210,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="froms()['proof-threshold'] ?? ''"
           (input)="setFrom('proof-threshold', value($event))"
         />
+        <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to open; blank: none)</label>
+        <input
+          id="setting-note-threshold"
+          data-testid="setting-note-threshold"
+          inputmode="decimal"
+          [value]="noteThreshold()"
+          (focus)="lastFocused = 'noteThreshold'"
+          (input)="noteThreshold.set(value($event)); noteThresholdEdited = true; settingsError.set(null)"
+        />
+        <label for="setting-note-threshold-from">From (blank: the sheet's today)</label>
+        <input
+          id="setting-note-threshold-from"
+          data-testid="setting-note-threshold-from"
+          type="date"
+          [value]="froms()['note-threshold'] ?? ''"
+          (input)="setFrom('note-threshold', value($event))"
+        />
         <fieldset>
           <legend>Permissions (roles that may take each action, comma separated; blank: the standing rule)</legend>
           @for (a of actions; track a) {
@@ -241,6 +260,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' }}</strong></p>
       }
       <p>Proof threshold in force: <strong data-testid="setting-proof-threshold-current">{{ session.settingOn('proof-threshold', session.today()) ?? '' }}</strong></p>
+      <p>Note threshold in force: <strong data-testid="setting-note-threshold-current">{{ session.settingOn('note-threshold', session.today()) ?? '' }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -350,6 +370,7 @@ export class Settings {
   protected readonly graceDaysCurrent = signal<string | null>(null);
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
+  protected readonly noteThreshold = signal('');
   /** The from-date typed for each dated setting, by key; blank: the sheet's today. */
   protected readonly froms = signal<Record<string, string>>({});
   /** Which settings were typed in since the form was last saved or read: a save sends only those. */
@@ -362,8 +383,9 @@ export class Settings {
   protected graceDaysEdited = false;
   protected capEdited = false;
   protected proofThresholdEdited = false;
+  protected noteThresholdEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'graceDays' | 'cap' | 'proofThreshold' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'graceDays' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -429,6 +451,7 @@ export class Settings {
       case 'late-pct': this.latePctEdited = true; break;
       case 'cap': this.capEdited = true; break;
       case 'proof-threshold': this.proofThresholdEdited = true; break;
+      case 'note-threshold': this.noteThresholdEdited = true; break;
       default: this.gradeTermsEdited.add(key.slice('terms-'.length));
     }
     this.settingsError.set(null);
@@ -442,7 +465,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.graceDaysEdited && !this.capEdited && !this.proofThresholdEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.graceDaysEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -454,6 +477,7 @@ export class Settings {
         case 'graceDays': this.graceDaysEdited = true; break;
         case 'cap': this.capEdited = true; break;
         case 'proofThreshold': this.proofThresholdEdited = true; break;
+        case 'noteThreshold': this.noteThresholdEdited = true; break;
         default: if (this.lastFocused) this.permsEdited.add(this.lastFocused.slice('perm-'.length));
       }
     }
@@ -467,6 +491,7 @@ export class Settings {
     const saveGraceDays = this.graceDaysEdited;
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
+    const saveNoteThreshold = this.noteThresholdEdited;
     const savePerms = ACTIONS.filter((a) => this.permsEdited.has(a));
     const limit = this.clerkLimit().trim();
     const floor = this.floor().trim();
@@ -477,6 +502,7 @@ export class Settings {
     const graceDays = this.graceDays().trim();
     const cap = this.cap().trim();
     const proofThreshold = this.proofThreshold().trim();
+    const noteThreshold = this.noteThreshold().trim();
     const froms = this.froms();
     const fromOf = (key: string): string | null => (froms[key] ?? '').trim() || null;
     const saving = [
@@ -487,6 +513,7 @@ export class Settings {
       ...(saveLatePct ? ['late-pct'] : []),
       ...(saveCap ? ['cap'] : []),
       ...(saveProofThreshold ? ['proof-threshold'] : []),
+      ...(saveNoteThreshold ? ['note-threshold'] : []),
     ];
     if (saving.some((key) => { const from = fromOf(key); return from !== null && !DATE.test(from); })) {
       this.settingsError.set('Type a from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
@@ -530,6 +557,10 @@ export class Settings {
     }
     if (saveProofThreshold && proofThreshold !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(proofThreshold)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveNoteThreshold && noteThreshold !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(noteThreshold)) {
+      this.settingsError.set('Type a note threshold of 0.00 or more with at most two decimals, or leave it blank for none.');
       return;
     }
     if (savePerms.some((a) => !PERM.test((this.perms()[a] ?? '').trim()))) {
@@ -606,6 +637,16 @@ export class Settings {
           ),
         );
         this.proofThresholdEdited = false;
+      }
+      if (saveNoteThreshold) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(
+            `${url}/note-threshold`,
+            { noteThreshold: noteThreshold === '' ? null : noteThreshold, from: fromOf('note-threshold') },
+            this.session.headers(),
+          ),
+        );
+        this.noteThresholdEdited = false;
       }
       for (const a of savePerms) {
         const roles = (this.perms()[a] ?? '').trim();
@@ -735,6 +776,7 @@ export class Settings {
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.cap.set(settings.cap ?? '');
     this.proofThreshold.set(settings.proofThreshold ?? '');
+    this.noteThreshold.set(settings.noteThreshold ?? '');
     this.permsCurrent.set(settings.permissions);
     const perms: Record<string, string> = {};
     for (const a of ACTIONS) perms[a] = settings.permissions[a] ?? '';
@@ -750,5 +792,6 @@ export class Settings {
     this.graceDaysEdited = false;
     this.capEdited = false;
     this.proofThresholdEdited = false;
+    this.noteThresholdEdited = false;
   }
 }

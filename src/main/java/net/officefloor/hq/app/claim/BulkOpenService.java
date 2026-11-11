@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 /**
  * Opens a selection of claims together, in list order: the people in the order they were added, each person's claims
  * newest first. Each claim is opened on its own, as its Open button would, so each gets the next number; one that
- * cannot be opened (not a DRAFT, dated in a closed period, or gone) is left as it is and counted as refused.
+ * cannot be opened (not a DRAFT, dated in a closed period, above the note threshold with an empty note, or gone) is left as it is and counted as refused.
  */
 @Service
 public class BulkOpenService {
@@ -64,7 +64,8 @@ public class BulkOpenService {
             try {
                 service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN);
                 opened++;
-            } catch (ClaimStatusException | ClaimActionForbiddenException | PeriodClosedException | ClaimNotFoundException
+            } catch (ClaimStatusException | ClaimActionForbiddenException | ClaimNoteException | PeriodClosedException
+                    | ClaimNotFoundException
                     | PersonNotFoundException refused) {
                 // Left as it is.
             }

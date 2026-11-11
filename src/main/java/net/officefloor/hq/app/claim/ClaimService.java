@@ -28,7 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
  * period cannot be added, edited, deferred or change status. Only a DRAFT claim can be edited; a PENDING claim, waiting for a
  * steward to approve or reject it, is otherwise handled like an OPEN one. No claim
  * can be dated after the retirement date of its person. A claim whose due is above the proof threshold on its date
- * cannot be settled or approved without a proof. A claim with a negative amount is a correction: it must name,
+ * cannot be settled or approved without a proof; one whose due is above the note threshold on its date cannot be
+ * opened with an empty note. A claim with a negative amount is a correction: it must name,
  * by number, a SETTLED claim of the same person that it corrects, and its due has no floor and no late charge.
  */
 @Service
@@ -213,6 +214,9 @@ public class ClaimService {
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
         if (status == ClaimStatus.SETTLED) {
             requireProof(sheetId, person, claim);
+        }
+        if (status == ClaimStatus.OPEN) {
+            requireNote(sheetId, person, claim);
         }
         // A clerk settles only a claim whose due (the one its statement bound it to, else worked out from the rate)
         // is at or below the clerk limit; one above it goes to PENDING. A due of n/a is within any limit.
@@ -513,6 +517,22 @@ public class ClaimService {
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ClaimProofException(claim.getId(), "its due " + due.toPlainString()
                     + " is above the proof threshold " + threshold.toPlainString() + " and it has no proof");
+        }
+    }
+
+    /**
+     * A claim whose due is above the note threshold in force on its date cannot be opened while its note is empty;
+     * refused then. A due of n/a is within any threshold.
+     */
+    private void requireNote(String sheetId, Person person, Claim claim) {
+        BigDecimal threshold = settings.get(sheetId).noteThresholdOn(claim.getDate());
+        if (threshold == null || !noteOf(claim.getNote()).isEmpty()) {
+            return;
+        }
+        BigDecimal due = liveDue(sheetId, claim, figureOf(sheetId, person, claim));
+        if (due != null && due.compareTo(threshold) > 0) {
+            throw new ClaimNoteException(claim.getId(), "its due " + due.toPlainString()
+                    + " is above the note threshold " + threshold.toPlainString() + " and its note is empty");
         }
     }
 

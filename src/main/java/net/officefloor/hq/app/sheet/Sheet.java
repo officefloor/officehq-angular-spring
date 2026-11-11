@@ -37,6 +37,7 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    public static final String NOTE_THRESHOLD = "note-threshold";
 
     /** The actions the permission matrix decides, each with the roles that may take it when its entry is blank. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of("open", "clerk,steward", "settle",
@@ -172,6 +173,14 @@ public class Sheet {
      */
     public BigDecimal proofThresholdOn(LocalDate date) {
         return decimalOn(PROOF_THRESHOLD, date).orElse(null);
+    }
+
+    /**
+     * The due above which a claim dated on the date cannot be opened with an empty note; null when there is no
+     * threshold then.
+     */
+    public BigDecimal noteThresholdOn(LocalDate date) {
+        return decimalOn(NOTE_THRESHOLD, date).orElse(null);
     }
 
     /** The days after its date a claim dated on the date of a grade without its own terms then is due by. */
