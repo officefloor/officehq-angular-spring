@@ -137,10 +137,15 @@ public class SheetService {
         return sheets.findById(id).map(s -> s.clerkLimitFor(grade)).orElse(null);
     }
 
-    /** A person's due-total held to the sheet's cap in force on its today (none: as it is; n/a stays n/a). */
+    /**
+     * A person's due-total held to the sheet's cap in force on its today less their cut total as the
+     * pools stand now (none: as it is; n/a stays n/a).
+     */
     @Transactional(readOnly = true)
-    public BigDecimal capped(String id, BigDecimal dueTotal) {
-        return sheets.findById(id).map(s -> s.capped(dueTotal)).orElse(dueTotal);
+    public BigDecimal capped(String id, long personId, BigDecimal dueTotal) {
+        return sheets.findById(id)
+                .map(s -> s.capped(dueTotal, s.getCap() == null ? null : pools.getObject().cutTotalsNow(id).get(personId)))
+                .orElse(dueTotal);
     }
 
     /** Refuse (423) any change to an archived sheet: it stays visible and may not be changed. */

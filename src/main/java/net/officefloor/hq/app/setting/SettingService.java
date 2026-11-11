@@ -26,8 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
  * the sheet's today) decides how a claim's live figures round (see {@link Rounding}), so changing it
  * records the figures that move too. Its period-numbering-from date (none: off) decides how a claim
  * settled is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
- * Its cap (none: no cap) is the most a person's due-total can be, so changing it records the
- * figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
+ * Its cap (none: no cap) is the most a person's due-total plus their cut total can be, so changing it,
+ * or the pot that the cuts come from, records the figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
  * when it is created, so changing any terms moves no claim's due-by. A grade may have grace days (none: no grace): a
  * claim whose person's grade on its date has grace days on that date is overdue only once its due-by plus them is
  * before the sheet's today, and its late charge counts its 30-day boundaries from there (see
@@ -261,9 +261,12 @@ public class SettingService {
             audit.recordOnCommit(changed(sheetId, user, ENTRY_DATE, entryDate == null ? "" : entryDate.toString()));
         }
         if (changePot) {
+            // the pot moves the cuts, and so the due-totals held to the cap
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
             sheet.setPot(pot == null ? null : pot.setScale(2));
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, POT, text(sheet.getPot())));
+            rollup.recordChanges(sheetId, user, before);
         }
         if (changeParent) {
             RollupService.Snapshot before = rollup.snapshot(sheetId);

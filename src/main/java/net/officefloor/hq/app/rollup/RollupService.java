@@ -32,6 +32,8 @@ import net.officefloor.hq.app.sheet.AsOfFilter;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetHistory;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.pool.PoolService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -43,7 +45,7 @@ import org.springframework.stereotype.Service;
  * of any figure. A person whose retirement date the sheet's today has reached: their OPEN and PENDING claims count in
  * none of the figures, nor in a period's due-total; their SETTLED claims count in all. An overdue claim's figure has
  * its late charge added on top, and a live due is then never below the floor in force on its claim's date. A person's
- * due-total is at most the cap in force on the sheet's today, when there is one. With an alert threshold
+ * due-total is at most the cap in force on the sheet's today less their cut total (not below 0.00), when there is one. With an alert threshold
  * set, the rollup lines are followed by one ALERT line per person (in list order) whose due-total went
  * from at or below it (or none) to above it.
  */
@@ -172,9 +174,12 @@ public class RollupService {
     private final SheetHistory history;
     private final EntityManager entities;
     private final Audit audit;
+    private final ObjectProvider<PoolService> pools;
 
     public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates, SheetRepository sheets,
-            PeriodRepository periods, SheetHistory history, EntityManager entities, Audit audit) {
+            PeriodRepository periods, SheetHistory history, EntityManager entities, Audit audit,
+            ObjectProvider<PoolService> pools) {
+        this.pools = pools;
         this.periods = periods;
         this.history = history;
         this.entities = entities;
@@ -199,6 +204,7 @@ public class RollupService {
         Map<Long, Figures> figures = new LinkedHashMap<>();
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, BigDecimal> heldParts = heldParts(sheet, sheetRates, sheetClaims, sheetPeople);
+        Map<Long, BigDecimal> cutTotals = sheet.getCap() == null ? Map.of() : pools.getObject().cutTotalsNow(sheetId);
         for (Person person : sheetPeople) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
@@ -231,7 +237,7 @@ public class RollupService {
             // as on screen: n/a when the grade in force today has no rate today and no claim that
             // counts has a figure
             boolean none = inForce(sheetRates, person.gradeOn(today), today).isEmpty() && !anyFigure;
-            figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due),
+            figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due, cutTotals.get(person.getId())),
                     overdue, person.gradeOn(today), person.isRetired()));
         }
         return new Snapshot(figures);

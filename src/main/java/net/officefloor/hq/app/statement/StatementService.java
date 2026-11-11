@@ -156,7 +156,7 @@ public class StatementService {
             }
         }
         // as on screen: n/a when the grade has no rate today and no claim that counts has a figure
-        BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, total) : null;
+        BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, person.getId(), total) : null;
         return new Tally(dueTotal, counted);
     }
 
@@ -211,7 +211,7 @@ public class StatementService {
         }
         // as on screen: n/a when the grade then has no rate then and no claim that counted has a figure
         boolean none = !anyFigure && RateChain.inForce(ratesThen, person.gradeOn(day, day), day).isEmpty();
-        return new Tally(none ? null : then.capped(total), counted);
+        return new Tally(none ? null : then.capped(total, null), counted);
     }
 
     /**

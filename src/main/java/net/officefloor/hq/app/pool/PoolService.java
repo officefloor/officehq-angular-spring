@@ -215,6 +215,23 @@ public class PoolService {
         return cutsOf(current(sheetId));
     }
 
+    /**
+     * Each person's cut total as the pools stand now, by person id: their cuts across every pool
+     * (crews' included) they are a member of; a person with no cut is left out. Read within the
+     * caller's transaction.
+     */
+    public Map<Long, BigDecimal> cutTotalsNow(String sheetId) {
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        for (PoolView pool : current(sheetId)) {
+            for (MemberView m : pool.members()) {
+                if (m.pool() == null && !m.cut().isEmpty()) {
+                    totals.merge(m.personId(), new BigDecimal(m.cut()), BigDecimal::add);
+                }
+            }
+        }
+        return totals;
+    }
+
     private static Map<String, String> cutsOf(List<PoolView> pools) {
         Map<String, String> cuts = new HashMap<>();
         for (PoolView pool : pools) {

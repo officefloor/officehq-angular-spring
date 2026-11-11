@@ -331,15 +331,25 @@ public class Sheet {
         return name == null ? null : BigDecimal.valueOf(ROUNDING_MODES.indexOf(name) + 1).setScale(2);
     }
 
-    /** The cap in force on the sheet's today: the most a person's due-total can be; null for no cap. */
+    /**
+     * The cap in force on the sheet's today: the most a person's due-total plus their cut total can
+     * be; null for no cap.
+     */
     public BigDecimal getCap() {
         return inForce(CAP, today).map(DatedSetting::getValue).orElse(null);
     }
 
-    /** A person's due-total held to the cap in force on the sheet's today (n/a stays n/a). */
-    public BigDecimal capped(BigDecimal dueTotal) {
+    /**
+     * A person's due-total held to the cap in force on the sheet's today less their cut total (not
+     * below 0.00; n/a stays n/a).
+     */
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
         BigDecimal cap = getCap();
-        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+        if (dueTotal == null || cap == null) {
+            return dueTotal;
+        }
+        BigDecimal room = cap.subtract(cutTotal == null ? BigDecimal.ZERO : cutTotal).max(BigDecimal.ZERO.setScale(2));
+        return dueTotal.min(room);
     }
 
     /** The proof threshold in force on the sheet's today; null for none. */

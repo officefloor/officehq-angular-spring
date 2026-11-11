@@ -103,8 +103,8 @@ import { FigurePipe } from '../../core/figure';
 // The export-claims button downloads every claim as a CSV file the same way: people in list order,
 // retired included, each person's claims oldest first, with person, number, date, amount, due,
 // status and period as the claim's row shows them (an empty number or period, or n/a, as it is).
-// The sheet may have a cap (the one in force on its today): a person's due-total is at most it, and their excess is how far the
-// sum of their figures is above it (0.00 otherwise; a due-total of n/a is not capped). Every total
+// The sheet may have a cap (the one in force on its today): a person's due-total is at most it less their cut total (not below
+// 0.00), and their excess is how far the sum of their figures is above that (0.00 otherwise; a due-total of n/a is not capped). Every total
 // of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
 // People can be ticked and given a grade together from a from-date (the sheet's today when blank):
 // each, in list order, is edited as the person form would, all or none; the count shows how many.
@@ -1872,11 +1872,11 @@ export class People {
     );
   }
 
-  /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */
+  /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap less their cut total. */
   protected dueOf(p: Person): number | null {
     const sum = this.figuresOf(p);
-    const cap = this.capCents();
-    return sum === null || cap === null ? sum : Math.min(sum, cap);
+    const room = this.roomOf(p);
+    return sum === null || room === null ? sum : Math.min(sum, room);
   }
 
   /** The person's cut total, in whole cents: 0 when no pool shows them a cut. */
@@ -1884,11 +1884,17 @@ export class People {
     return this.cutTotals().get(id) ?? 0;
   }
 
-  /** How far the sum of the person's figures is above the cap, in whole cents; 0 otherwise. */
+  /** How far the sum of the person's figures is above the cap less their cut total, in whole cents; 0 otherwise. */
   protected excessOf(p: Person): number {
     const sum = this.figuresOf(p);
+    const room = this.roomOf(p);
+    return sum === null || room === null ? 0 : Math.max(sum - room, 0);
+  }
+
+  /** The sheet's cap less the person's cut total (not below 0), in whole cents; null for no cap. */
+  private roomOf(p: Person): number | null {
     const cap = this.capCents();
-    return sum === null || cap === null ? 0 : Math.max(sum - cap, 0);
+    return cap === null ? null : Math.max(cap - this.cutTotalOf(p.id), 0);
   }
 
   /**
