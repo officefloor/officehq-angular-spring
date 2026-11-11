@@ -1,0 +1,369 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 846a38a42..8e9f612f6 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -16,6 +16,7 @@ interface SheetView {
+   today: string;
+   archived: boolean;
+   viewer: boolean;
++  lastSettleBatch: number | null;
+ }
+ 
+ // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
+@@ -32,6 +33,8 @@ export class Session {
+   readonly archived = signal(false);
+   /** Whether the signed-in user is a viewer of the active sheet, as of its last load: they may change nothing. */
+   readonly viewer = signal(false);
++  /** The number of the active sheet's last bulk settle batch; null while there has been none. */
++  readonly lastSettleBatch = signal<number | null>(null);
+   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
+   readonly showRetired = signal(false);
+   /** The date this screen shows the sheet as of (yyyy-mm-dd): it stands in for the sheet's today and every change is
+@@ -150,5 +153,6 @@ export class Session {
+     this.today.set(view.today);
+     this.archived.set(view.archived);
+     this.viewer.set(view.viewer);
++    this.lastSettleBatch.set(view.lastSettleBatch);
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2467ac322..0cc7fb7fa 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -55,6 +55,8 @@ export interface Claim {
+   voidReason: string | null;
+   /** Its comments, oldest first. */
+   comments: ClaimComment[];
++  /** The number of the bulk settle that settled it (or sent it to PENDING); null when settled one at a time, or not settled. */
++  settleBatch: number | null;
+ }
+ 
+ /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+@@ -290,7 +292,7 @@ export function sumAmounts(amounts: string[]): string {
+         <thead>
+           <tr>
+             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
+-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th>
++            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -314,6 +316,7 @@ export function sumAmounts(amounts: string[]): string {
+               <td data-testid="claim-due-by">{{ c.dueBy }}</td>
+               <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</td>
+               <td data-testid="claim-status">{{ c.status }}</td>
++              <td data-testid="claim-batch">{{ c.settleBatch ?? '' }}</td>
+               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
+               <td data-testid="claim-period">{{ periodOf(c) }}</td>
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b1444a624..c6d969e3b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -403,6 +403,7 @@ function csvField(value: string): string {
+       }
+       <p>
+         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
++        Last batch <strong data-testid="bulk-settle-batch">{{ session.lastSettleBatch() ?? '' }}</strong>
+         @if (bulkSettleResult(); as r) {
+           Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
+           refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
+@@ -1068,7 +1069,7 @@ export class People {
+     const ids = [...this.selectedClaims()];
+     try {
+       const result = await firstValueFrom(
+-        this.http.post<{ settled: number; refused: number }>(
++        this.http.post<{ settled: number; refused: number; batch: number | null }>(
+           `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-settle`,
+           { ids },
+           this.session.headers(),
+@@ -1077,6 +1078,7 @@ export class People {
+       if (this.session.sheet() !== sheet) return;
+       this.selectedClaims.set(new Set());
+       this.bulkSettleResult.set(result);
++      this.session.lastSettleBatch.set(result.batch);
+       await this.read(sheet);
+     } catch {
+       if (this.session.sheet() === sheet) this.bulkSettleError.set('The selected claims could not be settled.');
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+index 6418986cb..94bac6819 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+@@ -7,6 +7,7 @@ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.function.LongSupplier;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+@@ -25,8 +26,8 @@ import org.springframework.stereotype.Service;
+ @Service
+ public class BulkSettleService {
+ 
+-    /** How many of the selected claims were settled and how many refused. */
+-    public record Result(int settled, int refused) {
++    /** How many of the selected claims were settled and how many refused, and the sheet's last batch number after (null while none). */
++    public record Result(int settled, int refused, Long batch) {
+     }
+ 
+     private final ClaimRepository claims;
+@@ -49,7 +50,7 @@ public class BulkSettleService {
+         Set<Long> selected = new HashSet<>(ids);
+         if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+             // A viewer, or anyone on an archived sheet, changes nothing: every selected claim is refused.
+-            return new Result(0, selected.size());
++            return new Result(0, selected.size(), lastBatch(sheetId));
+         }
+         Map<Long, Integer> personOrder = new HashMap<>();
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+@@ -62,17 +63,28 @@ public class BulkSettleService {
+         ordered.sort((a, b) -> Integer.compare(personOrder.getOrDefault(a.getPersonId(), Integer.MAX_VALUE),
+                 personOrder.getOrDefault(b.getPersonId(), Integer.MAX_VALUE)));
+         int settled = 0;
++        // The batch takes its number with the first claim it settles, so a bulk settle that settles none is no batch.
++        long[] batch = {0};
++        LongSupplier number = () -> batch[0] == 0 ? batch[0] = sheets.nextSettleBatch(sheetId) : batch[0];
+         for (Claim claim : ordered) {
+             try {
+-                service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED);
++                service.settleInBatch(sheetId, user, claim.getId(), number);
+                 settled++;
+             } catch (ClaimStatusException | ClaimActionForbiddenException | ClaimDeferException | ClaimSettledByOpenerException | ClaimProofException
+                     | PeriodClosedException
+                     | ClaimNotFoundException | PersonNotFoundException refused) {
+-                // Left as it is.
++                // Left as it is; had it taken the batch's number, that rolled back with it.
++                if (settled == 0) {
++                    batch[0] = 0;
++                }
+             }
+         }
+         // A selected id not on the sheet is refused too.
+-        return new Result(settled, selected.size() - settled);
++        return new Result(settled, selected.size() - settled, lastBatch(sheetId));
++    }
++
++    private Long lastBatch(String sheetId) {
++        long last = sheets.lastSettleBatch(sheetId);
++        return last == 0 ? null : last;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 70b910c79..0bb871d12 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -119,6 +119,10 @@ public class Claim {
+     @Column(name = "void_reason")
+     private String voidReason;
+ 
++    /** The number of the bulk settle that settled the claim (or sent it to PENDING); null when settled one at a time, or not settled. */
++    @Column(name = "settle_batch")
++    private Long settleBatch;
++
+     protected Claim() {
+     }
+ 
+@@ -364,6 +368,14 @@ public class Claim {
+         this.voidReason = voidReason;
+     }
+ 
++    public Long getSettleBatch() {
++        return settleBatch;
++    }
++
++    public void setSettleBatch(Long settleBatch) {
++        this.settleBatch = settleBatch;
++    }
++
+     /** Whether a user other than this one has the claim's editor open. */
+     public boolean isLockedAgainst(String user) {
+         return lockedBy != null && !lockedBy.equals(user);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 0aec67e2e..497e72b8d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -38,13 +38,13 @@ public class ClaimController {
+      * it has; and the number of the claim it was split off (null unless it was); and the user whose open editor locks
+      * it (null when not locked); and the last day it was reminded (null when never); and its external reference (null
+      * when it has none); and its tags, sorted and comma separated (null when it has none); and the reason it was voided
+-     * with (null when none); and its comments, oldest first.
++     * with (null when none); and its comments, oldest first; and the bulk settle batch that settled it (null when none).
+      */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
+             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
+-            String tags, String voidReason, List<ClaimCommentView> comments) {
++            String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch) {
+ 
+         /** A claim with no comments yet. */
+         static ClaimView of(Claim claim, List<ClaimLog> log) {
+@@ -63,7 +63,7 @@ public class ClaimController {
+                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
+                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
+                     claim.getTags(), claim.getVoidReason(),
+-                    comments.stream().map(ClaimCommentView::of).toList());
++                    comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 856ba3f82..f204212e9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -6,6 +6,7 @@ import java.time.LocalDate;
+ import java.util.Arrays;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.function.LongSupplier;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+@@ -277,6 +278,20 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason) {
++        return changeStatus(sheetId, user, id, status, voidReason, null);
++    }
++
++    /**
++     * Settle a claim as part of a bulk settle, as {@link #changeStatus(String, String, Long, ClaimStatus)}: once it is
++     * SETTLED or PENDING it carries the batch number the supplier gives, asked for only then, within the same change.
++     */
++    @Transactional
++    public Claim settleInBatch(String sheetId, String user, Long id, LongSupplier batch) {
++        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, batch);
++    }
++
++    private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason,
++            LongSupplier batch) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+         boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+@@ -333,6 +348,10 @@ public class ClaimService {
+         if (status == ClaimStatus.VOID) {
+             claim.setVoidReason(reason);
+         }
++        // Settled one at a time, a claim carries no batch; settled by a bulk settle, it carries that batch's number.
++        if (status == ClaimStatus.SETTLED || status == ClaimStatus.PENDING) {
++            claim.setSettleBatch(batch == null ? null : batch.getAsLong());
++        }
+         // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
+         String number = claim.getNumber();
+         if (status == ClaimStatus.OPEN) {
+@@ -415,6 +434,8 @@ public class ClaimService {
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         claim.setStatus(ClaimStatus.OPEN);
++        // Back to OPEN, it is no longer settled by the batch that sent it to PENDING.
++        claim.setSettleBatch(null);
+         Claim saved = claims.saveAndFlush(claim);
+         log(sheetId, user, person, saved);
+         audit.recordOnCommit(record("CLAIM_REJECTED", user, person, saved) + numberOf(saved.getNumber())
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 4382ca306..54edbb54c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -95,6 +95,10 @@ public class Sheet {
+     @Column(name = "archived", nullable = false)
+     private boolean archived;
+ 
++    /** The number of the sheet's last bulk settle batch: 0 while there has been none. Moved on only through the repository. */
++    @Column(name = "last_settle_batch", nullable = false, insertable = false, updatable = false)
++    private long lastSettleBatch;
++
+     protected Sheet() {
+     }
+ 
+@@ -112,6 +116,10 @@ public class Sheet {
+         return createdBy;
+     }
+ 
++    public long getLastSettleBatch() {
++        return lastSettleBatch;
++    }
++
+     public LocalDate getToday() {
+         return today;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 688ba4c66..585100ca8 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -20,11 +20,15 @@ import org.springframework.web.bind.annotation.RestController;
+ @Validated
+ public class SheetController {
+ 
+-    /** The sheet as shown to the user: its today, whether it is archived, and whether the user is a viewer of it. */
+-    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer) {
++    /**
++     * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, and the
++     * number of its last bulk settle batch (null while there has been none).
++     */
++    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch) {
+ 
+         static SheetView of(Sheet sheet, boolean viewer) {
+-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer);
++            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer,
++                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index cde3e1503..ef94eb64f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -20,6 +20,14 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Query(value = "SELECT last_listed FROM sheet WHERE id = :id", nativeQuery = true)
+     long lastListed(@Param("id") String id);
+ 
++    /** Moves the sheet's last settle batch on by one; the row stays locked until the transaction ends. */
++    @Modifying
++    @Query(value = "UPDATE sheet SET last_settle_batch = last_settle_batch + 1 WHERE id = :id", nativeQuery = true)
++    int incrementLastSettleBatch(@Param("id") String id);
++
++    @Query(value = "SELECT last_settle_batch FROM sheet WHERE id = :id", nativeQuery = true)
++    long lastSettleBatch(@Param("id") String id);
++
+     /** Locks the sheet's row until the transaction ends; 0 when the sheet does not exist. */
+     @Modifying
+     @Query(value = "UPDATE sheet SET id = id WHERE id = :id", nativeQuery = true)
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 22a780c98..4a11ade42 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -116,6 +116,23 @@ public class SheetService {
+         return sheets.lastClaimNumber(id);
+     }
+ 
++    /**
++     * The next bulk settle batch number on the sheet: 1 for the first, then 2, and so on. The sheet's row is locked
++     * until the caller's transaction ends, so a batch whose claims all roll back takes no number.
++     */
++    @Transactional
++    public long nextSettleBatch(String id) {
++        if (sheets.incrementLastSettleBatch(id) != 1) {
++            throw new SheetNotFoundException(id);
++        }
++        return sheets.lastSettleBatch(id);
++    }
++
++    /** The number of the sheet's last bulk settle batch, as stored now: 0 while there has been none. */
++    public long lastSettleBatch(String id) {
++        return sheets.lastSettleBatch(id);
++    }
++
+     /**
+      * The next place in the sheet's claim lists: a claim with a later place is listed before one with an earlier
+      * place. The sheet's row is locked until the caller's transaction ends.
+diff --git a/src/main/resources/db/migration/V60__settle_batch.sql b/src/main/resources/db/migration/V60__settle_batch.sql
+new file mode 100644
+index 000000000..bf1f76276
+--- /dev/null
++++ b/src/main/resources/db/migration/V60__settle_batch.sql
+@@ -0,0 +1,4 @@
++-- The number of the bulk settle a claim was settled (or sent to PENDING) by; null for one settled one at a time.
++ALTER TABLE claim ADD COLUMN settle_batch BIGINT;
++-- The number of the sheet's last bulk settle batch: 0 while there has been none.
++ALTER TABLE sheet ADD COLUMN last_settle_batch BIGINT DEFAULT 0 NOT NULL;
