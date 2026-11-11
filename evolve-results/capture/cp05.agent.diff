@@ -1,0 +1,608 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+new file mode 100644
+index 000000000..be66ea8b8
+--- /dev/null
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -0,0 +1,167 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, inject, input, output, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++export interface Claim {
++  id: number;
++  personId: number;
++  /** Two decimals, e.g. "2.50". */
++  amount: string;
++  /** yyyy-mm-dd */
++  date: string;
++  note: string;
++}
++
++/** Sums amounts with two decimals exactly, in whole cents. */
++export function sumAmounts(amounts: string[]): string {
++  const cents = amounts.reduce((total, a) => total + Math.round(Number(a) * 100), 0);
++  return (cents / 100).toFixed(2);
++}
++
++// One person's claims, newest first, and the form that adds a claim or, once a claim's editor is
++// opened, saves that claim. Rendered as a table cell inside the person's row.
++@Component({
++  selector: 'td[app-claims]',
++  template: `
++    <form (submit)="submit($event)">
++      <label [for]="fieldId('amount')">Amount</label>
++      <input
++        [id]="fieldId('amount')"
++        data-testid="claim-form-amount"
++        inputmode="decimal"
++        [value]="amount()"
++        (input)="amount.set(value($event)); error.set(null)"
++      />
++      <label [for]="fieldId('date')">Date</label>
++      <input
++        [id]="fieldId('date')"
++        type="date"
++        data-testid="claim-form-date"
++        [value]="date()"
++        (input)="date.set(value($event)); error.set(null)"
++      />
++      <label [for]="fieldId('note')">Note</label>
++      <input
++        [id]="fieldId('note')"
++        data-testid="claim-form-note"
++        [value]="note()"
++        (input)="note.set(value($event)); error.set(null)"
++      />
++      <button type="submit" data-testid="claim-form-submit">
++        {{ editing() === null ? 'Add claim' : 'Save claim' }}
++      </button>
++      @if (error(); as message) {
++        <p role="alert" data-testid="claim-form-error">{{ message }}</p>
++      }
++    </form>
++    @if (claims().length > 0) {
++      <table>
++        <caption class="visually-hidden">Claims of {{ personName() }}</caption>
++        <thead>
++          <tr>
++            <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th>
++            <th scope="col"><span class="visually-hidden">Actions</span></th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (c of claims(); track c.id) {
++            <tr [attr.data-testid]="'claim-row-' + c.id">
++              <td data-testid="claim-amount">{{ c.amount }}</td>
++              <td data-testid="claim-date">{{ c.date }}</td>
++              <td data-testid="claim-note">{{ c.note }}</td>
++              <td>
++                <button
++                  type="button"
++                  data-testid="claim-edit"
++                  [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date"
++                  (click)="edit(c)"
++                >
++                  Edit
++                </button>
++                @if (editing() === c.id) {
++                  <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
++                }
++              </td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    }
++  `,
++})
++export class Claims {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  readonly personId = input.required<number>();
++  readonly personName = input.required<string>();
++  /** The person's claims, newest first. */
++  readonly claims = input.required<Claim[]>();
++  /** A claim was added or saved. */
++  readonly saved = output<Claim>();
++
++  protected readonly amount = signal('');
++  protected readonly date = signal('');
++  protected readonly note = signal('');
++  /** The id of the claim whose editor is open, or null when the form adds a claim. */
++  protected readonly editing = signal<number | null>(null);
++  protected readonly error = signal<string | null>(null);
++
++  protected fieldId(field: string): string {
++    return `claim-form-${field}-${this.personId()}`;
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected edit(claim: Claim): void {
++    this.editing.set(claim.id);
++    this.amount.set(claim.amount);
++    this.date.set(claim.date);
++    this.note.set(claim.note);
++    this.error.set(null);
++  }
++
++  protected reset(): void {
++    this.editing.set(null);
++    this.amount.set('');
++    this.date.set('');
++    this.note.set('');
++    this.error.set(null);
++  }
++
++  protected async submit(event: Event): Promise<void> {
++    event.preventDefault();
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const amount = this.amount().trim();
++    if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
++      this.error.set('Type an amount of 0.00 or more, with at most two decimals.');
++      return;
++    }
++    const date = this.date().trim();
++    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.error.set('Pick a date for the claim, or leave it blank for today.');
++      return;
++    }
++    const body = { amount, date: date || null, note: this.note() };
++    const editing = this.editing();
++    const base = `/api/sheets/${encodeURIComponent(sheet)}`;
++    try {
++      const saved = await firstValueFrom(
++        editing === null
++          ? this.http.post<Claim>(`${base}/people/${this.personId()}/claims`, body, this.session.headers())
++          : this.http.put<Claim>(`${base}/claims/${editing}`, body, this.session.headers()),
++      );
++      if (this.session.sheet() === sheet) {
++        this.reset();
++        this.saved.emit(saved);
++      }
++    } catch {
++      this.error.set(editing === null ? 'The claim could not be added.' : 'The claim could not be saved.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4610a6638..d8586aa7b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,7 +1,8 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import { Claim, Claims, sumAmounts } from '../claims/claims';
+ 
+ interface Person {
+   id: number;
+@@ -9,10 +10,12 @@ interface Person {
+   grade: string;
+ }
+ 
+-// The people on the active sheet, in the order they were added, and the one form that adds a
+-// person or, once a person's editor is opened, saves that person.
++// The people on the active sheet, in the order they were added, each with their claims and what
++// they have claimed, the sheet's claimed-total, and the one form that adds a person or, once a
++// person's editor is opened, saves that person.
+ @Component({
+   selector: 'app-people',
++  imports: [Claims],
+   template: `
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -47,13 +50,17 @@ interface Person {
+       </form>
+       <table>
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr>
++            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th>
++            <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
++          </tr>
+         </thead>
+         <tbody>
+           @for (p of people(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ p.grade }}</td>
++              <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
+               <td>
+                 <button
+                   type="button"
+@@ -64,10 +71,18 @@ interface Person {
+                   Edit
+                 </button>
+               </td>
++              <td
++                app-claims
++                [personId]="p.id"
++                [personName]="p.name"
++                [claims]="claimsOf(p.id)"
++                (saved)="claimSaved($event)"
++              ></td>
+             </tr>
+           }
+         </tbody>
+       </table>
++      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+     </section>
+   `,
+ })
+@@ -77,6 +92,18 @@ export class People {
+ 
+   protected readonly grades = ['A', 'B', 'C'];
+   protected readonly people = signal<Person[]>([]);
++  /** The sheet's claims, newest first. */
++  protected readonly claims = signal<Claim[]>([]);
++  private readonly claimsByPerson = computed(() => {
++    const by = new Map<number, Claim[]>();
++    for (const c of this.claims()) {
++      const list = by.get(c.personId);
++      if (list) list.push(c);
++      else by.set(c.personId, [c]);
++    }
++    return by;
++  });
++  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
+   protected readonly name = signal('');
+   protected readonly grade = signal('A');
+   /** The id of the person whose editor is open, or null when the form adds a person. */
+@@ -90,6 +117,7 @@ export class People {
+       this.session.loaded();
+       untracked(() => {
+         this.people.set([]);
++        this.claims.set([]);
+         this.reset();
+         if (sheet) void this.read(sheet);
+       });
+@@ -100,6 +128,27 @@ export class People {
+     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+ 
++  protected claimsOf(personId: number): Claim[] {
++    return this.claimsByPerson().get(personId) ?? [];
++  }
++
++  /** The sum of the person's claims' amounts, with two decimals. */
++  protected claimedBy(personId: number): string {
++    return sumAmounts(this.claimsOf(personId).map((c) => c.amount));
++  }
++
++  /** Show an added or saved claim at once, then re-read so the screen holds what the store does. */
++  protected claimSaved(claim: Claim): void {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.claims.update((list) =>
++      list.some((c) => c.id === claim.id)
++        ? list.map((c) => (c.id === claim.id ? claim : c))
++        : [claim, ...list].sort((a, b) => b.id - a.id),
++    );
++    void this.read(sheet);
++  }
++
+   protected edit(person: Person): void {
+     this.editing.set(person.id);
+     this.name.set(person.name);
+@@ -154,10 +203,15 @@ export class People {
+ 
+   private async read(sheet: string): Promise<void> {
+     const read = ++this.reads;
+-    const list = await firstValueFrom(
+-      this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`, this.session.headers()),
+-    ).catch(() => null);
++    const url = `/api/sheets/${encodeURIComponent(sheet)}`;
++    const [list, claims] = await Promise.all([
++      firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
++      firstValueFrom(this.http.get<Claim[]>(`${url}/claims`, this.session.headers())),
++    ]).catch(() => [null, null]);
+     // A later read wins over a slower earlier one.
+-    if (list && read === this.reads && this.session.sheet() === sheet) this.people.set(list);
++    if (list && claims && read === this.reads && this.session.sheet() === sheet) {
++      this.people.set(list);
++      this.claims.set(claims);
++    }
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+new file mode 100644
+index 000000000..7ea2a59a3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -0,0 +1,82 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A claim made by a person on a sheet. */
++@Entity
++@Table(name = "claim")
++public class Claim {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(name = "amount", nullable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "claim_date", nullable = false)
++    private LocalDate date;
++
++    @Column(name = "note", nullable = false)
++    private String note;
++
++    protected Claim() {
++    }
++
++    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.amount = amount;
++        this.date = date;
++        this.note = note;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public void setAmount(BigDecimal amount) {
++        this.amount = amount;
++    }
++
++    public LocalDate getDate() {
++        return date;
++    }
++
++    public void setDate(LocalDate date) {
++        this.date = date;
++    }
++
++    public String getNote() {
++        return note;
++    }
++
++    public void setNote(String note) {
++        this.note = note;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+new file mode 100644
+index 000000000..2a7357e41
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -0,0 +1,82 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The people's claims on a sheet. The signed-in user's name travels in the {@code X-User} header. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}")
++@Validated
++public class ClaimController {
++
++    /** A claim as shown: the amount with two decimals, the date as yyyy-mm-dd. */
++    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note) {
++
++        static ClaimView of(Claim claim) {
++            return new ClaimView(claim.getId(), claim.getPersonId(),
++                    claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
++                    claim.getDate(), claim.getNote());
++        }
++    }
++
++    /** An amount of 0.00 or more with up to two decimals; a missing date takes the sheet's today. */
++    public record ClaimRequest(
++            @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
++            LocalDate date,
++            @Size(max = 1000) String note) {
++
++        BigDecimal amountValue() {
++            return new BigDecimal(amount.trim()).setScale(2, RoundingMode.UNNECESSARY);
++        }
++    }
++
++    private final ClaimService service;
++
++    public ClaimController(ClaimService service) {
++        this.service = service;
++    }
++
++    /** All the sheet's claims, newest first. */
++    @GetMapping("/claims")
++    public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
++    }
++
++    @PostMapping("/people/{personId}/claims")
++    @ResponseStatus(HttpStatus.CREATED)
++    public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid ClaimRequest request) {
++        return ClaimView.of(service.add(sheetId.trim(), personId, request.amountValue(), request.date(),
++                request.note()));
++    }
++
++    @PutMapping("/claims/{id}")
++    public ClaimView update(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid ClaimRequest request) {
++        return ClaimView.of(service.update(sheetId.trim(), id, request.amountValue(), request.date(),
++                request.note()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimNotFoundException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimNotFoundException.java
+new file mode 100644
+index 000000000..99906497c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimNotFoundException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A claim id that is not on the sheet. */
++@ResponseStatus(HttpStatus.NOT_FOUND)
++public class ClaimNotFoundException extends RuntimeException {
++
++    public ClaimNotFoundException(String sheetId, Long id) {
++        super("Claim " + id + " not found on sheet " + sheetId);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+new file mode 100644
+index 000000000..e47e2702d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface ClaimRepository extends JpaRepository<Claim, Long> {
++
++    /** A sheet's claims, newest first. */
++    List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
++
++    Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+new file mode 100644
+index 000000000..bf29d77ec
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.person.PersonNotFoundException;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. */
++@Service
++public class ClaimService {
++
++    private final ClaimRepository claims;
++    private final PersonRepository people;
++    private final SheetService sheets;
++
++    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets) {
++        this.claims = claims;
++        this.people = people;
++        this.sheets = sheets;
++    }
++
++    public List<Claim> list(String sheetId) {
++        return claims.findBySheetIdOrderByIdDesc(sheetId);
++    }
++
++    @Transactional
++    public Claim add(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
++        if (people.findByIdAndSheetId(personId, sheetId).isEmpty()) {
++            throw new PersonNotFoundException(sheetId, personId);
++        }
++        return claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOr(sheetId, date), noteOf(note)));
++    }
++
++    @Transactional
++    public Claim update(String sheetId, Long id, BigDecimal amount, LocalDate date, String note) {
++        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
++        claim.setAmount(amount);
++        claim.setDate(dateOr(sheetId, date));
++        claim.setNote(noteOf(note));
++        return claims.saveAndFlush(claim);
++    }
++
++    private LocalDate dateOr(String sheetId, LocalDate date) {
++        return date != null ? date : sheets.today(sheetId);
++    }
++
++    private static String noteOf(String note) {
++        return note == null ? "" : note.trim();
++    }
++}
+diff --git a/src/main/resources/db/migration/V5__claim.sql b/src/main/resources/db/migration/V5__claim.sql
+new file mode 100644
+index 000000000..537103a02
+--- /dev/null
++++ b/src/main/resources/db/migration/V5__claim.sql
+@@ -0,0 +1,12 @@
++-- A person's claims, each with an amount (0.00 or more, two decimals), a date and a note that may
++-- be empty. Listed newest first, which is the reverse order of their ids.
++CREATE TABLE claim (
++    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id   VARCHAR(100)   NOT NULL REFERENCES sheet (id),
++    person_id  BIGINT         NOT NULL REFERENCES person (id),
++    amount     DECIMAL(12, 2) NOT NULL CHECK (amount >= 0),
++    claim_date DATE           NOT NULL,
++    note       VARCHAR(1000)  NOT NULL
++);
++CREATE INDEX claim_sheet ON claim (sheet_id, id);
++CREATE INDEX claim_person ON claim (person_id, id);
