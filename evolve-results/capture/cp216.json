@@ -1,0 +1,74 @@
+{
+  "checkpoint": 216,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp216_cuts-frozen-at-close",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    187,
+    191,
+    201,
+    213
+  ],
+  "replaced_tests": [
+    "cp187_cut-history.spec.ts::cut history",
+    "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2",
+    "cp201_consolidated-grades.spec.ts::consolidated grades scenario 3",
+    "cp213_parent-plans.spec.ts::parent plans scenario 3"
+  ],
+  "request": {
+    "spec": "Closing or soft-closing a period now fixes every pool member's cut for that period as it stood at\nthat moment (the per-period cut cell shows the fixed figure from then on, even when the period\nclosed after its to-date), and reopening makes it live again.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClosing or soft-closing a period now fixes every pool member's cut for that period as it stood at\nthat moment (the per-period cut cell shows the fixed figure from then on, even when the period\nclosed after its to-date), and reopening makes it live again.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8a385b6593f8c18bf77da7d71becc299bb9a89b4",
+  "reset_sha": "",
+  "preagent_sha": "42cdbd83fc83773c4aa46c136ec9255d2ccce692",
+  "prev_sha": "42cdbd83fc83773c4aa46c136ec9255d2ccce692",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0166626,
+    "input_tokens": 48,
+    "output_tokens": 11213,
+    "cache_read_tokens": 1294533,
+    "cache_creation_tokens": 66663,
+    "num_turns": 28,
+    "duration_ms": 380567,
+    "duration_api_ms": 109639,
+    "model": "claude-opus-5-5",
+    "session_id": "f8f081db-3518-4e1a-999e-da624d9c7338",
+    "stop_reason": "success",
+    "result_text": "Closing or soft-closing a period now saves every pool member's cut as it is at that moment. From then on the per-period cut cell (`pool-cut-<period>`) shows that saved figure. Reopening clears it, so the cell goes back to the live calculation. `bin/e2e` passes all 4 tests in the spec.\n\n**What changed:**\n- **Stored data:** a new migration, `V113__period_pool_cut.sql`, adds a `period_pool_cut` table. It holds each member's saved cut for a period, keyed by pool and member. The app's sheet history picks the table up automatically because it carries a `period_id`.\n- **`Period.java`:** close and soft-close now also take the cuts and save them; reopen clears them.\n- **`SheetService.java`:** `closePeriod` and `softClosePeriod` take a snapshot of the current cuts from the pool service. That covers manual closes, soft-closes, and periods closed automatically by grace days when the sheet's today changes. An automatic close takes its snapshot with the new today already set.\n- **`PoolService.java`:**\n  - A new `cutsNow` method returns the current cuts.\n  - `list` shows the saved figures for a closed or soft-closed period, and leaves the cell blank for a member added after the close.\n  - Open periods that have ended still use the old \"cut at the end of the period\" calculation.\n- **Front end:** only the comments in `pools.ts` changed; the screen already shows whatever the server sends.\n\n**Choices to check:**\n- **Closed before its end date:** a closed or soft-closed period now gets a per-period cut column even if its to-date is still after the sheet's today, showing the figure saved at closing. Before, a column only appeared once the to-date had passed. The test doesn't cover this; I read \"from then on\" as covering it.\n- **Circular dependency:** `SheetService` gets the pool service through `ObjectProvider<PoolService>`, which avoids a startup loop because `PoolService` already depends on `SheetService`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0166626,
+        "num_turns": 28,
+        "duration_ms": 380567,
+        "duration_api_ms": 109639,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp216.agent.jsonl",
+  "agent_diff_file": "cp216.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
