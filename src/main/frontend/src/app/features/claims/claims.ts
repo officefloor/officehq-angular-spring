@@ -30,6 +30,8 @@ export interface Claim {
   roundingDate: string;
   /** Its place in its person's list: a claim with a later place is listed first (newest added, or last reassigned). */
   listed: number;
+  /** The day (yyyy-mm-dd) the claim is due by, fixed when it was added from the terms of its person's grade on its date. */
+  dueBy: string;
 }
 
 /** Claims as listed: the latest list place first. */
@@ -108,7 +110,7 @@ export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], ses
  * rounded like the claim's due; 0.00 when it is not overdue, and on a correction.
  */
 export function lateCharge(claim: Claim, figure: string, session: Session): string {
-  const by = dueBy(claim, session.terms());
+  const by = claim.dueBy;
   const today = session.today();
   const pct = session.latePct();
   if (!isOpen(claim) || isCorrection(claim) || by === '' || today === null || pct === null) return '0.00';
@@ -121,17 +123,9 @@ export function dueFixed(claim: Claim): boolean {
   return claim.settledDue !== null || (bound(claim) && claim.statedDue !== null);
 }
 
-/** The claim's date plus the terms in days (yyyy-mm-dd); blank until the terms are known. */
-export function dueBy(claim: Claim, terms: number | null): string {
-  if (terms === null) return '';
-  const [y, m, d] = claim.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
-}
-
 /** Whether the claim is OPEN or PENDING and its due-by is before the sheet's today. */
-export function overdue(claim: Claim, terms: number | null, today: string | null): boolean {
-  const by = dueBy(claim, terms);
-  return isOpen(claim) && by !== '' && today !== null && by < today;
+export function overdue(claim: Claim, today: string | null): boolean {
+  return isOpen(claim) && today !== null && claim.dueBy < today;
 }
 
 type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
@@ -212,7 +206,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
-              <td data-testid="claim-due-by">{{ dueBy(c) }}</td>
+              <td data-testid="claim-due-by">{{ c.dueBy }}</td>
               <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
@@ -341,14 +335,9 @@ export class Claims {
     return claimDue(claim, this.rates(), this.grades(), this.session);
   }
 
-  /** The claim's date plus the sheet's terms. */
-  protected dueBy(claim: Claim): string {
-    return dueBy(claim, this.session.terms());
-  }
-
   /** Whether the claim is OPEN and was due by a day before the sheet's today. */
   protected overdue(claim: Claim): boolean {
-    return overdue(claim, this.session.terms(), this.session.today());
+    return overdue(claim, this.session.today());
   }
 
   /** The name of the period the claim's date falls in, or blank when none. */

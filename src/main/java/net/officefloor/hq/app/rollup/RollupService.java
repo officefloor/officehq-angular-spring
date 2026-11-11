@@ -162,7 +162,7 @@ public class RollupService {
                         .map(due -> sheet == null || claim.isCorrection() ? due : sheet.floored(due));
         return sheet == null ? figure
                 : figure.map(f -> sheet.withLateCharge(f,
-                        claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDate()));
+                        claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDueBy(), claim.getDate()));
     }
 
     private static Optional<Rate> rateOn(List<Rate> sheetRates, String grade, LocalDate date) {

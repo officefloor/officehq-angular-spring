@@ -70,6 +70,8 @@ public class ClaimService {
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note));
         claim.setCorrects(corrects);
         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
+        // Due by its date plus the terms of its person's grade on that date, fixed from now on.
+        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated))));
         claim.setListed(sheets.nextListed(sheetId));
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
@@ -254,7 +256,7 @@ public class ClaimService {
     private String settle(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figureOf(sheetId, person, claim);
         BigDecimal settledDue = figure == null || claim.isCorrection() ? figure
-                : figure.add(settings.get(sheetId).lateCharge(figure, claim.getDate()));
+                : figure.add(settings.get(sheetId).lateCharge(figure, claim.getDueBy(), claim.getDate()));
         claim.setSettledDue(settledDue);
         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
     }
@@ -305,7 +307,7 @@ public class ClaimService {
      */
     private BigDecimal withLateCharge(String sheetId, Claim claim, BigDecimal due) {
         return settings.get(sheetId).withLateCharge(due,
-                claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDate());
+                claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDueBy(), claim.getDate());
     }
 
     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */

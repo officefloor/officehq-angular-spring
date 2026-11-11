@@ -32,7 +32,7 @@ public class Sheet {
     @Column(name = "due_floor", nullable = false, precision = 12, scale = 2)
     private BigDecimal floor = new BigDecimal("1.00");
 
-    /** The number of days after its date that a claim is due by. */
+    /** The number of days after its date that a claim of a grade without its own terms is due by. */
     @Column(name = "terms", nullable = false)
     private int terms = 14;
 
@@ -141,22 +141,22 @@ public class Sheet {
 
     /**
      * The late charge on a figure of an OPEN claim dated {@code date}: the late percent of the figure for every full
-     * 30 days the sheet's today is past the claim's due-by (its date plus the terms), rounded as the claim's date has it;
-     * zero when not overdue, null (n/a) when the figure is.
+     * 30 days the sheet's today is past the claim's due-by, rounded as the claim's date has it; zero when not overdue,
+     * null (n/a) when the figure is.
      */
-    public BigDecimal lateCharge(BigDecimal figure, LocalDate date) {
+    public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
         if (figure == null) {
             return null;
         }
-        long overdueDays = ChronoUnit.DAYS.between(date.plusDays(terms), today);
+        long overdueDays = ChronoUnit.DAYS.between(dueBy, today);
         long periods = overdueDays <= 0 ? 0 : overdueDays / 30;
         return figure.multiply(latePct).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
                 .setScale(2, rounding(date));
     }
 
     /** The figure with its late charge added on top when the claim is OPEN; null (n/a) stays null. */
-    public BigDecimal withLateCharge(BigDecimal figure, boolean open, LocalDate date) {
-        return figure == null || !open ? figure : figure.add(lateCharge(figure, date));
+    public BigDecimal withLateCharge(BigDecimal figure, boolean open, LocalDate dueBy, LocalDate date) {
+        return figure == null || !open ? figure : figure.add(lateCharge(figure, dueBy, date));
     }
 
     /** A live due raised to the floor; null (n/a) stays null. */

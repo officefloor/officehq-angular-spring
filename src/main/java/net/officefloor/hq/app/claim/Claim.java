@@ -63,6 +63,10 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
+    /** The day the claim is due by: fixed when it is added, from the terms of its person's grade on its date. */
+    @Column(name = "due_by", nullable = false)
+    private LocalDate dueBy;
+
     /** The date that decides how the claim's live figures round: its own date, or a correction's corrected claim's. */
     @Column(name = "rounding_date", nullable = false)
     private LocalDate roundingDate;
@@ -134,6 +138,14 @@ public class Claim {
 
     public void setDate(LocalDate date) {
         this.date = date;
+    }
+
+    public LocalDate getDueBy() {
+        return dueBy;
+    }
+
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
     }
 
     public LocalDate getRoundingDate() {

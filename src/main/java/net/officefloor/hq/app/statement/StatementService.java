@@ -89,7 +89,7 @@ public class StatementService {
             BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
             BigDecimal due = claim.getSettledDue() != null ? figure
                     : sheet.withLateCharge(figure, claim.getStatus().isOpen() && !claim.isCorrection(),
-                            claim.getDate());
+                            claim.getDueBy(), claim.getDate());
             if (due != null) {
                 total = total.add(due);
                 // A due under a grade the person had on an earlier date counts too.

@@ -10,6 +10,8 @@ interface SettingsView {
   floor: string;
   /** The days after its date a claim is due by. */
   terms: number;
+  /** Each grade's own terms in days, by grade; a grade left out uses the sheet's terms. */
+  gradeTerms: Record<string, number>;
   /** The percent of its figure an overdue claim's due gains every full 30 days, two decimals. */
   latePct: string;
   /** The date (yyyy-mm-dd) before which a claim rounds half up, and on or after which half to even; null: the today. */
@@ -25,8 +27,9 @@ interface RoleView {
 }
 
 const ROLES = ['clerk', 'steward'];
+const GRADES = ['A', 'B', 'C'];
 
-// The sheet's settings (its clerk limit, its floor, its terms, its late percent, its policy date and its period numbering from) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (its clerk limit, its floor, its terms and each grade's own, its late percent, its policy date and its period numbering from) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -57,6 +60,16 @@ const ROLES = ['clerk', 'steward'];
           [value]="terms()"
           (input)="terms.set(value($event)); termsEdited = true; settingsError.set(null)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (blank: the sheet's terms)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            [attr.data-testid]="'setting-terms-' + g"
+            inputmode="numeric"
+            [value]="gradeTerms()[g] ?? ''"
+            (input)="setGradeTerms(g, value($event)); settingsError.set(null)"
+          />
+        }
         <label for="setting-late-pct">Late percent (of an overdue claim's due, every full 30 days)</label>
         <input
           id="setting-late-pct"
@@ -89,6 +102,9 @@ const ROLES = ['clerk', 'steward'];
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ current() ?? '' }}</strong></p>
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ session.terms() ?? '' }}</strong></p>
+      @for (g of grades; track g) {
+        <p>Terms for grade {{ g }} in force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTermsCurrent()[g] ?? '' }}</strong></p>
+      }
       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' }}</strong></p>
       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
@@ -143,6 +159,12 @@ export class Settings {
   protected readonly session = inject(Session);
 
   protected readonly roles = ROLES;
+  protected readonly grades = GRADES;
+  /** Each grade's terms as typed, and as in force (blank when the grade has none of its own). */
+  protected readonly gradeTerms = signal<Record<string, string>>({});
+  protected readonly gradeTermsCurrent = signal<Record<string, string>>({});
+  /** The grades whose terms were typed in since the form was last saved or read. */
+  protected gradeTermsEdited = new Set<string>();
   protected readonly current = signal<string | null>(null);
   protected readonly clerkLimit = signal('');
   protected readonly floor = signal('');
@@ -176,6 +198,7 @@ export class Settings {
         this.current.set(null);
         this.session.floor.set(null);
         this.session.terms.set(null);
+        this.gradeTermsCurrent.set({});
         this.session.latePct.set(null);
         this.session.policyDate.set(null);
         this.periodNumberingFromCurrent.set(null);
@@ -191,6 +214,11 @@ export class Settings {
     return (event.target as HTMLInputElement).value;
   }
 
+  protected setGradeTerms(grade: string, terms: string): void {
+    this.gradeTerms.update((all) => ({ ...all, [grade]: terms }));
+    this.gradeTermsEdited.add(grade);
+  }
+
   protected async saveSettings(event: Event): Promise<void> {
     event.preventDefault();
     if (this.savingSettings) return;
@@ -198,9 +226,10 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     // Saving with nothing typed saves the clerk limit as it stands.
-    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited);
+    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited);
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
+    const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g));
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
@@ -220,6 +249,10 @@ export class Settings {
     }
     if (saveTerms && !/^\d{1,5}$/.test(terms)) {
       this.settingsError.set('Type terms of 0 or more whole days.');
+      return;
+    }
+    if (saveGradeTerms.some((g) => !/^\d{1,5}$/.test((this.gradeTerms()[g] ?? '').trim()))) {
+      this.settingsError.set('Type terms for a grade of 0 or more whole days.');
       return;
     }
     if (saveLatePct && !/^\d{1,3}(\.\d{1,2})?$/.test(latePct)) {
@@ -251,6 +284,13 @@ export class Settings {
       if (saveTerms) {
         saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/terms`, { terms }, this.session.headers()));
         this.termsEdited = false;
+      }
+      for (const g of saveGradeTerms) {
+        const gradeTerms = (this.gradeTerms()[g] ?? '').trim();
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/terms/${g}`, { terms: gradeTerms }, this.session.headers()),
+        );
+        this.gradeTermsEdited.delete(g);
       }
       if (saveLatePct) {
         saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/late-pct`, { latePct }, this.session.headers()));
@@ -341,6 +381,10 @@ export class Settings {
     this.floor.set(settings.floor);
     this.session.terms.set(settings.terms);
     this.terms.set(String(settings.terms));
+    const gradeTerms: Record<string, string> = {};
+    for (const [g, t] of Object.entries(settings.gradeTerms)) gradeTerms[g] = String(t);
+    this.gradeTermsCurrent.set(gradeTerms);
+    this.gradeTerms.set(gradeTerms);
     this.session.latePct.set(settings.latePct);
     this.latePct.set(settings.latePct);
     this.session.policyDate.set(settings.policyDate ?? '');
@@ -350,6 +394,7 @@ export class Settings {
     this.clerkLimitEdited = false;
     this.floorEdited = false;
     this.termsEdited = false;
+    this.gradeTermsEdited.clear();
     this.latePctEdited = false;
     this.policyDateEdited = false;
     this.periodNumberingFromEdited = false;

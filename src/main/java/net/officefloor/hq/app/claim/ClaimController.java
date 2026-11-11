@@ -36,7 +36,7 @@ public class ClaimController {
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundingDate, long listed) {
+            LocalDate roundingDate, long listed, LocalDate dueBy) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -45,7 +45,7 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed());
+                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy());
         }
     }
 

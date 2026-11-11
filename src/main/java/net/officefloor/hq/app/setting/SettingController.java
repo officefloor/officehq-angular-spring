@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Map;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,17 +27,18 @@ public class SettingController {
 
     /**
      * The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals;
-     * the terms in whole days; the late percent with two decimals; the policy date as yyyy-mm-dd, null when blank (the
+     * the terms in whole days; each grade's own terms in whole days, by grade (a grade without its own is left out);
+     * the late percent with two decimals; the policy date as yyyy-mm-dd, null when blank (the
      * sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off).
      */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom) {
+    public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
+            String latePct, LocalDate policyDate, LocalDate periodNumberingFrom) {
 
-        static SettingsView of(Sheet sheet) {
+        static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             return new SettingsView(sheet.getClerkLimit() == null ? null
                     : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getTerms(),
-                    sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getPolicyDate(),
+                    gradeTerms, sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getPolicyDate(),
                     sheet.getPeriodNumberingFrom());
         }
     }
@@ -91,49 +93,60 @@ public class SettingController {
     @GetMapping
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return SettingsView.of(service.get(sheetId.trim()));
+        return view(service.get(sheetId.trim()));
     }
 
     @PutMapping
     public SettingsView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid SettingsRequest request) {
-        return SettingsView.of(service.setClerkLimit(sheetId.trim(), user.trim(), request.clerkLimitValue()));
+        return view(service.setClerkLimit(sheetId.trim(), user.trim(), request.clerkLimitValue()));
     }
 
     @PutMapping("/floor")
     public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid FloorRequest request) {
-        return SettingsView.of(service.setFloor(sheetId.trim(), user.trim(), request.floorValue()));
+        return view(service.setFloor(sheetId.trim(), user.trim(), request.floorValue()));
     }
 
     @PutMapping("/terms")
     public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TermsRequest request) {
-        return SettingsView.of(service.setTerms(sheetId.trim(), user.trim(), request.termsValue()));
+        return view(service.setTerms(sheetId.trim(), user.trim(), request.termsValue()));
+    }
+
+    @PutMapping("/terms/{grade}")
+    public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid TermsRequest request) {
+        return view(service.setGradeTerms(sheetId.trim(), user.trim(), grade, request.termsValue()));
     }
 
     @PutMapping("/late-pct")
     public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid LatePctRequest request) {
-        return SettingsView.of(service.setLatePct(sheetId.trim(), user.trim(), request.latePctValue()));
+        return view(service.setLatePct(sheetId.trim(), user.trim(), request.latePctValue()));
     }
 
     @PutMapping("/policy-date")
     public SettingsView setPolicyDate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody PolicyDateRequest request) {
-        return SettingsView.of(service.setPolicyDate(sheetId.trim(), user.trim(), request.policyDate()));
+        return view(service.setPolicyDate(sheetId.trim(), user.trim(), request.policyDate()));
     }
 
     @PutMapping("/period-numbering-from")
     public SettingsView setPeriodNumberingFrom(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody PeriodNumberingFromRequest request) {
-        return SettingsView.of(
-                service.setPeriodNumberingFrom(sheetId.trim(), user.trim(), request.periodNumberingFrom()));
+        return view(service.setPeriodNumberingFrom(sheetId.trim(), user.trim(), request.periodNumberingFrom()));
+    }
+
+    private SettingsView view(Sheet sheet) {
+        return SettingsView.of(sheet, service.gradeTerms(sheet.getId()));
     }
 }
