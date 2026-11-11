@@ -1,0 +1,150 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 63ace632c..a6fcc6a5c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -58,7 +58,8 @@ export function byListed(a: Claim, b: Claim): number {
+ 
+ /**
+  * DRAFT when added, then OPEN, then SETTLED; a clerk settling above the clerk limit makes it PENDING until a steward
+- * approves (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING claim may be VOID.
++ * approves (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING claim may be VOID, and a steward may void a
++ * SETTLED one within 7 days of its settlement.
+  */
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+@@ -666,6 +667,10 @@ export class Claims {
+             ? 'Whoever opened this claim cannot also settle it: another user must settle it.'
+             : action === 'resettle'
+             ? 'Only a steward can re-settle a claim.'
++            : action === 'void'
++            ? claim.status === 'SETTLED'
++              ? 'Only a steward can void a settled claim.'
++              : 'Your role is not allowed to void a claim.'
+             : 'Only a steward can approve or reject a pending claim, and not the one who opened it.'
+           : closed
+               ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
+@@ -675,6 +680,8 @@ export class Claims {
+                 ? `This claim is deferred until ${claim.deferredUntil}: it cannot be settled before then.`
+               : action === 'resettle'
+                 ? `This claim is ${claim.status}: only a SETTLED claim can be re-settled.`
++              : action === 'void' && claim.status === 'SETTLED'
++                ? 'A settled claim can only be voided within 7 days of its settlement.'
+                 : `This claim's status does not let it be ${pastOf[action]}.`;
+       this.actionError.set({ id: claim.id, message });
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index e140b48cc..7a0fbcdd8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -269,7 +269,7 @@ public class ClaimController {
+         return view(service.addProof(sheetId.trim(), user.trim(), id));
+     }
+ 
+-    /** Void a DRAFT, OPEN or PENDING claim. */
++    /** Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED one. */
+     @PostMapping("/claims/{id}/void")
+     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 9f8d9b800..c52113756 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -34,6 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class ClaimService {
+ 
++    /** The days after its settlement within which a steward may still void a SETTLED claim. */
++    private static final int SETTLED_VOID_DAYS = 7;
++
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final RateService rates;
+@@ -138,7 +141,8 @@ public class ClaimService {
+     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+-        if (!claim.getStatus().canMoveTo(status) || status == ClaimStatus.PENDING) {
++        boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
++        if (!voidsSettled && (!claim.getStatus().canMoveTo(status) || status == ClaimStatus.PENDING)) {
+             throw new ClaimStatusException(id, claim.getStatus(), status);
+         }
+         // The sheet's permission matrix decides which roles may open, settle or void.
+@@ -151,6 +155,9 @@ public class ClaimService {
+         if (!roles.may(sheetId, user, action)) {
+             throw new ClaimActionForbiddenException(id, user, action);
+         }
++        if (voidsSettled) {
++            requireSettledVoidable(sheetId, user, claim);
++        }
+         periods.requireOpen(sheetId, claim.getDate());
+         // A deferred claim cannot be settled until the sheet's today reaches the date it is deferred until.
+         if (status == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+@@ -175,7 +182,8 @@ public class ClaimService {
+             }
+         }
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+-        String due = status == ClaimStatus.SETTLED ? settle(sheetId, person, claim) : "";
++        String due = status == ClaimStatus.SETTLED ? settle(sheetId, person, claim)
++                : voidsSettled ? " reversed=" + shownDue(sheetId, person, claim) : "";
+         claim.setStatus(status);
+         // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
+         String number = claim.getNumber();
+@@ -426,6 +434,26 @@ public class ClaimService {
+         }
+     }
+ 
++    /**
++     * Only a steward voids a SETTLED claim, and only within the days allowed after its settlement (the date of the last
++     * SETTLED line of its status log) by the sheet's today; refused otherwise.
++     */
++    private void requireSettledVoidable(String sheetId, String user, Claim claim) {
++        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ClaimActionForbiddenException(claim.getId(), user, "void a settled claim");
++        }
++        LocalDate settledOn = logOf(claim).stream()
++                .filter(l -> l.getStatus() == ClaimStatus.SETTLED)
++                .map(ClaimLog::getDate)
++                .reduce((first, last) -> last)
++                .orElse(null);
++        LocalDate today = sheets.today(sheetId);
++        if (settledOn == null || today.isAfter(settledOn.plusDays(SETTLED_VOID_DAYS))) {
++            throw new ClaimVoidException(claim.getId(), "a settled claim can only be voided within "
++                    + SETTLED_VOID_DAYS + " days of its settlement on " + settledOn);
++        }
++    }
++
+     /** The PENDING claim a steward decides; refused for any other status, a closed period, or a user not a steward. */
+     private Claim pendingForDecision(String sheetId, String user, Long id, ClaimStatus to) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+index f50987ce7..b2b93cec8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -3,7 +3,7 @@ package net.officefloor.hq.app.claim;
+ /**
+  * Where a claim is in its life: DRAFT, then OPEN, then SETTLED. A clerk settling an OPEN claim whose due is above the
+  * clerk limit sends it to PENDING instead, which a steward approves (SETTLED) or rejects (back to OPEN). A DRAFT, OPEN
+- * or PENDING claim may be VOID.
++ * or PENDING claim may be VOID; a steward may also void a SETTLED one shortly after its settlement (see ClaimService).
+  */
+ public enum ClaimStatus {
+     DRAFT, OPEN, PENDING, SETTLED, VOID;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimVoidException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimVoidException.java
+new file mode 100644
+index 000000000..7b02f652d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimVoidException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A SETTLED claim voided after the days its settlement allows. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimVoidException extends RuntimeException {
++
++    public ClaimVoidException(Long id, String why) {
++        super("Claim " + id + ": " + why);
++    }
++}
