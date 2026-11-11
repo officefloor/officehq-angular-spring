@@ -1,0 +1,64 @@
+{
+  "checkpoint": 101,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp101_audit-viewer",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add an audit viewer to the screen: a filter entry, a show button and a list of lines. With the\nfilter blank it lists every audit line of this sheet exactly as the file holds it, newest first.\nWith a name in the filter it lists only the lines about that person: those carrying name=<the\nname> or person=<the name>, compared as names are compared (case and surrounding spaces ignored).\nThe viewer reads what the file holds; it is not a second record.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd an audit viewer to the screen: a filter entry, a show button and a list of lines. With the\nfilter blank it lists every audit line of this sheet exactly as the file holds it, newest first.\nWith a name in the filter it lists only the lines about that person: those carrying name=<the\nname> or person=<the name>, compared as names are compared (case and surrounding spaces ignored).\nThe viewer reads what the file holds; it is not a second record.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1530ca63b2046a347bae9d747f5cda35cc39d315",
+  "reset_sha": "",
+  "preagent_sha": "012430d0277e297593b63ee8fd2aa61c67dc7cb4",
+  "prev_sha": "012430d0277e297593b63ee8fd2aa61c67dc7cb4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.525063,
+    "input_tokens": 28,
+    "output_tokens": 6352,
+    "cache_read_tokens": 441075,
+    "cache_creation_tokens": 38712,
+    "num_turns": 15,
+    "duration_ms": 278754,
+    "duration_api_ms": 61060,
+    "model": "claude-opus-5-5",
+    "session_id": "234bcfbd-a45b-4cfc-8d7b-005667306796",
+    "stop_reason": "success",
+    "result_text": "I've added the audit viewer, and `bin/e2e` passes all 4 tests: the audit-viewer test and the three other scenarios.\n\n**What it does:** the viewer sits at the bottom of the screen, after the people list. It has a filter box (`audit-filter`), a show button (`audit-show`) and a list of lines (`audit-line`), plus an `audit-error` message if the file can't be read.\n- **Blank filter:** pressing show lists every line in the audit file for this sheet, exactly as written, newest first.\n- **Name in the filter:** it lists only lines whose `name=` or `person=` value matches that name, ignoring case and surrounding spaces. So \" ada \" finds Ada's lines, and a name nobody has gives an empty list.\n- **Nothing is recorded:** the server reads the file each time and doesn't write to it. The old lines are cleared when you press show, so you never see a previous result while the new one loads.\n\n**Changes:**\n- **`Audit.java`:** a new `lines(sheetId, name)` method reads the file. It only takes lines whose `sheet=` value is exactly this sheet's id, so a sheet whose id merely starts the same way doesn't leak in.\n- **`AuditController.java` (new):** a read-only endpoint, `GET /api/sheets/{sheetId}/audit?name=\u2026`. Because it's a plain read, viewers can use it too.\n- **`features/audit-viewer/audit-viewer.ts` (new):** the screen part, added to `home.ts`.\n\nA name with spaces, such as \"Ada Lovelace\", still matches: the server reads a `name=` or `person=` value up to the start of the next field rather than stopping at the first space. The tests only use one-word names, so this case isn't tested.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.525063,
+        "num_turns": 15,
+        "duration_ms": 278754,
+        "duration_api_ms": 61060,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp101.agent.jsonl",
+  "agent_diff_file": "cp101.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
