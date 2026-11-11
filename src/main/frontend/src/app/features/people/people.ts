@@ -133,7 +133,7 @@ function csvField(value: string): string {
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
       </dl>
     </section>
-    <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -1207,6 +1207,12 @@ export class People {
       ),
     );
     void this.read(sheet);
+  }
+
+  /** Re-read once rates were imported, so the screen holds what the store does. */
+  protected ratesImported(): void {
+    const sheet = this.session.sheet();
+    if (sheet) void this.read(sheet);
   }
 
   /** Show an added period at once, then re-read so the screen holds what the store does. */

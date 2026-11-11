@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -80,10 +81,20 @@ public class RateController {
         }
     }
 
-    private final RateService service;
+    /** Lines of grade,rate,from,to to set as rates. */
+    public record ImportRequest(@NotNull @Size(max = 1000000) String text) {
+    }
 
-    public RateController(RateService service) {
+    /** How many rates an import set. */
+    public record ImportResult(int set) {
+    }
+
+    private final RateService service;
+    private final ImportRatesService imports;
+
+    public RateController(RateService service, ImportRatesService imports) {
         this.service = service;
+        this.imports = imports;
     }
 
     /**
@@ -123,5 +134,13 @@ public class RateController {
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.fromValue(),
                 request.toValue(), request.pctValue()));
+    }
+
+    /** Set a rate per pasted line, in order, each as the rate form would; refused as a whole when any line is. */
+    @PostMapping("/import")
+    public ImportResult importRates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ImportRequest request) {
+        return new ImportResult(imports.importRates(sheetId.trim(), user.trim(), request.text()));
     }
 }

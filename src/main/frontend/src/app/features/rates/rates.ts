@@ -208,6 +208,23 @@ export function trimmedSumDues(dues: string[]): string {
           <p role="alert" data-testid="rate-preview-error">{{ message }}</p>
         }
       </form>
+      <form aria-label="Import rates" (submit)="importRates($event)">
+        <label for="import-rates">Import rates, one per line: grade,rate,from,to (from and to may be left out)</label>
+        <textarea
+          id="import-rates"
+          data-testid="import-rates"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (importSet() !== null) {
+          Set <strong data-testid="import-rates-set">{{ importSet() }}</strong>
+        }
+        @if (importError(); as message) {
+          <p role="alert" data-testid="import-rates-error">{{ message }}</p>
+        }
+      </form>
       <table>
         <caption>In force today</caption>
         <thead>
@@ -251,6 +268,8 @@ export class Rates {
   protected readonly ownRates = computed(() => this.rates().filter((r) => r.level === 0));
   /** A rate was set. */
   readonly saved = output<Rate>();
+  /** Rates were imported: the screen is to re-read them. */
+  readonly imported = output<void>();
 
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
@@ -267,6 +286,18 @@ export class Rates {
     this.session.sheet();
     this.previewResult.set(null);
   });
+  /** The rate import box: its lines, how many its last import set (null while it runs and before the first). */
+  protected readonly importText = signal('');
+  protected readonly importSet = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  /** The import box speaks of the sheet it was used on: it is cleared once another is loaded. */
+  private readonly importStale = effect(() => {
+    this.session.sheet();
+    this.importText.set('');
+    this.importSet.set(null);
+    this.importError.set(null);
+  });
+  private importing = false;
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
@@ -354,6 +385,44 @@ export class Rates {
       if (this.session.sheet() === sheet) this.previewResult.set(result);
     } catch {
       this.previewError.set('The preview could not be worked out.');
+    }
+  }
+
+  /**
+   * Set a rate per pasted line of grade,rate,from,to, in order, each as the rate form would. Refused as a whole when
+   * any line would be.
+   */
+  protected async importRates(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importing) return;
+    this.importError.set(null);
+    this.importSet.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of grade,rate,from,to.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ set: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/rates/import`,
+          { text },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.importText.set('');
+      this.importSet.set(result.set);
+      this.imported.emit();
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+      this.importError.set('The rates could not be imported; none were set.' + detail);
+    } finally {
+      this.importing = false;
     }
   }
 }
