@@ -44,14 +44,15 @@ public class ClaimController {
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
-            String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch) {
+            String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
+            List<ClaimLineView> lines) {
 
-        /** A claim with no comments yet. */
+        /** A claim with no comments or lines yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
-            return of(claim, log, List.of());
+            return of(claim, log, List.of(), List.of());
         }
 
-        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments) {
+        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -63,7 +64,17 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
-                    comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch());
+                    comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
+                    lines.stream().map(ClaimLineView::of).toList());
+        }
+    }
+
+    /** A line of a claim: its label, its quantity and its unit amount with two decimals. */
+    public record ClaimLineView(String label, int qty, String unit) {
+
+        static ClaimLineView of(ClaimLine line) {
+            return new ClaimLineView(line.getLabel(), line.getQty(),
+                    line.getUnit().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         }
     }
 
@@ -151,9 +162,11 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, List<ClaimLog>> logs = service.logs(sheetId.trim());
         Map<Long, List<ClaimComment>> comments = service.comments(sheetId.trim());
+        Map<Long, List<ClaimLine>> lines = service.lines(sheetId.trim());
         return service.list(sheetId.trim()).stream()
                 .map(claim -> ClaimView.of(claim, logs.getOrDefault(claim.getId(), List.of()),
-                        comments.getOrDefault(claim.getId(), List.of())))
+                        comments.getOrDefault(claim.getId(), List.of()),
+                        lines.getOrDefault(claim.getId(), List.of())))
                 .toList();
     }
 
@@ -400,8 +413,37 @@ public class ClaimController {
         return view(service.comment(sheetId.trim(), user.trim(), id, text));
     }
 
-    /** The claim as shown, with its status log and comments. */
+    /**
+     * A line of a claim: a label, a quantity (a whole number, at least 1) and a unit amount with up to two decimals.
+     */
+    public record LineRequest(
+            @NotNull @Size(max = 255) String label,
+            @NotNull @Pattern(regexp = "\\s*0*[1-9]\\d{0,5}\\s*") String qty,
+            @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String unit) {
+
+        int qtyValue() {
+            return Integer.parseInt(qty.trim());
+        }
+
+        BigDecimal unitValue() {
+            return new BigDecimal(unit.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /** Add a line to a DRAFT claim, its amount then its lines added up; refused as an edit of the claim would be. */
+    @PostMapping("/claims/{id}/lines")
+    public ClaimView addLine(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid LineRequest request) {
+        // One line in the audit file: any run of white space in the label becomes a single space.
+        String label = request.label().trim().replaceAll("\\s+", " ");
+        return view(service.addLine(sheetId.trim(), user.trim(), id, label, request.qtyValue(),
+                request.unitValue()));
+    }
+
+    /** The claim as shown, with its status log, comments and lines. */
     ClaimView view(Claim claim) {
-        return ClaimView.of(claim, service.logOf(claim), service.commentsOf(claim));
+        return ClaimView.of(claim, service.logOf(claim), service.commentsOf(claim), service.linesOf(claim));
     }
 }

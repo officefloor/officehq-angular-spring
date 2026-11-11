@@ -58,6 +58,22 @@ export interface Claim {
   comments: ClaimComment[];
   /** The number of the bulk settle that settled it (or sent it to PENDING); null when settled one at a time, or not settled. */
   settleBatch: number | null;
+  /** Its lines, oldest first: with any, its amount is their quantities times their unit amounts added up. */
+  lines: ClaimLine[];
+}
+
+/** A line of a claim: a label, a quantity (a whole number, at least 1) and a unit amount (two decimals). */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
+}
+
+/** What is typed for a new line of a claim. */
+interface LineEntry {
+  label: string;
+  qty: string;
+  unit: string;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
@@ -308,7 +324,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th>
+            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -373,6 +389,47 @@ export function sumAmounts(amounts: string[]): string {
                   (click)="addComment(c)"
                 >
                   Comment
+                </button>
+              </td>
+              <td>
+                <ol class="claim-lines">
+                  @for (line of c.lines; track $index) {
+                    <li data-testid="claim-lines-line">{{ line.label }} {{ line.qty }} x {{ line.unit }}</li>
+                  }
+                </ol>
+                <label class="visually-hidden" [for]="'claim-line-label-' + c.id">Line label</label>
+                <input
+                  [id]="'claim-line-label-' + c.id"
+                  data-testid="claim-line-label"
+                  placeholder="Label"
+                  [value]="lineEntries()[c.id]?.label ?? ''"
+                  (input)="setLineEntry(c.id, 'label', value($event))"
+                />
+                <label class="visually-hidden" [for]="'claim-line-qty-' + c.id">Line quantity</label>
+                <input
+                  [id]="'claim-line-qty-' + c.id"
+                  data-testid="claim-line-qty"
+                  inputmode="numeric"
+                  placeholder="Qty"
+                  [value]="lineEntries()[c.id]?.qty ?? ''"
+                  (input)="setLineEntry(c.id, 'qty', value($event))"
+                />
+                <label class="visually-hidden" [for]="'claim-line-unit-' + c.id">Line unit amount</label>
+                <input
+                  [id]="'claim-line-unit-' + c.id"
+                  data-testid="claim-line-unit"
+                  inputmode="decimal"
+                  placeholder="Unit amount"
+                  [value]="lineEntries()[c.id]?.unit ?? ''"
+                  (input)="setLineEntry(c.id, 'unit', value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-line-add"
+                  [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date"
+                  (click)="addLine(c)"
+                >
+                  Add line
                 </button>
               </td>
               <td>
@@ -608,6 +665,8 @@ export class Claims implements OnInit {
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The comment typed for each claim, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
+  /** The new line typed for each DRAFT claim, by claim id. */
+  protected readonly lineEntries = signal<Record<number, LineEntry>>({});
   /** The new amount typed for each DRAFT claim in its row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
 
@@ -957,6 +1016,58 @@ export class Claims implements OnInit {
     }
   }
 
+  protected setLineEntry(id: number, field: keyof LineEntry, text: string): void {
+    this.lineEntries.update((all) => {
+      const entry = all[id] ?? { label: '', qty: '', unit: '' };
+      return { ...all, [id]: { ...entry, [field]: text } };
+    });
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /**
+   * Add a line to a DRAFT claim, which counts as editing it: refused alike for a viewer, a claim not DRAFT, one in a
+   * closed period and one another user has open, and for an empty label, a quantity that is not a whole number of at
+   * least 1 and a unit amount with more than two decimals.
+   */
+  protected async addLine(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const entry = this.lineEntries()[claim.id] ?? { label: '', qty: '', unit: '' };
+    const label = entry.label.trim();
+    const qty = entry.qty.trim();
+    const unit = entry.unit.trim();
+    if (label === '' || label.length > 255) {
+      this.actionError.set({ id: claim.id, message: 'Type a label of at most 255 characters for the line.' });
+      return;
+    }
+    if (!/^0*[1-9]\d{0,5}$/.test(qty)) {
+      this.actionError.set({ id: claim.id, message: 'Type a whole number of at least 1 as the quantity.' });
+      return;
+    }
+    if (!/^\d{1,10}(\.\d{1,2})?$/.test(unit)) {
+      this.actionError.set({ id: claim.id, message: 'Type a unit amount with at most two decimals.' });
+      return;
+    }
+    const refused = this.editRefusal(claim, null);
+    if (refused !== null) {
+      this.actionError.set({ id: claim.id, message: refused });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/lines`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { label, qty, unit }, this.session.headers()));
+      this.lineEntries.update((all) => ({ ...all, [claim.id]: { label: '', qty: '', unit: '' } }));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const message =
+        e instanceof HttpErrorResponse && e.status === 422
+          ? 'The lines of this claim would add up to more than a claim can hold.'
+          : (this.editRefusal(claim, e) ?? 'This line could not be added to the claim.');
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
   protected setInlineAmount(id: number, amount: string): void {
     this.inlineAmounts.update((all) => ({ ...all, [id]: amount }));
     if (this.actionError()?.id === id) this.actionError.set(null);
@@ -981,6 +1092,13 @@ export class Claims implements OnInit {
     const refused = this.editRefusal(claim, null);
     if (refused !== null) {
       this.actionError.set({ id: claim.id, message: refused });
+      return;
+    }
+    if (claim.lines.length > 0 && Number(amount) !== Number(claim.amount)) {
+      this.actionError.set({
+        id: claim.id,
+        message: `This claim has lines: its amount is ${claim.amount}, their quantities times their unit amounts added up.`,
+      });
       return;
     }
     const body = { amount, date: claim.date, note: claim.note, corrects: claim.corrects, ref: claim.ref, tags: claim.tags };
@@ -1193,6 +1311,11 @@ export class Claims implements OnInit {
     const amount = this.amount().trim();
     if (!/^-?\d+(\.\d{1,2})?$/.test(amount)) {
       this.error.set('Type an amount with at most two decimals; a negative one is a correction.');
+      return;
+    }
+    const lined = this.claims().find((c) => c.id === this.editing() && c.lines.length > 0);
+    if (lined && Number(amount) !== Number(lined.amount)) {
+      this.error.set(`This claim has lines: its amount is ${lined.amount}, their quantities times their unit amounts added up.`);
       return;
     }
     const corrects = this.corrects().trim();

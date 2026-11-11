@@ -9,6 +9,7 @@ import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimCommentRepository;
+import net.officefloor.hq.app.claim.ClaimLineRepository;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -51,6 +52,7 @@ public class TransferService {
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
     private final ClaimCommentRepository comments;
+    private final ClaimLineRepository lines;
     private final ClaimService claimService;
     private final SheetTagRepository tags;
     private final StatementRepository statements;
@@ -65,7 +67,8 @@ public class TransferService {
             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
             ClaimCommentRepository comments, ClaimService claimService, SheetTagRepository tags,
             StatementRepository statements, PoolRepository pools, RoleService roles, SheetService sheets,
-            RollupService rollup, Audit audit, PersonService personService) {
+            RollupService rollup, Audit audit, PersonService personService, ClaimLineRepository lines) {
+        this.lines = lines;
         this.people = people;
         this.aliases = aliases;
         this.patrons = patrons;
@@ -192,6 +195,7 @@ public class TransferService {
         if (!claimIds.isEmpty()) {
             logs.moveTo(claimIds, to);
             comments.moveTo(claimIds, to);
+            lines.moveTo(claimIds, to);
         }
 
         // The statements follow the person; patron links, pool memberships and watches are dropped.

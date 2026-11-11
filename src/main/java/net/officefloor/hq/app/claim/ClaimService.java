@@ -58,11 +58,13 @@ public class ClaimService {
     private final SheetTagRepository tags;
     private final VoidReasonService voidReasons;
     private final ClaimCommentRepository comments;
+    private final ClaimLineRepository lines;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
             ClaimLogRepository logs, WatchService watches, HolidayService holidays, SheetTagRepository tags,
-            VoidReasonService voidReasons, ClaimCommentRepository comments) {
+            VoidReasonService voidReasons, ClaimCommentRepository comments, ClaimLineRepository lines) {
+        this.lines = lines;
         this.comments = comments;
         this.voidReasons = voidReasons;
         this.tags = tags;
@@ -128,6 +130,58 @@ public class ClaimService {
         audit.recordOnCommit(record("COMMENT_ADDED", user, person, claim) + numberOf(claim.getNumber())
                 + " text=" + written);
         return claim;
+    }
+
+    /** The lines of the sheet's claims by claim id, each oldest first. */
+    public Map<Long, List<ClaimLine>> lines(String sheetId) {
+        return lines.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(ClaimLine::getClaimId, Collectors.toList()));
+    }
+
+    /** The claim's lines, oldest first. */
+    public List<ClaimLine> linesOf(Claim claim) {
+        return lines.findByClaimIdOrderByIdAsc(claim.getId());
+    }
+
+    /**
+     * Add a line to a claim, which counts as editing it: refused, like an edit, for a claim that is not a DRAFT, due
+     * by a date in a closed period or locked by another user, and for an empty label. The claim's amount becomes its
+     * lines' quantities times their unit amounts added up.
+     */
+    @Transactional
+    public Claim addLine(String sheetId, String user, Long id, String label, int qty, BigDecimal unit) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotEditableException(id, claim.getStatus());
+        }
+        if (claim.isLockedAgainst(user)) {
+            throw new ClaimLockedException(id, claim.getLockedBy());
+        }
+        periods.requireOpen(sheetId, claim.getDueBy());
+        String labelled = label == null ? "" : label.trim();
+        if (labelled.isEmpty()) {
+            throw new ClaimLineException(id, "a line needs a label");
+        }
+        BigDecimal amount = unit.multiply(BigDecimal.valueOf(qty));
+        for (ClaimLine line : lines.findByClaimIdOrderByIdAsc(id)) {
+            amount = amount.add(line.total());
+        }
+        amount = amount.setScale(2, RoundingMode.UNNECESSARY);
+        if (amount.precision() - amount.scale() > 10) {
+            throw new ClaimLineException(id, "its lines add up to more than a claim can hold");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        lines.save(new ClaimLine(sheetId, id, labelled, qty, unit));
+        claim.setAmount(amount);
+        claim.setEditedBy(user);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_LINE_ADDED", user, person, saved) + " label=" + labelled + " qty=" + qty
+                + " unit=" + unit.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
     }
 
     @Transactional
@@ -203,6 +257,10 @@ public class ClaimService {
         LocalDate dated = dateOr(sheetId, date);
         // Its due-by, and so its period, stays as fixed when it was added.
         periods.requireOpen(sheetId, claim.getDueBy());
+        // A claim with lines keeps their sum as its amount.
+        if (amount.compareTo(claim.getAmount()) != 0 && lines.existsByClaimId(id)) {
+            throw new ClaimAmountFromLinesException(id);
+        }
         people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()))
                 .requireClaimable(dated);
