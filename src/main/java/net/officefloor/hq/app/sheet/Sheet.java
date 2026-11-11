@@ -185,7 +185,7 @@ public class Sheet {
         return gradeTermsOn(grade, date).orElseGet(() -> termsOn(date));
     }
 
-    /** The percent of its figure an overdue claim dated on the date gains for every full 30 days it is overdue. */
+    /** The percent of its figure an overdue claim gains for each 30-day boundary past its due-by falling on the date. */
     public BigDecimal latePctOn(LocalDate date) {
         return decimalOn(LATE_PCT, date).orElseThrow();
     }
@@ -253,10 +253,9 @@ public class Sheet {
     }
 
     /**
-     * The late charge on a figure of an OPEN claim dated {@code date}: the late percent of the figure for every full
-     * 30 days the sheet's today is past the claim's due-by (the late percent in force on its date), rounded as the
-     * claim's date has it; zero when not overdue,
-     * null (n/a) when the figure is.
+     * The late charge on a figure of an OPEN claim dated {@code date}: for every full 30 days the sheet's today is past
+     * the claim's due-by, the late percent in force on that boundary (the due-by plus 30, 60, 90 ... days) of the
+     * figure, each rounded as the claim's date has it, added up; zero when not overdue, null (n/a) when the figure is.
      */
     public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
         if (figure == null) {
@@ -264,8 +263,12 @@ public class Sheet {
         }
         long overdueDays = ChronoUnit.DAYS.between(dueBy, today);
         long periods = overdueDays <= 0 ? 0 : overdueDays / 30;
-        return figure.multiply(latePctOn(date)).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
-                .setScale(2, rounding(date));
+        BigDecimal charge = BigDecimal.ZERO.setScale(2);
+        for (long boundary = 1; boundary <= periods; boundary++) {
+            charge = charge.add(figure.multiply(latePctOn(dueBy.plusDays(30 * boundary))).movePointLeft(2)
+                    .setScale(2, rounding(date)));
+        }
+        return charge;
     }
 
     /** The figure with its late charge added on top when the claim is OPEN; null (n/a) stays null. */

@@ -143,17 +143,27 @@ export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], ses
 }
 
 /**
- * The late percent (the one in force on the claim's date) of the figure for every full 30 days an OPEN claim is past
- * its due-by on the sheet's today, rounded like the claim's due; 0.00 when it is not overdue, and on a correction.
+ * For every full 30 days an OPEN claim is past its due-by on the sheet's today, the late percent in force on that
+ * boundary (the due-by plus 30, 60, 90 ... days) of the figure, each rounded like the claim's due, added up; 0.00 when
+ * it is not overdue, and on a correction.
  */
 export function lateCharge(claim: Claim, figure: string, session: Session): string {
   const by = claim.dueBy;
   const today = session.today();
-  const pct = session.settingOn('late-pct', claim.date);
-  if (!isOpen(claim) || isCorrection(claim) || by === '' || today === null || pct === null) return '0.00';
+  if (!isOpen(claim) || isCorrection(claim) || by === '' || today === null) return '0.00';
   if (deferred(claim, today)) return '0.00';
   const days = Math.round((Date.parse(today) - Date.parse(by)) / 86_400_000);
-  return days > 0 ? percentOf(figure, pct, Math.floor(days / 30), roundingOf(claim, session)) : '0.00';
+  const charges: string[] = [];
+  for (let boundary = 1; boundary <= Math.floor(days / 30); boundary++) {
+    const pct = session.settingOn('late-pct', plusDays(by, 30 * boundary));
+    if (pct !== null) charges.push(percentOf(figure, pct, 1, roundingOf(claim, session)));
+  }
+  return sumDues(charges);
+}
+
+/** The yyyy-mm-dd date the days after the date. */
+function plusDays(date: string, days: number): string {
+  return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 /** Whether the claim's due is fixed, by settling or by a statement, rather than worked out from the rates. */
