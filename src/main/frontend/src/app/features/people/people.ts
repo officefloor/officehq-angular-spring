@@ -82,6 +82,12 @@ function nameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+type SortKey = 'added' | 'name' | 'grade' | 'due-total';
+
+function compareKeys(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
 
 /** What decides which of a person's open claims leave the live totals: their holds and their retirement date. */
@@ -286,6 +292,14 @@ function csvField(value: string): string {
         />
         <label for="show-retired">Show retired</label>
       </p>
+      <p>
+        <label for="sort-by">Sort by</label>
+        <select id="sort-by" data-testid="sort-by" [value]="sortBy()" (change)="sortBy.set(sortKey(value($event)))">
+          @for (k of sortKeys; track k) {
+            <option [value]="k" [selected]="k === sortBy()">{{ k }}</option>
+          }
+        </select>
+      </p>
       <table>
         <thead>
           <tr>
@@ -303,7 +317,7 @@ function csvField(value: string): string {
           </tr>
         </thead>
         <tbody>
-          @for (p of listed(); track p.id) {
+          @for (p of sorted(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td>
                 <input
@@ -704,6 +718,29 @@ export class People {
   protected readonly listed = computed(() =>
     this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
   );
+  protected readonly sortKeys: readonly SortKey[] = ['added', 'name', 'grade', 'due-total'];
+  /** What this screen sorts the people listed by; it changes only the order shown, never the list order. */
+  protected readonly sortBy = signal<SortKey>('added');
+  /** The people listed in the order this screen shows them: equal keys keep list order (the sort is stable). */
+  protected readonly sorted = computed(() => {
+    const listed = this.listed();
+    switch (this.sortBy()) {
+      case 'added':
+        return listed;
+      case 'name':
+        return [...listed].sort((a, b) => compareKeys(nameKey(a.name), nameKey(b.name)));
+      case 'grade':
+        return [...listed].sort((a, b) => compareKeys(this.gradeOf(a), this.gradeOf(b)));
+      case 'due-total': {
+        const due = new Map(listed.map((p) => [p.id, this.dueTotalOf(p)]));
+        const num = (p: Person) => {
+          const d = Number(due.get(p.id));
+          return Number.isFinite(d) ? d : Infinity;
+        };
+        return [...listed].sort((a, b) => (num(a) < num(b) ? -1 : num(a) > num(b) ? 1 : 0));
+      }
+    }
+  });
   /** The date typed to retire each person from, by id; blank retires from the sheet's today. */
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The alias typed on each person's row, by person id. */
@@ -1018,6 +1055,10 @@ export class People {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  protected sortKey(key: string): SortKey {
+    return this.sortKeys.find((k) => k === key) ?? 'added';
   }
 
   protected checked(event: Event): boolean {
