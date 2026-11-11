@@ -49,10 +49,11 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, Integer terms, String contact, String tags, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
-            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
+            List<String> snapshotLines) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
-                boolean watched, List<String> aliases, Set<String> keysInTree) {
+                boolean watched, List<String> aliases, Set<String> keysInTree, List<String> snapshotLines) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getTerms(),
                     person.getContact(), person.getTags(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
@@ -61,7 +62,8 @@ public class PersonController {
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     watched, aliases, PersonService.clashing(person, aliases, keysInTree), person.getOriginSheet(),
-                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList());
+                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+                    snapshotLines);
         }
     }
 
@@ -164,6 +166,7 @@ public class PersonController {
         Map<Long, StatementSummary> summaries = statements.summaries(sheetId.trim());
         Map<Long, List<Long>> patronIds = service.patronIds(sheetId.trim());
         Map<Long, List<String>> aliases = service.aliases(sheetId.trim());
+        Map<Long, List<String>> snapshotLines = service.snapshotLines(sheetId.trim());
         Set<Long> watched = watches.watchedBy(sheetId.trim(), user.trim());
         List<Person> people = service.list(sheetId.trim());
         LocalDate today = people.isEmpty() ? null : sheets.today(sheetId.trim());
@@ -171,7 +174,8 @@ public class PersonController {
         return people.stream()
                 .map(p -> PersonView.of(p, today, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         patronIds.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
-                        aliases.getOrDefault(p.getId(), List.of()), keysInTree))
+                        aliases.getOrDefault(p.getId(), List.of()), keysInTree,
+                        snapshotLines.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -326,6 +330,7 @@ public class PersonController {
     private PersonView view(Person person, String user) {
         return PersonView.of(person, sheets.today(person.getSheetId()), statements.summary(person.getSheetId(), person.getId()),
                 service.patronIdsOf(person.getId()), watches.watches(person.getId(), user),
-                service.aliasesOf(person.getId()), service.keysInTree(person.getSheetId()));
+                service.aliasesOf(person.getId()), service.keysInTree(person.getSheetId()),
+                service.snapshotLinesOf(person.getId()));
     }
 }

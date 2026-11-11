@@ -38,10 +38,12 @@ public class PersonService {
     private final RollupService rollup;
     private final SheetService sheetService;
     private final SheetTagRepository tags;
+    private final PersonSnapshotRepository snapshots;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonAliasRepository aliases,
             SheetRepository sheets, Audit audit, RollupService rollup, SheetService sheetService,
-            SheetTagRepository tags) {
+            SheetTagRepository tags, PersonSnapshotRepository snapshots) {
+        this.snapshots = snapshots;
         this.tags = tags;
         this.aliases = aliases;
         this.sheetService = sheetService;
@@ -326,6 +328,19 @@ public class PersonService {
         aliases.findBySheetId(sheetId).stream().sorted(ALIAS_ORDER)
                 .forEach(a -> byPerson.computeIfAbsent(a.getPersonId(), id -> new ArrayList<>()).add(a.getAlias()));
         return byPerson;
+    }
+
+    /** The snapshot lines of the sheet's people, by person id, each oldest first. */
+    public Map<Long, List<String>> snapshotLines(String sheetId) {
+        Map<Long, List<String>> byPerson = new HashMap<>();
+        snapshots.findBySheetIdOrderByIdAsc(sheetId)
+                .forEach(s -> byPerson.computeIfAbsent(s.getPersonId(), id -> new ArrayList<>()).add(s.line()));
+        return byPerson;
+    }
+
+    /** The person's snapshot lines, oldest first. */
+    public List<String> snapshotLinesOf(Long personId) {
+        return snapshots.findByPersonIdOrderByIdAsc(personId).stream().map(PersonSnapshot::line).toList();
     }
 
     /** The person's aliases, sorted as names are compared. */

@@ -57,6 +57,8 @@ interface Person {
   clashing: boolean;
   /** The sheet the person was transferred from; null for anyone else. */
   origin: string | null;
+  /** One line per SNAPSHOT written for the person, oldest first: the day being left, then the due-total. */
+  snapshotLines: string[];
 }
 
 /** A hold of a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
@@ -309,7 +311,7 @@ function csvField(value: string): string {
               <th scope="col">Due in {{ per.name }}</th>
             }
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Active</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">On hold</th><th scope="col">Active</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
             <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Watched</th>
@@ -351,6 +353,11 @@ function csvField(value: string): string {
               <td>
                 @for (r of p.retirements; track $index) {
                   <div data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</div>
+                }
+              </td>
+              <td>
+                @for (line of p.snapshotLines; track $index) {
+                  <div data-testid="person-snapshot-line">{{ line }}</div>
                 }
               </td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
