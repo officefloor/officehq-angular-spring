@@ -1,0 +1,121 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index d5caebca0..d34e0d709 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -207,7 +207,16 @@ export class Claims {
+     return (event.target as HTMLInputElement).value;
+   }
+ 
++  /** Open the claim's editor; only a DRAFT can be edited; to change an OPEN claim, void it and add a new one. */
+   protected edit(claim: Claim): void {
++    if (claim.status !== 'DRAFT') {
++      this.reset();
++      this.actionError.set({
++        id: claim.id,
++        message: `This claim is ${claim.status}: only a DRAFT can be edited. To change an open claim, void it and add a new one.`,
++      });
++      return;
++    }
+     this.editing.set(claim.id);
+     this.amount.set(claim.amount);
+     this.date.set(claim.date);
+@@ -275,9 +284,13 @@ export class Claims {
+         this.reset();
+         this.saved.emit(saved);
+       }
+-    } catch {
++    } catch (e) {
+       const closed = this.closedOn(date || (this.session.today() ?? ''));
+-      const why = closed ? ` Its date is in the closed period ${closed.name}.` : '';
++      const why = closed
++        ? ` Its date is in the closed period ${closed.name}.`
++        : editing !== null && e instanceof HttpErrorResponse && e.status === 409
++          ? ' Only a DRAFT claim can be edited.'
++          : '';
+       this.error.set((editing === null ? 'The claim could not be added.' : 'The claim could not be saved.') + why);
+     } finally {
+       this.submitting = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 8e97fa950..4653b1f8e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,7 +39,7 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** Given when the claim is opened; null for a DRAFT and once voided. */
++    /** Given when the claim is opened and kept once voided; null for a claim never opened. */
+     @Column(name = "claim_number")
+     private Long number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 435250734..293a88169 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -79,6 +79,7 @@ public class ClaimController {
+                 request.note()));
+     }
+ 
++    /** Edit a DRAFT claim; refused for any other status. */
+     @PutMapping("/claims/{id}")
+     public ClaimView update(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimNotEditableException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimNotEditableException.java
+new file mode 100644
+index 000000000..66be522d6
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimNotEditableException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** An edit of a claim that is no longer a DRAFT: to change an OPEN claim, void it and add a new one. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimNotEditableException extends RuntimeException {
++
++    public ClaimNotEditableException(Long id, ClaimStatus status) {
++        super("Claim " + id + " is " + status + ": only a DRAFT can be edited");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 6951ddc9e..e22904785 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. A claim dated in a closed
+- * period cannot be added, edited or change status.
++ * period cannot be added, edited or change status. Only a DRAFT claim can be edited.
+  */
+ @Service
+ public class ClaimService {
+@@ -64,6 +64,10 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
++        // Only a DRAFT can be edited: an OPEN claim is changed by voiding it and adding a new one.
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ClaimNotEditableException(id, claim.getStatus());
++        }
+         LocalDate dated = dateOr(sheetId, date);
+         // Neither out of nor into a closed period.
+         periods.requireOpen(sheetId, claim.getDate(), dated);
+@@ -105,14 +109,12 @@ public class ClaimService {
+             claim.setSettledDue(settledDue);
+             due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
+         }
+-        // The CLAIM_VOIDED record carries the number the claim had.
++        // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
+         Long number = claim.getNumber();
+         if (status == ClaimStatus.OPEN) {
+             number = sheets.nextClaimNumber(sheetId);
+             claim.setNumber(number);
+             claim.setOpenedBy(user);
+-        } else if (status == ClaimStatus.VOID) {
+-            claim.setNumber(null);
+         }
+         Claim saved = claims.saveAndFlush(claim);
+         String event = switch (status) {
