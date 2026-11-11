@@ -261,6 +261,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
             <th scope="col">Fiscal year</th>
             <th scope="col">Cap</th>
             <th scope="col">Locked</th>
+            <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -275,6 +276,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
               <td data-testid="period-fy">{{ p.fy }}</td>
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
+              <td data-testid="period-claims-count">{{ claimsCountOf(p) }}</td>
               <td>
                 <button
                   type="button"
@@ -335,6 +337,8 @@ export class Periods {
   readonly periods = model<Period[]>([]);
   /** The date and figure of each claim that counts. */
   readonly dues = input.required<DatedDue[]>();
+  /** The due-by of each claim on the sheet that is not VOID or DELETED, for the periods' claim counts. */
+  readonly claimDueBys = input.required<string[]>();
 
   protected readonly nameInput = signal('');
   protected readonly fromInput = signal('');
@@ -392,6 +396,11 @@ export class Periods {
         void this.fetch(sheet);
       }
     });
+  }
+
+  /** How many claims belong to the period (their due-by inside it), leaving out VOID and DELETED ones. */
+  protected claimsCountOf(p: Period): number {
+    return this.claimDueBys().filter((d) => p.from <= d && d <= p.to).length;
   }
 
   protected dueTotalOf(p: Period): string {

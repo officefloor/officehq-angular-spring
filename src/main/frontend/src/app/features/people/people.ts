@@ -315,7 +315,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
     <app-grades />
     <app-roles />
     <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(roundings)]="roundings" [(caps)]="caps" [(pot)]="pot" />
-    <app-periods [(periods)]="periods" [dues]="dues()" />
+    <app-periods [(periods)]="periods" [dues]="dues()" [claimDueBys]="claimDueBys()" />
     <app-holidays />
     <app-void-reasons />
     <app-templates />
@@ -1421,6 +1421,10 @@ export class People {
     }
     return out;
   });
+  /** The due-by of each claim that is not VOID or DELETED, for the periods' claim counts. */
+  protected readonly claimDueBys = computed(() =>
+    this.claims().filter((c) => c.status !== 'VOID' && c.status !== 'DELETED').map((c) => c.dueBy),
+  );
   /** Each person's statements, by person id. */
   protected readonly statements = signal<ReadonlyMap<number, StatementSummary>>(new Map());
   /** Each person's patrons, in the order they were named. */
