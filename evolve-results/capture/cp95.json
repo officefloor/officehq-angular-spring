@@ -1,0 +1,64 @@
+{
+  "checkpoint": 95,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp95_rate-preview",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The rates panel gains a preview: a grade, a candidate rate and a preview button show how many\nOPEN and PENDING claims of people on that grade (the grade in force on the claim's date) would show\na different due if that rate applied to the grade on every date, and the sum of the differences\n(new due minus current due, two decimals, negative when lower). A claim bound by a statement does\nnot change; a settled claim is not counted. Nothing is saved and nothing is written to the audit.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rates panel gains a preview: a grade, a candidate rate and a preview button show how many\nOPEN and PENDING claims of people on that grade (the grade in force on the claim's date) would show\na different due if that rate applied to the grade on every date, and the sum of the differences\n(new due minus current due, two decimals, negative when lower). A claim bound by a statement does\nnot change; a settled claim is not counted. Nothing is saved and nothing is written to the audit.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e08dd081e8983210e17c3bc8bb5c275fc9f9d797",
+  "reset_sha": "",
+  "preagent_sha": "24aa798d2daf1dee2de4fe0eba14338137170da2",
+  "prev_sha": "24aa798d2daf1dee2de4fe0eba14338137170da2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7987334000000001,
+    "input_tokens": 36,
+    "output_tokens": 8577,
+    "cache_read_tokens": 796287,
+    "cache_creation_tokens": 58474,
+    "num_turns": 18,
+    "duration_ms": 301377,
+    "duration_api_ms": 86614,
+    "model": "claude-opus-5-5",
+    "session_id": "d7fc1ef7-870f-4d56-a901-dcb5e6f5930c",
+    "stop_reason": "success",
+    "result_text": "The rates panel now has a preview, and `bin/e2e` passes all 4 tests: the new rate-preview test and the three existing scenarios.\n\n**How it works:**\n- **Server:** I added `GET /api/sheets/{sheetId}/rates/preview?grade=&pct=` in `rate/RateController.java`. It goes through `RateService.preview` to a new `RollupService.preview`. That works out each due with the same code the rollup already uses, once with the stored rates and once with the grade's rates swapped for a single undated rate at the candidate percent. It does this only for OPEN and PENDING claims whose person had that grade on the claim's date.\n- **Counting:** a claim counts when its due differs at two decimals, and the difference is new due minus current due.\n  - Claims bound by a statement keep their stated due, so they never count.\n  - Settled claims are skipped.\n  - The floor and late charge apply just as they do on screen.\n- **Nothing is saved:** it is a read-only transaction and writes nothing to the audit. Because it's a plain GET, it also works when someone is viewing the sheet as of an earlier date.\n- **Front end:** `features/rates/rates.ts` has a grade select, a candidate-rate field and a Preview button, using the test's `rate-preview-*` ids. A bad percent shows `rate-preview-error`. Pressing the button again clears the old result.\n\n**Decisions for you:**\n- **Old result is cleared when the rates or sheet change.** Otherwise two identical results in a row look the same: the test runs a 0 / 0.00 preview, sets a rate, then expects another 0 / 0.00 and has to tell them apart.\n- **A claim with no rate today (shown as n/a) counts as 0.00 in the sum.** If the candidate rate gives it a due, it is counted and its full new due is added.\n- **Claims of people on hold are included.** The request only says \"people on that grade\", so I didn't filter them out.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7987334000000001,
+        "num_turns": 18,
+        "duration_ms": 301377,
+        "duration_api_ms": 86614,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp95.agent.jsonl",
+  "agent_diff_file": "cp95.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
