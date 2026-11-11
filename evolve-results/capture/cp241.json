@@ -1,0 +1,64 @@
+{
+  "checkpoint": 241,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp241_as-of-roles",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "While an as-of date is set, the roles shown on the screen are those in force at the end of that\nday.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhile an as-of date is set, the roles shown on the screen are those in force at the end of that\nday.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6dfaa4a075dc7fac5671cf93f95ffa9e7babf4fc",
+  "reset_sha": "",
+  "preagent_sha": "6dfaa4a075dc7fac5671cf93f95ffa9e7babf4fc",
+  "prev_sha": "6dfaa4a075dc7fac5671cf93f95ffa9e7babf4fc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6029774000000001,
+    "input_tokens": 32,
+    "output_tokens": 3919,
+    "cache_read_tokens": 629147,
+    "cache_creation_tokens": 49830,
+    "num_turns": 16,
+    "duration_ms": 555376,
+    "duration_api_ms": 46915,
+    "model": "claude-opus-5-5",
+    "session_id": "1b58baed-08bf-4885-aecd-ebcdcd5db2ec",
+    "stop_reason": "success",
+    "result_text": "I made no code changes: the app already does what the request asks. I ran `bin/e2e` before touching anything and all 4 tests in `e2e/specs/acceptance.spec.ts` passed, including the main \"as of roles\" one.\n\n**Why it already works:**\n- **Server:** after every change, the app saves a copy of all the sheet's stored rows, tagged with the sheet's today (`SheetHistory`). It finds those tables by looking for a `sheet_id` column, so the roles table (`sheet_role`) is included without being listed anywhere. When an as-of date is set, read requests are answered from the last copy made on or before that date, in a transaction that is rolled back afterwards (`AsOfFilter`). So `/api/roles/list` returns the roles in force at the end of that day.\n- **Front end:** every API call carries the as-of date in an `X-As-Of` header. Setting or clearing the date reloads the sheet, and the Roles panel re-reads its list on each reload.\n\nThis also covers your own role and steward delegations, since they're stored the same way. Setting a role while an as-of date is shown is refused and nothing is written.\n\nIn the test, vic shows as `steward` as of 2026-03-01 and as `clerk` as of 2026-03-05 or with the date cleared, and wes shows as `viewer`. The audit records also match what the test expects.\n\nIf you meant something beyond what the test checks, tell me and I'll look into it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6029774000000001,
+        "num_turns": 16,
+        "duration_ms": 555376,
+        "duration_api_ms": 46915,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp241.agent.jsonl",
+  "agent_diff_file": "cp241.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
