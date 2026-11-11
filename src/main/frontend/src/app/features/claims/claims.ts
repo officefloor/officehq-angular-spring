@@ -165,7 +165,7 @@ export function lateCharge(claim: Claim, figure: string, session: Session): stri
 }
 
 /** The yyyy-mm-dd date the days after the date. */
-function plusDays(date: string, days: number): string {
+export function plusDays(date: string, days: number): string {
   return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 }
 

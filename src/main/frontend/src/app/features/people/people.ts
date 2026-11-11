@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, statusOn, sumAmounts } from '../claims/claims';
+import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, capped, excessOver, rateOn, sumDues, trimmedSumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
@@ -194,7 +194,7 @@ function csvField(value: string): string {
               <th scope="col">Due in {{ per.name }}</th>
             }
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
@@ -217,6 +217,7 @@ function csvField(value: string): string {
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
@@ -444,7 +445,12 @@ export class People {
   protected readonly gradeSummary = computed<GradeSummary[]>(() =>
     this.grades.map((grade) => {
       const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
-      return { grade, count: on.length, dueTotal: sumDues(on.map((p) => this.dueTotalOf(p))) };
+      return {
+        grade,
+        count: on.length,
+        dueTotal: sumDues(on.map((p) => this.dueTotalOf(p))),
+        active: on.filter((p) => this.isActive(p)).length,
+      };
     }),
   );
   /** Per period: its due-total as the period list shows it. */
@@ -609,6 +615,19 @@ export class People {
     const anyDated = today !== null && counted.some((c, i) => dues[i] !== 'n/a' && c.date <= today);
     if (this.rateOf(this.gradeOf(person)) === undefined && !counted.some(dueFixed) && !anyDated) return 'n/a';
     return sumDues(dues);
+  }
+
+  /**
+   * Whether the person is active: they have an OPEN or PENDING claim that counts in the live totals dated within the
+   * 30 days up to and including the sheet's today.
+   */
+  protected isActive(person: Person): boolean {
+    const today = this.session.today();
+    if (today === null) return false;
+    const since = plusDays(today, -29);
+    return this.claimsOf(person.id).some(
+      (c) => isOpen(c) && live(c, person.holds, today) && since <= c.date && c.date <= today,
+    );
   }
 
   /** The person's claims that count in the live totals and are overdue. */
