@@ -166,8 +166,8 @@ export function overdueBy(claim: Claim, grades: PersonGrade[], session: Session)
 
 /**
  * For every full 30 days an OPEN claim is past its due-by (plus its grace) on the sheet's today, the late percent in
- * force on that boundary (the due-by plus its grace plus 30, 60, 90 ... days) of the figure, each rounded like the
- * claim's due, added up; 0.00 when it is not overdue, and on a correction.
+ * force on that boundary (the due-by plus its grace plus 30, 60, 90 ... days) of the figure plus the charges of the
+ * boundaries before it (compounding), each rounded like the claim's due, added up; 0.00 when it is not overdue, and on a correction.
  */
 export function lateCharge(claim: Claim, figure: string, grades: PersonGrade[], session: Session): string {
   const by = overdueBy(claim, grades, session);
@@ -178,7 +178,7 @@ export function lateCharge(claim: Claim, figure: string, grades: PersonGrade[], 
   const charges: string[] = [];
   for (let boundary = 1; boundary <= Math.floor(days / 30); boundary++) {
     const pct = session.settingOn('late-pct', plusDays(by, 30 * boundary));
-    if (pct !== null) charges.push(percentOf(figure, pct, 1, roundingOf(claim, session)));
+    if (pct !== null) charges.push(percentOf(sumDues([figure, ...charges]), pct, 1, roundingOf(claim, session)));
   }
   return sumDues(charges);
 }

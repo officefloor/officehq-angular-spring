@@ -152,7 +152,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             (input)="setFrom('grace-' + g, value($event))"
           />
         }
-        <label for="setting-late-pct">Late percent (of an overdue claim's due, every full 30 days)</label>
+        <label for="setting-late-pct">Late percent (of an overdue claim's due, compounding every full 30 days)</label>
         <input
           id="setting-late-pct"
           data-testid="setting-late-pct"
