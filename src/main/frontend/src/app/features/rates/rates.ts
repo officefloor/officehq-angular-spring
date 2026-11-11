@@ -22,18 +22,46 @@ export interface Rate {
   version: number;
   /** 0 for the sheet's own rate, 1 for its parent sheet's, 2 for that sheet's parent's, and so on. */
   level: number;
+  /**
+   * Set when the rate is forward-only (saved with a from-date on or after the sheet's today): the highest claim id
+   * there was when it was saved; only a claim whose rateStamp is above it sees it. Null when every claim does.
+   */
+  forwardAfter: number | null;
+  /** Its older versions, newest first, that a claim not seeing it falls back on (empty unless it is forward-only). */
+  older: OlderRate[];
+}
+
+/** An older version of a forward-only rate. */
+export interface OlderRate {
+  pct: string;
+  to: string | null;
+  forwardAfter: number | null;
+}
+
+/** Whether a claim with the stamp sees a setting with the mark; any does without a stamp. */
+function seen(forwardAfter: number | null, stamp: number | undefined): boolean {
+  return forwardAfter === null || stamp === undefined || stamp > forwardAfter;
+}
+
+/** The rate as the claim with the stamp sees it: itself, else its newest older version it sees; undefined with none. */
+function seenBy(rate: Rate, stamp: number | undefined): Rate | undefined {
+  if (seen(rate.forwardAfter, stamp)) return rate;
+  const older = (rate.older ?? []).find((v) => seen(v.forwardAfter, stamp));
+  return older === undefined ? undefined : { ...rate, pct: older.pct, to: older.to, forwardAfter: older.forwardAfter };
 }
 
 /**
  * The percent of the grade's rate in force on the date: the one with the latest from-date on or
  * before it, an undated rate counting as from the beginning of time; undefined when the date is
  * before every rate, or after that rate's to-date. With none of the sheet's own in force, the
- * parent sheet's, then its parent's, and so on (nearest level first).
+ * parent sheet's, then its parent's, and so on (nearest level first). For a claim, given its rateStamp: a
+ * forward-only rate saved before the claim was added is left out, falling back on its older version the claim sees.
  */
-export function rateOn(rates: Rate[], grade: string, date: string): string | undefined {
+export function rateOn(rates: Rate[], grade: string, date: string, stamp?: number): string | undefined {
   const levels = [...new Set(rates.map((r) => r.level))].sort((a, b) => a - b);
   for (const level of levels) {
-    const pct = rateOnLevel(rates.filter((r) => r.level === level), grade, date);
+    const seenRates = rates.flatMap((r) => (r.level === level ? (seenBy(r, stamp) ?? []) : []));
+    const pct = rateOnLevel(seenRates, grade, date);
     if (pct !== undefined) return pct;
   }
   return undefined;

@@ -176,7 +176,7 @@ public class StatementService {
             }
             BigDecimal figure = settled != null ? settled
                     : bound ? claim.getStatedDue()
-                    : rates.rateAsOf(sheetId, person.gradeOn(claim.getDate()), claim.getDate(), asOf)
+                    : rates.rateAsOf(sheetId, person.gradeOn(claim.getDate()), claim.getDate(), asOf, claim.rateStamp())
                             .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getDate(), claim.getRoundingDate(), asOf))
                             .orElse(null);
             BigDecimal due = settled != null || claim.isCorrection() ? figure
@@ -260,7 +260,7 @@ public class StatementService {
         if (claim.isBound()) {
             return Optional.ofNullable(claim.getStatedDue());
         }
-        return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
+        return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate(), claim.rateStamp())
                 .map(Rate::getPct)
                 .map(pct -> sheets.get(sheetId).rateStep(claim.getAmount(), pct, claim.getDate(), claim.getRoundingDate()));
     }

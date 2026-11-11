@@ -143,6 +143,7 @@ public class SheetCloneService {
             Rate copy = new Rate(to, rate.getGrade(), rate.getFromDate(), rate.getPct());
             copy.setToDate(rate.getToDate());
             copy.setVersion(rate.getVersion());
+            copy.setForwardAfter(rate.getForwardAfter());
             Long copyId = rates.save(copy).getId();
             rateVersions.findByRateIdOrderByVersionAsc(rate.getId())
                     .forEach(v -> rateVersions.save(v.copyTo(copyId)));

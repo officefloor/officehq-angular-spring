@@ -1018,7 +1018,7 @@ public class ClaimService {
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         Sheet sheet = settings.get(sheetId);
-        return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
+        return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate(), claim.rateStamp())
                 .map(Rate::getPct)
                 .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getDate(), claim.getRoundingDate()))
                 .orElse(null);

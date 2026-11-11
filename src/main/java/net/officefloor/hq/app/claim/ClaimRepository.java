@@ -10,6 +10,10 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
+    /** The highest claim id on any sheet; 0 with none. */
+    @Query("select coalesce(max(c.id), 0) from Claim c")
+    long maxId();
+
     /** A sheet's claims, newest first. */
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
 

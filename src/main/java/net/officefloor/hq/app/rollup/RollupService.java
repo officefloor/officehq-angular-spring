@@ -27,6 +27,7 @@ import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateLog;
 import net.officefloor.hq.app.rate.RateLogRepository;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateVersionRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -55,18 +56,20 @@ public class RollupService {
     private final ClaimLogRepository logs;
     private final RateRepository rates;
     private final RateLogRepository rateLogs;
+    private final RateVersionRepository rateVersions;
     private final SheetRepository sheets;
     private final PersonAliasRepository aliases;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
-            RateRepository rates, RateLogRepository rateLogs, SheetRepository sheets, PersonAliasRepository aliases,
-            Audit audit) {
+            RateRepository rates, RateLogRepository rateLogs, RateVersionRepository rateVersions, SheetRepository sheets,
+            PersonAliasRepository aliases, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.logs = logs;
         this.rates = rates;
         this.rateLogs = rateLogs;
+        this.rateVersions = rateVersions;
         this.sheets = sheets;
         this.aliases = aliases;
         this.audit = audit;
@@ -389,7 +392,7 @@ public class RollupService {
             return Optional.of(claim.getSettledDue());
         }
         Optional<BigDecimal> figure = claim.isBound() ? Optional.ofNullable(claim.getStatedDue())
-                : rateOn(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
+                : rateOn(sheetRates, person.gradeOn(claim.getDate()), claim.getDate(), claim.rateStamp())
                         .map(Rate::getPct)
                         .map(pct -> sheet == null
                                 ? claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN)
@@ -444,21 +447,35 @@ public class RollupService {
      */
     public List<List<Rate>> rateChain(String sheetId, LocalDate asOf) {
         List<List<Rate>> chain = new ArrayList<>();
-        chain.add(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId));
+        chain.add(withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId)));
         List<String> seen = new ArrayList<>(List.of(sheetId));
         String parent = sheets.findById(sheetId).map(Sheet::getParent).orElse(null);
         while (parent != null && chain.size() <= PARENT_LEVELS && !seen.contains(parent)) {
             seen.add(parent);
-            chain.add(asOf == null ? rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(parent) : ratesAsOf(parent, asOf));
+            chain.add(asOf == null ? withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(parent))
+                    : ratesAsOf(parent, asOf));
             parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
         }
         return chain;
     }
 
+    /**
+     * The rates, each forward-only one with its older versions read with it, so a claim added before it was saved
+     * falls back on the version it saw.
+     */
+    public List<Rate> withOlder(List<Rate> sheetRates) {
+        for (Rate rate : sheetRates) {
+            if (rate.getForwardAfter() != null) {
+                rate.setOlder(rateVersions.findByRateIdOrderByVersionAsc(rate.getId()));
+            }
+        }
+        return sheetRates;
+    }
+
     /** The sheet's rates as they stood at the end of {@code asOf}, by its rate log, in grade order then by from-date. */
     private List<Rate> ratesAsOf(String sheetId, LocalDate asOf) {
         Map<String, List<Rate>> now = new TreeMap<>();
-        for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId)) {
+        for (Rate rate : withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId))) {
             now.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
         }
         Map<String, List<RateLog>> set = new TreeMap<>();
@@ -481,8 +498,17 @@ public class RollupService {
      * first); empty when none is.
      */
     public static Optional<Rate> rateOn(List<List<Rate>> chain, String grade, LocalDate date) {
+        return rateOn(chain, grade, date, null);
+    }
+
+    /**
+     * As {@link #rateOn(List, String, LocalDate)}, for the claim with the stamp: leaving out the forward-only rates
+     * saved before it was added, each falling back on its newest older version the claim sees (null: without regard
+     * to forward-only rates).
+     */
+    public static Optional<Rate> rateOn(List<List<Rate>> chain, String grade, LocalDate date, Long stamp) {
         for (List<Rate> level : chain) {
-            Optional<Rate> found = rateOnLevel(level, grade, date);
+            Optional<Rate> found = rateOnLevel(level, grade, date, stamp);
             if (found.isPresent()) {
                 return found;
             }
@@ -490,9 +516,10 @@ public class RollupService {
         return Optional.empty();
     }
 
-    private static Optional<Rate> rateOnLevel(List<Rate> sheetRates, String grade, LocalDate date) {
+    private static Optional<Rate> rateOnLevel(List<Rate> sheetRates, String grade, LocalDate date, Long stamp) {
         return sheetRates.stream()
                 .filter(r -> r.getGrade().equals(grade))
+                .flatMap(r -> r.seenBy(stamp).stream())
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
                 .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(r -> r.appliesOn(date));

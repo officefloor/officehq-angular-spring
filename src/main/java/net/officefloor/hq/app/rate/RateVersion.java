@@ -30,24 +30,34 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    /** As the rate's: set when this version was forward-only. */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateVersion() {
     }
 
     /** The rate as it stands now, kept as an older version. */
     public RateVersion(Rate rate) {
-        this(rate.getId(), rate.getVersion(), rate.getPct(), rate.getToDate());
+        this(rate.getId(), rate.getVersion(), rate.getPct(), rate.getToDate(), rate.getForwardAfter());
     }
 
-    private RateVersion(Long rateId, int version, BigDecimal pct, LocalDate toDate) {
+    /** A version not kept: as a rate log line set it, before a later setting of the same from-date. */
+    public RateVersion(int version, BigDecimal pct, LocalDate toDate, Long forwardAfter) {
+        this(null, version, pct, toDate, forwardAfter);
+    }
+
+    private RateVersion(Long rateId, int version, BigDecimal pct, LocalDate toDate, Long forwardAfter) {
         this.rateId = rateId;
         this.version = version;
         this.pct = pct;
         this.toDate = toDate;
+        this.forwardAfter = forwardAfter;
     }
 
     /** A copy of the version for another rate. */
     public RateVersion copyTo(Long rateId) {
-        return new RateVersion(rateId, version, pct, toDate);
+        return new RateVersion(rateId, version, pct, toDate, forwardAfter);
     }
 
     public Long getId() {
@@ -68,5 +78,9 @@ public class RateVersion {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    public Long getForwardAfter() {
+        return forwardAfter;
     }
 }

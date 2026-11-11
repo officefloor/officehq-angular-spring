@@ -71,6 +71,10 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** The stamp a forward-only rate is matched against; null for the claim's own id (a clone's copy keeps the original's). */
+    @Column(name = "rate_stamp")
+    private Long rateStamp;
+
     /** The business days after its date its due-by was fixed with; a holiday added later works the due-by out again with them. */
     @Column(name = "terms", nullable = false)
     private int terms;
@@ -405,7 +409,16 @@ public class Claim {
         copy.ref = ref;
         copy.tags = tags;
         copy.voidReason = voidReason;
+        copy.rateStamp = rateStamp();
         return copy;
+    }
+
+    /**
+     * The stamp a forward-only rate is matched against: the claim sees one saved when the highest claim id was below
+     * it, that is one saved before the claim was added.
+     */
+    public Long rateStamp() {
+        return rateStamp != null ? rateStamp : id;
     }
 
     /** Whether a user other than this one has the claim's editor open. */

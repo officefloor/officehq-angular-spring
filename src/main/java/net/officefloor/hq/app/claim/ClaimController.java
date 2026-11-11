@@ -38,14 +38,15 @@ public class ClaimController {
      * it has; and the number of the claim it was split off (null unless it was); and the user whose open editor locks
      * it (null when not locked); and the last day it was reminded (null when never); and its external reference (null
      * when it has none); and its tags, sorted and comma separated (null when it has none); and the reason it was voided
-     * with (null when none); and its comments, oldest first; and the bulk settle batch that settled it (null when none).
+     * with (null when none); and its comments, oldest first; and the bulk settle batch that settled it (null when none);
+     * and the stamp a forward-only rate is matched against (it sees one whose forwardAfter is below it).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
             String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
-            List<ClaimLineView> lines) {
+            List<ClaimLineView> lines, Long rateStamp) {
 
         /** A claim with no comments or lines yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
@@ -65,7 +66,7 @@ public class ClaimController {
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
                     comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
-                    lines.stream().map(ClaimLineView::of).toList());
+                    lines.stream().map(ClaimLineView::of).toList(), claim.rateStamp());
         }
     }
 

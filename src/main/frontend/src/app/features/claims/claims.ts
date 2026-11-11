@@ -58,6 +58,8 @@ export interface Claim {
   comments: ClaimComment[];
   /** The number of the bulk settle that settled it (or sent it to PENDING); null when settled one at a time, or not settled. */
   settleBatch: number | null;
+  /** The stamp a forward-only rate is matched against: the claim sees one whose forwardAfter is below it. */
+  rateStamp: number;
   /** Its lines, oldest first: with any, its amount is their quantities times their unit amounts added up. */
   lines: ClaimLine[];
 }
@@ -190,7 +192,7 @@ export function roundingOf(claim: Claim, session: Session): Rounding {
 export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], session: Session): string {
   if (claim.settledDue !== null) return claim.settledDue;
   const grade = gradeOn(grades, claim.date);
-  const due = dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date), roundingOf(claim, session));
+  const due = dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date, claim.rateStamp), roundingOf(claim, session));
   const figure = bound(claim) ? (claim.statedDue ?? 'n/a') : due;
   if (figure === 'n/a' || isCorrection(claim)) return figure;
   return floored(sumDues([figure, lateCharge(claim, figure, grades, session)]), session.settingOn('floor', claim.date));

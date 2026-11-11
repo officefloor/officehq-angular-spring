@@ -41,6 +41,10 @@ public class RateLog {
     @Column(name = "set_on", nullable = false)
     private LocalDate setOn;
 
+    /** As the rate's: set when the setting was forward-only. */
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateLog() {
     }
 
@@ -51,6 +55,7 @@ public class RateLog {
         this.toDate = rate.getToDate();
         this.pct = rate.getPct();
         this.setOn = setOn;
+        this.forwardAfter = rate.getForwardAfter();
     }
 
     /** A copy of the log line on another sheet. */
@@ -62,6 +67,7 @@ public class RateLog {
         copy.toDate = toDate;
         copy.pct = pct;
         copy.setOn = setOn;
+        copy.forwardAfter = forwardAfter;
         return copy;
     }
 
@@ -89,6 +95,10 @@ public class RateLog {
         return setOn;
     }
 
+    public Long getForwardAfter() {
+        return forwardAfter;
+    }
+
     /**
      * A grade's rates on a sheet as they stood at the end of {@code asOf}: each from-date's last setting made while the
      * sheet's today was on or before it (a rate set before settings were logged counts as it is now).
@@ -97,10 +107,10 @@ public class RateLog {
      * @param set the grade's rate settings, in the order they were made
      */
     public static List<Rate> stood(String sheetId, String grade, List<Rate> now, List<RateLog> set, LocalDate asOf) {
-        Map<LocalDate, RateLog> then = new LinkedHashMap<>();
+        Map<LocalDate, List<RateLog>> then = new LinkedHashMap<>();
         for (RateLog log : set) {
             if (!log.getSetOn().isAfter(asOf)) {
-                then.put(log.getFromDate(), log);
+                then.computeIfAbsent(log.getFromDate(), d -> new ArrayList<>()).add(log);
             }
         }
         List<Rate> stood = new ArrayList<>();
@@ -110,9 +120,18 @@ public class RateLog {
                 stood.add(rate);
             }
         }
-        for (RateLog log : then.values()) {
+        for (List<RateLog> logs : then.values()) {
+            // The last setting stood; the ones before it are what a claim that does not see it falls back on.
+            RateLog log = logs.get(logs.size() - 1);
             Rate rate = new Rate(sheetId, grade, log.getFromDate(), log.getPct());
             rate.setToDate(log.getToDate());
+            rate.setForwardAfter(log.getForwardAfter());
+            List<RateVersion> older = new ArrayList<>();
+            for (int i = 0; i < logs.size() - 1; i++) {
+                RateLog earlier = logs.get(i);
+                older.add(new RateVersion(i + 1, earlier.getPct(), earlier.getToDate(), earlier.getForwardAfter()));
+            }
+            rate.setOlder(older);
             stood.add(rate);
         }
         return stood;

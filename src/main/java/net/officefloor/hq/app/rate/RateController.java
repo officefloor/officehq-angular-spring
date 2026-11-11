@@ -10,6 +10,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.http.HttpStatus;
@@ -33,9 +34,12 @@ public class RateController {
 
     /**
      * A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none);
-     * how many versions it has had (the one shown being the newest, in force); and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on.
+     * how many versions it has had (the one shown being the newest, in force); and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on;
+     * and, when it is forward-only, the highest claim id there was when it was saved (null otherwise), with its older
+     * versions, newest first, that a claim added before then falls back on.
      */
-    public record RateView(String grade, String pct, String from, String to, int version, int level) {
+    public record RateView(String grade, String pct, String from, String to, int version, int level, Long forwardAfter,
+            List<OlderView> older) {
 
         static RateView of(Rate rate) {
             return of(rate, 0);
@@ -44,7 +48,19 @@ public class RateController {
         static RateView of(Rate rate, int level) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     rate.getFromDate() == null ? null : rate.getFromDate().toString(),
-                    rate.getToDate() == null ? null : rate.getToDate().toString(), rate.getVersion(), level);
+                    rate.getToDate() == null ? null : rate.getToDate().toString(), rate.getVersion(), level,
+                    rate.getForwardAfter(), rate.getOlder().stream()
+                            .sorted(Comparator.comparingInt(RateVersion::getVersion).reversed())
+                            .map(OlderView::of).toList());
+        }
+    }
+
+    /** An older version of a forward-only rate: its percent, to-date and, when it was forward-only too, its mark. */
+    public record OlderView(String pct, String to, Long forwardAfter) {
+
+        static OlderView of(RateVersion version) {
+            return new OlderView(version.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                    version.getToDate() == null ? null : version.getToDate().toString(), version.getForwardAfter());
         }
     }
 
