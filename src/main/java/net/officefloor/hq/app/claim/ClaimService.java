@@ -87,7 +87,7 @@ public class ClaimService {
         claim.setCorrects(corrects);
         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
         // Due by its date plus the terms of its person's grade on that date, fixed from now on.
-        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated))));
+        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated), dated)));
         claim.setListed(sheets.nextListed(sheetId));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
@@ -357,7 +357,7 @@ public class ClaimService {
 
     /**
      * The claim's amount at the rate its person's grade has on its date, two decimals rounded as the sheet's policy
-     * date has the claim round, raised to the sheet's floor unless it is a correction; null (n/a) with no rate.
+     * date has the claim round, raised to the sheet's floor on its date unless it is a correction; null (n/a) with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         Sheet sheet = settings.get(sheetId);
@@ -365,7 +365,7 @@ public class ClaimService {
                 .map(Rate::getPct)
                 .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
                 .orElse(null);
-        return claim.isCorrection() ? due : sheet.floored(due);
+        return claim.isCorrection() ? due : sheet.floored(due, claim.getDate());
     }
 
     /**

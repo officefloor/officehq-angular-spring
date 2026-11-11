@@ -103,7 +103,7 @@ export function roundingOf(claim: Claim, session: Session): Rounding {
 
 /**
  * The due fixed when the claim was settled, else its figure (the one its person's last statement bound it to, else
- * its amount times the rate of its person's grade on its date, both in force on its date, raised to the sheet's floor, or n/a with no rate) with its late
+ * its amount times the rate of its person's grade on its date, both in force on its date, raised to the sheet's floor on its date, or n/a with no rate) with its late
  * charge added on top. A correction has neither floor nor late charge.
  */
 export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], session: Session): string {
@@ -112,18 +112,18 @@ export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], ses
   const due = dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date), roundingOf(claim, session));
   const figure = bound(claim)
     ? (claim.statedDue ?? 'n/a')
-    : isCorrection(claim) ? due : floored(due, session.floor());
+    : isCorrection(claim) ? due : floored(due, session.settingOn('floor', claim.date));
   return figure === 'n/a' ? figure : sumDues([figure, lateCharge(claim, figure, session)]);
 }
 
 /**
- * The late percent of the figure for every full 30 days an OPEN claim is past its due-by on the sheet's today,
- * rounded like the claim's due; 0.00 when it is not overdue, and on a correction.
+ * The late percent (the one in force on the claim's date) of the figure for every full 30 days an OPEN claim is past
+ * its due-by on the sheet's today, rounded like the claim's due; 0.00 when it is not overdue, and on a correction.
  */
 export function lateCharge(claim: Claim, figure: string, session: Session): string {
   const by = claim.dueBy;
   const today = session.today();
-  const pct = session.latePct();
+  const pct = session.settingOn('late-pct', claim.date);
   if (!isOpen(claim) || isCorrection(claim) || by === '' || today === null || pct === null) return '0.00';
   const days = Math.round((Date.parse(today) - Date.parse(by)) / 86_400_000);
   return days > 0 ? percentOf(figure, pct, Math.floor(days / 30), roundingOf(claim, session)) : '0.00';

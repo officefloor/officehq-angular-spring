@@ -122,6 +122,6 @@ public class StatementService {
         return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> sheets.get(sheetId).rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
-                .map(due -> claim.isCorrection() ? due : sheets.get(sheetId).floored(due));
+                .map(due -> claim.isCorrection() ? due : sheets.get(sheetId).floored(due, claim.getDate()));
     }
 }

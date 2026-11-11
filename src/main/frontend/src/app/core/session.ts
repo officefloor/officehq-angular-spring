@@ -1,6 +1,15 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+
+/** A dated setting's value (two decimals or whole days; null: none) from its from-date (yyyy-mm-dd). */
+export interface DatedValue {
+  from: string;
+  value: string | null;
+}
+
+/** The sheet's starting values, in force before a key's first from-date: none for a key not listed. */
+const STARTING: Record<string, string> = { floor: '1.00', terms: '14', 'late-pct': '0.00' };
 
 interface SheetView {
   id: string;
@@ -21,24 +30,44 @@ export class Session {
   readonly showRetired = signal(false);
   /** Counts completed sheet loads, so the screen re-reads the sheet's data even for the same id. */
   readonly loaded = signal(0);
-  /** The active sheet's floor (two decimals): a live due is at least it; null until the settings are read. */
-  readonly floor = signal<string | null>(null);
-  /** The active sheet's terms: a claim of a grade without its own is due by its date plus these many days; null until the settings are read. */
-  readonly terms = signal<number | null>(null);
-  /** The active sheet's late percent (two decimals): an overdue claim's due gains it of its figure every full 30 days. */
-  readonly latePct = signal<string | null>(null);
+  /** Every value recorded of each dated setting of the active sheet (clerk-limit, floor, terms, terms-A, terms-B,
+   *  terms-C, late-pct, cap), from-date first to last; null until the settings are read. */
+  readonly dated = signal<Record<string, DatedValue[]> | null>(null);
+  /** The active sheet's floor (two decimals) in force on its today: a live due is at least it; null until the settings are read. */
+  readonly floor = computed(() => this.settingOn('floor', this.today()));
+  /** The active sheet's terms in force on its today: a claim of a grade without its own is due by its date plus these many days; null until the settings are read. */
+  readonly terms = computed(() => {
+    const terms = this.settingOn('terms', this.today());
+    return terms === null ? null : Number(terms);
+  });
+  /** The active sheet's late percent (two decimals) in force on its today: an overdue claim's due gains it of its figure every full 30 days. */
+  readonly latePct = computed(() => this.settingOn('late-pct', this.today()));
   /** The active sheet's policy date (yyyy-mm-dd): a claim dated before it rounds half up, on or after it half to even;
    *  blank means the sheet's today; null until the settings are read. */
   readonly policyDate = signal<string | null>(null);
-  /** The active sheet's cap (two decimals): a person's due-total is at most it; null when there is none or until the
-   *  settings are read. */
-  readonly cap = signal<string | null>(null);
+  /** The active sheet's cap (two decimals) in force on its today: a person's due-total is at most it; null when there
+   *  is none or until the settings are read. */
+  readonly cap = computed(() => this.settingOn('cap', this.today()));
   private loads = 0;
 
   signIn(name: string): void {
     this.user.set(name);
     this.sheet.set(null);
     this.today.set(null);
+  }
+
+  /**
+   * The value of a dated setting in force on the date: the one with the latest from-date on or before it, else the
+   * sheet's starting value; null when that is none, or until the settings are read.
+   */
+  settingOn(key: string, date: string | null): string | null {
+    const dated = this.dated();
+    if (dated === null || date === null) return null;
+    let value: string | null = STARTING[key] ?? null;
+    for (const d of dated[key] ?? []) {
+      if (d.from <= date) value = d.value;
+    }
+    return value;
   }
 
   /** Request options carrying the signed-in user. */
