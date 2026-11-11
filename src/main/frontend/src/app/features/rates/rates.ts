@@ -25,10 +25,19 @@ export function rateOn(rates: Rate[], grade: string, date: string): string | und
   return found?.pct;
 }
 
-/** Hundredths of a unit in a decimal with at most two decimals ("10.25" is 1025n). */
+/** Hundredths of a unit in a decimal with at most two decimals, maybe negative ("10.25" is 1025n, "-0.30" is -30n). */
 function hundredths(value: string): bigint {
-  const [whole, fraction = ''] = value.trim().split('.');
-  return BigInt(whole || '0') * 100n + BigInt((fraction + '00').slice(0, 2));
+  const trimmed = value.trim();
+  const negative = trimmed.startsWith('-');
+  const [whole, fraction = ''] = (negative ? trimmed.slice(1) : trimmed).split('.');
+  const size = BigInt(whole || '0') * 100n + BigInt((fraction + '00').slice(0, 2));
+  return negative ? -size : size;
+}
+
+/** Hundredths of a unit as a decimal with two decimals ("-30n" is "-0.30"). */
+function decimalOf(cents: bigint): string {
+  const size = cents < 0n ? -cents : cents;
+  return `${cents < 0n ? '-' : ''}${size / 100n}.${(size % 100n).toString().padStart(2, '0')}`;
 }
 
 /** An amount times a percent, divided by 100 and rounded half to even to two decimals; n/a with no rate. */
@@ -40,11 +49,13 @@ export function dueOf(amount: string, pct: string | undefined): string {
 /** The pct percent of the amount, times the given count, rounded to cents, a half to the even cent. */
 export function percentOf(amount: string, pct: string, times: number): string {
   // cents times hundredths of a percent are millionths of a unit: round them to cents, a half to the even cent.
-  const millionths = hundredths(amount) * hundredths(pct) * BigInt(times);
+  // A negative amount (a correction) rounds as its size does, so a half goes to the even cent either way.
+  const signed = hundredths(amount) * hundredths(pct) * BigInt(times);
+  const millionths = signed < 0n ? -signed : signed;
   const rest = millionths % 10000n;
   let cents = millionths / 10000n;
   if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
-  return `${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`;
+  return decimalOf(signed < 0n ? -cents : cents);
 }
 
 /** The due raised to the floor when below it; n/a, or no floor, leaves it as it is. */
@@ -53,10 +64,9 @@ export function floored(due: string, floor: string | null): string {
   return hundredths(due) < hundredths(floor) ? floor : due;
 }
 
-/** Adds dues with two decimals exactly, skipping the n/a ones. */
+/** Adds dues with two decimals exactly, a correction's negative ones too, skipping the n/a ones. */
 export function sumDues(dues: string[]): string {
-  const cents = dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n);
-  return `${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`;
+  return decimalOf(dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n));
 }
 
 // The rate in force on the sheet's today for each grade, every rate with its from-date, and the form

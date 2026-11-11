@@ -30,10 +30,11 @@ public class ClaimController {
     /**
      * A claim as shown: the amount with two decimals, the date as yyyy-mm-dd, and the due fixed when it was
      * settled (null when it has none, so its due is worked out from the current rate), and who opened it;
-     * whether the person's last statement bound it, and the due it bound it to (null: none, so n/a).
+     * whether the person's last statement bound it, and the due it bound it to (null: none, so n/a); and the number of
+     * the claim it corrects (null unless it is a correction).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number, String settledDue, String openedBy, boolean stated, String statedDue) {
+            Long number, String settledDue, String openedBy, boolean stated, String statedDue, Long corrects) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -41,18 +42,27 @@ public class ClaimController {
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
-                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString());
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+                    claim.getCorrects());
         }
     }
 
-    /** An amount of 0.00 or more with up to two decimals; a missing date takes the sheet's today. */
+    /**
+     * An amount with up to two decimals, negative only for a correction; a missing date takes the sheet's today; the
+     * number of the claim a correction corrects, blank for any other claim.
+     */
     public record ClaimRequest(
-            @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
+            @NotNull @Pattern(regexp = "\\s*-?\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             LocalDate date,
-            @Size(max = 1000) String note) {
+            @Size(max = 1000) String note,
+            @Pattern(regexp = "\\s*\\d{0,18}\\s*") String corrects) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+
+        Long correctsValue() {
+            return corrects == null || corrects.isBlank() ? null : Long.valueOf(corrects.trim());
         }
     }
 
@@ -76,7 +86,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
-                request.note()));
+                request.note(), request.correctsValue()));
     }
 
     /** Edit a DRAFT claim; refused for any other status. */
@@ -86,7 +96,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
-                request.note()));
+                request.note(), request.correctsValue()));
     }
 
     /** Open a DRAFT claim. */

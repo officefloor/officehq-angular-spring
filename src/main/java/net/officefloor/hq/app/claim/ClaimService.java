@@ -22,7 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. A claim dated in a closed
  * period cannot be added, edited or change status. Only a DRAFT claim can be edited. No claim
- * can be dated after the retirement date of its person.
+ * can be dated after the retirement date of its person. A claim with a negative amount is a correction: it must name,
+ * by number, a SETTLED claim of the same person that it corrects, and its due has no floor and no late charge.
  */
 @Service
 public class ClaimService {
@@ -55,21 +56,26 @@ public class ClaimService {
     }
 
     @Transactional
-    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
         LocalDate dated = dateOr(sheetId, date);
         periods.requireOpen(sheetId, dated);
         person.requireClaimable(dated);
-        Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
+        requireCorrection(sheetId, personId, amount, corrects);
+        Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note));
+        claim.setCorrects(corrects);
+        Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
     @Transactional
-    public Claim update(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
@@ -83,7 +89,9 @@ public class ClaimService {
         people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()))
                 .requireClaimable(dated);
+        requireCorrection(sheetId, claim.getPersonId(), amount, corrects);
         claim.setAmount(amount);
+        claim.setCorrects(corrects);
         claim.setDate(dated);
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
@@ -126,7 +134,7 @@ public class ClaimService {
         String due = "";
         if (status == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isStated() ? claim.getStatedDue() : dueOf(sheetId, person, claim);
-            BigDecimal settledDue = figure == null ? null
+            BigDecimal settledDue = figure == null || claim.isCorrection() ? figure
                     : figure.add(settings.get(sheetId).lateCharge(figure, claim.getDate()));
             claim.setSettledDue(settledDue);
             due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
@@ -151,19 +159,46 @@ public class ClaimService {
     }
 
     /**
-     * The claim's amount at the rate its person's grade has on its date, two decimals, raised to the sheet's floor;
-     * null (n/a) with no rate.
+     * A negative amount (a correction) must name, by number, a SETTLED claim of the same person; any other amount
+     * names none. Refused otherwise.
      */
-    private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
-        return settings.get(sheetId).floored(rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
-                .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .orElse(null));
+    private void requireCorrection(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+        if (amount.signum() >= 0) {
+            if (corrects != null) {
+                throw new ClaimCorrectionException("Only a correction (a negative amount) corrects a claim");
+            }
+            return;
+        }
+        if (corrects == null) {
+            throw new ClaimCorrectionException("A negative amount must name the settled claim it corrects");
+        }
+        boolean settled = claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+                .isPresent();
+        if (!settled) {
+            throw new ClaimCorrectionException("Claim " + corrects + " is not a settled claim of the same person");
+        }
     }
 
-    /** The due with the late charge of an OPEN claim overdue on the sheet's today added on top; null (n/a) stays null. */
+    /**
+     * The claim's amount at the rate its person's grade has on its date, two decimals, raised to the sheet's floor
+     * unless it is a correction; null (n/a) with no rate.
+     */
+    private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+        BigDecimal due = rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
+                .map(Rate::getPct)
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .orElse(null);
+        return claim.isCorrection() ? due : settings.get(sheetId).floored(due);
+    }
+
+    /**
+     * The due with the late charge of an OPEN claim overdue on the sheet's today added on top (none on a correction);
+     * null (n/a) stays null.
+     */
     private BigDecimal withLateCharge(String sheetId, Claim claim, BigDecimal due) {
-        return settings.get(sheetId).withLateCharge(due, claim.getStatus() == ClaimStatus.OPEN, claim.getDate());
+        return settings.get(sheetId).withLateCharge(due,
+                claim.getStatus() == ClaimStatus.OPEN && !claim.isCorrection(), claim.getDate());
     }
 
     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */

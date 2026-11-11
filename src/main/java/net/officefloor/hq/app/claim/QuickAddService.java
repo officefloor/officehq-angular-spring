@@ -30,6 +30,6 @@ public class QuickAddService {
     public Claim add(String sheetId, String user, String name, BigDecimal amount) {
         Person person = people.findBySheetIdAndNameKey(sheetId, Person.key(name))
                 .orElseGet(() -> persons.add(sheetId, user, name, NEW_PERSON_GRADE));
-        return claims.add(sheetId, user, person.getId(), amount, null, "");
+        return claims.add(sheetId, user, person.getId(), amount, null, "", null);
     }
 }

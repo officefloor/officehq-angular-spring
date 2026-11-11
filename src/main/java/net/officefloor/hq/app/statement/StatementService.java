@@ -90,7 +90,8 @@ public class StatementService {
             // The statement binds the figure under the claim's due; its late charge keeps following the sheet's today.
             BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
             BigDecimal due = claim.getSettledDue() != null ? figure
-                    : sheet.withLateCharge(figure, claim.getStatus() == ClaimStatus.OPEN, claim.getDate());
+                    : sheet.withLateCharge(figure, claim.getStatus() == ClaimStatus.OPEN && !claim.isCorrection(),
+                            claim.getDate());
             if (due != null) {
                 total = total.add(due);
                 // A due under a grade the person had on an earlier date counts too.
@@ -111,7 +112,7 @@ public class StatementService {
 
     /**
      * The figure under the claim's due: the due fixed when it was settled, else the one its last statement bound it
-     * to, else its amount times its grade's rate on its date raised to the sheet's floor; empty when it has none (n/a).
+     * to, else its amount times its grade's rate on its date raised to the sheet's floor (unless a correction); empty when it has none (n/a).
      */
     private Optional<BigDecimal> figureOf(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
@@ -123,6 +124,6 @@ public class StatementService {
         return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .map(sheets.get(sheetId)::floored);
+                .map(due -> claim.isCorrection() ? due : sheets.get(sheetId).floored(due));
     }
 }
