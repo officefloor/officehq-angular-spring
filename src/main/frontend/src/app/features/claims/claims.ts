@@ -60,6 +60,9 @@ import { FigurePipe } from '../../core/figure';
 // A steward can waive an OPEN or PENDING claim's late charge with its waive button: from then on it
 // bears none, whatever its overdue state, and shows waived yes (refused for anyone else, a claim in
 // any other status, or one already waived).
+// A steward can assign a REVIEW claim to a user with its review user entry and assign button: the
+// claim shows the user it was last assigned to (refused for a blank user, a claim in any other
+// status, or anyone but a steward).
 // An OPEN or PENDING claim can be held and released with its hold toggle: a held claim still counts
 // in every total, and shows held yes
 // (refused for a claim in any other status).
@@ -155,6 +158,8 @@ export interface Claim {
   lines: ClaimLineItem[];
   /** The sheet's today when the claim last went to REVIEW; null when it never has. */
   reviewOn: string | null;
+  /** The user a steward last assigned the claim's review to; null when never assigned. */
+  reviewAssigned: string | null;
   /** Whether a steward waived the claim's late charge: from then on it bears none. */
   waived: boolean;
   /** Whether the claim is held: a held claim still counts in every total. */
@@ -459,6 +464,7 @@ export function money(c: number): string {
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
+          <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssigned ?? '' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
           <span>Shared with <span data-testid="claim-shares">{{ sharesOf(c) }}</span></span>
@@ -551,6 +557,16 @@ export function money(c: number): string {
           <button type="button" data-testid="claim-proof" (click)="addProof(c)">Add proof</button>
           <button type="button" data-testid="claim-remind" (click)="remind(c)">Remind</button>
           <button type="button" data-testid="claim-waive" (click)="waive(c)">Waive late charge</button>
+          <label [for]="'claim-review-user-' + c.id">Assign review to</label>
+          <input
+            [id]="'claim-review-user-' + c.id"
+            data-testid="claim-review-user"
+            #reviewUser
+            (input)="clearActionError(c.id)"
+          />
+          <button type="button" data-testid="claim-review-assign" (click)="assignReview(c, reviewUser.value)">
+            Assign review
+          </button>
           <button type="button" data-testid="claim-hold" [attr.aria-pressed]="c.held" (click)="toggleHold(c)">
             {{ c.held ? 'Release' : 'Hold' }}
           </button>
@@ -940,7 +956,7 @@ export class PersonClaims {
     this.error.set(null);
   }
 
-  private clearActionError(id: number): void {
+  protected clearActionError(id: number): void {
     this.actionErrors.update((m) => {
       if (!m.has(id)) return m;
       const next = new Map(m);
@@ -1491,6 +1507,31 @@ export class PersonClaims {
           : status === 403
             ? 'Only a steward can waive a late charge.'
             : "Could not waive this claim's late charge.";
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  /** Assign a REVIEW claim to a user; the server refuses anyone but a steward, a blank user and any other status. */
+  protected async assignReview(c: Claim, assignee: string): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/assign-review', { sheet, user: this.session.user(), id: c.id, assignee }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 409
+          ? `A ${c.status} claim cannot be assigned for review.`
+          : status === 403
+            ? 'Only a steward can assign a review.'
+            : status === 400
+              ? 'Name the user to assign the review to.'
+              : 'Could not assign this review.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

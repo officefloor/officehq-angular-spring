@@ -172,6 +172,10 @@ public class Claim {
     @Column(name = "review_on")
     private LocalDate reviewOn;
 
+    /** The user a steward last assigned the claim's review to; none when never assigned. */
+    @Column(name = "review_assigned")
+    private String reviewAssigned;
+
     /** The reason the claim was voided with; none when voided without one, or not voided. */
     @Column(name = "void_reason")
     private String voidReason;
@@ -276,6 +280,7 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.reviewOn = reviewOn;
+        copy.reviewAssigned = reviewAssigned;
         copy.waived = waived;
         copy.held = held;
         copy.heldOn = heldOn;
@@ -597,6 +602,14 @@ public class Claim {
 
     public void setReviewOn(LocalDate reviewOn) {
         this.reviewOn = reviewOn;
+    }
+
+    public String getReviewAssigned() {
+        return reviewAssigned;
+    }
+
+    public void setReviewAssigned(String reviewAssigned) {
+        this.reviewAssigned = reviewAssigned;
     }
 
     /** How many of the claim's proofs are of a kind (see {@link #PROOF_KINDS}). */

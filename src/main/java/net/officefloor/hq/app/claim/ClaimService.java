@@ -524,6 +524,34 @@ public class ClaimService {
     }
 
     /**
+     * A steward's assignment of a REVIEW claim to a user: the claim shows them until assigned again;
+     * REVIEW_ASSIGNED is written, naming the user. Refused (403) for anyone but a steward, (400) for a
+     * blank user and (409) for a claim that is not REVIEW.
+     */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, long id, String assignee) {
+        roles.refuseViewer(sheetId, user);
+        if (!isSteward(sheetId, user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can assign a review.");
+        }
+        String name = assignee == null ? "" : assignee.trim();
+        if (name.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Name the user to assign the review to.");
+        }
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be assigned for review.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        claim.setReviewAssigned(name);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("REVIEW_ASSIGNED", sheetId, user, person, saved) + " user=" + name);
+        return saved;
+    }
+
+    /**
      * Delete a DRAFT claim: it becomes DELETED, counts nowhere and makes no other move but a restore;
      * its status log gains a DELETED line and CLAIM_DELETED is written. Any editor's lock on it is
      * released. Refused (403) for a viewer, (409) for a claim that is not DRAFT or that another

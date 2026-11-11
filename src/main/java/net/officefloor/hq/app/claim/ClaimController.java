@@ -63,6 +63,10 @@ public class ClaimController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @Size(max = 20) String kind) {
     }
 
+    public record AssignReviewRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @Size(max = 100) String assignee) {
+    }
+
     public record ClaimStatusRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
     }
@@ -157,7 +161,7 @@ public class ClaimController {
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
             List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq,
             LocalDate reviewOn, boolean waived, String statedCharged, int proofsReceipt, int proofsPhoto,
-            boolean held, List<ClaimShareLine> shares) {
+            boolean held, List<ClaimShareLine> shares, String reviewAssigned) {
     }
 
     /** One of the people a claim is shared with, in the order added: the holder's id and their share. */
@@ -200,7 +204,8 @@ public class ClaimController {
                 money(claim.getStatedCharged()), claim.proofsOf(Claim.RECEIPT), claim.proofsOf(Claim.PHOTO),
                 claim.isHeld(),
                 claim.getShares().stream().map(s -> new ClaimShareLine(s.getHolderId(), money(s.getShare())))
-                        .toList());
+                        .toList(),
+                claim.getReviewAssigned());
     }
 
     public static BigDecimal amount(String amount) {
@@ -374,6 +379,11 @@ public class ClaimController {
     @PostMapping("/waive")
     public ClaimResponse waive(@Valid @RequestBody ClaimStatusRequest req) {
         return response(service.waive(req.sheet().trim(), req.user().trim(), req.id()));
+    }
+
+    @PostMapping("/assign-review")
+    public ClaimResponse assignReview(@Valid @RequestBody AssignReviewRequest req) {
+        return response(service.assignReview(req.sheet().trim(), req.user().trim(), req.id(), req.assignee()));
     }
 
     @PostMapping("/hold")

@@ -298,6 +298,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDueTotal()"
+      [myReviewsCount]="myReviewsCount()"
     />
     <app-dashboard
       [pendingCount]="statusCount('PENDING')"
@@ -1615,6 +1616,11 @@ export class People {
   protected statusCount(status: string): number {
     return this.statusSummary().find((s) => s.status === status)?.count ?? 0;
   }
+  /** How many of the sheet's REVIEW claims are assigned to the signed-in user. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user();
+    return this.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssigned === user).length;
+  });
   /** How many of the sheet's REVIEW claims are late for review on its today. */
   protected readonly reviewLateCount = computed(() =>
     this.claims().filter((c) => reviewLate(c, this.session.today(), this.session.reviewSla())).length,
