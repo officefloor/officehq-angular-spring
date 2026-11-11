@@ -33,11 +33,38 @@ function cents(value: string): number {
 }
 
 function fromCents(n: number): string {
-  return `${Math.floor(n / 100)}.${String(n % 100).padStart(2, '0')}`;
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}
+
+/** The pot (in cents) times the share (in hundredths of a percent) divided by 100, in cents rounded half to even. */
+function cutOf(pot: number, share: number): number {
+  const product = BigInt(pot) * BigInt(share);
+  const whole = product / 10000n;
+  const rest = (product % 10000n) * 2n;
+  const up = rest > 10000n || (rest === 10000n && whole % 2n === 1n);
+  return Number(up ? whole + 1n : whole);
+}
+
+/**
+ * Each member's cut of the pot (in cents), in member order: their share of it rounded half to even, a retired
+ * member's 0; the remainder, the pot minus the cuts added up, goes to the member with the largest share (the earliest
+ * added on a tie), so the cuts total exactly the pot.
+ */
+function cuts(pot: number, members: { share: number; retired: boolean }[]): number[] {
+  const out = members.map((m) => (m.retired ? 0 : cutOf(pot, m.share)));
+  let largest = -1;
+  members.forEach((m, i) => {
+    if (!m.retired && (largest < 0 || m.share > members[largest].share)) largest = i;
+  });
+  if (largest >= 0) out[largest] += pot - out.reduce((sum, c) => sum + c, 0);
+  return out;
 }
 
 // The sheet's pools: each with its members and their shares, its total share (a retired member's counting as 0.00)
-// and whether it is balanced (the total is exactly 100.00).
+// and whether it is balanced (the total is exactly 100.00); in a balanced pool, while the sheet has a pot, each
+// member's cut of it.
 @Component({
   selector: 'app-pools',
   template: `
@@ -65,6 +92,7 @@ function fromCents(n: number): string {
             @for (m of p.members; track m.personId) {
               <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
                 {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>
+                Cut <span data-testid="pool-cut">{{ m.cut }}</span>
                 @if (m.retired) {
                   (retired)
                 }
@@ -115,9 +143,14 @@ export class Pools {
   /** The error shown on each pool's row, by pool id. */
   protected readonly memberErrors = signal<Record<number, string>>({});
 
-  /** Each pool with its members' names and its total share: a retired member's share counts as 0.00. */
+  /**
+   * Each pool with its members' names and its total share: a retired member's share counts as 0.00. A balanced pool's
+   * members each show their cut of the sheet's pot; an unbalanced pool, or no pot, shows none (blank).
+   */
   protected readonly shown = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
+    const potText = this.session.pot();
+    const pot = potText ? cents(potText) : null;
     return this.pools().map((pool) => {
       let total = 0;
       const members = pool.members.map((m) => {
@@ -126,7 +159,16 @@ export class Pools {
         if (!retired) total += cents(m.share);
         return { personId: m.personId, name: person?.name ?? '', share: m.share, retired };
       });
-      return { id: pool.id, name: pool.name, members, total: fromCents(total), balanced: total === 10000 };
+      const balanced = total === 10000;
+      const cutCents =
+        balanced && pot !== null ? cuts(pot, members.map((m) => ({ share: cents(m.share), retired: m.retired }))) : null;
+      return {
+        id: pool.id,
+        name: pool.name,
+        members: members.map((m, i) => ({ ...m, cut: cutCents ? fromCents(cutCents[i]) : '' })),
+        total: fromCents(total),
+        balanced,
+      };
     });
   });
 

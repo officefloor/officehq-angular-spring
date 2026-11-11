@@ -28,6 +28,8 @@ interface SettingsView {
   proofThreshold: string | null;
   /** The due above which a claim cannot be opened with an empty note, two decimals; null when there is none. */
   noteThreshold: string | null;
+  /** The pot shared out over each balanced pool's members by their shares, two decimals; null when there is none. */
+  pot: string | null;
   /** The permission matrix, by action: the roles that may take it, comma separated; null: the standing rule. */
   permissions: Record<string, string | null>;
   /** Every value recorded of each dated setting, by key, from-date first to last. */
@@ -205,6 +207,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'graceDays'"
           (input)="graceDays.set(value($event)); graceDaysEdited = true; settingsError.set(null)"
         />
+        <label for="setting-pot">Pot (shared out over each balanced pool's members by their shares; blank: none)</label>
+        <input
+          id="setting-pot"
+          data-testid="setting-pot"
+          inputmode="decimal"
+          [value]="pot()"
+          (focus)="lastFocused = 'pot'"
+          (input)="pot.set(value($event)); potEdited = true; settingsError.set(null)"
+        />
         <label for="setting-cap">Cap (the most a person's due-total can be; blank: no cap)</label>
         <input
           id="setting-cap"
@@ -306,6 +317,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' }}</strong></p>
+      <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
       @for (a of actions; track a) {
         <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' }}</strong></p>
@@ -431,6 +443,7 @@ export class Settings {
   protected readonly entryDate = signal('');
   protected readonly graceDays = signal('');
   protected readonly graceDaysCurrent = signal<string | null>(null);
+  protected readonly pot = signal('');
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
   protected readonly noteThreshold = signal('');
@@ -445,11 +458,12 @@ export class Settings {
   protected periodNumberingFromEdited = false;
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
+  protected potEdited = false;
   protected capEdited = false;
   protected proofThresholdEdited = false;
   protected noteThresholdEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -477,6 +491,7 @@ export class Settings {
         this.periodNumberingFromCurrent.set(null);
         this.session.entryDate.set(null);
         this.graceDaysCurrent.set(null);
+        this.session.pot.set(null);
         this.permsCurrent.set({});
         this.roleList.set([]);
         this.settingsError.set(null);
@@ -543,7 +558,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -554,6 +569,7 @@ export class Settings {
         case 'periodNumberingFrom': this.periodNumberingFromEdited = true; break;
         case 'entryDate': this.entryDateEdited = true; break;
         case 'graceDays': this.graceDaysEdited = true; break;
+        case 'pot': this.potEdited = true; break;
         case 'cap': this.capEdited = true; break;
         case 'proofThreshold': this.proofThresholdEdited = true; break;
         case 'noteThreshold': this.noteThresholdEdited = true; break;
@@ -571,6 +587,7 @@ export class Settings {
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
+    const savePot = this.potEdited;
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -583,6 +600,7 @@ export class Settings {
     const periodNumberingFrom = this.periodNumberingFrom().trim();
     const entryDate = this.entryDate().trim();
     const graceDays = this.graceDays().trim();
+    const pot = this.pot().trim();
     const cap = this.cap().trim();
     const proofThreshold = this.proofThreshold().trim();
     const noteThreshold = this.noteThreshold().trim();
@@ -642,6 +660,10 @@ export class Settings {
     }
     if (saveGraceDays && graceDays !== '' && !/^\d{1,5}$/.test(graceDays)) {
       this.settingsError.set('Type grace days of 0 or more whole days, or leave it blank for off.');
+      return;
+    }
+    if (savePot && pot !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(pot)) {
+      this.settingsError.set('Type a pot of 0.00 or more with at most two decimals, or leave it blank for none.');
       return;
     }
     if (saveCap && cap !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(cap)) {
@@ -735,6 +757,12 @@ export class Settings {
           this.http.put<SettingsView>(`${url}/grace-days`, { graceDays: graceDays === '' ? null : graceDays }, this.session.headers()),
         );
         this.graceDaysEdited = false;
+      }
+      if (savePot) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/pot`, { pot: pot === '' ? null : pot }, this.session.headers()),
+        );
+        this.potEdited = false;
       }
       if (saveCap) {
         saved = await firstValueFrom(
@@ -907,6 +935,8 @@ export class Settings {
     this.entryDate.set(settings.entryDate ?? '');
     this.graceDaysCurrent.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
+    this.session.pot.set(settings.pot ?? '');
+    this.pot.set(settings.pot ?? '');
     this.cap.set(settings.cap ?? '');
     this.proofThreshold.set(settings.proofThreshold ?? '');
     this.noteThreshold.set(settings.noteThreshold ?? '');
@@ -926,6 +956,7 @@ export class Settings {
     this.periodNumberingFromEdited = false;
     this.entryDateEdited = false;
     this.graceDaysEdited = false;
+    this.potEdited = false;
     this.capEdited = false;
     this.proofThresholdEdited = false;
     this.noteThresholdEdited = false;

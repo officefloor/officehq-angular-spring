@@ -32,7 +32,7 @@ public class SettingController {
      * when there is none; the floor with two decimals; the terms in whole days; each grade's own terms in whole days,
      * by grade (a grade without its own is left out); the late percent with two decimals; the policy date as
      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
-     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none;
+     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the pot with two decimals, null when there is none;
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
      * separated, null when blank (the standing rule).
      * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
@@ -40,7 +40,7 @@ public class SettingController {
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
-            Integer graceDays, String proofThreshold, String noteThreshold, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
+            Integer graceDays, String proofThreshold, String noteThreshold, String pot, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
@@ -52,7 +52,7 @@ public class SettingController {
             return new SettingsView(shown(sheet.getClerkLimit()), shown(sheet.floorOn(today)), sheet.termsOn(today),
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
                     sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), shown(sheet.proofThresholdOn(today)),
-                    shown(sheet.noteThresholdOn(today)), permissions, dated);
+                    shown(sheet.noteThresholdOn(today)), shown(sheet.getPot()), permissions, dated);
         }
 
         private static String shown(BigDecimal value) {
@@ -172,6 +172,14 @@ public class SettingController {
         }
     }
 
+    /** A pot of 0.00 or more with up to two decimals; blank or missing means none. */
+    public record PotRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String pot) {
+
+        BigDecimal potValue() {
+            return pot == null || pot.isBlank() ? null : new BigDecimal(pot.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
     /** A period numbering from as yyyy-mm-dd; null (blank) means off. */
     public record PeriodNumberingFromRequest(LocalDate periodNumberingFrom) {
     }
@@ -262,6 +270,13 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GraceDaysRequest request) {
         return view(service.setGraceDays(sheetId.trim(), user.trim(), request.graceDaysValue()));
+    }
+
+    @PutMapping("/pot")
+    public SettingsView setPot(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PotRequest request) {
+        return view(service.setPot(sheetId.trim(), user.trim(), request.potValue()));
     }
 
     @PutMapping("/cap")

@@ -60,6 +60,9 @@ export class Session {
   /** The active sheet's entry date (yyyy-mm-dd): while set, the default date of a new claim; blank means off (the
    *  sheet's today); null until the settings are read. */
   readonly entryDate = signal<string | null>(null);
+  /** The active sheet's pot (two decimals), shared out over each balanced pool's members by their shares; blank means
+   *  none; null until the settings are read. */
+  readonly pot = signal<string | null>(null);
   /** The default date of a new claim: the entry date while it is set, else the sheet's today. */
   readonly newClaimDate = computed(() => this.entryDate() || this.today());
   /** The active sheet's cap (two decimals) in force on its today: a person's due-total is at most it; null when there
