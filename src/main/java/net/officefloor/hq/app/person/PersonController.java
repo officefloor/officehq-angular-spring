@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +44,8 @@ public class PersonController {
      * A person as shown, with their grade in force on the sheet's today and every grade with its from-date, with how many statements they have had and the due-total and date of the last one. */
     public record PersonView(Long id, String name, String grade, Integer terms, String contact, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
-            List<Long> patronIds, List<GradeView> grades, List<HoldView> holds, boolean watched, List<String> aliases) {
+            List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
+            List<String> aliases) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
                 boolean watched, List<String> aliases) {
@@ -51,6 +53,7 @@ public class PersonController {
                     person.getContact(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds,
+                    PersonService.patronShares(patronIds.size()).stream().map(BigDecimal::toPlainString).toList(),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     watched, aliases);

@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { Rate, Rates, capped, excessOver, rateOn, sumDues, trimmedSumDues } from '../rates/rates';
+import { Rate, Rates, capped, excessOver, rateOn, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
@@ -40,6 +40,8 @@ interface Person {
   holds: PersonHold[];
   /** The ids of the other people on the sheet the person has named as their patrons. */
   patronIds: number[];
+  /** Each patron's share of 100.00, in the order of {@link patronIds}. */
+  patronShares: string[];
   /** Whether the signed-in user watches the person. */
   watched: boolean;
   /** The other names the person goes by, sorted as names are compared. */
@@ -974,28 +976,32 @@ export class People {
     return [sumDues(buckets[0]), sumDues(buckets[1]), sumDues(buckets[2])];
   }
 
-  /** The names of the person's patrons, sorted, comma and space separated. */
+  /** Each of the person's patrons as their name and share, sorted by name, comma and space separated. */
   protected patronsOf(person: Person): string {
     return this.patronsListOf(person)
-      .map((p) => p.name)
-      .sort((a, b) => a.localeCompare(b))
+      .sort((a, b) => a.patron.name.localeCompare(b.patron.name))
+      .map((p) => `${p.patron.name} ${p.share}`)
       .join(', ');
   }
 
   /**
-   * The person's patrons' settled figures added up: each patron's SETTLED claims dated within the 90 days up to and
-   * including the sheet's today, each at its frozen figure; 0.00 with none.
+   * The person's patrons' settled figures, each times the patron's share divided by 100, added up and rounded half to
+   * even: a patron's figure is their SETTLED claims dated within the 90 days up to and including the sheet's today,
+   * each at its frozen figure; 0.00 with none.
    */
   protected backingOf(person: Person): string {
     const today = this.session.today();
     if (today === null) return '0.00';
     const since = plusDays(today, -89);
-    return sumDues(
-      this.patronsListOf(person).flatMap((p) =>
-        this.claimsOf(p.id)
-          .filter((c) => c.status === 'SETTLED' && since <= c.date && c.date <= today)
-          .map((c) => claimDue(c, this.rates(), p.grades, this.session)),
-      ),
+    return sumShared(
+      this.patronsListOf(person).map(({ patron, share }) => ({
+        share,
+        figure: sumDues(
+          this.claimsOf(patron.id)
+            .filter((c) => c.status === 'SETTLED' && since <= c.date && c.date <= today)
+            .map((c) => claimDue(c, this.rates(), patron.grades, this.session)),
+        ),
+      })),
     );
   }
 
@@ -1034,8 +1040,12 @@ export class People {
     }
   }
 
-  private patronsListOf(person: Person): Person[] {
-    return person.patronIds.map((id) => this.byId().get(id)).filter((p): p is Person => p !== undefined);
+  /** The person's patrons, each with their share, in the order they were named. */
+  private patronsListOf(person: Person): { patron: Person; share: string }[] {
+    return person.patronIds.flatMap((id, i) => {
+      const patron = this.byId().get(id);
+      return patron === undefined ? [] : [{ patron, share: person.patronShares[i] ?? '0.00' }];
+    });
   }
 
   /** Show a set rate at once, then re-read so the screen holds what the store does. */

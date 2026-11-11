@@ -1,7 +1,10 @@
 package net.officefloor.hq.app.person;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -156,6 +159,21 @@ public class PersonService {
             byPerson.computeIfAbsent(patron.getPersonId(), id -> new ArrayList<>()).add(patron.getPatronId());
         }
         return byPerson;
+    }
+
+    /**
+     * The shares of a person's patrons, in the order they were named: 100.00 split equally, each rounded half to even
+     * to two decimals, with the remainder (100.00 minus the shares added up) given to the first-named patron.
+     */
+    public static List<BigDecimal> patronShares(int count) {
+        if (count == 0) {
+            return List.of();
+        }
+        BigDecimal whole = new BigDecimal("100.00");
+        BigDecimal share = whole.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_EVEN);
+        List<BigDecimal> shares = new ArrayList<>(Collections.nCopies(count, share));
+        shares.set(0, whole.subtract(share.multiply(BigDecimal.valueOf(count - 1))));
+        return shares;
     }
 
     /** The ids of the person's patrons in the order they were named. */

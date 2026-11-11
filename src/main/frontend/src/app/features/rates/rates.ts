@@ -93,6 +93,22 @@ export function sumDues(dues: string[]): string {
   return decimalOf(dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n));
 }
 
+/**
+ * Each figure times its share divided by 100, added up exactly and rounded half to even to two decimals, a negative
+ * total as its size does; skipping the n/a figures.
+ */
+export function sumShared(figures: { figure: string; share: string }[]): string {
+  // cents times hundredths of a percent are millionths of a unit: add them up, then round to cents.
+  const signed = figures
+    .filter((f) => f.figure !== 'n/a')
+    .reduce((total, f) => total + hundredths(f.figure) * hundredths(f.share), 0n);
+  const millionths = signed < 0n ? -signed : signed;
+  const rest = millionths % 10000n;
+  let cents = millionths / 10000n;
+  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
+  return decimalOf(signed < 0n ? -cents : cents);
+}
+
 /** As {@link sumDues}, but leaving out the single highest and lowest figure when there are three or more. */
 export function trimmedSumDues(dues: string[]): string {
   const figures = dues.filter((d) => d !== 'n/a').map(hundredths);
