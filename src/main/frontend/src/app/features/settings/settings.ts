@@ -10,6 +10,8 @@ interface SettingsView {
   floor: string;
   /** The days after its date a claim is due by. */
   terms: number;
+  /** The percent of its figure an overdue claim's due gains every full 30 days, two decimals. */
+  latePct: string;
 }
 
 interface RoleView {
@@ -20,7 +22,7 @@ interface RoleView {
 
 const ROLES = ['clerk', 'steward'];
 
-// The sheet's settings (its clerk limit, its floor and its terms) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (its clerk limit, its floor, its terms and its late percent) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -51,6 +53,14 @@ const ROLES = ['clerk', 'steward'];
           [value]="terms()"
           (input)="terms.set(value($event)); termsEdited = true; settingsError.set(null)"
         />
+        <label for="setting-late-pct">Late percent (of an overdue claim's due, every full 30 days)</label>
+        <input
+          id="setting-late-pct"
+          data-testid="setting-late-pct"
+          inputmode="decimal"
+          [value]="latePct()"
+          (input)="latePct.set(value($event)); latePctEdited = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -59,6 +69,7 @@ const ROLES = ['clerk', 'steward'];
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ current() ?? '' }}</strong></p>
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ session.terms() ?? '' }}</strong></p>
+      <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -114,10 +125,12 @@ export class Settings {
   protected readonly clerkLimit = signal('');
   protected readonly floor = signal('');
   protected readonly terms = signal('');
+  protected readonly latePct = signal('');
   /** Which settings were typed in since the form was last saved or read: a save sends only those. */
   protected clerkLimitEdited = false;
   protected floorEdited = false;
   protected termsEdited = false;
+  protected latePctEdited = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
   protected readonly roleUser = signal('');
@@ -136,6 +149,7 @@ export class Settings {
         this.current.set(null);
         this.session.floor.set(null);
         this.session.terms.set(null);
+        this.session.latePct.set(null);
         this.roleList.set([]);
         this.settingsError.set(null);
         this.roleError.set(null);
@@ -155,12 +169,14 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     // Saving with nothing typed saves the clerk limit as it stands.
-    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited);
+    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited && !this.latePctEdited);
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
+    const saveLatePct = this.latePctEdited;
     const limit = this.clerkLimit().trim();
     const floor = this.floor().trim();
     const terms = this.terms().trim();
+    const latePct = this.latePct().trim();
     if (saveLimit && limit !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more with at most two decimals, or leave it blank for no limit.');
       return;
@@ -171,6 +187,10 @@ export class Settings {
     }
     if (saveTerms && !/^\d{1,5}$/.test(terms)) {
       this.settingsError.set('Type terms of 0 or more whole days.');
+      return;
+    }
+    if (saveLatePct && !/^\d{1,3}(\.\d{1,2})?$/.test(latePct)) {
+      this.settingsError.set('Type a late percent of 0.00 or more with at most two decimals.');
       return;
     }
     this.savingSettings = true;
@@ -190,6 +210,10 @@ export class Settings {
       if (saveTerms) {
         saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/terms`, { terms }, this.session.headers()));
         this.termsEdited = false;
+      }
+      if (saveLatePct) {
+        saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/late-pct`, { latePct }, this.session.headers()));
+        this.latePctEdited = false;
       }
       if (saved && this.session.sheet() === sheet) this.show(saved);
     } catch {
@@ -256,8 +280,11 @@ export class Settings {
     this.floor.set(settings.floor);
     this.session.terms.set(settings.terms);
     this.terms.set(String(settings.terms));
+    this.session.latePct.set(settings.latePct);
+    this.latePct.set(settings.latePct);
     this.clerkLimitEdited = false;
     this.floorEdited = false;
     this.termsEdited = false;
+    this.latePctEdited = false;
   }
 }

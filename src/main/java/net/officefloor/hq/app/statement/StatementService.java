@@ -11,11 +11,13 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,14 +70,15 @@ public class StatementService {
         Person person = people.findForUpdate(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        LocalDate today = sheets.today(sheetId);
+        Sheet sheet = sheets.get(sheetId);
+        LocalDate today = sheet.getToday();
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         // As on the screen: n/a when the grade has no rate today, unless a counting claim has a fixed due.
         boolean anyDue = rates.rateOn(sheetId, person.getGrade(), today).isPresent();
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts()) {
+            if (!person.counts(claim.getStatus())) {
                 claim.setStated(false, null);
                 continue;
             }
@@ -83,11 +86,14 @@ public class StatementService {
             if (claim.getSettledDue() != null || claim.getStatedDue() != null) {
                 anyDue = true;
             }
-            BigDecimal due = dueOf(sheetId, person, claim).orElse(null);
+            // The statement binds the figure under the claim's due; its late charge keeps following the sheet's today.
+            BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
+            BigDecimal due = claim.getSettledDue() != null ? figure
+                    : sheet.withLateCharge(figure, claim.getStatus() == ClaimStatus.OPEN, claim.getDate());
             if (due != null) {
                 total = total.add(due);
             }
-            claim.setStated(true, due);
+            claim.setStated(true, figure);
         }
         claims.saveAllAndFlush(theirs);
         String dueTotal = anyDue ? total.toPlainString() : "n/a";
@@ -99,10 +105,10 @@ public class StatementService {
     }
 
     /**
-     * The due the claim shows now: the due fixed when it was settled, else the one its last statement bound it to,
-     * else its amount times its grade's rate on its date raised to the sheet's floor; empty when it has none (n/a).
+     * The figure under the claim's due: the due fixed when it was settled, else the one its last statement bound it
+     * to, else its amount times its grade's rate on its date raised to the sheet's floor; empty when it has none (n/a).
      */
-    private Optional<BigDecimal> dueOf(String sheetId, Person person, Claim claim) {
+    private Optional<BigDecimal> figureOf(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
             return Optional.of(claim.getSettledDue());
         }

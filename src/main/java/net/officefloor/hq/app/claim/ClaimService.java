@@ -113,17 +113,21 @@ public class ClaimService {
         // is at or below the clerk limit; a due of n/a is within any limit.
         if (status == ClaimStatus.SETTLED && roles.roleOf(sheetId, user) == Role.CLERK) {
             BigDecimal limit = settings.get(sheetId).getClerkLimit();
-            BigDecimal due = claim.isStated() ? claim.getStatedDue() : dueOf(sheetId, person, claim);
+            BigDecimal due = withLateCharge(sheetId, claim,
+                    claim.isStated() ? claim.getStatedDue() : dueOf(sheetId, person, claim));
             if (limit != null && due != null && due.compareTo(limit) > 0) {
                 throw new ClaimOverClerkLimitException(id, due, limit);
             }
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(status);
-        // Settling fixes the due at the rate the person's grade has on the claim's date; with no rate it stays live.
+        // Settling fixes the due it shows: its figure (the one its statement bound it to, else worked out from the
+        // rate on the claim's date) with its late charge frozen in; with no figure it stays live.
         String due = "";
         if (status == ClaimStatus.SETTLED) {
-            BigDecimal settledDue = dueOf(sheetId, person, claim);
+            BigDecimal figure = claim.isStated() ? claim.getStatedDue() : dueOf(sheetId, person, claim);
+            BigDecimal settledDue = figure == null ? null
+                    : figure.add(settings.get(sheetId).lateCharge(figure, claim.getDate()));
             claim.setSettledDue(settledDue);
             due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
         }
@@ -155,6 +159,11 @@ public class ClaimService {
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .orElse(null));
+    }
+
+    /** The due with the late charge of an OPEN claim overdue on the sheet's today added on top; null (n/a) stays null. */
+    private BigDecimal withLateCharge(String sheetId, Claim claim, BigDecimal due) {
+        return settings.get(sheetId).withLateCharge(due, claim.getStatus() == ClaimStatus.OPEN, claim.getDate());
     }
 
     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */

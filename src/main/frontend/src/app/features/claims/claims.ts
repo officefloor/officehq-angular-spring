@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods';
-import { Rate, dueOf, floored, rateOn } from '../rates/rates';
+import { Rate, dueOf, floored, percentOf, rateOn, sumDues } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -35,13 +35,29 @@ export function counts(claim: Claim): boolean {
 }
 
 /**
- * The due fixed when the claim was settled, else the one its person's last statement bound it to, else its amount
- * times its grade's rate on its date raised to the sheet's floor, or n/a with no rate.
+ * The due fixed when the claim was settled, else its figure (the one its person's last statement bound it to, else
+ * its amount times its grade's rate on its date raised to the sheet's floor, or n/a with no rate) with its late
+ * charge added on top.
  */
-export function claimDue(claim: Claim, rates: Rate[], grade: string, floor: string | null): string {
+export function claimDue(claim: Claim, rates: Rate[], grade: string, session: Session): string {
   if (claim.settledDue !== null) return claim.settledDue;
-  if (claim.stated) return claim.statedDue ?? 'n/a';
-  return floored(dueOf(claim.amount, rateOn(rates, grade, claim.date)), floor);
+  const figure = claim.stated
+    ? (claim.statedDue ?? 'n/a')
+    : floored(dueOf(claim.amount, rateOn(rates, grade, claim.date)), session.floor());
+  return figure === 'n/a' ? figure : sumDues([figure, lateCharge(claim, figure, session)]);
+}
+
+/**
+ * The late percent of the figure for every full 30 days an OPEN claim is past its due-by on the sheet's today,
+ * rounded like a due; 0.00 when it is not overdue.
+ */
+export function lateCharge(claim: Claim, figure: string, session: Session): string {
+  const by = dueBy(claim, session.terms());
+  const today = session.today();
+  const pct = session.latePct();
+  if (claim.status !== 'OPEN' || by === '' || today === null || pct === null) return '0.00';
+  const days = Math.round((Date.parse(today) - Date.parse(by)) / 86_400_000);
+  return days > 0 ? percentOf(figure, pct, Math.floor(days / 30)) : '0.00';
 }
 
 /** Whether the claim's due is fixed, by settling or by a statement, rather than worked out from the rates. */
@@ -206,7 +222,7 @@ export class Claims {
 
   /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
   protected due(claim: Claim): string {
-    return claimDue(claim, this.rates(), this.grade(), this.session.floor());
+    return claimDue(claim, this.rates(), this.grade(), this.session);
   }
 
   /** The claim's date plus the sheet's terms. */

@@ -5,7 +5,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 
 /** A sheet: everything else in the app is kept per sheet. */
 @Entity
@@ -33,6 +35,10 @@ public class Sheet {
     /** The number of days after its date that a claim is due by. */
     @Column(name = "terms", nullable = false)
     private int terms = 14;
+
+    /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue. */
+    @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
+    private BigDecimal latePct = new BigDecimal("0.00");
 
     protected Sheet() {
     }
@@ -81,6 +87,34 @@ public class Sheet {
 
     public void setTerms(int terms) {
         this.terms = terms;
+    }
+
+    public BigDecimal getLatePct() {
+        return latePct;
+    }
+
+    public void setLatePct(BigDecimal latePct) {
+        this.latePct = latePct;
+    }
+
+    /**
+     * The late charge on a figure of an OPEN claim dated {@code date}: the late percent of the figure for every full
+     * 30 days the sheet's today is past the claim's due-by (its date plus the terms), rounded half to the even cent;
+     * zero when not overdue, null (n/a) when the figure is.
+     */
+    public BigDecimal lateCharge(BigDecimal figure, LocalDate date) {
+        if (figure == null) {
+            return null;
+        }
+        long overdueDays = ChronoUnit.DAYS.between(date.plusDays(terms), today);
+        long periods = overdueDays <= 0 ? 0 : overdueDays / 30;
+        return figure.multiply(latePct).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
+                .setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    /** The figure with its late charge added on top when the claim is OPEN; null (n/a) stays null. */
+    public BigDecimal withLateCharge(BigDecimal figure, boolean open, LocalDate date) {
+        return figure == null || !open ? figure : figure.add(lateCharge(figure, date));
     }
 
     /** A live due raised to the floor; null (n/a) stays null. */

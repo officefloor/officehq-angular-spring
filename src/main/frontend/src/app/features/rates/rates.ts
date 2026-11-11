@@ -34,8 +34,13 @@ function hundredths(value: string): bigint {
 /** An amount times a percent, divided by 100 and rounded half to even to two decimals; n/a with no rate. */
 export function dueOf(amount: string, pct: string | undefined): string {
   if (pct === undefined) return 'n/a';
+  return percentOf(amount, pct, 1);
+}
+
+/** The pct percent of the amount, times the given count, rounded to cents, a half to the even cent. */
+export function percentOf(amount: string, pct: string, times: number): string {
   // cents times hundredths of a percent are millionths of a unit: round them to cents, a half to the even cent.
-  const millionths = hundredths(amount) * hundredths(pct);
+  const millionths = hundredths(amount) * hundredths(pct) * BigInt(times);
   const rest = millionths % 10000n;
   let cents = millionths / 10000n;
   if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;

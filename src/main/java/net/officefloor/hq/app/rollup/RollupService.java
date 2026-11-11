@@ -13,6 +13,7 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -141,20 +142,21 @@ public class RollupService {
     }
 
     /**
-     * As on the screen: the settled due, else the stated one, else the amount at the rate on the claim's date raised
-     * to the sheet's floor.
+     * As on the screen: the settled due, else the figure (the stated due, else the amount at the rate on the claim's
+     * date raised to the sheet's floor) with the late charge of an overdue claim added on top.
      */
     private static Optional<BigDecimal> dueOf(Sheet sheet, List<Rate> sheetRates, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
             return Optional.of(claim.getSettledDue());
         }
-        if (claim.isStated()) {
-            return Optional.ofNullable(claim.getStatedDue());
-        }
-        return rateOn(sheetRates, person.getGrade(), claim.getDate())
-                .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .map(due -> sheet == null ? due : sheet.floored(due));
+        Optional<BigDecimal> figure = claim.isStated() ? Optional.ofNullable(claim.getStatedDue())
+                : rateOn(sheetRates, person.getGrade(), claim.getDate())
+                        .map(Rate::getPct)
+                        .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2)
+                                .setScale(2, RoundingMode.HALF_EVEN))
+                        .map(due -> sheet == null ? due : sheet.floored(due));
+        return sheet == null ? figure
+                : figure.map(f -> sheet.withLateCharge(f, claim.getStatus() == ClaimStatus.OPEN, claim.getDate()));
     }
 
     private static Optional<Rate> rateOn(List<Rate> sheetRates, String grade, LocalDate date) {

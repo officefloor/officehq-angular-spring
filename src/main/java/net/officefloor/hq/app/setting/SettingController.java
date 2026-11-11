@@ -25,14 +25,15 @@ public class SettingController {
 
     /**
      * The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals;
-     * the terms in whole days.
+     * the terms in whole days; the late percent with two decimals.
      */
-    public record SettingsView(String clerkLimit, String floor, int terms) {
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null
                     : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getTerms());
+                    sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getTerms(),
+                    sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         }
     }
 
@@ -58,6 +59,14 @@ public class SettingController {
 
         int termsValue() {
             return Integer.parseInt(terms.trim());
+        }
+    }
+
+    /** A late percent of 0.00 or more with up to two decimals. */
+    public record LatePctRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String latePct) {
+
+        BigDecimal latePctValue() {
+            return new BigDecimal(latePct.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
     }
 
@@ -92,5 +101,12 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TermsRequest request) {
         return SettingsView.of(service.setTerms(sheetId.trim(), user.trim(), request.termsValue()));
+    }
+
+    @PutMapping("/late-pct")
+    public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid LatePctRequest request) {
+        return SettingsView.of(service.setLatePct(sheetId.trim(), user.trim(), request.latePctValue()));
     }
 }

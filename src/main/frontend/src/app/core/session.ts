@@ -25,6 +25,8 @@ export class Session {
   readonly floor = signal<string | null>(null);
   /** The active sheet's terms: a claim is due by its date plus these many days; null until the settings are read. */
   readonly terms = signal<number | null>(null);
+  /** The active sheet's late percent (two decimals): an overdue claim's due gains it of its figure every full 30 days. */
+  readonly latePct = signal<string | null>(null);
   private loads = 0;
 
   signIn(name: string): void {

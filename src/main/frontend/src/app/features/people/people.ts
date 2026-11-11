@@ -234,7 +234,7 @@ export class People {
       if (!period || person === undefined || !live(c, person.held)) continue;
       const grade = person.grade;
       const list = dues.get(period.name) ?? [];
-      list.push(claimDue(c, this.rates(), grade, this.session.floor()));
+      list.push(claimDue(c, this.rates(), grade, this.session));
       dues.set(period.name, list);
     }
     return new Map([...dues].map(([name, list]) => [name, sumDues(list)]));
@@ -320,7 +320,7 @@ export class People {
   protected dueTotalOf(person: Person): string {
     const counted = this.claimsOf(person.id).filter((c) => live(c, person.held));
     if (this.rateOf(person.grade) === undefined && !counted.some(dueFixed)) return 'n/a';
-    return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade, this.session.floor())));
+    return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade, this.session)));
   }
 
   /** The person's claims that count in the live totals and are overdue. */
@@ -332,7 +332,7 @@ export class People {
 
   /** The sum of the dues of the person's overdue claims, skipping the n/a ones. */
   protected overdueTotalOf(person: Person): string {
-    return sumDues(this.overdueOf(person).map((c) => claimDue(c, this.rates(), person.grade, this.session.floor())));
+    return sumDues(this.overdueOf(person).map((c) => claimDue(c, this.rates(), person.grade, this.session)));
   }
 
   /** Show a set rate at once, then re-read so the screen holds what the store does. */

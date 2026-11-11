@@ -9,7 +9,7 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the sheet's settings: its clerk limit, its floor and its terms. */
+/** Keeps the sheet's settings: its clerk limit, its floor, its terms and its late percent. */
 @Service
 public class SettingService {
 
@@ -51,13 +51,34 @@ public class SettingService {
         return saved;
     }
 
-    /** Set the terms, the days after its date a claim is due by. Every save is recorded, even of the same value. */
+    /**
+     * Set the terms, the days after its date a claim is due by. Every save is recorded, even of the same value, then
+     * the figures its late charges moved.
+     */
     @Transactional
     public Sheet setTerms(String sheetId, String user, int terms) {
         Sheet sheet = get(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         sheet.setTerms(terms);
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=terms value=" + terms);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Set the late percent, what an overdue claim's due gains for every full 30 days it is overdue. Every save is
+     * recorded, then the figures it moved.
+     */
+    @Transactional
+    public Sheet setLatePct(String sheetId, String user, BigDecimal latePct) {
+        Sheet sheet = get(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setLatePct(latePct);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=late-pct value="
+                + latePct.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 }
