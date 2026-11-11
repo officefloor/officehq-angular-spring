@@ -243,6 +243,19 @@ public class ClaimController {
         return view(service.defer(sheetId.trim(), user.trim(), id, request.until()));
     }
 
+    /** The new date of a claim re-dated. */
+    public record RedateRequest(@NotNull LocalDate date) {
+    }
+
+    /** Re-date an OPEN or PENDING claim: a steward only. */
+    @PostMapping("/claims/{id}/redate")
+    public ClaimView redate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid RedateRequest request) {
+        return view(service.redate(sheetId.trim(), user.trim(), id, request.date()));
+    }
+
     /** The amount split off a claim: more than 0.00 and less than the claim's amount. */
     public record SplitRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount) {
 

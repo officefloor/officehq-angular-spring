@@ -350,6 +350,46 @@ public class ClaimService {
     }
 
     /**
+     * A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure its statement bound it
+     * to stays bound; its period follows the new date, and while the sheet numbers by period a claim moved into another
+     * period takes the next number of that period's sequence (its old one is never used again). Refused for any other
+     * status, a date after its person's retirement, a claim in a closed period or a new date in one, or a user not a
+     * steward.
+     */
+    @Transactional
+    public Claim redate(String sheetId, String user, Long id, LocalDate date) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimRedateForbiddenException(id, user);
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ClaimRedateException(id, "it is " + claim.getStatus()
+                    + ", only an OPEN or PENDING claim can be re-dated");
+        }
+        LocalDate old = claim.getDate();
+        // Neither out of nor into a closed period.
+        periods.requireOpen(sheetId, old, date);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        person.requireClaimable(date);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        if (settings.get(sheetId).numbersByPeriod()
+                && !periods.nameOn(sheetId, old).equals(periods.nameOn(sheetId, date))) {
+            claim.setNumber(nextNumber(sheetId, date));
+        }
+        claim.setDate(date);
+        if (!claim.isCorrection()) {
+            claim.setRoundingDate(date);
+        }
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_REDATED", user, person, saved) + numberOf(saved.getNumber())
+                + " old=" + old + " new=" + date);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Split an amount (more than 0.00 and less than its own) off an OPEN claim not deferred. The claim keeps the rest
      * and loses any figure a statement bound it to; a new OPEN claim of the same person with the amount split off, the
      * same date and note, the next number, opened by the user, due by its date plus the terms in force on that date,
