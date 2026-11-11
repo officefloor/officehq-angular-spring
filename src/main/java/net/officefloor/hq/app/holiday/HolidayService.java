@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.holiday;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -12,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Keeps the holidays of a sheet, each date at most once. A due-by fixed when a claim is added is moved past them; a
+ * Keeps the holidays of a sheet, each date at most once. A due-by fixed when a claim is added counts business days, skipping them; a
  * holiday added later leaves the due-by dates already fixed as they are.
  */
 @Service
@@ -51,13 +52,25 @@ public class HolidayService {
         return saved;
     }
 
-    /** The date itself when it is not a holiday on the sheet, else the next day that is not one. */
+    /**
+     * The terms-th business day after the date: counting forward from the day after it, skipping every Saturday,
+     * Sunday and holiday on the sheet. Terms of 0: the date itself.
+     */
     @Transactional(readOnly = true)
-    public LocalDate nextNonHoliday(String sheetId, LocalDate date) {
+    public LocalDate businessDaysAfter(String sheetId, LocalDate date, int terms) {
         Set<LocalDate> dates = list(sheetId).stream().map(Holiday::getDate).collect(Collectors.toSet());
+        return businessDaysAfter(dates, date, terms);
+    }
+
+    /** The terms-th day after the date that is neither a Saturday, a Sunday nor one of the holidays. */
+    public static LocalDate businessDaysAfter(Set<LocalDate> holidays, LocalDate date, int terms) {
         LocalDate day = date;
-        while (dates.contains(day)) {
+        for (int counted = 0; counted < terms;) {
             day = day.plusDays(1);
+            if (day.getDayOfWeek() != DayOfWeek.SATURDAY && day.getDayOfWeek() != DayOfWeek.SUNDAY
+                    && !holidays.contains(day)) {
+                counted++;
+            }
         }
         return day;
     }

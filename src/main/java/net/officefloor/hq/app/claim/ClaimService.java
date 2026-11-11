@@ -92,7 +92,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
-        // Due by its date plus its person's terms on that date, moved past the sheet's holidays now, fixed from now on;
+        // Due by its person's terms on its date in business days after it, skipping the sheet's holidays now, fixed from now on;
         // its period is the one of its due-by.
         LocalDate dueBy = dueByOf(sheetId, person, dated);
         periods.requireOpen(sheetId, dueBy);
@@ -702,11 +702,12 @@ public class ClaimService {
         return String.valueOf(sheets.nextClaimNumber(sheetId));
     }
 
-    /** The terms of the person on the date: their own, else their grade's on that date, else the sheet's then. */
-    /** The date plus the person's terms on it, moved to the next day that is not one of the sheet's holidays. */
+    /** The person's terms on the date counted as business days after it, skipping the sheet's holidays. */
     private LocalDate dueByOf(String sheetId, Person person, LocalDate date) {
-        return holidays.nextNonHoliday(sheetId, date.plusDays(termsFor(sheetId, person, date)));
+        return holidays.businessDaysAfter(sheetId, date, termsFor(sheetId, person, date));
     }
+
+    /** The terms of the person on the date: their own, else their grade's on that date, else the sheet's then. */
 
     private int termsFor(String sheetId, Person person, LocalDate date) {
         return person.getTerms() != null ? person.getTerms()
