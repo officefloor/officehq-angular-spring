@@ -30,8 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Statements on a sheet. Taking a person's statement records their due-total at that moment, taken
- * on the sheet's today (held to the sheet's cap), or as of a date on or before it, and binds every claim of theirs that counts (OPEN, PENDING or SETTLED, but not a held
- * person's OPEN or PENDING claims) to the figure it has then and to its due as shown then, late charge included: while bound, the
+ * on the sheet's today (held to the sheet's cap), or as of a date on or before it, and binds every claim of theirs that counts (OPEN, PENDING or SETTLED, held or not, but not a
+ * retired person's OPEN or PENDING claims) to the figure it has then and to its due as shown then, late charge included: while bound, the
  * claim shows and totals that due, its late charge no longer following the sheet's today, and the
  * next statement binds it as it stands (a SETTLED claim's frozen due is unaffected). A claim of
  * theirs that does not count is unbound, so its figure and late charge are live again. The rate

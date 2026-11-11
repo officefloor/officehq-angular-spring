@@ -395,8 +395,8 @@ public class PersonService {
 
     /**
      * Put the person on hold from a date (the sheet's today when none is given) to an optional
-     * to-date; refused (400) when the to-date is before the from-date. Their OPEN claims dated within
-     * the hold leave every live total, so the figures that move are recorded.
+     * to-date; refused (400) when the to-date is before the from-date. Their claims still count in every
+     * total; while the hold is in force on the sheet's today they take no cut of a pool.
      */
     @Transactional
     public Person hold(String sheetId, String user, long id, LocalDate fromDate, LocalDate toDate) {

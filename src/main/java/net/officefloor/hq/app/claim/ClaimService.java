@@ -776,8 +776,8 @@ public class ClaimService {
     }
 
     /**
-     * Hold an OPEN or PENDING claim, or release it when held: while held it counts in no live total,
-     * as a held person's open claims do, unless a statement binds it. CLAIM_HELD or CLAIM_RELEASED is
+     * Hold an OPEN or PENDING claim, or release it when held: a held claim still counts in every total.
+     * CLAIM_HELD or CLAIM_RELEASED is
      * written. Refused (409) for a claim in any other status.
      */
     @Transactional

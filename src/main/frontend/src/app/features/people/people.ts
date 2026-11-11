@@ -66,14 +66,13 @@ import { FigurePipe } from '../../core/figure';
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
 // as retired at once, whatever the date. No claim of theirs can be dated after it. Retired people are
 // left out of the list unless "show retired" is on. Once the sheet's today reaches their retirement
-// date their OPEN and PENDING claims leave every live total, as a hold's would (unless a statement binds them).
+// date their OPEN and PENDING claims leave every live total (unless a statement binds them).
 // A retired person can be unretired (on the sheet's today; anyone not retired is refused). Each past
 // retirement stays on the row as from-date to the day unretired; no claim can be dated after the one and before the other.
 // A person can be put on hold from a date (the sheet's today when left blank) to an optional to-date,
-// and may have several holds over time; a hold ends on its to-date. Their OPEN and PENDING claims dated
-// within a hold count in claimed but in no due figure (their own, the sheet's or a period's); their other claims count in all,
-// and so does a claim bound by a statement, whatever its date. A period counts a claim open at its
-// end but since settled or voided whatever its holds. "On hold" shows whether they have any hold.
+// and may have several holds over time; a hold ends on its to-date. A hold takes none of their claims out
+// of any total: while one is in force on the sheet's today they only take no cut of a pool.
+// "On hold" shows whether they have any hold.
 // The quick-add bar adds a DRAFT claim of an amount, dated the sheet's today with an empty note, for
 // the person of a name, adding the person with grade A first when the name is not on the sheet.
 // The paste box takes lines of name,amount,date,note (the date blank for the sheet's today, the note
@@ -182,31 +181,17 @@ interface DatedHold {
   to: string | null;
 }
 
-/** Whether a day lies within one of the person's holds. */
-function heldOn(p: Person, date: string): boolean {
-  return p.holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
-}
-
 /** Whether the person's retirement date is reached on a day (the day on or after it). */
 function retiredOn(p: Person, date: string | null): boolean {
   return p.retiredFrom !== null && date !== null && date >= p.retiredFrom;
 }
 
 /**
- * Whether a claim of the person counts toward the totals: an OPEN or PENDING claim that is held, or
- * dated within one of their holds, does not, nor does one once the sheet's today reaches their retirement date, unless
- * a statement binds it; nor does a claim deferred on the sheet's today.
+ * Whether a claim of the person counts toward the totals: an OPEN or PENDING claim does not once the sheet's today
+ * reaches their retirement date, unless a statement binds it; nor does a claim deferred on the sheet's today. A hold
+ * (the person's or the claim's) takes a claim out of no total; it only takes the person out of the pools' cuts.
  */
 function countsFor(p: Person | undefined, c: Claim, today: string | null): boolean {
-  return counts(c) && !deferred(c, today)
-    && (c.stated || !(isOpen(c) && (c.held || (p !== undefined && (heldOn(p, c.date) || retiredOn(p, today))))));
-}
-
-/**
- * Whether a claim of the person counts toward claimed: as {@link countsFor}, but a hold (the person's
- * or the claim's) does not take it out; only its due figures leave the totals while held.
- */
-function claimedFor(p: Person | undefined, c: Claim, today: string | null): boolean {
   return counts(c) && !deferred(c, today)
     && (c.stated || !(isOpen(c) && p !== undefined && retiredOn(p, today)));
 }
@@ -1280,11 +1265,11 @@ export class People {
       if (p === undefined) continue;
       const due = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
       if (due === null) continue;
-      // a hold (the person's or the claim's) takes out only a claim that is open now as well
+      // a retirement takes out only a claim that is open now as well
       const countsAt = (day: string): boolean => {
         const status = statusAt(c, day);
         return status !== null && (isOpen(c) ? countsFor(p, { ...c, status }, today)
-          : countsFor(undefined, { ...c, status, held: false }, today));
+          : countsFor(undefined, { ...c, status }, today));
       };
       const openAt = (day: string): boolean => {
         const status = statusAt(c, day);
@@ -1644,9 +1629,9 @@ export class People {
     return money(this.claimsOf(personId).reduce((sum, c) => sum + this.countedCents(p, c), 0));
   }
 
-  /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does; a hold does not take it out. */
+  /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does. */
   private countedCents(p: Person | undefined, c: Claim): number {
-    return claimedFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
+    return countsFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
   }
 
   /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */

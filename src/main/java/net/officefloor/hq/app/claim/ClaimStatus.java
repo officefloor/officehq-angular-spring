@@ -31,7 +31,7 @@ public enum ClaimStatus {
         return this == OPEN || this == PENDING || this == SETTLED;
     }
 
-    /** Whether a claim in this status is open: OPEN or PENDING (it goes overdue, and a hold takes it out of the totals). */
+    /** Whether a claim in this status is open: OPEN or PENDING (it goes overdue). */
     public boolean isOpen() {
         return this == OPEN || this == PENDING;
     }
