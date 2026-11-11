@@ -1,0 +1,158 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+index 6064ec0e6..877e05e35 100644
+--- a/src/main/frontend/src/app/features/dashboard/dashboard.ts
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -3,7 +3,7 @@ import { Component, effect, inject, input, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+-// The steward's dashboard: how many of the sheet's claims are PENDING and in REVIEW (as the summary
++// The steward's dashboard: how many of the claims of the sheet and its descendants are PENDING and in REVIEW (as the summary
+ // counts them), and how many claims that count are overdue (as the people list's totals count them).
+ // Only a steward (in their own right or by a delegation in force) sees the counts; anyone else sees
+ // the cells empty. Shown as of a date, it is the role the user had then that decides.
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a8117bdbd..c0a850341 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -199,9 +199,12 @@ interface Descendants {
+     gradeDueTotals: Record<string, string>;
+     statusCounts: Record<string, number>;
+     people: TreePerson[];
++    overdueCount: number;
+   } | null;
+   /** Every person of the descendants, as the consolidated figures take them. */
+   people: TreePerson[];
++  /** How many overdue claims that count the descendants have. */
++  overdueCount: number;
+ }
+ 
+ const NO_DESCENDANTS: Descendants = {
+@@ -212,6 +215,7 @@ const NO_DESCENDANTS: Descendants = {
+   statusCounts: {},
+   own: null,
+   people: [],
++  overdueCount: 0,
+ };
+ 
+ interface DatedHold {
+@@ -302,9 +306,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+       [watchedDueTotal]="watchedDueTotal()"
+     />
+     <app-dashboard
+-      [pendingCount]="statusCount('PENDING')"
+-      [reviewCount]="statusCount('REVIEW')"
+-      [overdueCount]="overdueTotals().count"
++      [pendingCount]="treeStatusCount('PENDING')"
++      [reviewCount]="treeStatusCount('REVIEW')"
++      [overdueCount]="treeOverdueCount()"
+     />
+     <app-rates [(rates)]="rates" />
+     <app-roles />
+@@ -1465,6 +1469,16 @@ export class People {
+       })),
+     };
+   });
++  /** How many claims of the sheet and its descendants are in a status, as the consolidated figures count them. */
++  protected treeStatusCount(status: string): number {
++    return this.consolidated().statuses.find((s) => s.status === status)?.count ?? 0;
++  }
++  /** How many overdue claims that count the sheet and its descendants have (the sheet's own as of the date, in an as-of view). */
++  protected readonly treeOverdueCount = computed(() => {
++    const d = this.descendants();
++    const own = this.session.asOf() && d.own ? d.own.overdueCount : this.overdueTotals().count;
++    return own + d.overdueCount;
++  });
+   /** The person on the sheet with the user's name, by name or alias (compared without regard to case). */
+   private readonly me = computed(() => {
+     const user = this.session.user()?.toLowerCase();
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index ee27ac522..b92134eca 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -23,7 +23,7 @@ public class RollupController {
+ 
+     /** The sheet's own figures as the store holds them (as of the date the request is answered as of), as consolidated figures count them. */
+     public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
+-            Map<String, Integer> statusCounts, List<TreePerson> people) {
++            Map<String, Integer> statusCounts, List<TreePerson> people, int overdueCount) {
+     }
+ 
+     /** A person as the consolidated figures take them: their name and aliases, due-total (null for n/a) and overdue-total. */
+@@ -32,7 +32,7 @@ public class RollupController {
+ 
+     public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal,
+             Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, OwnFigures own,
+-            List<TreePerson> people) {
++            List<TreePerson> people, int overdueCount) {
+     }
+ 
+     public record CompareRequest(@NotBlank @Size(max = 100) String sheet) {
+@@ -57,8 +57,9 @@ public class RollupController {
+         return new DescendantsResponse(figures.peopleCount(), money(figures.dueTotal()),
+                 money(figures.overdueTotal()), money(figures.gradeDueTotals()), figures.statusCounts(),
+                 new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal()),
+-                        money(own.gradeDueTotals()), service.statusCounts(sheet), people(service.treePeople(sheet))),
+-                people(figures.people()));
++                        money(own.gradeDueTotals()), service.statusCounts(sheet), people(service.treePeople(sheet)),
++                        service.overdueCount(sheet)),
++                people(figures.people()), figures.overdueCount());
+     }
+ 
+     // ends in /list: it only reads another sheet's figures
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 40f2a6d4e..a9d5a19e6 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -104,10 +104,12 @@ public class RollupService {
+ 
+     /**
+      * Figures added up over sheets: their people (retired included), due-totals and overdue-totals;
+-     * per grade the due-totals of the people on it (retired left out), and per status the count of claims in it.
++     * per grade the due-totals of the people on it (retired left out), per status the count of claims in it,
++     * and how many overdue claims that count there are.
+      */
+     public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
+-            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts, List<TreePerson> people) {
++            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts, List<TreePerson> people,
++            int overdueCount) {
+     }
+ 
+     /**
+@@ -302,15 +304,35 @@ public class RollupService {
+         List<TreePerson> treePeople = new ArrayList<>();
+         Map<String, BigDecimal> grades = new LinkedHashMap<>();
+         Map<String, Integer> statuses = new LinkedHashMap<>();
++        int overdueCount = 0;
+         for (String id : tree) {
+             treePeople.addAll(treePeople(id));
++            overdueCount += overdueCount(id);
+             snapshot(id).gradeDueTotals().forEach((grade, total) -> grades.merge(grade, total, BigDecimal::add));
+             statusCounts(id).forEach((status, n) -> statuses.merge(status, n, Integer::sum));
+         }
+         BigDecimal due = Snapshot.trimmed(
+                 treePeople.stream().map(TreePerson::dueTotal).filter(Objects::nonNull).toList());
+         BigDecimal overdue = Snapshot.trimmed(treePeople.stream().map(TreePerson::overdueTotal).toList());
+-        return new Consolidated(distinctPeople(treePeople), due, overdue, grades, statuses, treePeople);
++        return new Consolidated(distinctPeople(treePeople), due, overdue, grades, statuses, treePeople,
++                overdueCount);
++    }
++
++    /** How many of the sheet's claims that count are overdue on its today, as the people list's totals count them. */
++    public int overdueCount(String sheetId) {
++        Sheet sheet = sheet(sheetId);
++        LocalDate today = sheet.getToday();
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
++        int count = 0;
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            for (Claim claim : sheetClaims) {
++                if (claim.getPersonId().equals(person.getId()) && person.counts(claim, today)
++                        && overdue(sheet, person, claim)) {
++                    count++;
++                }
++            }
++        }
++        return count;
+     }
+ 
+     /** Per status, how many of the sheet's claims as the store holds them are in it (retired people's included). */
