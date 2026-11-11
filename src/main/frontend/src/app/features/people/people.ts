@@ -299,6 +299,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDueTotal()"
       [myReviewsCount]="myReviewsCount()"
+      [watchedDueTotal]="watchedDueTotal()"
     />
     <app-dashboard
       [pendingCount]="statusCount('PENDING')"
@@ -1501,6 +1502,11 @@ export class People {
     if (led.length === 0) return '';
     const people = this.crewPeople();
     return money(led.reduce((sum, c) => sum + crewDueCents(c, people), 0));
+  });
+  /** The due-totals of the people the user watches, added up (skipping n/a); 0.00 when they watch no one. */
+  protected readonly watchedDueTotal = computed(() => {
+    const watched = this.watched();
+    return money(this.people().filter((p) => watched.has(p.id)).reduce((sum, p) => sum + (this.dueOf(p) ?? 0), 0));
   });
   /**
    * The signed-in user's own figures: the due- and overdue-totals of the person on the sheet with

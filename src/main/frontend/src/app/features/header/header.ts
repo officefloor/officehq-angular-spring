@@ -14,7 +14,8 @@ import { FigurePipe } from '../../core/figure';
 // Last, the signed-in user's own figures: the due- and overdue-totals of the person on the sheet
 // with the user's name (by name or alias); blank when there is no such person. And their crew total:
 // the due-totals of the crews that person leads, added up; blank when they lead none. And how many
-// of the sheet's REVIEW claims are assigned to the user.
+// of the sheet's REVIEW claims are assigned to the user. And their watched total: the due-totals of
+// the people they watch added up (n/a skipped); 0.00 when they watch no one.
 @Component({
   selector: 'app-header',
   imports: [FigurePipe],
@@ -57,6 +58,8 @@ import { FigurePipe } from '../../core/figure';
         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</dd>
         <dt>My reviews</dt>
         <dd data-testid="my-reviews-count">{{ myReviewsCount() }}</dd>
+        <dt>Watched due</dt>
+        <dd data-testid="watched-due-total">{{ watchedDueTotal() | figure }}</dd>
       </dl>
     </header>
   `,
@@ -75,4 +78,5 @@ export class Header {
   readonly myOverdueTotal = input.required<string>();
   readonly myCrewDueTotal = input.required<string>();
   readonly myReviewsCount = input.required<number>();
+  readonly watchedDueTotal = input.required<string>();
 }
