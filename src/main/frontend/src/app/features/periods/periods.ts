@@ -26,6 +26,9 @@ import { FigurePipe } from '../../core/figure';
 // Opening balances can be pasted as lines of name,period,amount (a person by name or alias, a period
 // on the sheet, an amount of 0.00 or more with two decimals); each adds to the person's opening
 // balance for the period, which is added to their carried figure into it. Any refused line refuses the paste.
+// A steward can roll a fiscal year over: the next year's periods are generated as the fiscal year generator
+// does, and each person's open figure at the end of the old year's last period is added to their opening
+// balance for the new year's first period.
 // An open period counts a claim by the status it had at the end of its to-date, as the claim's status
 // log records it (a claim with no status by then does not count), at its figure as shown now.
 export interface Period {
@@ -212,6 +215,23 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
       @if (generateError(); as err) {
         <p role="alert" data-testid="period-generate-error">{{ err }}</p>
       }
+      <form aria-label="Roll the year over" (submit)="rollover($event)">
+        <label for="rollover-year">Roll over fiscal year (FY yyyy)</label>
+        <input
+          id="rollover-year"
+          data-testid="rollover-year"
+          inputmode="numeric"
+          [value]="rolloverYear()"
+          (input)="rolloverYear.set($any($event.target).value); rolloverError.set(null)"
+        />
+        <button type="submit" data-testid="rollover">Roll year over</button>
+        @if (rolloverMade() !== null) {
+          <p role="status">Made <span data-testid="rollover-made">{{ rolloverMade() }}</span></p>
+        }
+        @if (rolloverError(); as err) {
+          <p role="alert" data-testid="rollover-error">{{ err }}</p>
+        }
+      </form>
       <form aria-label="Paste opening balances" (submit)="importOpenings($event)">
         <label for="opening-import">Opening balances (name,period,amount per line)</label>
         <textarea
@@ -329,6 +349,11 @@ export class Periods {
   /** How many periods the last generate made; null before one, and while one runs. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
+  /** The fiscal year typed to roll over, by the calendar year its first day falls in. */
+  protected readonly rolloverYear = signal('');
+  /** How many periods the last rollover made; null before one, and while one runs. */
+  protected readonly rolloverMade = signal<number | null>(null);
+  protected readonly rolloverError = signal<string | null>(null);
   /** The lines of name,period,amount typed to paste as opening balances. */
   protected readonly openingText = signal('');
   /** How many lines the last paste of opening balances set; null before one, and while one runs. */
@@ -355,6 +380,9 @@ export class Periods {
       this.quartersYear.set('');
       this.generated.set(null);
       this.generateError.set(null);
+      this.rolloverYear.set('');
+      this.rolloverMade.set(null);
+      this.rolloverError.set(null);
       this.openingText.set('');
       this.openingDone.set(null);
       this.openingError.set(null);
@@ -563,6 +591,43 @@ export class Periods {
       return;
     }
     await this.made(sheet, this.http.post<Period[]>('/api/periods/generate-quarters', { sheet, user: this.session.user(), year }));
+  }
+
+  /** Roll a fiscal year over: the server makes the next year's periods and carries each person's open
+   *  figure into its first period; shows how many periods were made, or why it was refused. */
+  protected async rollover(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.submitting) return;
+    this.rolloverError.set(null);
+    this.rolloverMade.set(null);
+    const sheet = this.session.sheet();
+    const year = this.rolloverYear().trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.rolloverError.set('Enter the fiscal year as yyyy.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ made: number; periods: Period[] }>('/api/periods/rollover', {
+          sheet, user: this.session.user(), year,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.periods.set(done.periods);
+      this.rolloverMade.set(done.made);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.rolloverError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward may roll the year over.'
+          : e instanceof HttpErrorResponse && e.status === 400 && typeof e.error?.message === 'string' && e.error.message
+            ? e.error.message
+            : 'Could not roll the year over.',
+      );
+    } finally {
+      this.submitting = false;
+    }
   }
 
   /** Paste opening balances: every line is checked by the server before any is set; shows how many

@@ -306,19 +306,30 @@ public class RollupService {
      * for the period is added to it.
      */
     public Map<Long, BigDecimal> carriedByPerson(String sheetId, Period period) {
-        Sheet sheet = sheet(sheetId);
         List<Period> earlier = periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
                 .filter(p -> p.getToDate().isBefore(period.getFromDate())).toList();
+        Map<Long, BigDecimal> carried = openByPerson(sheetId, earlier, period.getToDate());
+        carried.replaceAll((person, due) -> due.add(period.getOpenings().getOrDefault(person, zero())));
+        return carried;
+    }
+
+    /**
+     * Each person's open figure at the end of a day: the due of their claims that belong to one of
+     * these periods and that counted and were still OPEN or PENDING at the end of that day (as their
+     * status log records it), by person id, for every person on the sheet (0.00 when none). Each
+     * counts at its figure as shown now.
+     */
+    public Map<Long, BigDecimal> openByPerson(String sheetId, List<Period> within, LocalDate end) {
+        Sheet sheet = sheet(sheetId);
         List<List<Rate>> sheetRates = rates.current(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
-        LocalDate end = period.getToDate();
-        Map<Long, BigDecimal> carried = new LinkedHashMap<>();
+        Map<Long, BigDecimal> open = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             BigDecimal due = zero();
             for (Claim claim : sheetClaims) {
                 LocalDate dueBy = claim.getDueBy();
                 if (!claim.getPersonId().equals(person.getId()) || dueBy == null
-                        || earlier.stream().noneMatch(p -> !dueBy.isBefore(p.getFromDate())
+                        || within.stream().noneMatch(p -> !dueBy.isBefore(p.getFromDate())
                                 && !dueBy.isAfter(p.getToDate()))
                         || !claim.statusAt(end).map(status -> status.isOpen()
                                 && person.counts(claim, status, sheet.getToday())).orElse(false)) {
@@ -329,9 +340,9 @@ public class RollupService {
                     due = due.add(figure);
                 }
             }
-            carried.put(person.getId(), due.add(period.getOpenings().getOrDefault(person.getId(), zero())));
+            open.put(person.getId(), due);
         }
-        return carried;
+        return open;
     }
 
     /** Record, once the change commits, the figures that moved since the snapshot taken before it. */
