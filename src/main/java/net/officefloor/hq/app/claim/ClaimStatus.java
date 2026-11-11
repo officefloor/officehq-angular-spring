@@ -3,7 +3,7 @@ package net.officefloor.hq.app.claim;
 /**
  * Where a claim is in its life: DRAFT, then OPEN, then SETTLED. A clerk settling an OPEN claim whose due is above the
  * clerk limit sends it to PENDING instead, which a steward approves (SETTLED) or rejects (back to OPEN). A DRAFT, OPEN
- * or PENDING claim may be VOID.
+ * or PENDING claim may be VOID; a steward may also void a SETTLED one shortly after its settlement (see ClaimService).
  */
 public enum ClaimStatus {
     DRAFT, OPEN, PENDING, SETTLED, VOID;

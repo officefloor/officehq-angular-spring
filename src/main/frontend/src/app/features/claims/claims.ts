@@ -58,7 +58,8 @@ export function byListed(a: Claim, b: Claim): number {
 
 /**
  * DRAFT when added, then OPEN, then SETTLED; a clerk settling above the clerk limit makes it PENDING until a steward
- * approves (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING claim may be VOID.
+ * approves (SETTLED) or rejects it (OPEN). A DRAFT, OPEN or PENDING claim may be VOID, and a steward may void a
+ * SETTLED one within 7 days of its settlement.
  */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
@@ -666,6 +667,10 @@ export class Claims {
             ? 'Whoever opened this claim cannot also settle it: another user must settle it.'
             : action === 'resettle'
             ? 'Only a steward can re-settle a claim.'
+            : action === 'void'
+            ? claim.status === 'SETTLED'
+              ? 'Only a steward can void a settled claim.'
+              : 'Your role is not allowed to void a claim.'
             : 'Only a steward can approve or reject a pending claim, and not the one who opened it.'
           : closed
               ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
@@ -675,6 +680,8 @@ export class Claims {
                 ? `This claim is deferred until ${claim.deferredUntil}: it cannot be settled before then.`
               : action === 'resettle'
                 ? `This claim is ${claim.status}: only a SETTLED claim can be re-settled.`
+              : action === 'void' && claim.status === 'SETTLED'
+                ? 'A settled claim can only be voided within 7 days of its settlement.'
                 : `This claim's status does not let it be ${pastOf[action]}.`;
       this.actionError.set({ id: claim.id, message });
     }

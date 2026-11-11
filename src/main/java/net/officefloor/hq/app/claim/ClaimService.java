@@ -34,6 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ClaimService {
 
+    /** The days after its settlement within which a steward may still void a SETTLED claim. */
+    private static final int SETTLED_VOID_DAYS = 7;
+
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final RateService rates;
@@ -138,7 +141,8 @@ public class ClaimService {
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
-        if (!claim.getStatus().canMoveTo(status) || status == ClaimStatus.PENDING) {
+        boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+        if (!voidsSettled && (!claim.getStatus().canMoveTo(status) || status == ClaimStatus.PENDING)) {
             throw new ClaimStatusException(id, claim.getStatus(), status);
         }
         // The sheet's permission matrix decides which roles may open, settle or void.
@@ -150,6 +154,9 @@ public class ClaimService {
         };
         if (!roles.may(sheetId, user, action)) {
             throw new ClaimActionForbiddenException(id, user, action);
+        }
+        if (voidsSettled) {
+            requireSettledVoidable(sheetId, user, claim);
         }
         periods.requireOpen(sheetId, claim.getDate());
         // A deferred claim cannot be settled until the sheet's today reaches the date it is deferred until.
@@ -175,7 +182,8 @@ public class ClaimService {
             }
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        String due = status == ClaimStatus.SETTLED ? settle(sheetId, person, claim) : "";
+        String due = status == ClaimStatus.SETTLED ? settle(sheetId, person, claim)
+                : voidsSettled ? " reversed=" + shownDue(sheetId, person, claim) : "";
         claim.setStatus(status);
         // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
         String number = claim.getNumber();
@@ -423,6 +431,26 @@ public class ClaimService {
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ClaimProofException(claim.getId(), "its due " + due.toPlainString()
                     + " is above the proof threshold " + threshold.toPlainString() + " and it has no proof");
+        }
+    }
+
+    /**
+     * Only a steward voids a SETTLED claim, and only within the days allowed after its settlement (the date of the last
+     * SETTLED line of its status log) by the sheet's today; refused otherwise.
+     */
+    private void requireSettledVoidable(String sheetId, String user, Claim claim) {
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimActionForbiddenException(claim.getId(), user, "void a settled claim");
+        }
+        LocalDate settledOn = logOf(claim).stream()
+                .filter(l -> l.getStatus() == ClaimStatus.SETTLED)
+                .map(ClaimLog::getDate)
+                .reduce((first, last) -> last)
+                .orElse(null);
+        LocalDate today = sheets.today(sheetId);
+        if (settledOn == null || today.isAfter(settledOn.plusDays(SETTLED_VOID_DAYS))) {
+            throw new ClaimVoidException(claim.getId(), "a settled claim can only be voided within "
+                    + SETTLED_VOID_DAYS + " days of its settlement on " + settledOn);
         }
     }
 

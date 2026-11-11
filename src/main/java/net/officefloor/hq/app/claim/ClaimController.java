@@ -269,7 +269,7 @@ public class ClaimController {
         return view(service.addProof(sheetId.trim(), user.trim(), id));
     }
 
-    /** Void a DRAFT, OPEN or PENDING claim. */
+    /** Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED one. */
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
