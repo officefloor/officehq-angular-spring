@@ -1789,6 +1789,14 @@ export class PersonClaims {
       return;
     }
     const id = this.editingId();
+    // a claim with lines takes its amount from them: no save of its editor can change it, so the
+    // editor is closed (its lock released) and the claim shows the refusal
+    const edited = id === null ? undefined : this.claims().find((c) => c.id === id);
+    if (edited !== undefined && edited.lines.length > 0 && cents(amount) !== cents(edited.amount)) {
+      await this.cancel(edited);
+      this.actionErrors.update((m) => new Map(m).set(edited.id, 'A claim with lines takes its amount from them.'));
+      return;
+    }
     const body = { sheet, user: this.session.user(), amount, date: date || null, note: this.noteInput().trim(),
       corrects: correction ? corrects : null, ref: this.refInput().trim() || null,
       tags: this.tagsInput() };

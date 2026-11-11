@@ -858,6 +858,11 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                 </ul>
                 <span>Flag: <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span></span>
                 <span>Approver: <span data-testid="person-approver">{{ p.approver ?? '' }}</span></span>
+                <ul aria-label="Timeline">
+                  @for (l of timelineOf(p); track $index) {
+                    <li data-testid="person-timeline-line">{{ l }}</li>
+                  }
+                </ul>
                 <ul aria-label="Snapshots">
                   @for (n of p.snapshots; track $index) {
                     <li data-testid="person-snapshot-line">{{ n.day }} {{ n.dueTotal }}</li>
@@ -1856,6 +1861,31 @@ export class People {
 
   protected claimsOf(personId: number): Claim[] {
     return this.claimsByPerson().get(personId) ?? [];
+  }
+
+  /**
+   * The person's timeline: one line per dated thing about them, by date, and on a date their grade
+   * changes, then claims (by their line's text), then holds, then retirements, then unretirements.
+   */
+  protected timelineOf(p: Person): string[] {
+    const lines: { date: string; rank: number; text: string }[] = [];
+    for (const g of p.grades) {
+      if (g.from !== null) lines.push({ date: g.from, rank: 0, text: `grade ${g.grade}` });
+    }
+    for (const c of this.claimsOf(p.id)) {
+      lines.push({ date: c.date, rank: 1, text: `claim ${c.amount} ${c.status}` });
+    }
+    for (const h of p.holds) {
+      lines.push({ date: h.from, rank: 2, text: h.to !== null ? `hold to ${h.to}` : 'hold' });
+    }
+    for (const r of p.retirements) {
+      lines.push({ date: r.from, rank: 3, text: 'retired' });
+      lines.push({ date: r.to, rank: 4, text: 'unretired' });
+    }
+    if (p.retiredFrom !== null) lines.push({ date: p.retiredFrom, rank: 3, text: 'retired' });
+    return lines
+      .sort((a, b) => a.date.localeCompare(b.date) || a.rank - b.rank || (a.rank === 1 ? a.text.localeCompare(b.text) : 0))
+      .map((l) => `${l.date} ${l.text}`);
   }
 
   protected claimedOf(personId: number): string {
