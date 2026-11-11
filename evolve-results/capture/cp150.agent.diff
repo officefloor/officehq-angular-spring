@@ -1,0 +1,257 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 6d6cb4350..00d8a959b 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -5,12 +5,13 @@ import { Holidays } from '../holidays/holidays';
+ import { People } from '../people/people';
+ import { Settings } from '../settings/settings';
+ import { TemplatesList } from '../templates/templates';
++import { TreeSearch } from '../tree-search/tree-search';
+ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ 
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [AuditViewer, Holidays, People, Settings, TemplatesList, VoidReasonsList],
++  imports: [AuditViewer, Holidays, People, Settings, TemplatesList, TreeSearch, VoidReasonsList],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -76,6 +77,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+         <app-void-reasons />
+         <app-templates />
+         <app-people />
++        <app-tree-search />
+         <app-audit-viewer />
+       }
+     } @else {
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+new file mode 100644
+index 000000000..94a53bb5b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -0,0 +1,88 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// Tree search: every person on this sheet and the other sheets of its tree whose name or an alias contains the typed
++// text (case ignored), one line each as <sheet id> <name> <due-total>; this sheet's people first in list order, then
++// the other sheets' by sheet id. It records nothing.
++@Component({
++  selector: 'app-tree-search',
++  template: `
++    <section aria-labelledby="tree-search-heading">
++      <h2 id="tree-search-heading">Search the sheet tree</h2>
++      <form (submit)="search($event)" aria-labelledby="tree-search-heading">
++        <label for="search-name">Name or alias contains</label>
++        <input
++          id="search-name"
++          data-testid="search-name"
++          [value]="text()"
++          (input)="text.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="search">Search</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="search-error">{{ message }}</p>
++        }
++      </form>
++      <p>Found <strong data-testid="search-count">{{ count() ?? '' }}</strong></p>
++      <ol aria-label="Search results">
++        @for (line of lines(); track $index) {
++          <li data-testid="search-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class TreeSearch {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly text = signal('');
++  protected readonly lines = signal<string[]>([]);
++  /** How many lines the last search found; null while a search runs and before the first. */
++  protected readonly count = signal<number | null>(null);
++  protected readonly error = signal<string | null>(null);
++  private reads = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.sheet();
++      this.session.loaded();
++      untracked(() => {
++        this.reads++;
++        this.lines.set([]);
++        this.count.set(null);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected async search(event: Event): Promise<void> {
++    event.preventDefault();
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const read = ++this.reads;
++    this.lines.set([]);
++    this.count.set(null);
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/tree/search`, {
++          ...this.session.headers(),
++          params: { name: this.text() },
++        }),
++      );
++      // A later search wins over a slower earlier one.
++      if (read === this.reads && this.session.sheet() === sheet) {
++        this.lines.set(lines);
++        this.count.set(lines.length);
++      }
++    } catch {
++      if (read === this.reads) this.error.set('The sheet tree could not be searched.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+index ccd6e508f..5665f8e97 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -1,11 +1,13 @@
+ package net.officefloor.hq.app.rollup;
+ 
++import java.util.List;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** The figures of a sheet's descendants. The signed-in user's name travels in the {@code X-User} header. */
+@@ -35,4 +37,15 @@ public class ConsolidatedController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         return rollups.consolidatedFigures(sheetId.trim());
+     }
++
++    /**
++     * The people on the sheet and the other sheets of its tree whose name or an alias contains the text (case ignored),
++     * one line each: {@code <sheet id> <name> <due-total>}. It changes nothing.
++     */
++    @GetMapping("/api/sheets/{sheetId}/tree/search")
++    public List<String> search(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestParam(defaultValue = "") @Size(max = 100) String name,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return rollups.search(sheetId.trim(), name);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 6cdf17c37..e400a09f8 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -7,6 +7,7 @@ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Map;
+ import java.util.Objects;
+ import java.util.Optional;
+@@ -19,6 +20,8 @@ import net.officefloor.hq.app.claim.ClaimLogRepository;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonAlias;
++import net.officefloor.hq.app.person.PersonAliasRepository;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateLog;
+@@ -53,16 +56,19 @@ public class RollupService {
+     private final RateRepository rates;
+     private final RateLogRepository rateLogs;
+     private final SheetRepository sheets;
++    private final PersonAliasRepository aliases;
+     private final Audit audit;
+ 
+     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
+-            RateRepository rates, RateLogRepository rateLogs, SheetRepository sheets, Audit audit) {
++            RateRepository rates, RateLogRepository rateLogs, SheetRepository sheets, PersonAliasRepository aliases,
++            Audit audit) {
+         this.people = people;
+         this.claims = claims;
+         this.logs = logs;
+         this.rates = rates;
+         this.rateLogs = rateLogs;
+         this.sheets = sheets;
++        this.aliases = aliases;
+         this.audit = audit;
+     }
+ 
+@@ -156,6 +162,59 @@ public class RollupService {
+                 shown(new BigDecimal(own.overdueTotal()).add(new BigDecimal(descendants.overdueTotal()))));
+     }
+ 
++    /**
++     * Every person on the sheet and the other sheets of its tree (its topmost ancestor and all that one's descendants)
++     * whose name or an alias contains the text, case ignored, each as {@code <sheet id> <name> <due-total>} with the
++     * due-total as that sheet shows it: the sheet's people first in list order, then the other sheets' by sheet id.
++     */
++    public List<String> search(String sheetId, String text) {
++        String wanted = text.toLowerCase(Locale.ROOT);
++        List<String> others = new ArrayList<>();
++        String root = root(sheetId);
++        if (!root.equals(sheetId)) {
++            others.add(root);
++        }
++        for (String id : descendants(root)) {
++            if (!id.equals(sheetId)) {
++                others.add(id);
++            }
++        }
++        others.sort(null);
++        List<String> order = new ArrayList<>(List.of(sheetId));
++        order.addAll(others);
++        List<String> lines = new ArrayList<>();
++        for (String id : order) {
++            Map<Long, List<String>> aliasesOf = new LinkedHashMap<>();
++            for (PersonAlias alias : aliases.findBySheetId(id)) {
++                aliasesOf.computeIfAbsent(alias.getPersonId(), p -> new ArrayList<>()).add(alias.getAlias());
++            }
++            Map<Long, Figures> figures = snapshot(id).people();
++            for (Map.Entry<Long, Figures> entry : figures.entrySet()) {
++                Figures person = entry.getValue();
++                boolean matches = person.name().toLowerCase(Locale.ROOT).contains(wanted)
++                        || aliasesOf.getOrDefault(entry.getKey(), List.of()).stream()
++                                .anyMatch(alias -> alias.toLowerCase(Locale.ROOT).contains(wanted));
++                if (matches) {
++                    lines.add(id + " " + person.name() + " " + person.dueTotal());
++                }
++            }
++        }
++        return lines;
++    }
++
++    /** The sheet's topmost ancestor (the sheet itself with no parent); a parent loop stops where it comes back. */
++    private String root(String sheetId) {
++        List<String> seen = new ArrayList<>(List.of(sheetId));
++        String top = sheetId;
++        String parent = sheets.findById(sheetId).map(Sheet::getParent).orElse(null);
++        while (parent != null && !seen.contains(parent)) {
++            seen.add(parent);
++            top = parent;
++            parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
++        }
++        return top;
++    }
++
+     /** The ids of the sheet's descendants, each once, nearest first; a parent loop never brings back the sheet. */
+     private List<String> descendants(String sheetId) {
+         List<String> seen = new ArrayList<>(List.of(sheetId));
