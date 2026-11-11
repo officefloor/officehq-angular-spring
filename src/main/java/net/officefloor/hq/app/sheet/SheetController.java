@@ -20,10 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class SheetController {
 
-    public record SheetView(String id, LocalDate today, boolean archived) {
+    /** The sheet as shown to the user: its today, whether it is archived, and whether the user is a viewer of it. */
+    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer) {
 
-        static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
+        static SheetView of(Sheet sheet, boolean viewer) {
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer);
         }
     }
 
@@ -40,7 +41,7 @@ public class SheetController {
     @PostMapping("/{id}/load")
     public SheetView load(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return SheetView.of(service.load(id.trim(), user.trim()));
+        return view(service.load(id.trim(), user.trim()), user.trim());
     }
 
     /** Change the sheet's today. */
@@ -48,13 +49,17 @@ public class SheetController {
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TodayRequest request) {
-        return SheetView.of(service.setToday(id.trim(), user.trim(), request.today()));
+        return view(service.setToday(id.trim(), user.trim(), request.today()), user.trim());
     }
 
     /** Archive the sheet: a steward may; every change to it is refused from then on. */
     @PostMapping("/{id}/archive")
     public SheetView archive(@PathVariable @NotBlank @Size(max = 100) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return SheetView.of(service.archive(id.trim(), user.trim()));
+        return view(service.archive(id.trim(), user.trim()), user.trim());
+    }
+
+    private SheetView view(Sheet sheet, String user) {
+        return SheetView.of(sheet, service.isViewer(sheet.getId(), user));
     }
 }

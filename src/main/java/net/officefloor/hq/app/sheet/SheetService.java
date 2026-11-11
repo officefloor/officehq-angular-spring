@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
@@ -23,9 +24,11 @@ public class SheetService {
     private final PeriodService periods;
     private final RoleService roles;
     private final Audit audit;
+    private final ClaimRepository claims;
 
     public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods, RoleService roles,
-            Audit audit) {
+            Audit audit, ClaimRepository claims) {
+        this.claims = claims;
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
@@ -35,6 +38,11 @@ public class SheetService {
 
     public Sheet load(String id, String user) {
         return sheets.findById(id).orElseGet(() -> start(id, user));
+    }
+
+    /** Whether the user is a viewer of the sheet, who may change nothing. */
+    public boolean isViewer(String id, String user) {
+        return roles.isViewer(id, user);
     }
 
     public Sheet get(String id) {
@@ -69,16 +77,20 @@ public class SheetService {
 
     /**
      * Change the sheet's today; it has no audit record of its own. Every open period past its grace days on the new
-     * today then closes, before the figures it moved are recorded.
+     * today then closes, before the figures it moved are recorded. A new today releases every claim editor's lock.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
         RollupService.Snapshot before = rollup.snapshot(id);
+        boolean changed = !today.equals(sheet.getToday());
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         periods.autoClose(id, user, today, saved.getGraceDays());
         rollup.recordChanges(id, user, before);
+        if (changed) {
+            claims.unlockAll(id);
+        }
         return saved;
     }
 

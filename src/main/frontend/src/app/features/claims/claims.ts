@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods';
@@ -40,6 +40,8 @@ export interface Claim {
   proofs: number;
   /** The number of the claim this one was split off; null unless it was split off another. */
   splitFrom: string | null;
+  /** The user whose open editor locks the claim against other users' edits; null when not locked. */
+  lockedBy: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
@@ -285,7 +287,7 @@ export function sumAmounts(amounts: string[]): string {
                   Edit
                 </button>
                 @if (editing() === c.id) {
-                  <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+                  <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
                 }
                 @for (a of actions; track a.action) {
                   <button
@@ -394,7 +396,7 @@ export function sumAmounts(amounts: string[]): string {
     }
   `,
 })
-export class Claims {
+export class Claims implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
@@ -429,6 +431,8 @@ export class Claims {
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
+  /** The lock the open editor is waiting for, settling to whether the store gave it; null once it answered. */
+  private locking: Promise<boolean> | null = null;
   /** The error of the last status change refused, and the claim it belongs to. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
   protected readonly actions: { action: ClaimAction; label: string }[] = [
@@ -451,6 +455,23 @@ export class Claims {
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+
+  constructor() {
+    // A new today releases every editor's lock, so the open editor closes.
+    let seenToday: string | null | undefined;
+    effect(() => {
+      const today = this.session.today();
+      if (seenToday !== undefined && today !== seenToday) untracked(() => this.reset());
+      seenToday = today;
+    });
+  }
+
+  /** The editor the user left open (its claim still locked by them) is shown open again when the sheet is loaded. */
+  ngOnInit(): void {
+    const user = this.session.user();
+    const mine = this.claims().find((c) => c.status === 'DRAFT' && user !== null && c.lockedBy === user);
+    if (mine) this.fill(mine);
+  }
 
   protected fieldId(field: string): string {
     return `claim-form-${field}-${this.personId()}`;
@@ -490,23 +511,93 @@ export class Claims {
     return (event.target as HTMLInputElement).checked;
   }
 
-  /** Open the claim's editor; only a DRAFT can be edited; to change an OPEN claim, void it and add a new one. */
+  /**
+   * Open the claim's editor, locking the claim against other users' edits until it is saved or cancelled. Refused,
+   * leaving the editor as it was, for a viewer, a claim not DRAFT, one in a closed period and one another user has
+   * open; the store decides again, and a refusal there puts the editor back as it was.
+   */
   protected edit(claim: Claim): void {
-    if (claim.status !== 'DRAFT') {
-      this.reset();
-      this.actionError.set({
-        id: claim.id,
-        message: `This claim is ${claim.status}: only a DRAFT can be edited. To change an open claim, void it and add a new one.`,
-      });
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const refused = this.editRefusal(claim, null);
+    if (refused !== null) {
+      this.actionError.set({ id: claim.id, message: refused });
       return;
     }
+    const was = this.editing();
+    const form = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
+    this.fill(claim);
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/lock`;
+    const locking = firstValueFrom(this.http.post<Claim>(url, null, this.session.headers())).then(
+      (locked) => {
+        if (was !== null && was !== claim.id) this.release(sheet, was);
+        if (this.session.sheet() === sheet) this.saved.emit(locked);
+        return true;
+      },
+      (e: unknown) => {
+        if (this.editing() === claim.id) {
+          this.editing.set(was);
+          this.amount.set(form.amount);
+          this.date.set(form.date);
+          this.note.set(form.note);
+          this.corrects.set(form.corrects);
+        }
+        this.actionError.set({ id: claim.id, message: this.editRefusal(claim, e) ?? 'This claim could not be opened for editing.' });
+        return false;
+      },
+    );
+    this.locking = locking;
+    void locking.finally(() => {
+      if (this.locking === locking) this.locking = null;
+    });
+  }
+
+  /** Why the claim's editor cannot be opened (with the store's refusal, when it gave one), or null when it can. */
+  private editRefusal(claim: Claim, e: unknown): string | null {
+    const user = this.session.user();
+    const closed = this.closedOn(claim.date);
+    if (this.session.viewer() || (e instanceof HttpErrorResponse && e.status === 403)) {
+      return 'A viewer may not edit a claim.';
+    }
+    if (claim.status !== 'DRAFT') {
+      return `This claim is ${claim.status}: only a DRAFT can be edited. To change an open claim, void it and add a new one.`;
+    }
+    if (closed) return `This claim is dated in the closed period ${closed.name}: it cannot be edited.`;
+    if ((claim.lockedBy !== null && claim.lockedBy !== user) || (e instanceof HttpErrorResponse && e.status === 423)) {
+      return `${claim.lockedBy ?? 'Another user'} has this claim open in their editor: it cannot be edited until they save or cancel it.`;
+    }
+    return e === null ? null : 'This claim could not be opened for editing.';
+  }
+
+  /** Show the claim's values in the form, which then saves that claim. */
+  private fill(claim: Claim): void {
     this.editing.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
     this.error.set(null);
-    this.actionError.set(null);
+  }
+
+  /** Close the open editor and release its lock. */
+  protected cancel(): void {
+    const editing = this.editing();
+    const sheet = this.session.sheet();
+    this.reset();
+    if (this.actionError()?.id === editing) this.actionError.set(null);
+    if (editing !== null && sheet) this.release(sheet, editing);
+  }
+
+  /** Release the user's lock of the claim; the claim shows unlocked once the store answers. */
+  private release(sheet: string, id: number): void {
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${id}/unlock`;
+    firstValueFrom(this.http.post<Claim>(url, null, this.session.headers())).then(
+      (claim) => {
+        if (this.session.sheet() === sheet) this.saved.emit(claim);
+      },
+      () => undefined,
+    );
   }
 
   protected reset(): void {
@@ -749,6 +840,13 @@ export class Claims {
     event.preventDefault();
     if (this.submitting) return;
     this.error.set(null);
+    // A save waits for the editor's lock; a refused lock saves nothing (the claim shows why).
+    if (this.locking !== null) {
+      this.submitting = true;
+      const locked = await this.locking;
+      this.submitting = false;
+      if (!locked) return;
+    }
     const sheet = this.session.sheet();
     if (!sheet) return;
     const amount = this.amount().trim();
@@ -790,6 +888,8 @@ export class Claims {
           ? ` ${this.personName()} is retired from ${retiredFrom}.`
           : editing !== null && e instanceof HttpErrorResponse && e.status === 409
           ? ' Only a DRAFT claim can be edited.'
+          : editing !== null && e instanceof HttpErrorResponse && e.status === 423
+          ? ' Another user has this claim open in their editor.'
           : e instanceof HttpErrorResponse && e.status === 422
           ? ' A negative amount is a correction: it must name, by number, a settled claim of this person.'
           : '';

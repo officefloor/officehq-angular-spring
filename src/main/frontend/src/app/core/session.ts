@@ -15,6 +15,7 @@ interface SheetView {
   id: string;
   today: string;
   archived: boolean;
+  viewer: boolean;
 }
 
 // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
@@ -29,6 +30,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
+  /** Whether the signed-in user is a viewer of the active sheet, as of its last load: they may change nothing. */
+  readonly viewer = signal(false);
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
   /** Counts completed sheet loads, so the screen re-reads the sheet's data even for the same id. */
@@ -123,5 +126,6 @@ export class Session {
     this.sheet.set(view.id);
     this.today.set(view.today);
     this.archived.set(view.archived);
+    this.viewer.set(view.viewer);
   }
 }

@@ -35,12 +35,13 @@ public class ClaimController {
      * the claim it corrects (null unless it is a correction); and the date that decides how its live figures round (its
      * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first); and
      * its status log, oldest first; and the date it is deferred until (null when never deferred); and how many proofs
-     * it has; and the number of the claim it was split off (null unless it was).
+     * it has; and the number of the claim it was split off (null unless it was); and the user whose open editor locks
+     * it (null when not locked).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
-            int proofs, String splitFrom) {
+            int proofs, String splitFrom, String lockedBy) {
 
         static ClaimView of(Claim claim, List<ClaimLog> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -51,7 +52,7 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy(),
                     log.stream().map(ClaimLogView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
         }
     }
 
@@ -152,6 +153,22 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return view(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
                 request.note(), request.correctsValue()));
+    }
+
+    /** Open the claim's editor, locking it against other users' edits; refused for a claim that cannot be edited. */
+    @PostMapping("/claims/{id}/lock")
+    public ClaimView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.lock(sheetId.trim(), user.trim(), id));
+    }
+
+    /** Cancel the user's editor of the claim, releasing its lock. */
+    @PostMapping("/claims/{id}/unlock")
+    public ClaimView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.unlock(sheetId.trim(), user.trim(), id));
     }
 
     /** Open a DRAFT claim. */

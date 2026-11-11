@@ -107,11 +107,15 @@ public class ClaimService {
     public Claim update(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note,
             String corrects) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+        Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         // Only a DRAFT can be edited: an OPEN claim is changed by voiding it and adding a new one.
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimNotEditableException(id, claim.getStatus());
+        }
+        // Not while another user has its editor open.
+        if (claim.isLockedAgainst(user)) {
+            throw new ClaimLockedException(id, claim.getLockedBy());
         }
         LocalDate dated = dateOr(sheetId, date);
         // Neither out of nor into a closed period.
@@ -125,12 +129,46 @@ public class ClaimService {
         claim.setDate(dated);
         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
         claim.setNote(noteOf(note));
+        // Saving the editor releases its lock.
+        claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, saved.getPersonId()));
         audit.recordOnCommit(record("CLAIM_EDITED", user, person, saved));
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Open the claim's editor for the user, locking the claim against other users' edits until it is saved or
+     * cancelled, or the sheet's today changes. Refused, taking no lock, for a claim that cannot be edited: not a DRAFT,
+     * dated in a closed period, or locked by another user. The user's own lock is taken again.
+     */
+    @Transactional
+    public Claim lock(String sheetId, String user, Long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotEditableException(id, claim.getStatus());
+        }
+        periods.requireOpen(sheetId, claim.getDate());
+        if (claim.isLockedAgainst(user)) {
+            throw new ClaimLockedException(id, claim.getLockedBy());
+        }
+        claim.setLockedBy(user);
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Cancel the user's editor of the claim, releasing its lock; another user's lock is left as it is. */
+    @Transactional
+    public Claim unlock(String sheetId, String user, Long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (user.equals(claim.getLockedBy())) {
+            claim.setLockedBy(null);
+            return claims.saveAndFlush(claim);
+        }
+        return claim;
     }
 
     /**
