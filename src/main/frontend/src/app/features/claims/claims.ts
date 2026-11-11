@@ -249,9 +249,11 @@ export class Claims {
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Whoever opened this claim cannot also settle it: another user must settle it.'
-          : closed
-            ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
-            : `This claim's status does not let it be ${pastOf[action]}.`;
+          : e instanceof HttpErrorResponse && e.status === 422
+            ? "This claim's due is above the clerk limit: only a steward can settle it."
+            : closed
+              ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
+              : `This claim's status does not let it be ${pastOf[action]}.`;
       this.actionError.set({ id: claim.id, message });
     }
   }

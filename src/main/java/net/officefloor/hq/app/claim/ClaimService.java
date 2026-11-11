@@ -12,6 +12,9 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,10 +34,14 @@ public class ClaimService {
     private final Audit audit;
     private final RollupService rollup;
     private final PeriodService periods;
+    private final RoleService roles;
+    private final SettingService settings;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Audit audit, RollupService rollup, PeriodService periods) {
+            Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings) {
         this.periods = periods;
+        this.roles = roles;
+        this.settings = settings;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -102,15 +109,21 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        // A clerk settles only a claim whose due (the one its statement bound it to, else worked out from the rate)
+        // is at or below the clerk limit; a due of n/a is within any limit.
+        if (status == ClaimStatus.SETTLED && roles.roleOf(sheetId, user) == Role.CLERK) {
+            BigDecimal limit = settings.get(sheetId).getClerkLimit();
+            BigDecimal due = claim.isStated() ? claim.getStatedDue() : dueOf(sheetId, person, claim);
+            if (limit != null && due != null && due.compareTo(limit) > 0) {
+                throw new ClaimOverClerkLimitException(id, due, limit);
+            }
+        }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(status);
         // Settling fixes the due at the rate the person's grade has on the claim's date; with no rate it stays live.
         String due = "";
         if (status == ClaimStatus.SETTLED) {
-            BigDecimal settledDue = rates.rateOn(sheetId, person.getGrade(), claim.getDate())
-                    .map(Rate::getPct)
-                    .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                    .orElse(null);
+            BigDecimal settledDue = dueOf(sheetId, person, claim);
             claim.setSettledDue(settledDue);
             due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
         }
@@ -131,6 +144,14 @@ public class ClaimService {
         audit.recordOnCommit(record(event, user, person, saved) + numberOf(number) + due);
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /** The claim's amount at the rate its person's grade has on its date, two decimals; null (n/a) with no rate. */
+    private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+        return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
+                .map(Rate::getPct)
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .orElse(null);
     }
 
     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */
