@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.claim.ClaimController;
 import java.time.LocalDate;
 import java.util.List;
@@ -28,13 +29,13 @@ public class PersonController {
     }
 
     public record AddPersonRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
-            @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = "[ABC]") String grade, @Min(0) Integer terms,
+            @NotBlank @Size(max = 200) String name, @NotNull @Pattern(regexp = GradeService.CODE) String grade, @Min(0) Integer terms,
             @Size(max = 200) String contact, @Size(max = 500) String tags, LocalDate termsFrom) {
     }
 
     public record UpdatePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate gradeFrom, @NotNull Long version,
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade, LocalDate gradeFrom, @NotNull Long version,
             @Min(0) Integer terms, @Size(max = 200) String contact, @Size(max = 500) String tags, LocalDate termsFrom) {
     }
 
@@ -67,7 +68,7 @@ public class PersonController {
 
     public record BulkGradeRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, LocalDate from) {
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade, LocalDate from) {
     }
 
     /** How many people were given the grade, and each as the store now holds them. */

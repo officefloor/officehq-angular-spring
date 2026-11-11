@@ -277,7 +277,6 @@ interface QuickAdded {
   claim: Claim;
 }
 
-const GRADES = ['A', 'B', 'C'] as const;
 
 /** A CSV field: wrapped in double quotes, with inner quotes doubled, when it holds a comma, quote or line break. */
 function csvField(value: string): string {
@@ -343,7 +342,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
           [value]="gradeInput()"
           (change)="gradeInput.set($any($event.target).value); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === gradeInput()">{{ g }}</option>
           }
         </select>
@@ -597,7 +596,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
           [value]="bulkGradeInput()"
           (change)="bulkGradeInput.set($any($event.target).value); bulkGradeError.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === bulkGradeInput()">{{ g }}</option>
           }
         </select>
@@ -983,7 +982,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                   [value]="inlineGrades().get(p.id) ?? gradeToday(p)"
                   (change)="setInlineGrade(p.id, $any($event.target).value)"
                 >
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === (inlineGrades().get(p.id) ?? gradeToday(p))">{{ g }}</option>
                   }
                 </select>
@@ -1179,7 +1178,7 @@ export class People {
   private readonly http = inject(HttpClient);
   protected readonly session = inject(Session);
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly people = signal<Person[]>([]);
   /** The people on the list: everyone, or only those not retired unless show-retired is on. */
   protected readonly listed = computed(() =>
@@ -1404,7 +1403,7 @@ export class People {
   /** Each grade's rate in force on the sheet's today. */
   protected readonly pctOf = computed(() => {
     const today = this.session.figureDay();
-    return new Map<string, string | undefined>(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
+    return new Map<string, string | undefined>(this.session.grades().map((g) => [g, pctOn(this.rates(), g, today)]));
   });
   /** The sheet's due-total: people's due-totals added up (skipping n/a), trimmed. */
   protected readonly dueTotal = computed(() =>
@@ -1462,7 +1461,7 @@ export class People {
       peopleCount: distinctPeople(tree.map((p) => p.names)),
       dueTotal: money(trimmedSum(tree.map((p) => p.due).filter((d): d is number => d !== null))),
       overdueTotal: money(trimmedSum(tree.map((p) => p.overdue))),
-      grades: GRADES.map((grade) => ({
+      grades: [...new Set([...this.session.grades(), ...Object.keys(d.gradeDueTotals)])].sort().map((grade) => ({
         grade,
         dueTotal: money(own.grade(grade) + cents(d.gradeDueTotals[grade] ?? '0.00')),
       })),
@@ -1591,7 +1590,7 @@ export class People {
   /** Per grade: the people not retired on it today, and their due-totals added up (skipping n/a). */
   protected readonly gradeSummary = computed<GradeSummary[]>(() => {
     const current = this.people().filter((p) => !p.retired);
-    return GRADES.map((grade) => {
+    return this.session.grades().map((grade) => {
       const on = current.filter((p) => this.gradeToday(p) === grade);
       return {
         grade,
@@ -3096,8 +3095,8 @@ export class People {
       this.error.set('Enter a name.');
       return;
     }
-    if (!GRADES.includes(grade as (typeof GRADES)[number])) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.session.grades().includes(grade)) {
+      this.error.set('Choose one of the sheet\'s grades.');
       return;
     }
     if (gradeFrom !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(gradeFrom)) {

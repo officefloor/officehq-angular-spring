@@ -522,8 +522,12 @@ public class PersonService {
                 + " name=" + person.getName());
     }
 
-    /** A retired grade cannot be chosen for a new person or in an edit (409). */
+    /**
+     * Only one of the sheet's grades can be chosen (400), and a retired one cannot be for a new person or
+     * in an edit (409).
+     */
     private void refuseRetiredGrade(String sheetId, String grade) {
+        sheets.refuseUnknownGrade(sheetId, grade);
         if (sheets.isRetiredGrade(sheetId, grade)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The grade " + grade + " is retired.");
         }

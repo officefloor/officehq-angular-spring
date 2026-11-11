@@ -52,7 +52,7 @@ public class SettingController {
     private static final String PROOF_KINDS = "\\s*|\\s*(?i:receipt|photo)(\\s*,\\s*(?i:receipt|photo))*\\s*";
 
     /** A default grade: A, B or C, or blank for none (A). */
-    private static final String GRADE = "\\s*|\\s*[ABC]\\s*";
+    private static final String GRADE = "\\s*|\\s*[A-Z]{1,3}\\s*";
 
     /** A fiscal start month: a whole month number, 1 to 12. */
     private static final String FISCAL_MONTH = "\\s*(0?[1-9]|1[0-2])\\s*";

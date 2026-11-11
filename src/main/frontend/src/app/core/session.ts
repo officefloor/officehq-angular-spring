@@ -10,7 +10,11 @@ interface SheetResponse {
   today: string;
   archived: boolean;
   lastBatch: number | null;
+  grades: string[];
 }
+
+/** The grades every sheet has; more can be added to a sheet (see Grades). */
+export const BASE_GRADES: readonly string[] = ['A', 'B', 'C'];
 
 /** The locales a user may choose: how the screen shows them figures (see FigurePipe). */
 export const LOCALES = ['en', 'de'] as const;
@@ -39,6 +43,8 @@ export class Session {
   readonly archived = signal(false);
   /** The number of the sheet's last settle batch (a bulk settle that settled a claim); none when there has been none. */
   readonly lastBatch = signal<number | null>(null);
+  /** The sheet's grades in alphabetical order: A, B, C and any added. Every grade select lists these. */
+  readonly grades = signal<readonly string[]>(BASE_GRADES);
   /** The id of the sheet's parent, whose rates stand in for a grade with none in force here; blank for none.
    *  Set from the sheet's settings as they are read and saved. */
   readonly parent = signal('');
@@ -120,6 +126,7 @@ export class Session {
     this.today.set(null);
     this.archived.set(false);
     this.lastBatch.set(null);
+    this.grades.set(BASE_GRADES);
     this.asOf.set(null);
   }
 
@@ -208,5 +215,6 @@ export class Session {
     this.today.set(res.today);
     this.archived.set(res.archived);
     this.lastBatch.set(res.lastBatch);
+    this.grades.set(res.grades);
   }
 }

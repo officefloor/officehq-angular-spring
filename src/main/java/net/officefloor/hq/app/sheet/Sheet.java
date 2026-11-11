@@ -28,6 +28,9 @@ import java.util.TreeMap;
 @Table(name = "sheet")
 public class Sheet {
 
+    /** The grades every sheet has; more can be added (see {@link #addGrade}). */
+    public static final List<String> BASE_GRADES = List.of("A", "B", "C");
+
     /** The floor a sheet starts with. */
     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
 
@@ -155,6 +158,10 @@ public class Sheet {
     /** The grades retired, comma separated in A, B, C order; null for none. Not dated. */
     @Column(name = "retired_grades")
     private String retiredGrades;
+
+    /** The grades added to A, B and C, comma separated in alphabetical order; null for none. Not dated. */
+    @Column(name = "added_grades")
+    private String addedGrades;
 
     /** The due-total above which a person is alerted; null for off. Not dated. */
     @Column(name = "alert_threshold")
@@ -597,6 +604,30 @@ public class Sheet {
     /** The grade a new person takes when none is given: the default grade unless it is retired, else A. */
     public String defaultGradeOrA() {
         return defaultGrade == null || isRetiredGrade(defaultGrade) ? "A" : defaultGrade;
+    }
+
+    /** The grades of the sheet: A, B, C and those added, in alphabetical order. */
+    public List<String> gradeList() {
+        List<String> all = new ArrayList<>(BASE_GRADES);
+        if (addedGrades != null) {
+            all.addAll(List.of(addedGrades.split(",")));
+        }
+        all.sort(Comparator.naturalOrder());
+        return all;
+    }
+
+    public boolean isGrade(String grade) {
+        return gradeList().contains(grade);
+    }
+
+    /** Add the grade (already a grade, nothing changes). */
+    public void addGrade(String grade) {
+        if (!isGrade(grade)) {
+            List<String> added = new ArrayList<>(addedGrades == null ? List.of() : List.of(addedGrades.split(",")));
+            added.add(grade);
+            added.sort(Comparator.naturalOrder());
+            addedGrades = String.join(",", added);
+        }
     }
 
     /** The grades retired, in A, B, C order; empty for none. */

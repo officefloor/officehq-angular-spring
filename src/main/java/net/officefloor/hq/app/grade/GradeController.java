@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing the grades retired on a sheet and retiring one. */
+/** Listing the grades of a sheet and those retired, adding one and retiring one. */
 @RestController
 @RequestMapping("/api/grades")
 public class GradeController {
@@ -22,6 +22,10 @@ public class GradeController {
             @NotNull @Size(max = 10) String grade) {
     }
 
+    public record AddGradeRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull @Size(max = 10) String grade) {
+    }
+
     public record MergeGradeRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull @Size(max = 10) String from, @NotNull @Size(max = 10) String into) {
     }
@@ -30,8 +34,8 @@ public class GradeController {
     public record MergeGradeResponse(int merged) {
     }
 
-    /** The grades retired on the sheet, in A, B, C order. */
-    public record GradesResponse(List<String> retired) {
+    /** The sheet's grades in alphabetical order, and those retired, in A, B, C order. */
+    public record GradesResponse(List<String> grades, List<String> retired) {
     }
 
     private final GradeService service;
@@ -42,12 +46,22 @@ public class GradeController {
 
     @PostMapping("/list")
     public GradesResponse list(@Valid @RequestBody ListGradesRequest req) {
-        return new GradesResponse(service.retired(req.sheet().trim()));
+        String sheet = req.sheet().trim();
+        return new GradesResponse(service.grades(sheet), service.retired(sheet));
+    }
+
+    @PostMapping("/add")
+    public GradesResponse add(@Valid @RequestBody AddGradeRequest req) {
+        String sheet = req.sheet().trim();
+        List<String> grades = service.add(sheet, req.user().trim(), req.grade().trim());
+        return new GradesResponse(grades, service.retired(sheet));
     }
 
     @PostMapping("/retire")
     public GradesResponse retire(@Valid @RequestBody RetireGradeRequest req) {
-        return new GradesResponse(service.retire(req.sheet().trim(), req.user().trim(), req.grade().trim()));
+        String sheet = req.sheet().trim();
+        List<String> retired = service.retire(sheet, req.user().trim(), req.grade().trim());
+        return new GradesResponse(service.grades(sheet), retired);
     }
 
     @PostMapping("/merge")

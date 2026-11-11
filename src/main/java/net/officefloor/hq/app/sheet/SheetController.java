@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.user.UserLocaleService;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,13 +41,16 @@ public class SheetController {
             @NotBlank @Size(max = 100) String to) {
     }
 
-    /** {@code lastBatch}: the number of the sheet's last settle batch; none when there has been none. */
-    public record SheetResponse(String id, LocalDate today, boolean archived, Integer lastBatch) {
+    /**
+     * {@code lastBatch}: the number of the sheet's last settle batch; none when there has been none.
+     * {@code grades}: the sheet's grades, in alphabetical order.
+     */
+    public record SheetResponse(String id, LocalDate today, boolean archived, Integer lastBatch, List<String> grades) {
     }
 
     private static SheetResponse response(Sheet sheet) {
         return new SheetResponse(sheet.getId(), sheet.getToday(), sheet.isArchived(),
-                sheet.getLastBatch() == 0 ? null : sheet.getLastBatch());
+                sheet.getLastBatch() == 0 ? null : sheet.getLastBatch(), sheet.gradeList());
     }
 
     private final SheetService service;

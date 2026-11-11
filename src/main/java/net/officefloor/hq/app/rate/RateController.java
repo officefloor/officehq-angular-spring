@@ -10,6 +10,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.IntStream;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.claim.ClaimService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,7 +32,7 @@ public class RateController {
     }
 
     public record SetRateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull @Pattern(regexp = PCT) String pct,
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade, @NotNull @Pattern(regexp = PCT) String pct,
             LocalDate from, LocalDate to) {
     }
 
@@ -44,7 +45,7 @@ public class RateController {
     }
 
     public record PreviewRateRequest(@NotBlank @Size(max = 100) String sheet,
-            @NotNull @Pattern(regexp = "[ABC]") String grade, @NotNull @Pattern(regexp = PCT) String pct) {
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade, @NotNull @Pattern(regexp = PCT) String pct) {
     }
 
     public record PreviewRateResponse(int count, String diff) {

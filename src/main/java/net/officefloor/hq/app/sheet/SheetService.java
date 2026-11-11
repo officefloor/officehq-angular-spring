@@ -110,6 +110,20 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::defaultGradeOrA).orElse("A");
     }
 
+    /** The sheet's grades: A, B, C and those added, in alphabetical order. */
+    @Transactional(readOnly = true)
+    public List<String> grades(String id) {
+        return sheets.findById(id).map(Sheet::gradeList).orElse(Sheet.BASE_GRADES);
+    }
+
+    /** Whether the grade is one of the sheet's: refused (400) when it is not. */
+    @Transactional(readOnly = true)
+    public void refuseUnknownGrade(String id, String grade) {
+        if (!grades(id).contains(grade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "There is no grade " + grade + " on this sheet.");
+        }
+    }
+
     /** Whether the grade is retired on the sheet: it cannot be chosen for a new person or in an edit. */
     @Transactional(readOnly = true)
     public boolean isRetiredGrade(String id, String grade) {

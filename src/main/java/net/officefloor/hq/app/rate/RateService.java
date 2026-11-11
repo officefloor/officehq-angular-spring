@@ -57,6 +57,7 @@ public class RateService {
     public Rate set(String sheetId, String user, String grade, LocalDate fromDate, LocalDate toDate,
             BigDecimal pct) {
         roles.refuseViewer(sheetId, user);
+        sheets.refuseUnknownGrade(sheetId, grade);
         if (toDate != null && fromDate != null && toDate.isBefore(fromDate)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A rate's to-date cannot be before its from-date.");
         }

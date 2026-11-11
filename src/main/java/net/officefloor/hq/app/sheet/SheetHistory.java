@@ -42,7 +42,7 @@ public class SheetHistory {
             "flyway_schema_history");
 
     /** The sheet's columns not kept: they are not dated, so a sheet shown as of a date shows them as they are now. */
-    private static final Set<String> UNKEPT_SHEET_COLUMNS = Set.of("PARENT_ID");
+    private static final Set<String> UNKEPT_SHEET_COLUMNS = Set.of("PARENT_ID", "ADDED_GRADES");
 
     /** The tables others refer to, deleted last and put back first (in this order of putting back). */
     private static final List<String> PARENTS = List.of("PERSON", "PERIOD", "CLAIM");

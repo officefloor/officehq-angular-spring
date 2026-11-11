@@ -152,7 +152,7 @@ type PermAction = (typeof PERM_ACTIONS)[number];
 /** A permission matrix entry: roles comma separated. */
 const ROLES = /^\s*(clerk|steward)(\s*,\s*(clerk|steward))*\s*$/i;
 
-/** The grades that may have their own terms. */
+/** The grades that may have their own terms, grace days, proof threshold and clerk limit. */
 const GRADES = ['A', 'B', 'C'] as const;
 type Grade = (typeof GRADES)[number];
 
@@ -542,7 +542,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterProofKinds($any($event.target))"
           (input)="proofKindsInput.set($any($event.target).value); error.set(null)"
         />
-        <label for="setting-default-grade">Grade a new person takes when none is given: A, B or C (blank: A)</label>
+        <label for="setting-default-grade">Grade a new person takes when none is given: one of the sheet's grades (blank: A)</label>
         <input
           id="setting-default-grade"
           data-testid="setting-default-grade"
@@ -1441,8 +1441,8 @@ export class Settings {
       this.error.set('Enter the proof kinds as receipt or photo, comma separated, or leave it blank for none.');
       return;
     }
-    if (defaultGrade !== null && defaultGrade !== '' && !(GRADES as readonly string[]).includes(defaultGrade)) {
-      this.error.set('Enter a default grade of A, B or C, or leave it blank for A.');
+    if (defaultGrade !== null && defaultGrade !== '' && !this.session.grades().includes(defaultGrade)) {
+      this.error.set('Enter one of the sheet\'s grades as the default grade, or leave it blank for A.');
       return;
     }
     if (fiscalStartMonth !== null && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {

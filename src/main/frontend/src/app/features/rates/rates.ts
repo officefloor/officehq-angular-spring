@@ -32,7 +32,6 @@ function appliesTo(r: Rate, c: Claim): boolean {
   return r.forwardAfter == null || (c.addedSeq != null && c.addedSeq > r.forwardAfter);
 }
 
-const GRADES = ['A', 'B', 'C'] as const;
 
 /** A percent: 0.00 to 99999.99, with up to two decimals. */
 const PCT = /^\d{1,5}(\.\d{1,2})?$/;
@@ -242,7 +241,7 @@ export function dueText(c: number | null): string {
           [value]="gradeInput()"
           (change)="gradeInput.set($any($event.target).value); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === gradeInput()">{{ g }}</option>
           }
         </select>
@@ -300,7 +299,7 @@ export function dueText(c: number | null): string {
           [value]="previewGrade()"
           (change)="previewGrade.set($any($event.target).value); clearPreview()"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
           }
         </select>
@@ -331,7 +330,7 @@ export function dueText(c: number | null): string {
           </tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ (current().get(g) ?? 'n/a') | figure }}</td>
@@ -349,7 +348,7 @@ export function dueText(c: number | null): string {
           </tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               @for (m of calendarMonths(); track m) {
@@ -391,7 +390,7 @@ export class Rates {
   /** The sheet's rates, shared with whoever works out what is due. */
   readonly rates = model<Rate[]>([]);
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   /** Each grade's own rates (not its ancestors'), the undated one first and then by from-date. */
   protected readonly sorted = computed(() =>
     this.rates().filter((r) => (r.level ?? 0) === 0).sort(
@@ -401,7 +400,7 @@ export class Rates {
   /** Each grade's rate in force on the sheet's today. */
   protected readonly current = computed(() => {
     const today = this.session.figureDay();
-    return new Map(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
+    return new Map(this.session.grades().map((g) => [g, pctOn(this.rates(), g, today)]));
   });
   /** Each month (yyyy-mm) of the sheet's today's calendar year; none without a today. */
   protected readonly calendarMonths = computed(() => {
@@ -413,7 +412,7 @@ export class Rates {
   protected readonly calendar = computed(() => {
     const rates = this.rates();
     const out = new Map<string, string | undefined>();
-    for (const g of GRADES) {
+    for (const g of this.session.grades()) {
       for (const m of this.calendarMonths()) out.set(`${g}-${m}`, pctOn(rates, g, `${m}-01`));
     }
     return out;
@@ -520,8 +519,8 @@ export class Rates {
     const sheet = this.session.sheet();
     const grade = this.previewGrade();
     const pct = this.previewPct().trim();
-    if (!GRADES.includes(grade as (typeof GRADES)[number])) {
-      this.previewError.set('Choose a grade of A, B or C.');
+    if (!this.session.grades().includes(grade)) {
+      this.previewError.set('Choose one of the sheet\'s grades.');
       return;
     }
     if (!PCT.test(pct)) {
@@ -547,8 +546,8 @@ export class Rates {
     const pct = this.pctInput().trim();
     const from = this.fromInput().trim() || null;
     const to = this.toInput().trim() || null;
-    if (!GRADES.includes(grade as (typeof GRADES)[number])) {
-      this.error.set('Choose a grade of A, B or C.');
+    if (!this.session.grades().includes(grade)) {
+      this.error.set('Choose one of the sheet\'s grades.');
       return;
     }
     if (!PCT.test(pct)) {

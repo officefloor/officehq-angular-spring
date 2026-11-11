@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.role.RoleService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -30,10 +31,12 @@ public class RateImportService {
 
     private final RateService rates;
     private final RoleService roles;
+    private final SheetService sheets;
 
-    public RateImportService(RateService rates, RoleService roles) {
+    public RateImportService(RateService rates, RoleService roles, SheetService sheets) {
         this.rates = rates;
         this.roles = roles;
+        this.sheets = sheets;
     }
 
     /** Sets every line's rate in order: the rates set, in line order. */
@@ -42,9 +45,10 @@ public class RateImportService {
         roles.refuseViewer(sheetId, user);
         List<Line> lines = new ArrayList<>();
         String[] raw = text.split("\\r?\\n|\\r");
+        List<String> grades = sheets.grades(sheetId);
         for (int i = 0; i < raw.length; i++) {
             if (!raw[i].isBlank()) {
-                lines.add(parse(i + 1, raw[i]));
+                lines.add(parse(i + 1, raw[i], grades));
             }
         }
         if (lines.isEmpty()) {
@@ -57,14 +61,14 @@ public class RateImportService {
         return set;
     }
 
-    private static Line parse(int number, String text) {
+    private static Line parse(int number, String text, List<String> grades) {
         String[] fields = text.split(",", -1);
         if (fields.length < 2 || fields.length > 4) {
             throw refused("Line " + number + " needs a grade and a rate, then optionally a from-date and a to-date.");
         }
         String grade = fields[0].trim();
-        if (!grade.matches("[ABC]")) {
-            throw refused("Line " + number + ": choose a grade of A, B or C.");
+        if (!grades.contains(grade)) {
+            throw refused("Line " + number + ": choose one of the sheet's grades.");
         }
         String pct = fields[1].trim();
         if (!pct.matches(PCT)) {

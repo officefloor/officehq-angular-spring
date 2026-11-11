@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.role.RoleService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -37,11 +38,14 @@ public class PersonImportService {
     private final PersonService people;
     private final PersonRepository repository;
     private final RoleService roles;
+    private final SheetService sheets;
 
-    public PersonImportService(PersonService people, PersonRepository repository, RoleService roles) {
+    public PersonImportService(PersonService people, PersonRepository repository, RoleService roles,
+            SheetService sheets) {
         this.people = people;
         this.repository = repository;
         this.roles = roles;
+        this.sheets = sheets;
     }
 
     @Transactional
@@ -52,9 +56,10 @@ public class PersonImportService {
         Set<String> contacts = new HashSet<>();
         String[] raw = text.split("\\r?\\n|\\r");
         String defaultGrade = people.defaultGrade(sheetId);
+        List<String> grades = sheets.grades(sheetId);
         for (int i = 0; i < raw.length; i++) {
             if (!raw[i].isBlank()) {
-                Line line = parse(i + 1, raw[i], defaultGrade);
+                Line line = parse(i + 1, raw[i], defaultGrade, grades);
                 if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
                     throw refused("Line " + (i + 1) + ": the name " + line.name() + " is already in this import.");
                 }
@@ -85,7 +90,7 @@ public class PersonImportService {
         return new Result(added, updated);
     }
 
-    private static Line parse(int number, String text, String defaultGrade) {
+    private static Line parse(int number, String text, String defaultGrade, List<String> grades) {
         String[] fields = text.split(",", -1);
         if (fields.length < 2 || fields.length > 4) {
             throw refused("Line " + number + " needs a name and a grade, then optionally terms and a contact.");
@@ -95,8 +100,8 @@ public class PersonImportService {
             throw refused("Line " + number + ": enter a name.");
         }
         String grade = fields[1].trim().isEmpty() ? defaultGrade : fields[1].trim();
-        if (!grade.matches("[ABC]")) {
-            throw refused("Line " + number + ": choose a grade of A, B or C.");
+        if (!grades.contains(grade)) {
+            throw refused("Line " + number + ": choose one of the sheet's grades.");
         }
         String termsText = fields.length > 2 ? fields[2].trim() : "";
         if (!termsText.isEmpty() && !termsText.matches("\\d{1,6}")) {

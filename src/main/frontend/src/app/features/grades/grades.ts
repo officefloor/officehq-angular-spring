@@ -4,11 +4,11 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
 // The sheet's grades, each shown retired or not, and the select and button that retire one; a
-// grade already retired is refused. People on a retired grade keep it, but it cannot be chosen for
+// grade already retired is refused. A grade can be added (an entry and a button): a code of one to
+// three capital letters not yet a grade; it then shows in every grade select of the screen. People on a retired grade keep it, but it cannot be chosen for
 // a new person or in an edit (the store refuses it), and a retired default grade falls back to A.
 // A steward can merge a grade into another (two selects and a button): everyone on the merged grade
 // on the sheet's today is given the other from then; it shows how many were.
-const GRADES = ['A', 'B', 'C'] as const;
 
 @Component({
   selector: 'app-grades',
@@ -20,7 +20,7 @@ const GRADES = ['A', 'B', 'C'] as const;
           <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr [attr.data-testid]="'grade-row-' + g">
               <td>{{ g }}</td>
               <td data-testid="grade-retired">{{ retired().includes(g) ? 'yes' : 'no' }}</td>
@@ -28,6 +28,16 @@ const GRADES = ['A', 'B', 'C'] as const;
           }
         </tbody>
       </table>
+      <form aria-label="Add grade" (submit)="add($event)">
+        <label for="grade-add-code">New grade (one to three capital letters)</label>
+        <input
+          id="grade-add-code"
+          data-testid="grade-add-code"
+          [value]="codeInput()"
+          (input)="codeInput.set($any($event.target).value); error.set(null)"
+        />
+        <button type="submit" data-testid="grade-add">Add grade</button>
+      </form>
       <form aria-label="Retire grade" (submit)="retire($event)">
         <label for="grade-retire-select">Grade</label>
         <select
@@ -36,7 +46,7 @@ const GRADES = ['A', 'B', 'C'] as const;
           [value]="gradeInput()"
           (change)="gradeInput.set($any($event.target).value); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === gradeInput()">{{ g }}</option>
           }
         </select>
@@ -50,7 +60,7 @@ const GRADES = ['A', 'B', 'C'] as const;
           [value]="mergeFrom()"
           (change)="mergeFrom.set($any($event.target).value); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === mergeFrom()">{{ g }}</option>
           }
         </select>
@@ -61,7 +71,7 @@ const GRADES = ['A', 'B', 'C'] as const;
           [value]="mergeInto()"
           (change)="mergeInto.set($any($event.target).value); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === mergeInto()">{{ g }}</option>
           }
         </select>
@@ -78,9 +88,10 @@ export class Grades {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly retired = signal<string[]>([]);
   protected readonly gradeInput = signal<string>('A');
+  protected readonly codeInput = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly mergeFrom = signal<string>('A');
   protected readonly mergeInto = signal<string>('B');
@@ -96,6 +107,7 @@ export class Grades {
       this.session.loads();
       this.retired.set([]);
       this.gradeInput.set('A');
+      this.codeInput.set('');
       this.mergeFrom.set('A');
       this.mergeInto.set('B');
       this.merged.set(null);
@@ -108,10 +120,57 @@ export class Grades {
 
   private async fetch(sheet: string): Promise<void> {
     try {
-      const done = await firstValueFrom(this.http.post<{ retired: string[] }>('/api/grades/list', { sheet }));
-      if (this.session.sheet() === sheet) this.retired.set(done.retired);
+      const done = await firstValueFrom(
+        this.http.post<{ grades: string[]; retired: string[] }>('/api/grades/list', { sheet }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.session.grades.set(done.grades);
+      this.retired.set(done.retired);
     } catch {
       this.error.set('Could not read the grades on this sheet.');
+    }
+  }
+
+  protected async add(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    const grade = this.codeInput().trim();
+    if (!/^[A-Z]{1,3}$/.test(grade)) {
+      this.error.set('A grade is one to three capital letters.');
+      return;
+    }
+    if (this.grades().includes(grade)) {
+      this.error.set('That grade is already a grade.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ grades: string[]; retired: string[] }>('/api/grades/add', {
+          sheet,
+          user: this.session.user(),
+          grade,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.session.grades.set(done.grades);
+      this.retired.set(done.retired);
+      this.codeInput.set('');
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 409
+          ? 'That grade is already a grade.'
+          : e instanceof HttpErrorResponse && e.status === 403
+            ? 'Your role may not add grades.'
+            : e instanceof HttpErrorResponse && e.status === 400
+              ? 'A grade is one to three capital letters.'
+              : 'Could not add this grade.',
+      );
+    } finally {
+      this.submitting = false;
     }
   }
 
@@ -124,7 +183,7 @@ export class Grades {
     this.submitting = true;
     try {
       const done = await firstValueFrom(
-        this.http.post<{ retired: string[] }>('/api/grades/retire', { sheet, user: this.session.user(), grade }),
+        this.http.post<{ grades: string[]; retired: string[] }>('/api/grades/retire', { sheet, user: this.session.user(), grade }),
       );
       if (this.session.sheet() !== sheet) return;
       this.retired.set(done.retired);

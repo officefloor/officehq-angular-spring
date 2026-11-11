@@ -176,8 +176,8 @@ public class SettingService {
         if (rounding != null && rounding.value() != null && !Sheet.ROUNDING_MODES.contains(rounding.value())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The rounding mode is half-up or half-even.");
         }
-        if (changeDefaultGrade && defaultGrade != null && !defaultGrade.matches("[ABC]")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The default grade is A, B or C.");
+        if (changeDefaultGrade && defaultGrade != null && !sheets.grades(sheetId).contains(defaultGrade)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The default grade is one of the sheet's grades.");
         }
         if (fiscalStartMonth != null && (fiscalStartMonth < 1 || fiscalStartMonth > 12)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The fiscal start month is 1 to 12.");
