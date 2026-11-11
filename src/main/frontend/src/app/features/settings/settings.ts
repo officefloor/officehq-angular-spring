@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, effect, inject, model, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, model, signal, untracked, WritableSignal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { DatedValue, START_FLOOR, START_LATE_PCT, valueOn } from '../rates/rates';
@@ -946,6 +946,8 @@ export class Settings {
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
+  /** Whether the form was submitted again while a save was in flight. */
+  private resubmit = false;
 
   constructor() {
     // Re-read the sheet's settings from the store every time a sheet is loaded.
@@ -1326,7 +1328,11 @@ export class Settings {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
-    if (this.submitting) return;
+    if (this.submitting) {
+      // saved once the save in flight is answered, so a second press is not lost
+      this.resubmit = true;
+      return;
+    }
     this.error.set(null);
     const sheet = this.session.sheet();
     const clerkLimit = this.limitInput()?.trim() ?? null;
@@ -1519,6 +1525,7 @@ export class Settings {
       }
       from[k] = f;
     }
+    const fields = this.inputFields().map(([input, empty]) => [input, input(), empty] as const);
     this.submitting = true;
     try {
       const res = await firstValueFrom(
@@ -1595,38 +1602,8 @@ export class Settings {
       );
       if (this.session.sheet() !== sheet) return;
       this.show(res);
-      this.limitInput.set(null);
-      this.floorInput.set(null);
-      this.termsInput.set(null);
-      this.gradeTermsInput.set({});
-      this.gradeGraceInput.set({});
-      this.gradeThresholdInput.set({});
-      this.gradeLimitInput.set({});
-      this.latePctInput.set(null);
-      this.policyInput.set(null);
-      this.numberingInput.set(null);
-      this.capInput.set(null);
-      this.roundingInput.set(null);
-      this.thresholdInput.set(null);
-      this.noteThresholdInput.set(null);
-      this.reviewThresholdInput.set(null);
-      this.permInput.set({});
-      this.graceInput.set(null);
-      this.entryInput.set(null);
-      this.potInput.set(null);
-      this.alertInput.set(null);
-      this.escalateInput.set(null);
-      this.reviewSlaInput.set(null);
-      this.pendingSlaInput.set(null);
-      this.maxOpenInput.set(null);
-      this.scoreMidInput.set(null);
-      this.scoreHighInput.set(null);
-      this.scoreLogInput.set(null);
-      this.proofKindsInput.set(null);
-      this.defaultGradeInput.set(null);
-      this.fiscalInput.set(null);
-      this.parentInput.set(null);
-      this.fromInput.set({});
+      // leave a field typed while this save was in flight for the save queued after it
+      for (const [input, value, empty] of fields) if (input() === value) input.set(empty);
     } catch {
       this.error.set(
         parent !== null && parent !== ''
@@ -1635,6 +1612,48 @@ export class Settings {
       );
     } finally {
       this.submitting = false;
+      if (this.resubmit) {
+        this.resubmit = false;
+        if (this.session.sheet() === sheet) await this.save(event);
+      }
     }
+  }
+
+  /** Every field the settings form saves, with the value that leaves it as it is. */
+  private inputFields(): [WritableSignal<unknown>, unknown][] {
+    return [
+      [this.limitInput, null],
+      [this.floorInput, null],
+      [this.termsInput, null],
+      [this.gradeTermsInput, {}],
+      [this.gradeGraceInput, {}],
+      [this.gradeThresholdInput, {}],
+      [this.gradeLimitInput, {}],
+      [this.latePctInput, null],
+      [this.policyInput, null],
+      [this.numberingInput, null],
+      [this.capInput, null],
+      [this.roundingInput, null],
+      [this.thresholdInput, null],
+      [this.noteThresholdInput, null],
+      [this.reviewThresholdInput, null],
+      [this.permInput, {}],
+      [this.graceInput, null],
+      [this.entryInput, null],
+      [this.potInput, null],
+      [this.alertInput, null],
+      [this.escalateInput, null],
+      [this.reviewSlaInput, null],
+      [this.pendingSlaInput, null],
+      [this.maxOpenInput, null],
+      [this.scoreMidInput, null],
+      [this.scoreHighInput, null],
+      [this.scoreLogInput, null],
+      [this.proofKindsInput, null],
+      [this.defaultGradeInput, null],
+      [this.fiscalInput, null],
+      [this.parentInput, null],
+      [this.fromInput, {}],
+    ];
   }
 }

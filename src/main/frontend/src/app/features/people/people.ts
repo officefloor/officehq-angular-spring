@@ -291,6 +291,8 @@ function csvField(value: string): string {
 
 /** The statuses the summary counts claims in, each shown even when no claim has it. */
 const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
+/** The statuses each person's row shows a count of their claims in. */
+const PERSON_COUNTED_STATUSES = ['OPEN', 'SETTLED'] as const;
 
 @Component({
   selector: 'app-people',
@@ -768,6 +770,8 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
             @if (shown('due-total')) { <th scope="col">Due</th> }
             <th scope="col">Settled</th>
             <th scope="col">Open</th>
+            <th scope="col">Open claims</th>
+            <th scope="col">Settled claims</th>
             @for (pd of periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
               <th scope="col">Carried into {{ pd.name }}</th>
@@ -821,6 +825,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
               }
               <td data-testid="person-settled-total">{{ money(settledOpenOf(p).settled) | figure }}</td>
               <td data-testid="person-open-total">{{ money(settledOpenOf(p).open) | figure }}</td>
+              @for (status of PERSON_COUNTED_STATUSES; track status) {
+                <td [attr.data-testid]="'person-claims-' + status + '-count'">{{ claimCountOf(p.id, status) }}</td>
+              }
               @for (pd of periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">{{ periodDueOf(pd, p.id) | figure }}</td>
                 <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">{{ periodCarriedOf(pd, p.id) | figure }}</td>
@@ -1711,6 +1718,12 @@ export class People {
       count: this.claims().filter((c) => c.status === status).length,
     })),
   );
+  /** The statuses each person's row counts their claims in. */
+  protected readonly PERSON_COUNTED_STATUSES = PERSON_COUNTED_STATUSES;
+  /** How many of the person's claims are in a status. */
+  protected claimCountOf(personId: number, status: string): number {
+    return this.claimsOf(personId).filter((c) => c.status === status).length;
+  }
   /** How many of the sheet's claims the summary counts in a status. */
   protected statusCount(status: string): number {
     return this.statusSummary().find((s) => s.status === status)?.count ?? 0;
@@ -1926,7 +1939,7 @@ export class People {
   }
 
   /**
-   * Compare two snapshot dates: per person in list order, their name, the due-total of the last
+   * Compare two snapshot dates: per person in list order, retired people included, their name, the due-total of the last
    * snapshot written when today moved away from the from-date (empty when none), and likewise for
    * the to-date or their due-total now when it is blank; each line trimmed.
    */
@@ -1948,7 +1961,7 @@ export class People {
     const on = (p: Person, day: string) =>
       (snapshots.get(p.id) ?? p.snapshots).filter((n) => n.day === day).at(-1)?.dueTotal ?? '';
     this.snapshotLines.set(
-      this.listed().map((p) =>
+      this.people().map((p) =>
         [p.name, on(p, from), to ? on(p, to) : dueText(this.dueOf(p))].join(' ').trim(),
       ),
     );
