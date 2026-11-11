@@ -18,7 +18,7 @@ public class ViewerInterceptor implements HandlerInterceptor {
 
     /** The changing requests a viewer may still make: their handlers decide what a viewer gets. */
     private static final Set<String> LET_THROUGH = Set.of("/load", "/claims/bulk-open", "/claims/bulk-settle",
-            "/claims/bulk-reassign",
+            "/claims/bulk-reassign", "/claims/bulk-redate",
             "/people/bulk-grade", "/people/bulk-retire");
 
     private final RoleService roles;

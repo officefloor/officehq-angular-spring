@@ -129,6 +129,10 @@ public class ClaimController {
     public record BulkReassignRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @NotNull Long personId) {
     }
 
+    /** The ids of the claims selected to re-date together, and the date they are re-dated to. */
+    public record BulkRedateRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @NotNull LocalDate date) {
+    }
+
     /** The ids of the claims selected to settle together. */
     public record BulkSettleRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
     }
@@ -146,10 +150,12 @@ public class ClaimController {
     private final BulkSettleService bulkSettle;
     private final PasteClaimsService paste;
     private final BulkReassignService bulkReassign;
+    private final BulkRedateService bulkRedate;
 
     public ClaimController(ClaimService service, BulkOpenService bulkOpen, BulkSettleService bulkSettle,
-            PasteClaimsService paste, BulkReassignService bulkReassign) {
+            PasteClaimsService paste, BulkReassignService bulkReassign, BulkRedateService bulkRedate) {
         this.bulkReassign = bulkReassign;
+        this.bulkRedate = bulkRedate;
         this.service = service;
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
@@ -290,6 +296,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid BulkReassignRequest request) {
         return bulkReassign.reassign(sheetId.trim(), user.trim(), request.ids(), request.personId());
+    }
+
+    /** Re-date the selected claims in list order; each one that cannot be re-dated is left as it is. */
+    @PostMapping("/claims/bulk-redate")
+    public BulkRedateService.Result bulkRedate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkRedateRequest request) {
+        return bulkRedate.redate(sheetId.trim(), user.trim(), request.ids(), request.date());
     }
 
     /** The person a claim is moved to. */

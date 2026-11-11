@@ -642,6 +642,24 @@ function csvField(value: string): string {
         <p role="alert" data-testid="bulk-reassign-error">{{ message }}</p>
       }
       <p>
+        <label for="bulk-redate-date">Re-date selected claims to</label>
+        <input
+          id="bulk-redate-date"
+          data-testid="bulk-redate-date"
+          type="date"
+          [value]="bulkRedateDate()"
+          (input)="bulkRedateDate.set(value($event)); bulkRedateError.set(null)"
+        />
+        <button type="button" data-testid="bulk-redate" (click)="bulkRedate()">Re-date selected claims</button>
+        @if (bulkRedateResult(); as r) {
+          Re-dated <strong data-testid="bulk-redated">{{ r.redated }}</strong>,
+          refused <strong data-testid="bulk-redate-refused">{{ r.refused }}</strong>
+        }
+      </p>
+      @if (bulkRedateError(); as message) {
+        <p role="alert" data-testid="bulk-redate-error">{{ message }}</p>
+      }
+      <p>
         <label for="bulk-grade">Grade for selected people</label>
         <select
           id="bulk-grade"
@@ -997,6 +1015,11 @@ export class People {
   /** How many the last bulk reassign moved and refused; null while it runs and before the first. */
   protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
   protected readonly bulkReassignError = signal<string | null>(null);
+  /** The date (yyyy-mm-dd) to re-date the ticked claims to; blank with none entered. */
+  protected readonly bulkRedateDate = signal('');
+  /** How many the last bulk re-date re-dated and refused; null while it runs and before the first. */
+  protected readonly bulkRedateResult = signal<{ redated: number; refused: number } | null>(null);
+  protected readonly bulkRedateError = signal<string | null>(null);
   /** The ids of the people ticked to give a grade together. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** The grade, and its from-date (blank: the sheet's today), to give the ticked people. */
@@ -1055,6 +1078,9 @@ export class People {
         this.bulkReassignTo.set('');
         this.bulkReassignResult.set(null);
         this.bulkReassignError.set(null);
+        this.bulkRedateDate.set('');
+        this.bulkRedateResult.set(null);
+        this.bulkRedateError.set(null);
         this.reset();
         this.quickName.set('');
         this.quickAmount.set('');
@@ -1468,6 +1494,7 @@ export class People {
     this.bulkOpenError.set(null);
     this.bulkSettleError.set(null);
     this.bulkReassignError.set(null);
+    this.bulkRedateError.set(null);
   }
 
   protected selectPerson(id: number, checked: boolean): void {
@@ -1637,6 +1664,35 @@ export class People {
       await this.read(sheet);
     } catch {
       if (this.session.sheet() === sheet) this.bulkReassignError.set('The selected claims could not be reassigned.');
+    }
+  }
+
+  /** Re-date the ticked claims together, in list order; each that cannot be re-dated is left as it is. */
+  protected async bulkRedate(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.bulkRedateResult.set(null);
+    this.bulkRedateError.set(null);
+    const date = this.bulkRedateDate().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.bulkRedateError.set('Pick the date to re-date the selected claims to.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ redated: number; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-redate`,
+          { ids, date },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedClaims.set(new Set());
+      this.bulkRedateResult.set(result);
+      await this.read(sheet);
+    } catch {
+      if (this.session.sheet() === sheet) this.bulkRedateError.set('The selected claims could not be re-dated.');
     }
   }
 

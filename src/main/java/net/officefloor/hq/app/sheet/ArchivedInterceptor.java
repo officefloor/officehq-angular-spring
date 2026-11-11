@@ -19,7 +19,7 @@ public class ArchivedInterceptor implements HandlerInterceptor {
     /** The changing requests still let through: their handlers decide what an archived sheet gets. */
     private static final Set<String> LET_THROUGH = Set.of("/load", "/archive", "/claims/bulk-open",
             "/claims/bulk-settle",
-            "/claims/bulk-reassign");
+            "/claims/bulk-reassign", "/claims/bulk-redate");
 
     private final SheetService sheets;
 
