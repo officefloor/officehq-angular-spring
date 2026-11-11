@@ -35,6 +35,7 @@ import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateLogRepository;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateVersionRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleRepository;
 import net.officefloor.hq.app.role.RoleService;
@@ -63,6 +64,7 @@ public class SheetCloneService {
     private final RoleRepository roles;
     private final RateRepository rates;
     private final RateLogRepository rateLogs;
+    private final RateVersionRepository rateVersions;
     private final HolidayRepository holidays;
     private final VoidReasonRepository voidReasons;
     private final ClaimTemplateRepository templates;
@@ -79,7 +81,8 @@ public class SheetCloneService {
     private final Audit audit;
 
     public SheetCloneService(SheetRepository sheets, EntityManager entities, RoleService roleService,
-            RoleRepository roles, RateRepository rates, RateLogRepository rateLogs, HolidayRepository holidays,
+            RoleRepository roles, RateRepository rates, RateLogRepository rateLogs, RateVersionRepository rateVersions,
+            HolidayRepository holidays,
             VoidReasonRepository voidReasons, ClaimTemplateRepository templates, SheetTagRepository tags,
             PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PoolRepository pools, PeriodRepository periods, ClaimRepository claims, ClaimLogRepository logs,
@@ -90,6 +93,7 @@ public class SheetCloneService {
         this.roles = roles;
         this.rates = rates;
         this.rateLogs = rateLogs;
+        this.rateVersions = rateVersions;
         this.holidays = holidays;
         this.voidReasons = voidReasons;
         this.templates = templates;
@@ -138,7 +142,10 @@ public class SheetCloneService {
         for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId)) {
             Rate copy = new Rate(to, rate.getGrade(), rate.getFromDate(), rate.getPct());
             copy.setToDate(rate.getToDate());
-            rates.save(copy);
+            copy.setVersion(rate.getVersion());
+            Long copyId = rates.save(copy).getId();
+            rateVersions.findByRateIdOrderByVersionAsc(rate.getId())
+                    .forEach(v -> rateVersions.save(v.copyTo(copyId)));
         }
         rateLogs.findBySheetIdOrderByIdAsc(sheetId).forEach(l -> rateLogs.save(l.copyTo(to)));
         holidays.findBySheetIdOrderByDateAsc(sheetId).forEach(h -> holidays.save(new Holiday(to, h.getDate())));

@@ -33,9 +33,9 @@ public class RateController {
 
     /**
      * A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none);
-     * and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on.
+     * how many versions it has had (the one shown being the newest, in force); and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on.
      */
-    public record RateView(String grade, String pct, String from, String to, int level) {
+    public record RateView(String grade, String pct, String from, String to, int version, int level) {
 
         static RateView of(Rate rate) {
             return of(rate, 0);
@@ -44,7 +44,7 @@ public class RateController {
         static RateView of(Rate rate, int level) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     rate.getFromDate() == null ? null : rate.getFromDate().toString(),
-                    rate.getToDate() == null ? null : rate.getToDate().toString(), level);
+                    rate.getToDate() == null ? null : rate.getToDate().toString(), rate.getVersion(), level);
         }
     }
 

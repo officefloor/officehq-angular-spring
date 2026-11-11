@@ -18,6 +18,8 @@ export interface Rate {
   from: string | null;
   /** The last day the rate applies (yyyy-mm-dd); null when it has no end. */
   to: string | null;
+  /** How many versions the rate has had; this one, the newest, is the one in force. */
+  version: number;
   /** 0 for the sheet's own rate, 1 for its parent sheet's, 2 for that sheet's parent's, and so on. */
   level: number;
 }
@@ -233,7 +235,7 @@ export function trimmedSumDues(dues: string[]): string {
       <table>
         <caption>In force today</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (g of grades(); track g) {
@@ -247,7 +249,7 @@ export function trimmedSumDues(dues: string[]): string {
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (r of ownRates(); track r.grade + '-' + r.from) {
@@ -256,6 +258,7 @@ export function trimmedSumDues(dues: string[]): string {
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
               <td data-testid="rate-to">{{ r.to ?? 'no end' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-version">{{ r.version }}</td>
             </tr>
           }
         </tbody>

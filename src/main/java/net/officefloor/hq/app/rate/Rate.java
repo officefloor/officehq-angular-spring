@@ -39,6 +39,10 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    /** How many versions the rate has had; this one, the newest, is the one in force. */
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -71,6 +75,14 @@ public class Rate {
 
     public void setToDate(LocalDate toDate) {
         this.toDate = toDate;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = version;
     }
 
     /** Whether the rate applies on the date, given it is the grade's latest-dated rate on or before it. */

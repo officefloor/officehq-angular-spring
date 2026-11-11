@@ -20,14 +20,16 @@ public class RateService {
 
     private final RateRepository rates;
     private final RateLogRepository logs;
+    private final RateVersionRepository versions;
     private final SheetRepository sheets;
     private final Audit audit;
     private final RollupService rollup;
 
-    public RateService(RateRepository rates, RateLogRepository logs, SheetRepository sheets, Audit audit,
+    public RateService(RateRepository rates, RateLogRepository logs, RateVersionRepository versions, SheetRepository sheets, Audit audit,
             RollupService rollup) {
         this.rates = rates;
         this.logs = logs;
+        this.versions = versions;
         this.sheets = sheets;
         this.audit = audit;
         this.rollup = rollup;
@@ -82,7 +84,8 @@ public class RateService {
 
     /**
      * Set the grade's rate from the from-date (null: from the beginning of time) through the to-date (null: no
-     * end), replacing the one it had; a to-date before the from-date is refused.
+     * end). A rate the grade already has from the from-date is kept as an older version and the new one becomes its
+     * newest, the one in force. A to-date before the from-date is refused.
      */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal pct) {
@@ -97,6 +100,8 @@ public class RateService {
         if (rate == null) {
             rate = new Rate(sheetId, grade, fromDate, pct);
         } else {
+            versions.save(new RateVersion(rate));
+            rate.setVersion(rate.getVersion() + 1);
             rate.setPct(pct);
         }
         rate.setToDate(toDate);
