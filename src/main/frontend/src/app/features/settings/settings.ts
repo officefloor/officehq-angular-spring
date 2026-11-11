@@ -129,6 +129,8 @@ interface SettingsResponse {
   scoreMid: string;
   /** The high score threshold, blank for none. */
   scoreHigh: string;
+  /** The score log switch: on, or blank for off. */
+  scoreLog: string;
   /** The proof kinds a claim above the proof threshold needs one of each of, comma separated, blank for none. */
   proofKinds: string;
   /** The grade a new person takes when none is given, blank for none (A). */
@@ -504,6 +506,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterScoreHigh($any($event.target))"
           (input)="scoreHighInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-score-log">Log each person's score when today changes (on, or blank: off)</label>
+        <input
+          id="setting-score-log"
+          data-testid="setting-score-log"
+          [value]="scoreLogInput() ?? ''"
+          (focus)="enterScoreLog($any($event.target))"
+          (input)="scoreLogInput.set($any($event.target).value); error.set(null)"
+        />
         <label for="setting-review-sla">Days a claim may wait in review before it is late (blank: none)</label>
         <input
           id="setting-review-sla"
@@ -704,6 +714,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Score log:
+        <strong data-testid="setting-score-log-current">{{ scoreLog() }}</strong>
+        @if (scoreLog() === '') {
+          <span>(off)</span>
+        }
+      </p>
+      <p>
         Review SLA (days):
         <strong data-testid="setting-review-sla-current">{{ session.reviewSla() }}</strong>
         @if (session.reviewSla() === '') {
@@ -853,6 +870,10 @@ export class Settings {
   protected readonly scoreMidInput = signal<string | null>(null);
   /** The high score threshold typed; null while its field has not been entered (left as it is). */
   protected readonly scoreHighInput = signal<string | null>(null);
+  /** The score log switch in force: on, or blank for off. */
+  protected readonly scoreLog = signal('');
+  /** The score log switch typed; null while its field has not been entered (left as it is). */
+  protected readonly scoreLogInput = signal<string | null>(null);
   /** The review SLA typed; null while its field has not been entered (left as it is). */
   protected readonly reviewSlaInput = signal<string | null>(null);
   /** The proof kinds in force, comma separated, blank for none. */
@@ -909,6 +930,7 @@ export class Settings {
       this.reviewSlaInput.set(null);
       this.scoreMidInput.set(null);
       this.scoreHighInput.set(null);
+      this.scoreLogInput.set(null);
       this.proofKindsInput.set(null);
       this.defaultGradeInput.set(null);
       this.fiscalInput.set(null);
@@ -1054,6 +1076,15 @@ export class Settings {
     this.scoreHighInput.set(this.session.scoreHigh());
   }
 
+  /** Entering the score log's field fills it with the switch in force, selected, so it saves as it is
+   *  unless typed over. */
+  protected enterScoreLog(input: HTMLInputElement): void {
+    if (this.scoreLogInput() !== null) return;
+    input.value = this.scoreLog();
+    input.select();
+    this.scoreLogInput.set(this.scoreLog());
+  }
+
   /** Entering the review SLA's field fills it with the SLA in force, selected, so it saves as it is
    *  unless typed over. */
   protected enterReviewSla(input: HTMLInputElement): void {
@@ -1197,7 +1228,7 @@ export class Settings {
 
   private show(
     res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
-      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'proofKinds' | 'defaultGrade' | 'scoreMid' | 'scoreHigh'>>,
+      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'proofKinds' | 'defaultGrade' | 'scoreMid' | 'scoreHigh' | 'scoreLog'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -1218,6 +1249,7 @@ export class Settings {
     this.session.reviewSla.set(res.reviewSla ?? '');
     this.session.scoreMid.set(res.scoreMid ?? '');
     this.session.scoreHigh.set(res.scoreHigh ?? '');
+    this.scoreLog.set(res.scoreLog ?? '');
     this.proofKinds.set(res.proofKinds ?? '');
     this.defaultGrade.set(res.defaultGrade ?? '');
   }
@@ -1248,6 +1280,7 @@ export class Settings {
     const reviewSla = this.reviewSlaInput()?.trim() ?? null;
     const scoreMid = this.scoreMidInput()?.trim() ?? null;
     const scoreHigh = this.scoreHighInput()?.trim() ?? null;
+    const scoreLog = this.scoreLogInput()?.trim() ?? null;
     const proofKinds = this.proofKindsInput()?.trim() ?? null;
     const defaultGrade = this.defaultGradeInput()?.trim() ?? null;
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
@@ -1362,6 +1395,10 @@ export class Settings {
       this.error.set('Enter each score threshold as a whole number, or leave it blank for none.');
       return;
     }
+    if (scoreLog !== null && scoreLog !== '' && scoreLog !== 'on') {
+      this.error.set('Enter on for the score log, or leave it blank for off.');
+      return;
+    }
     if (proofKinds !== null && proofKinds !== '' && !PROOF_KINDS.test(proofKinds)) {
       this.error.set('Enter the proof kinds as receipt or photo, comma separated, or leave it blank for none.');
       return;
@@ -1470,6 +1507,7 @@ export class Settings {
           clerkLimitCFrom: from['clerk-limit-C'] ?? null,
           scoreMid,
           scoreHigh,
+          scoreLog,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -1498,6 +1536,7 @@ export class Settings {
       this.reviewSlaInput.set(null);
       this.scoreMidInput.set(null);
       this.scoreHighInput.set(null);
+      this.scoreLogInput.set(null);
       this.proofKindsInput.set(null);
       this.defaultGradeInput.set(null);
       this.fiscalInput.set(null);

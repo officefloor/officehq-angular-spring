@@ -36,6 +36,8 @@ public class SettingController {
 
     /** A score threshold: a whole number, below zero too. */
     private static final String SCORE = "\\s*-?\\d{1,6}\\s*";
+    /** The score log switch: on, or blank for off. */
+    private static final String SWITCH = "\\s*|\\s*on\\s*";
 
     /** A date setting: yyyy-mm-dd, or blank for none. */
     private static final String DATE = "\\s*|\\s*\\d{4}-\\d{2}-\\d{2}\\s*";
@@ -66,7 +68,7 @@ public class SettingController {
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
      * for none. A note threshold: an amount with up to two decimals, or blank for none. A review threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. A rounding mode: half-up or half-even, or blank for none. An escalation gap: a whole number of days, or blank for off. Proof kinds: receipt or photo, comma separated, or blank for none. A default grade: A, B or C, or blank for none (A). A score threshold (mid or high): a whole number, or blank for none. A grade's own clerk limit (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). Each setting that carries a figure may name the date it
+     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. A rounding mode: half-up or half-even, or blank for none. An escalation gap: a whole number of days, or blank for off. Proof kinds: receipt or photo, comma separated, or blank for none. A default grade: A, B or C, or blank for none (A). A score threshold (mid or high): a whole number, or blank for none. The score log switch: on, or blank for off. A grade's own clerk limit (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -113,7 +115,8 @@ public class SettingController {
             @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimitC,
             @Pattern(regexp = DATE) String clerkLimitAFrom, @Pattern(regexp = DATE) String clerkLimitBFrom,
             @Pattern(regexp = DATE) String clerkLimitCFrom,
-            @Pattern(regexp = "\\s*|" + SCORE) String scoreMid, @Pattern(regexp = "\\s*|" + SCORE) String scoreHigh) {
+            @Pattern(regexp = "\\s*|" + SCORE) String scoreMid, @Pattern(regexp = "\\s*|" + SCORE) String scoreHigh,
+            @Pattern(regexp = SWITCH) String scoreLog) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -130,13 +133,15 @@ public class SettingController {
      * And the alert threshold, blank for off. And the rounding mode, blank for none. And the escalation gap, blank for off.
      * And the review SLA in days, blank for none. And the proof kinds, comma separated, blank for none.
      * And the default grade, blank for none (A). And the score thresholds, mid and high, each blank for none.
+     * And the score log switch, on or blank for off.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             String noteThreshold, String reviewThreshold,
             List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot,
             String parent, int fiscalStartMonth, String alertThreshold, String rounding, String escalateAfter,
-            String reviewSla, String proofKinds, String defaultGrade, String scoreMid, String scoreHigh) {
+            String reviewSla, String proofKinds, String defaultGrade, String scoreMid, String scoreHigh,
+            String scoreLog) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -157,7 +162,8 @@ public class SettingController {
                 sheet.getProofKinds() == null ? "" : sheet.getProofKinds(),
                 sheet.getDefaultGrade() == null ? "" : sheet.getDefaultGrade(),
                 sheet.getScoreMid() == null ? "" : String.valueOf(sheet.getScoreMid()),
-                sheet.getScoreHigh() == null ? "" : String.valueOf(sheet.getScoreHigh()));
+                sheet.getScoreHigh() == null ? "" : String.valueOf(sheet.getScoreHigh()),
+                sheet.isScoreLog() ? "on" : "");
     }
 
     private static DatedValue dated(DatedSetting s) {
@@ -239,7 +245,8 @@ public class SettingController {
                 req.proofKinds() != null, proofKinds(req.proofKinds()),
                 req.defaultGrade() != null, defaultGrade.isEmpty() ? null : defaultGrade,
                 req.scoreMid() != null, scoreMid.isEmpty() ? null : Integer.valueOf(scoreMid),
-                req.scoreHigh() != null, scoreHigh.isEmpty() ? null : Integer.valueOf(scoreHigh)));
+                req.scoreHigh() != null, scoreHigh.isEmpty() ? null : Integer.valueOf(scoreHigh),
+                req.scoreLog() != null, req.scoreLog() != null && !req.scoreLog().isBlank()));
     }
 
     /** A permission matrix entry given: its roles, lower case, comma separated without spaces. */

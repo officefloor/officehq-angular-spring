@@ -57,6 +57,10 @@ public class RollupService {
             boolean retired) {
     }
 
+    /** A person's score: their name and the whole number of points. */
+    public record Score(String name, int score) {
+    }
+
     /** The sheet's figures: each person's by id, in the order they were added. */
     public record Snapshot(Map<Long, Figures> people) {
 
@@ -216,6 +220,41 @@ public class RollupService {
                     overdue, person.gradeOn(today), person.isRetired()));
         }
         return new Snapshot(figures);
+    }
+
+    /**
+     * Each person's score as the screen shows it, in list order: their settled-total (the figures of
+     * their SETTLED claims that count) divided by 100, minus 5 for every overdue claim of theirs that counts,
+     * rounded half to even to a whole number.
+     */
+    public List<Score> scores(String sheetId) {
+        Sheet sheet = sheet(sheetId);
+        LocalDate today = sheet.getToday();
+        List<List<Rate>> sheetRates = rates.current(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        List<Score> scores = new ArrayList<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            BigDecimal settled = zero();
+            int overdueCount = 0;
+            for (Claim claim : sheetClaims) {
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)) {
+                    continue;
+                }
+                if (overdue(sheet, person, claim)) {
+                    overdueCount++;
+                }
+                if (!claim.getStatus().isOpen()) {
+                    BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
+                    if (figure != null) {
+                        settled = settled.add(figure);
+                    }
+                }
+            }
+            BigDecimal score = settled.movePointLeft(2).subtract(BigDecimal.valueOf(5L * overdueCount))
+                    .setScale(0, RoundingMode.HALF_EVEN);
+            scores.add(new Score(person.getName(), score.intValueExact()));
+        }
+        return scores;
     }
 
     /**

@@ -86,6 +86,7 @@ public class SettingService {
     public static final String ESCALATE_AFTER = "escalate-after";
     public static final String SCORE_MID = "score-mid";
     public static final String SCORE_HIGH = "score-high";
+    public static final String SCORE_LOG = "score-log";
     public static final String REVIEW_SLA = "review-sla";
     public static final String PROOF_KINDS = "proof-kinds";
     public static final String DEFAULT_GRADE = "default-grade";
@@ -156,7 +157,8 @@ public class SettingService {
             Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold, Dated<String> rounding,
             boolean changeEscalate, Integer escalateAfter, boolean changeReviewSla, Integer reviewSla,
             boolean changeProofKinds, String proofKinds, boolean changeDefaultGrade, String defaultGrade,
-            boolean changeScoreMid, Integer scoreMid, boolean changeScoreHigh, Integer scoreHigh) {
+            boolean changeScoreMid, Integer scoreMid, boolean changeScoreHigh, Integer scoreHigh,
+            boolean changeScoreLog, boolean scoreLog) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (changeParent && parent != null) {
@@ -308,6 +310,11 @@ public class SettingService {
             sheet.setScoreHigh(scoreHigh);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, SCORE_HIGH, scoreHigh == null ? "" : scoreHigh.toString()));
+        }
+        if (changeScoreLog) {
+            sheet.setScoreLog(scoreLog);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, SCORE_LOG, scoreLog ? "on" : ""));
         }
         return sheet;
     }

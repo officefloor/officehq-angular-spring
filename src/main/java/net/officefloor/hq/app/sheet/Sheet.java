@@ -132,6 +132,10 @@ public class Sheet {
     @Column(name = "score_high")
     private Integer scoreHigh;
 
+    /** Whether changing the sheet's today logs each person's score on the day being left. Not dated. */
+    @Column(name = "score_log")
+    private boolean scoreLog;
+
     /** The days a claim may wait in REVIEW past the day it went there before it is late; null for none. Not dated. */
     @Column(name = "review_sla")
     private Integer reviewSla;
@@ -242,6 +246,7 @@ public class Sheet {
         then.escalateAfter = escalateAfter;
         then.scoreMid = scoreMid;
         then.scoreHigh = scoreHigh;
+        then.scoreLog = scoreLog;
         then.reviewSla = reviewSla;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
@@ -522,6 +527,15 @@ public class Sheet {
 
     public void setScoreHigh(Integer scoreHigh) {
         this.scoreHigh = scoreHigh;
+    }
+
+    /** Whether changing the sheet's today logs each person's score on the day being left. Not dated. */
+    public boolean isScoreLog() {
+        return scoreLog;
+    }
+
+    public void setScoreLog(boolean scoreLog) {
+        this.scoreLog = scoreLog;
     }
 
     /** The review SLA in days; null for none. Not dated. */

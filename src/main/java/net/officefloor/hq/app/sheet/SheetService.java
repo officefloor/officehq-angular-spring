@@ -258,7 +258,8 @@ public class SheetService {
      * Change the sheet's today. With grace days set, every open (not soft-closed) period whose to-date
      * plus the grace days is before the new today is then closed, in order of their to-dates. A new today releases
      * every claim editor's lock. A new today first records each person's due-total on the day being left (SNAPSHOT),
-     * in list order.
+     * in list order. While the score log is on, that is preceded by each person's score on the day being left
+     * (SCORE), in list order.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
@@ -268,6 +269,13 @@ public class SheetService {
         Sheet sheet = lock(id);
         RollupService.Snapshot before = rollup.snapshot(id);
         boolean moved = !today.equals(sheet.getToday());
+        if (moved && sheet.isScoreLog()) {
+            // each person's score as it stood on the day being left, ahead of the snapshot lines
+            for (RollupService.Score score : rollup.scores(id)) {
+                audit.recordOnCommit("SCORE sheet=" + id + " by=" + user + " name=" + score.name()
+                        + " score=" + score.score());
+            }
+        }
         if (moved) {
             // each person's due-total as it stood on the day being left, before anything else the change records,
             // kept as their snapshot line
