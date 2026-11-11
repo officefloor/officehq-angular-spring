@@ -45,10 +45,10 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, Integer terms, String contact, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
-            List<String> aliases) {
+            List<String> aliases, boolean clashing) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
-                boolean watched, List<String> aliases) {
+                boolean watched, List<String> aliases, Set<String> keysInTree) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getTerms(),
                     person.getContact(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
@@ -56,7 +56,7 @@ public class PersonController {
                     PersonService.patronShares(patronIds.size()).stream().map(BigDecimal::toPlainString).toList(),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    watched, aliases);
+                    watched, aliases, PersonService.clashing(person, aliases, keysInTree));
         }
     }
 
@@ -142,10 +142,11 @@ public class PersonController {
         Set<Long> watched = watches.watchedBy(sheetId.trim(), user.trim());
         List<Person> people = service.list(sheetId.trim());
         LocalDate today = people.isEmpty() ? null : sheets.today(sheetId.trim());
+        Set<String> keysInTree = people.isEmpty() ? Set.of() : service.keysInTree(sheetId.trim());
         return people.stream()
                 .map(p -> PersonView.of(p, today, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         patronIds.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
-                        aliases.getOrDefault(p.getId(), List.of())))
+                        aliases.getOrDefault(p.getId(), List.of()), keysInTree))
                 .toList();
     }
 
@@ -263,6 +264,6 @@ public class PersonController {
     private PersonView view(Person person, String user) {
         return PersonView.of(person, sheets.today(person.getSheetId()), statements.summary(person.getSheetId(), person.getId()),
                 service.patronIdsOf(person.getId()), watches.watches(person.getId(), user),
-                service.aliasesOf(person.getId()));
+                service.aliasesOf(person.getId()), service.keysInTree(person.getSheetId()));
     }
 }

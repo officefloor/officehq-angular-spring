@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
@@ -30,4 +31,11 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     boolean existsBySheetIdAndContact(String sheetId, String contact);
 
     Optional<Person> findBySheetIdAndNameKey(String sheetId, String nameKey);
+
+    /** Whether a person on any of the sheets, other than the one with this id, has the name key. */
+    boolean existsBySheetIdInAndNameKeyAndIdNot(Collection<String> sheetIds, String nameKey, Long id);
+
+    /** The name keys of the people on the sheets. */
+    @Query("select p.nameKey from Person p where p.sheetId in :sheetIds")
+    List<String> findNameKeysBySheetIdIn(Collection<String> sheetIds);
 }

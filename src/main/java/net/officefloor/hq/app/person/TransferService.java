@@ -54,12 +54,13 @@ public class TransferService {
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
+    private final PersonService personService;
 
     public TransferService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
             ClaimCommentRepository comments, ClaimService claimService, SheetTagRepository tags,
             StatementRepository statements, PoolRepository pools, RoleService roles, SheetService sheets,
-            RollupService rollup, Audit audit) {
+            RollupService rollup, Audit audit, PersonService personService) {
         this.people = people;
         this.aliases = aliases;
         this.patrons = patrons;
@@ -75,6 +76,7 @@ public class TransferService {
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
+        this.personService = personService;
     }
 
     /** Transfer the person to the other sheet (started when its id was never used); the person as they arrived. */
@@ -102,7 +104,8 @@ public class TransferService {
         theirAliases.forEach(a -> names.add(a.getAlias()));
         for (String name : names) {
             String key = Person.key(name);
-            if (people.existsBySheetIdAndNameKey(to, key) || aliases.existsBySheetIdAndAliasKey(to, key)) {
+            if (people.existsBySheetIdAndNameKey(to, key) || aliases.existsBySheetIdAndAliasKey(to, key)
+                    || personService.usedInTree(to, key, from.getId())) {
                 throw new PersonTransferRefusedException("The name " + name + " is already in use on sheet " + to);
             }
         }

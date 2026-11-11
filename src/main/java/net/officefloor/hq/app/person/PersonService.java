@@ -7,12 +7,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -61,7 +64,8 @@ public class PersonService {
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.key(name))
-                || aliases.existsBySheetIdAndAliasKey(sheetId, Person.key(name))) {
+                || aliases.existsBySheetIdAndAliasKey(sheetId, Person.key(name))
+                || usedInTree(sheetId, Person.key(name), null)) {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
         String contactKey = Person.contactKey(contact);
@@ -95,8 +99,15 @@ public class PersonService {
             throw new PersonVersionConflictException(sheetId, id);
         }
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.key(name), id)
-                || aliases.existsBySheetIdAndAliasKey(sheetId, Person.key(name))) {
+                || aliases.existsBySheetIdAndAliasKey(sheetId, Person.key(name))
+                || usedInTree(sheetId, Person.key(name), null)) {
             throw new PersonNameTakenException(sheetId, name.trim());
+        }
+        // A person whose alias clashes with a name or alias elsewhere in the tree cannot be saved until it does not.
+        for (PersonAlias alias : aliases.findByPersonId(id)) {
+            if (usedInTree(sheetId, alias.getAliasKey(), null)) {
+                throw new PersonNameTakenException(sheetId, alias.getAlias());
+            }
         }
         String contactKey = Person.contactKey(contact);
         if (contactKey != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contactKey, id)) {
@@ -235,7 +246,8 @@ public class PersonService {
             throw new AliasRefusedException("An alias cannot be blank");
         }
         String key = Person.key(alias);
-        if (people.existsBySheetIdAndNameKey(sheetId, key) || aliases.existsBySheetIdAndAliasKey(sheetId, key)) {
+        if (people.existsBySheetIdAndNameKey(sheetId, key) || aliases.existsBySheetIdAndAliasKey(sheetId, key)
+                || usedInTree(sheetId, key, null)) {
             throw new AliasRefusedException("The name " + alias.trim() + " is already in use on the sheet");
         }
         PersonAlias saved;
@@ -248,6 +260,57 @@ public class PersonService {
         audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " alias=" + saved.getAlias());
         return person;
+    }
+
+    /**
+     * The other sheets of the sheet's tree, each once: its ancestors, and its descendants and theirs, among the sheets
+     * that exist. A parent loop never brings back the sheet.
+     */
+    public Set<String> treeOf(String sheetId) {
+        Set<String> tree = new HashSet<>();
+        String parent = sheets.findById(sheetId).map(Sheet::getParent).orElse(null);
+        while (parent != null && !parent.equals(sheetId) && tree.add(parent)) {
+            parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
+        }
+        List<String> below = new ArrayList<>(List.of(sheetId));
+        for (int i = 0; i < below.size(); i++) {
+            for (Sheet child : sheets.findByParentOrderByIdAsc(below.get(i))) {
+                if (!below.contains(child.getId())) {
+                    below.add(child.getId());
+                }
+            }
+        }
+        tree.addAll(below.subList(1, below.size()));
+        tree.retainAll(sheets.findAllById(tree).stream().map(Sheet::getId).toList());
+        return tree;
+    }
+
+    /**
+     * Whether another sheet of the sheet's tree has the key as a name or an alias, leaving out the person with the id
+     * (null: none) and their aliases.
+     */
+    public boolean usedInTree(String sheetId, String key, Long exceptPersonId) {
+        Set<String> tree = treeOf(sheetId);
+        long except = exceptPersonId == null ? -1L : exceptPersonId;
+        return !tree.isEmpty() && (people.existsBySheetIdInAndNameKeyAndIdNot(tree, key, except)
+                || aliases.existsBySheetIdInAndAliasKeyAndPersonIdNot(tree, key, except));
+    }
+
+    /** The names and aliases, as names are compared, on the other sheets of the sheet's tree. */
+    public Set<String> keysInTree(String sheetId) {
+        Set<String> tree = treeOf(sheetId);
+        Set<String> keys = new HashSet<>();
+        if (!tree.isEmpty()) {
+            keys.addAll(people.findNameKeysBySheetIdIn(tree));
+            keys.addAll(aliases.findAliasKeysBySheetIdIn(tree));
+        }
+        return keys;
+    }
+
+    /** Whether the person's name or one of their aliases is among the keys used on the other sheets of the tree. */
+    public static boolean clashing(Person person, List<String> aliasesOf, Set<String> keysInTree) {
+        return keysInTree.contains(Person.key(person.getName()))
+                || aliasesOf.stream().anyMatch(a -> keysInTree.contains(Person.key(a)));
     }
 
     private static final Comparator<PersonAlias> ALIAS_ORDER =
