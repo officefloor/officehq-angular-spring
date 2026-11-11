@@ -6,6 +6,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import net.officefloor.hq.app.role.DelegationService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -23,10 +28,30 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 public class Audit {
 
-    private final Path file;
+    /** The records that only report figures: they never say on whose behalf the change was made. */
+    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT");
 
-    public Audit(@Value("${app.audit.file:.run/audit.log}") String path) {
+    private static final Pattern SHEET_BY = Pattern.compile("^(\\S+) sheet=(\\S+) by=(\\S+)");
+
+    private final Path file;
+    private final ObjectProvider<DelegationService> delegations;
+
+    public Audit(@Value("${app.audit.file:.run/audit.log}") String path,
+            ObjectProvider<DelegationService> delegations) {
         this.file = Path.of(path);
+        this.delegations = delegations;
+    }
+
+    /**
+     * The record as written: a change made by a user acting as a steward by delegation on the sheet's today ends with
+     * {@code for=<the steward who delegated>}; a record that only reports figures is left as it is.
+     */
+    private String onBehalf(String entry) {
+        Matcher m = SHEET_BY.matcher(entry);
+        if (!m.find() || FIGURES_ONLY.contains(m.group(1))) {
+            return entry;
+        }
+        return delegations.getObject().delegatorOf(m.group(2), m.group(3)).map(s -> entry + " for=" + s).orElse(entry);
     }
 
     /** Append one audit record. Tests assert the exact line(s) in the file. */
@@ -47,7 +72,8 @@ public class Audit {
      * Append one audit record once the current transaction commits, so a change that is refused or
      * rolled back writes nothing. Outside a transaction the record is appended at once.
      */
-    public void recordOnCommit(String entry) {
+    public void recordOnCommit(String record) {
+        String entry = onBehalf(record);
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             record(entry);
             return;

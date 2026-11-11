@@ -30,6 +30,15 @@ interface SettingsView {
   dated: Record<string, DatedValue[]>;
 }
 
+/** A delegation of the steward role to a user by a steward, from and to dates (yyyy-mm-dd) inclusive. */
+interface DelegationView {
+  id: number;
+  user: string;
+  by: string;
+  from: string;
+  to: string;
+}
+
 interface RoleView {
   user: string;
   /** clerk, steward or viewer; a user name not listed is a clerk. */
@@ -275,6 +284,41 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           }
         </tbody>
       </table>
+      <h3 id="delegate-heading">Delegate the steward role</h3>
+      <form (submit)="saveDelegation($event)" aria-labelledby="delegate-heading">
+        <label for="delegate-user">User name</label>
+        <input
+          id="delegate-user"
+          data-testid="delegate-user"
+          [value]="delegateUser()"
+          (input)="delegateUser.set(value($event)); delegateError.set(null)"
+        />
+        <label for="delegate-from">From (blank: today)</label>
+        <input
+          id="delegate-from"
+          type="date"
+          data-testid="delegate-from"
+          [value]="delegateFrom()"
+          (input)="delegateFrom.set(value($event)); delegateError.set(null)"
+        />
+        <label for="delegate-to">To</label>
+        <input
+          id="delegate-to"
+          type="date"
+          data-testid="delegate-to"
+          [value]="delegateTo()"
+          (input)="delegateTo.set(value($event)); delegateError.set(null)"
+        />
+        <button type="submit" data-testid="delegate-submit">Delegate</button>
+        @if (delegateError(); as message) {
+          <p role="alert" data-testid="delegate-error">{{ message }}</p>
+        }
+      </form>
+      <ul aria-label="Delegations">
+        @for (d of delegations(); track d.id) {
+          <li data-testid="delegate-line">{{ d.user }} acts as steward for {{ d.by }} from {{ d.from }} to {{ d.to }}</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -326,6 +370,12 @@ export class Settings {
   protected readonly roleUser = signal('');
   protected readonly roleName = signal('');
   protected readonly roleError = signal<string | null>(null);
+  protected readonly delegations = signal<DelegationView[]>([]);
+  protected readonly delegateUser = signal('');
+  protected readonly delegateFrom = signal('');
+  protected readonly delegateTo = signal('');
+  protected readonly delegateError = signal<string | null>(null);
+  private savingDelegation = false;
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private savingSettings = false;
   private savingRole = false;
@@ -344,6 +394,8 @@ export class Settings {
         this.roleList.set([]);
         this.settingsError.set(null);
         this.roleError.set(null);
+        this.delegations.set([]);
+        this.delegateError.set(null);
         if (sheet) void this.read(sheet);
       });
     });
@@ -605,17 +657,62 @@ export class Settings {
     }
   }
 
+  protected async saveDelegation(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.savingDelegation) return;
+    this.delegateError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const user = this.delegateUser().trim();
+    const from = this.delegateFrom().trim();
+    const to = this.delegateTo().trim();
+    if (!user) {
+      this.delegateError.set('Type the user name to delegate to.');
+      return;
+    }
+    if (!to) {
+      this.delegateError.set('Type the date the delegation ends.');
+      return;
+    }
+    if (to < (from || this.session.today() || '')) {
+      this.delegateError.set('The to-date cannot be before the from-date.');
+      return;
+    }
+    this.savingDelegation = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<DelegationView>(
+          `/api/sheets/${encodeURIComponent(sheet)}/delegations`,
+          { user, from, to },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() === sheet) {
+        this.delegations.update((list) => [...list, saved]);
+        this.delegateUser.set('');
+        this.delegateFrom.set('');
+        this.delegateTo.set('');
+      }
+    } catch {
+      this.delegateError.set('The steward role could not be delegated: only a steward may delegate it.');
+    } finally {
+      this.savingDelegation = false;
+    }
+  }
+
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [settings, roles] = await Promise.all([
+    const [settings, roles, delegations] = await Promise.all([
       firstValueFrom(this.http.get<SettingsView>(`${url}/settings`, this.session.headers())),
       firstValueFrom(this.http.get<RoleView[]>(`${url}/roles`, this.session.headers())),
-    ]).catch(() => [null, null]);
+      firstValueFrom(this.http.get<DelegationView[]>(`${url}/delegations`, this.session.headers())),
+    ]).catch(() => [null, null, null]);
     // A later read wins over a slower earlier one.
-    if (settings && roles && read === this.reads && this.session.sheet() === sheet) {
+    if (settings && roles && delegations && read === this.reads && this.session.sheet() === sheet) {
       this.show(settings);
       this.roleList.set(roles);
+      this.delegations.set(delegations);
     }
   }
 

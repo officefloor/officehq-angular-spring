@@ -14,11 +14,13 @@ public class RoleService {
 
     private final RoleRepository roles;
     private final SheetRepository sheets;
+    private final DelegationService delegations;
     private final Audit audit;
 
-    public RoleService(RoleRepository roles, SheetRepository sheets, Audit audit) {
+    public RoleService(RoleRepository roles, SheetRepository sheets, DelegationService delegations, Audit audit) {
         this.roles = roles;
         this.sheets = sheets;
+        this.delegations = delegations;
         this.audit = audit;
     }
 
@@ -26,8 +28,11 @@ public class RoleService {
         return roles.findBySheetIdOrderByUserNameAsc(sheetId);
     }
 
-    /** The user's role on the sheet: clerk unless one was set. */
+    /** The user's role on the sheet: steward while a delegation covers the sheet's today, else clerk unless one was set. */
     public Role roleOf(String sheetId, String user) {
+        if (delegations.delegatorOf(sheetId, user).isPresent()) {
+            return Role.STEWARD;
+        }
         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
     }
 
