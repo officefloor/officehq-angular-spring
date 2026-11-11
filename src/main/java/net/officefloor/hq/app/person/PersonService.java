@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.util.List;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,15 +28,30 @@ public class PersonService {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException(sheetId);
         }
-        return people.saveAndFlush(new Person(sheetId, name, grade));
+        if (people.existsBySheetIdAndNameKey(sheetId, Person.key(name))) {
+            throw new PersonNameTakenException(sheetId, name.trim());
+        }
+        return save(new Person(sheetId, name, grade));
     }
 
     @Transactional
     public Person update(String sheetId, Long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
+        if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.key(name), id)) {
+            throw new PersonNameTakenException(sheetId, name.trim());
+        }
         person.setName(name);
         person.setGrade(grade);
-        return people.saveAndFlush(person);
+        return save(person);
+    }
+
+    private Person save(Person person) {
+        try {
+            return people.saveAndFlush(person);
+        } catch (DataIntegrityViolationException e) {
+            // Another user took the name at the same moment: the unique index refused it.
+            throw new PersonNameTakenException(person.getSheetId(), person.getName());
+        }
     }
 }

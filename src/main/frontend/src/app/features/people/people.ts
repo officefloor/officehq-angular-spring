@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -143,8 +143,12 @@ export class People {
         // Re-read the list so a slower read started before this change cannot overwrite it.
         void this.read(sheet);
       }
-    } catch {
-      this.error.set(editing === null ? 'The person could not be added.' : 'The person could not be saved.');
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        this.error.set('Another person on the sheet already has that name.');
+      } else {
+        this.error.set(editing === null ? 'The person could not be added.' : 'The person could not be saved.');
+      }
     }
   }
 
