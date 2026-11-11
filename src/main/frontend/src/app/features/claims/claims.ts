@@ -304,6 +304,23 @@ export function sumAmounts(amounts: string[]): string {
                 >
                   Edit
                 </button>
+                <label class="visually-hidden" [for]="'claim-inline-amount-' + c.id">New amount</label>
+                <input
+                  [id]="'claim-inline-amount-' + c.id"
+                  data-testid="claim-inline-amount"
+                  inputmode="decimal"
+                  placeholder="New amount"
+                  [value]="inlineAmounts()[c.id] ?? ''"
+                  (input)="setInlineAmount(c.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-inline-save"
+                  [attr.aria-label]="'Save the new amount of claim of ' + c.amount + ' on ' + c.date"
+                  (click)="saveInline(c)"
+                >
+                  Save amount
+                </button>
                 @if (editing() === c.id) {
                   <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
                 }
@@ -481,6 +498,8 @@ export class Claims implements OnInit {
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The new amount typed for each DRAFT claim in its row, by claim id. */
+  protected readonly inlineAmounts = signal<Record<number, string>>({});
 
   constructor() {
     // A new today releases every editor's lock, so the open editor closes.
@@ -758,6 +777,49 @@ export class Claims implements OnInit {
         claim.status !== 'OPEN' && claim.status !== 'PENDING'
           ? `This claim is ${claim.status}: only an OPEN or PENDING claim can be reminded.`
           : 'This claim could not be reminded: it may already have been reminded today.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  protected setInlineAmount(id: number, amount: string): void {
+    this.inlineAmounts.update((all) => ({ ...all, [id]: amount }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /**
+   * Save the amount typed in a DRAFT claim's row, keeping its date, note and correction: saved as the claim's editor
+   * saves it, so refused alike for a viewer, a claim not DRAFT, one in a closed period and one another user has open.
+   */
+  protected async saveInline(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.inlineAmounts()[claim.id] ?? '').trim();
+    if (!/^-?\d+(\.\d{1,2})?$/.test(amount)) {
+      this.actionError.set({
+        id: claim.id,
+        message: 'Type an amount with at most two decimals; a negative one is a correction.',
+      });
+      return;
+    }
+    const refused = this.editRefusal(claim, null);
+    if (refused !== null) {
+      this.actionError.set({ id: claim.id, message: refused });
+      return;
+    }
+    const body = { amount, date: claim.date, note: claim.note, corrects: claim.corrects };
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}`;
+    try {
+      const saved = await firstValueFrom(this.http.put<Claim>(url, body, this.session.headers()));
+      this.setInlineAmount(claim.id, '');
+      // Saving releases the user's own lock, so an editor they had open on the claim closes.
+      if (this.editing() === claim.id) this.reset();
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const message =
+        e instanceof HttpErrorResponse && e.status === 422
+          ? 'A negative amount is a correction: it must name, by number, a settled claim of this person.'
+          : (this.editRefusal(claim, e) ?? 'The claim could not be saved.');
       this.actionError.set({ id: claim.id, message });
     }
   }
