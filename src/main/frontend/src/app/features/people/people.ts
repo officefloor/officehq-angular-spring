@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, capped, changeFrom, excessOver, rateOn, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
-import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
 import { Pools } from '../pools/pools';
@@ -135,7 +135,7 @@ function csvField(value: string): string {
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Header, Periods, PersonPlans, Pools, Rates, Summary],
+  imports: [ClassicSummary, Claims, Header, Periods, PersonPlans, Pools, Rates, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -748,6 +748,7 @@ function csvField(value: string): string {
       }
     </section>
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+    <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
     <app-pools [people]="people()" />
   `,
 })
@@ -947,6 +948,26 @@ export class People {
     );
     return this.periods().map((p) => ({ name: p.name, dueTotal: totals.get(p.name)!, change: changes.get(p.name)! }));
   });
+  /**
+   * Per period, the classic way: once it is closed, the figure fixed then; otherwise the dues of the claims due by a
+   * date in it that count in the live totals by their status now, skipping the n/a ones.
+   */
+  protected readonly classicPeriodSummary = computed<ClassicPeriodSummary[]>(() => {
+    const today = this.session.today();
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const dues = new Map<string, string[]>();
+    for (const c of this.claims()) {
+      const period = periodOn(this.periods(), c.dueBy);
+      const person = byId.get(c.personId);
+      if (!period || person === undefined || !live(c, person, today)) continue;
+      const list = dues.get(period.name) ?? [];
+      list.push(claimDue(c, this.rates(), person.grades, this.session));
+      dues.set(period.name, list);
+    }
+    return this.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? sumDues(dues.get(p.name) ?? []) }));
+  });
+  /** Everyone's due-total added up, skipping the n/a ones, with no trimming. */
+  protected readonly classicDueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
   /** Per status: how many of the sheet's claims have it. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
     ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({
