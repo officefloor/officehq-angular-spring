@@ -1,7 +1,8 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Claim, Claims, sumAmounts } from '../claims/claims';
 
 interface Person {
   id: number;
@@ -9,10 +10,12 @@ interface Person {
   grade: string;
 }
 
-// The people on the active sheet, in the order they were added, and the one form that adds a
-// person or, once a person's editor is opened, saves that person.
+// The people on the active sheet, in the order they were added, each with their claims and what
+// they have claimed, the sheet's claimed-total, and the one form that adds a person or, once a
+// person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
+  imports: [Claims],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -47,13 +50,17 @@ interface Person {
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+          </tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td>
                 <button
                   type="button"
@@ -64,10 +71,18 @@ interface Person {
                   Edit
                 </button>
               </td>
+              <td
+                app-claims
+                [personId]="p.id"
+                [personName]="p.name"
+                [claims]="claimsOf(p.id)"
+                (saved)="claimSaved($event)"
+              ></td>
             </tr>
           }
         </tbody>
       </table>
+      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
     </section>
   `,
 })
@@ -77,6 +92,18 @@ export class People {
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
+  /** The sheet's claims, newest first. */
+  protected readonly claims = signal<Claim[]>([]);
+  private readonly claimsByPerson = computed(() => {
+    const by = new Map<number, Claim[]>();
+    for (const c of this.claims()) {
+      const list = by.get(c.personId);
+      if (list) list.push(c);
+      else by.set(c.personId, [c]);
+    }
+    return by;
+  });
+  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   /** The id of the person whose editor is open, or null when the form adds a person. */
@@ -90,6 +117,7 @@ export class People {
       this.session.loaded();
       untracked(() => {
         this.people.set([]);
+        this.claims.set([]);
         this.reset();
         if (sheet) void this.read(sheet);
       });
@@ -98,6 +126,27 @@ export class People {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  protected claimsOf(personId: number): Claim[] {
+    return this.claimsByPerson().get(personId) ?? [];
+  }
+
+  /** The sum of the person's claims' amounts, with two decimals. */
+  protected claimedBy(personId: number): string {
+    return sumAmounts(this.claimsOf(personId).map((c) => c.amount));
+  }
+
+  /** Show an added or saved claim at once, then re-read so the screen holds what the store does. */
+  protected claimSaved(claim: Claim): void {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.claims.update((list) =>
+      list.some((c) => c.id === claim.id)
+        ? list.map((c) => (c.id === claim.id ? claim : c))
+        : [claim, ...list].sort((a, b) => b.id - a.id),
+    );
+    void this.read(sheet);
   }
 
   protected edit(person: Person): void {
@@ -154,10 +203,15 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
-    const list = await firstValueFrom(
-      this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`, this.session.headers()),
-    ).catch(() => null);
+    const url = `/api/sheets/${encodeURIComponent(sheet)}`;
+    const [list, claims] = await Promise.all([
+      firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
+      firstValueFrom(this.http.get<Claim[]>(`${url}/claims`, this.session.headers())),
+    ]).catch(() => [null, null]);
     // A later read wins over a slower earlier one.
-    if (list && read === this.reads && this.session.sheet() === sheet) this.people.set(list);
+    if (list && claims && read === this.reads && this.session.sheet() === sheet) {
+      this.people.set(list);
+      this.claims.set(claims);
+    }
   }
 }
