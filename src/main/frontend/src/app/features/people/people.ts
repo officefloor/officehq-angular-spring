@@ -1,4 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -135,7 +136,7 @@ function csvField(value: string): string {
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ClassicSummary, Claims, Header, Periods, PersonPlans, Pools, Rates, Summary],
+  imports: [ClassicSummary, Claims, Header, Periods, PersonPlans, Pools, Rates, Summary, FigurePipe],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -149,11 +150,11 @@ function csvField(value: string): string {
       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
       <dl>
         <dt>People</dt>
-        <dd data-testid="consolidated-people-count">{{ consolidatedPeople() }}</dd>
+        <dd data-testid="consolidated-people-count">{{ consolidatedPeople() | fig }}</dd>
         <dt>Due total</dt>
-        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
+        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | fig }}</dd>
         <dt>Overdue total</dt>
-        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | fig }}</dd>
       </dl>
     </section>
     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
@@ -176,7 +177,7 @@ function csvField(value: string): string {
           (change)="grade.set(value($event)); error.set(null)"
         >
           @for (g of grades; track g) {
-            <option [value]="g" [selected]="g === grade()">{{ g }}</option>
+            <option [value]="g" [selected]="g === grade()">{{ g | fig }}</option>
           }
         </select>
         <label for="person-form-grade-from">Grade from (blank: today)</label>
@@ -216,7 +217,7 @@ function csvField(value: string): string {
           <button type="button" data-testid="person-form-cancel" (click)="reset()">Cancel</button>
         }
         @if (error(); as message) {
-          <p role="alert" data-testid="person-form-error">{{ message }}</p>
+          <p role="alert" data-testid="person-form-error">{{ message | fig }}</p>
         }
       </form>
       <form aria-label="Quick add a claim" (submit)="quickAdd($event)">
@@ -237,17 +238,17 @@ function csvField(value: string): string {
         />
         <button type="submit" data-testid="quick-submit">Quick add claim</button>
         @if (quickError(); as message) {
-          <p role="alert" data-testid="quick-error">{{ message }}</p>
+          <p role="alert" data-testid="quick-error">{{ message | fig }}</p>
         }
       </form>
       <p>
         <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
         @if (planGenerated() !== null) {
-          Made <strong data-testid="plan-generated-count">{{ planGenerated() }}</strong>
+          Made <strong data-testid="plan-generated-count">{{ planGenerated() | fig }}</strong>
         }
       </p>
       @if (planGenerateError(); as message) {
-        <p role="alert" data-testid="plan-generate-error">{{ message }}</p>
+        <p role="alert" data-testid="plan-generate-error">{{ message | fig }}</p>
       }
       <form aria-label="Paste claims" (submit)="pasteClaims($event)">
         <label for="paste-claims">Paste claims, one per line: name,amount,date,note (end the note with " #reference" to give a reference)</label>
@@ -260,10 +261,10 @@ function csvField(value: string): string {
         ></textarea>
         <button type="submit" data-testid="paste-submit">Add and open pasted claims</button>
         @if (pasteAdded() !== null) {
-          Lines through <strong data-testid="paste-added">{{ pasteAdded() }}</strong>
+          Lines through <strong data-testid="paste-added">{{ pasteAdded() | fig }}</strong>
         }
         @if (pasteError(); as message) {
-          <p role="alert" data-testid="paste-error">{{ message }}</p>
+          <p role="alert" data-testid="paste-error">{{ message | fig }}</p>
         }
       </form>
       <form aria-label="Import people" (submit)="importPeople($event)">
@@ -277,11 +278,11 @@ function csvField(value: string): string {
         ></textarea>
         <button type="submit" data-testid="import-submit">Import people</button>
         @if (importAdded() !== null) {
-          Added <strong data-testid="import-added">{{ importAdded() }}</strong>,
-          updated <strong data-testid="import-updated">{{ importUpdated() }}</strong>
+          Added <strong data-testid="import-added">{{ importAdded() | fig }}</strong>,
+          updated <strong data-testid="import-updated">{{ importUpdated() | fig }}</strong>
         }
         @if (importError(); as message) {
-          <p role="alert" data-testid="import-error">{{ message }}</p>
+          <p role="alert" data-testid="import-error">{{ message | fig }}</p>
         }
       </form>
       <p>
@@ -298,7 +299,7 @@ function csvField(value: string): string {
         <label for="sort-by">Sort by</label>
         <select id="sort-by" data-testid="sort-by" [value]="sortBy()" (change)="sortBy.set(sortKey(value($event)))">
           @for (k of sortKeys; track k) {
-            <option [value]="k" [selected]="k === sortBy()">{{ k }}</option>
+            <option [value]="k" [selected]="k === sortBy()">{{ k | fig }}</option>
           }
         </select>
       </p>
@@ -330,26 +331,26 @@ function csvField(value: string): string {
                   (change)="selectPerson(p.id, checked($event))"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ gradeOf(p) }}</td>
-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
-              <td data-testid="person-tags">{{ personTagsOf(p).join(', ') }}</td>
-              <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
-              <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
-              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
-              <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
-              <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
-              <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
-              <td data-testid="person-open-total">{{ openTotalOf(p) }}</td>
+              <td data-testid="person-name">{{ p.name | fig }}</td>
+              <td data-testid="person-grade">{{ gradeOf(p) | fig }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' | fig }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' | fig }}</td>
+              <td data-testid="person-tags">{{ personTagsOf(p).join(', ') | fig }}</td>
+              <td data-testid="person-aliases">{{ p.aliases.join(', ') | fig }}</td>
+              <td data-testid="person-origin">{{ p.origin ?? '' | fig }}</td>
+              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="person-claimed">{{ claimedBy(p.id) | fig }}</td>
+              <td data-testid="person-due-total">{{ dueTotalOf(p) | fig }}</td>
+              <td data-testid="person-settled-total">{{ settledTotalOf(p) | fig }}</td>
+              <td data-testid="person-open-total">{{ openTotalOf(p) | fig }}</td>
               @for (per of periods(); track per.id) {
-                <td [attr.data-testid]="'person-period-' + per.name + '-due-total'">{{ periodDueTotalOf(p, per) }}</td>
+                <td [attr.data-testid]="'person-period-' + per.name + '-due-total'">{{ periodDueTotalOf(p, per) | fig }}</td>
               }
-              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
-              <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
-              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
-              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
-              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-statement-count">{{ p.statementCount | fig }}</td>
+              <td data-testid="person-stated-total">{{ p.statedTotal ?? '' | fig }}</td>
+              <td data-testid="person-statement-date">{{ p.statementDate ?? '' | fig }}</td>
+              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' | fig }}</td>
               <td>
                 @for (r of p.retirements; track $index) {
                   <div data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</div>
@@ -357,22 +358,22 @@ function csvField(value: string): string {
               </td>
               <td>
                 @for (line of p.snapshotLines; track $index) {
-                  <div data-testid="person-snapshot-line">{{ line }}</div>
+                  <div data-testid="person-snapshot-line">{{ line | fig }}</div>
                 }
               </td>
-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
-              <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
-              <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
-              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
+              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="person-overdue-count">{{ overdueOf(p).length | fig }}</td>
+              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) | fig }}</td>
               @let aged = agedOf(p);
-              <td data-testid="person-aged-0-30">{{ aged[0] }}</td>
-              <td data-testid="person-aged-31-60">{{ aged[1] }}</td>
-              <td data-testid="person-aged-61">{{ aged[2] }}</td>
-              <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
-              <td data-testid="person-backing">{{ backingOf(p) }}</td>
-              <td data-testid="person-excess">{{ excessOf(p) }}</td>
-              <td data-testid="person-cut-total">{{ cutTotalOf(p) }}</td>
-              <td data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</td>
+              <td data-testid="person-aged-0-30">{{ aged[0] | fig }}</td>
+              <td data-testid="person-aged-31-60">{{ aged[1] | fig }}</td>
+              <td data-testid="person-aged-61">{{ aged[2] | fig }}</td>
+              <td data-testid="person-patrons">{{ patronsOf(p) | fig }}</td>
+              <td data-testid="person-backing">{{ backingOf(p) | fig }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) | fig }}</td>
+              <td data-testid="person-cut-total">{{ cutTotalOf(p) | fig }}</td>
+              <td data-testid="person-watched">{{ p.watched ? 'yes' : 'no' | fig }}</td>
               <td>
                 <button
                   type="button"
@@ -398,7 +399,7 @@ function csvField(value: string): string {
                   (change)="setInlineGrade(p.id, value($event))"
                 >
                   @for (g of grades; track g) {
-                    <option [value]="g" [selected]="g === inlineGradeOf(p)">{{ g }}</option>
+                    <option [value]="g" [selected]="g === inlineGradeOf(p)">{{ g | fig }}</option>
                   }
                 </select>
                 <button
@@ -482,7 +483,7 @@ function csvField(value: string): string {
                 >
                   <option value="" [selected]="!mergeChoices()[p.id]">Merge into…</option>
                   @for (o of mergeOptions(p); track o.id) {
-                    <option [value]="'' + o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                    <option [value]="'' + o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ o.name | fig }}</option>
                   }
                 </select>
                 <button
@@ -557,7 +558,7 @@ function csvField(value: string): string {
                 </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
-                    <p role="alert" data-testid="person-error">{{ e.message }}</p>
+                    <p role="alert" data-testid="person-error">{{ e.message | fig }}</p>
                   }
                 }
                 <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron of {{ p.name }}</label>
@@ -569,7 +570,7 @@ function csvField(value: string): string {
                 >
                   <option value="" [selected]="!patronChoices()[p.id]">Choose a patron</option>
                   @for (o of patronOptions(p); track o.id) {
-                    <option [value]="'' + o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                    <option [value]="'' + o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ o.name | fig }}</option>
                   }
                 </select>
                 <button
@@ -582,7 +583,7 @@ function csvField(value: string): string {
                 </button>
                 @if (patronError(); as e) {
                   @if (e.id === p.id) {
-                    <p role="alert" data-testid="person-patron-error">{{ e.message }}</p>
+                    <p role="alert" data-testid="person-patron-error">{{ e.message | fig }}</p>
                   }
                 }
                 <app-person-plans [personId]="p.id" [personName]="p.name" />
@@ -609,23 +610,23 @@ function csvField(value: string): string {
       <p>
         <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
         @if (bulkOpenResult(); as r) {
-          Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
-          refused <strong data-testid="bulk-refused">{{ r.refused }}</strong>
+          Opened <strong data-testid="bulk-opened">{{ r.opened | fig }}</strong>,
+          refused <strong data-testid="bulk-refused">{{ r.refused | fig }}</strong>
         }
       </p>
       @if (bulkOpenError(); as message) {
-        <p role="alert" data-testid="bulk-open-error">{{ message }}</p>
+        <p role="alert" data-testid="bulk-open-error">{{ message | fig }}</p>
       }
       <p>
         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
-        Last batch <strong data-testid="bulk-settle-batch">{{ session.lastSettleBatch() ?? '' }}</strong>
+        Last batch <strong data-testid="bulk-settle-batch">{{ session.lastSettleBatch() ?? '' | fig }}</strong>
         @if (bulkSettleResult(); as r) {
-          Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
-          refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
+          Settled <strong data-testid="bulk-settled">{{ r.settled | fig }}</strong>,
+          refused <strong data-testid="bulk-settle-refused">{{ r.refused | fig }}</strong>
         }
       </p>
       @if (bulkSettleError(); as message) {
-        <p role="alert" data-testid="bulk-settle-error">{{ message }}</p>
+        <p role="alert" data-testid="bulk-settle-error">{{ message | fig }}</p>
       }
       <p>
         <label for="bulk-reassign-to">Reassign selected claims to</label>
@@ -636,17 +637,17 @@ function csvField(value: string): string {
         >
           <option value="" [selected]="!bulkReassignTo()">Pick a person…</option>
           @for (o of people(); track o.id) {
-            <option [value]="o.id" [selected]="bulkReassignTo() === '' + o.id">{{ o.name }}</option>
+            <option [value]="o.id" [selected]="bulkReassignTo() === '' + o.id">{{ o.name | fig }}</option>
           }
         </select>
         <button type="button" data-testid="bulk-reassign" (click)="bulkReassign()">Reassign selected claims</button>
         @if (bulkReassignResult(); as r) {
-          Reassigned <strong data-testid="bulk-reassigned">{{ r.reassigned }}</strong>,
-          refused <strong data-testid="bulk-reassign-refused">{{ r.refused }}</strong>
+          Reassigned <strong data-testid="bulk-reassigned">{{ r.reassigned | fig }}</strong>,
+          refused <strong data-testid="bulk-reassign-refused">{{ r.refused | fig }}</strong>
         }
       </p>
       @if (bulkReassignError(); as message) {
-        <p role="alert" data-testid="bulk-reassign-error">{{ message }}</p>
+        <p role="alert" data-testid="bulk-reassign-error">{{ message | fig }}</p>
       }
       <p>
         <label for="bulk-redate-date">Re-date selected claims to</label>
@@ -659,12 +660,12 @@ function csvField(value: string): string {
         />
         <button type="button" data-testid="bulk-redate" (click)="bulkRedate()">Re-date selected claims</button>
         @if (bulkRedateResult(); as r) {
-          Re-dated <strong data-testid="bulk-redated">{{ r.redated }}</strong>,
-          refused <strong data-testid="bulk-redate-refused">{{ r.refused }}</strong>
+          Re-dated <strong data-testid="bulk-redated">{{ r.redated | fig }}</strong>,
+          refused <strong data-testid="bulk-redate-refused">{{ r.refused | fig }}</strong>
         }
       </p>
       @if (bulkRedateError(); as message) {
-        <p role="alert" data-testid="bulk-redate-error">{{ message }}</p>
+        <p role="alert" data-testid="bulk-redate-error">{{ message | fig }}</p>
       }
       <p>
         <label for="bulk-grade">Grade for selected people</label>
@@ -675,7 +676,7 @@ function csvField(value: string): string {
           (change)="bulkGradeValue.set(value($event)); clearBulkGradeError()"
         >
           @for (g of grades; track g) {
-            <option [value]="g" [selected]="g === bulkGradeValue()">{{ g }}</option>
+            <option [value]="g" [selected]="g === bulkGradeValue()">{{ g | fig }}</option>
           }
         </select>
         <label for="bulk-grade-from">From (blank: today)</label>
@@ -688,7 +689,7 @@ function csvField(value: string): string {
         />
         <button type="button" data-testid="bulk-grade-apply" (click)="bulkGrade()">Grade selected people</button>
         @if (bulkGraded() !== null) {
-          Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong>
+          Changed <strong data-testid="bulk-graded">{{ bulkGraded() | fig }}</strong>
         }
       </p>
       <p>
@@ -702,18 +703,18 @@ function csvField(value: string): string {
         />
         <button type="button" data-testid="bulk-retire" (click)="bulkRetire()">Retire selected people</button>
         @if (bulkRetired() !== null) {
-          Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong>
+          Retired <strong data-testid="bulk-retired">{{ bulkRetired() | fig }}</strong>
         }
       </p>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
-      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
-      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
-      <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
-      <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
-      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
-      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
+      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | fig }}</strong></p>
+      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() | fig }}</strong></p>
+      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | fig }}</strong></p>
+      <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() | fig }}</strong></p>
+      <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() | fig }}</strong></p>
+      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() | fig }}</strong></p>
+      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() | fig }}</strong></p>
       @if (tagTotals().length > 0) {
         <table>
           <caption>Due total by tag</caption>
@@ -723,8 +724,8 @@ function csvField(value: string): string {
           <tbody>
             @for (t of tagTotals(); track t.tag) {
               <tr>
-                <th scope="row">{{ t.tag }}</th>
-                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+                <th scope="row">{{ t.tag | fig }}</th>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal | fig }}</td>
               </tr>
             }
           </tbody>
@@ -739,8 +740,8 @@ function csvField(value: string): string {
           <tbody>
             @for (m of monthTotals(); track m.month) {
               <tr>
-                <th scope="row">{{ m.month }}</th>
-                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
+                <th scope="row">{{ m.month | fig }}</th>
+                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal | fig }}</td>
               </tr>
             }
           </tbody>

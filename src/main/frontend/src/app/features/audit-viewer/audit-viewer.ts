@@ -1,4 +1,5 @@
 import { HttpClient } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -8,6 +9,7 @@ import { Session } from '../../core/session';
 // records nothing.
 @Component({
   selector: 'app-audit-viewer',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="audit-heading">
       <h2 id="audit-heading">Audit</h2>
@@ -21,12 +23,12 @@ import { Session } from '../../core/session';
         />
         <button type="submit" data-testid="audit-show">Show audit</button>
         @if (error(); as message) {
-          <p role="alert" data-testid="audit-error">{{ message }}</p>
+          <p role="alert" data-testid="audit-error">{{ message | fig }}</p>
         }
       </form>
       <ol aria-label="Audit lines">
         @for (line of lines(); track $index) {
-          <li data-testid="audit-line">{{ line }}</li>
+          <li data-testid="audit-line">{{ line | fig }}</li>
         }
       </ol>
     </section>

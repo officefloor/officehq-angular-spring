@@ -56,8 +56,8 @@ public class ImportRatesService {
             throw new ImportRatesException(number, "the grade is not A, B or C");
         }
         String pct = fields[1].trim();
-        if (!pct.matches("\\d{1,3}(\\.\\d{1,2})?")) {
-            throw new ImportRatesException(number, "the rate is not 0.00 to 999.99 with at most two decimals");
+        if (!pct.matches("\\d{1,5}(\\.\\d{1,2})?")) {
+            throw new ImportRatesException(number, "the rate is not 0.00 to 99999.99 with at most two decimals");
         }
         LocalDate from = date(number, "from-date", fields.length > 2 ? fields[2] : "");
         LocalDate to = date(number, "to-date", fields.length > 3 ? fields[3] : "");

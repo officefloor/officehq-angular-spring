@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Plans } from '../../core/plans';
 
@@ -12,6 +13,7 @@ const WHOLE = /^\d{1,6}$/;
 // A person's plans, and the form on their row that adds one.
 @Component({
   selector: 'app-person-plans',
+  imports: [FigurePipe],
   template: `
     <ul [attr.aria-label]="'Plans of ' + personName()">
       @for (pl of plans(); track pl.id) {
@@ -19,8 +21,8 @@ const WHOLE = /^\d{1,6}$/;
           {{ pl.amount }} from {{ pl.start }}
           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
           to {{ pl.end }};
-          made <span data-testid="plan-generated">{{ pl.generated }}</span>;
-          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
+          made <span data-testid="plan-generated">{{ pl.generated | fig }}</span>;
+          next <span data-testid="plan-next-dates">{{ pl.nextDates | fig }}</span>
         </li>
       }
     </ul>
@@ -67,7 +69,7 @@ const WHOLE = /^\d{1,6}$/;
       />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
       @if (error(); as message) {
-        <p role="alert" data-testid="plan-error">{{ message }}</p>
+        <p role="alert" data-testid="plan-error">{{ message | fig }}</p>
       }
     </form>
   `,

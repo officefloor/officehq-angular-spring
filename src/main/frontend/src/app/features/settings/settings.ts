@@ -1,4 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DatedValue, Session } from '../../core/session';
@@ -71,6 +72,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, its note threshold and its review threshold; not dated: its policy date, its period numbering from, its entry date, its grace days, its pot, its alert threshold, its parent sheet and its permission matrix) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
@@ -367,38 +369,38 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
-          <p role="alert" data-testid="settings-error">{{ message }}</p>
+          <p role="alert" data-testid="settings-error">{{ message | fig }}</p>
         }
       </form>
-      <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ session.settingOn('clerk-limit', session.today()) ?? '' }}</strong></p>
-      <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' }}</strong></p>
-      <p>Terms in force: <strong data-testid="setting-terms-current">{{ session.terms() ?? '' }}</strong></p>
+      <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ session.settingOn('clerk-limit', session.today()) ?? '' | fig }}</strong></p>
+      <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' | fig }}</strong></p>
+      <p>Terms in force: <strong data-testid="setting-terms-current">{{ session.terms() ?? '' | fig }}</strong></p>
       @for (g of grades; track g) {
-        <p>Terms for grade {{ g }} in force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.settingOn('terms-' + g, session.today()) ?? '' }}</strong></p>
+        <p>Terms for grade {{ g }} in force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.settingOn('terms-' + g, session.today()) ?? '' | fig }}</strong></p>
       }
       @for (g of grades; track g) {
-        <p>Grace days for grade {{ g }} in force: <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ session.settingOn('grace-' + g, session.today()) ?? '' }}</strong></p>
+        <p>Grace days for grade {{ g }} in force: <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ session.settingOn('grace-' + g, session.today()) ?? '' | fig }}</strong></p>
       }
-      <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' }}</strong></p>
-      <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
-      <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
-      <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' }}</strong></p>
-      <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' }}</strong></p>
-      <p>Fiscal year start month: <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonthCurrent() ?? '' }}</strong></p>
-      <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
-      <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ alertThresholdCurrent() ?? '' }}</strong></p>
-      <p>Parent sheet: <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
-      <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
+      <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' | fig }}</strong></p>
+      <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' | fig }}</strong></p>
+      <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' | fig }}</strong></p>
+      <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' | fig }}</strong></p>
+      <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' | fig }}</strong></p>
+      <p>Fiscal year start month: <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonthCurrent() ?? '' | fig }}</strong></p>
+      <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' | fig }}</strong></p>
+      <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ alertThresholdCurrent() ?? '' | fig }}</strong></p>
+      <p>Parent sheet: <strong data-testid="setting-parent-current">{{ session.parent() ?? '' | fig }}</strong></p>
+      <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' | fig }}</strong></p>
       @for (a of actions; track a) {
-        <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' }}</strong></p>
+        <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' | fig }}</strong></p>
       }
-      <p>Proof threshold in force: <strong data-testid="setting-proof-threshold-current">{{ session.settingOn('proof-threshold', session.today()) ?? '' }}</strong></p>
+      <p>Proof threshold in force: <strong data-testid="setting-proof-threshold-current">{{ session.settingOn('proof-threshold', session.today()) ?? '' | fig }}</strong></p>
       @for (g of grades; track g) {
-        <p>Proof threshold for grade {{ g }} in force: <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ session.settingOn('proof-threshold-' + g, session.today()) ?? '' }}</strong></p>
+        <p>Proof threshold for grade {{ g }} in force: <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ session.settingOn('proof-threshold-' + g, session.today()) ?? '' | fig }}</strong></p>
       }
-      <p>Note threshold in force: <strong data-testid="setting-note-threshold-current">{{ session.settingOn('note-threshold', session.today()) ?? '' }}</strong></p>
-      <p>Review threshold in force: <strong data-testid="setting-review-threshold-current">{{ session.settingOn('review-threshold', session.today()) ?? '' }}</strong></p>
-      <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ session.settingOn('rounding', session.today()) ?? '' }}</strong></p>
+      <p>Note threshold in force: <strong data-testid="setting-note-threshold-current">{{ session.settingOn('note-threshold', session.today()) ?? '' | fig }}</strong></p>
+      <p>Review threshold in force: <strong data-testid="setting-review-threshold-current">{{ session.settingOn('review-threshold', session.today()) ?? '' | fig }}</strong></p>
+      <p>Rounding mode in force: <strong data-testid="setting-rounding-current">{{ session.settingOn('rounding', session.today()) ?? '' | fig }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -425,7 +427,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         </datalist>
         <button type="submit" data-testid="role-form-submit">Set role</button>
         @if (roleError(); as message) {
-          <p role="alert" data-testid="role-form-error">{{ message }}</p>
+          <p role="alert" data-testid="role-form-error">{{ message | fig }}</p>
         }
       </form>
       <table>
@@ -436,8 +438,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <tbody>
           @for (r of roleList(); track r.user) {
             <tr [attr.data-testid]="'role-row-' + r.user">
-              <th scope="row" data-testid="role-user">{{ r.user }}</th>
-              <td data-testid="role-value">{{ r.role }}</td>
+              <th scope="row" data-testid="role-user">{{ r.user | fig }}</th>
+              <td data-testid="role-value">{{ r.role | fig }}</td>
             </tr>
           }
         </tbody>
@@ -469,7 +471,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         />
         <button type="submit" data-testid="delegate-submit">Delegate</button>
         @if (delegateError(); as message) {
-          <p role="alert" data-testid="delegate-error">{{ message }}</p>
+          <p role="alert" data-testid="delegate-error">{{ message | fig }}</p>
         }
       </form>
       <ul aria-label="Delegations">

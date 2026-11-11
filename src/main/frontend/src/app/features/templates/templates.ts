@@ -1,9 +1,11 @@
 import { Component, inject, signal } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 import { Templates } from '../../core/templates';
 
 // The sheet's claim templates: a name, an amount and a note; saving a name again replaces that template.
 @Component({
   selector: 'app-templates',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="templates-heading">
       <h2 id="templates-heading">Claim templates</h2>
@@ -32,7 +34,7 @@ import { Templates } from '../../core/templates';
         />
         <button type="submit" data-testid="template-form-submit">Save template</button>
         @if (error(); as message) {
-          <p role="alert" data-testid="template-form-error">{{ message }}</p>
+          <p role="alert" data-testid="template-form-error">{{ message | fig }}</p>
         }
       </form>
       @if (templates.list().length > 0) {
@@ -44,9 +46,9 @@ import { Templates } from '../../core/templates';
           <tbody>
             @for (t of templates.list(); track t.id) {
               <tr [attr.data-testid]="'template-row-' + t.name">
-                <td data-testid="template-name">{{ t.name }}</td>
-                <td data-testid="template-amount">{{ t.amount }}</td>
-                <td data-testid="template-note">{{ t.note }}</td>
+                <td data-testid="template-name">{{ t.name | fig }}</td>
+                <td data-testid="template-amount">{{ t.amount | fig }}</td>
+                <td data-testid="template-note">{{ t.note | fig }}</td>
               </tr>
             }
           </tbody>

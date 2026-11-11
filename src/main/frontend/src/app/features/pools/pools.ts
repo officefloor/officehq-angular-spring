@@ -1,4 +1,5 @@
 import { HttpClient } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -117,6 +118,7 @@ function csvField(value: string): string {
 // another has its cut in that pool as its pot.
 @Component({
   selector: 'app-pools',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="pools-heading">
       <h2 id="pools-heading">Pools</h2>
@@ -130,20 +132,20 @@ function csvField(value: string): string {
         />
         <button type="submit" data-testid="pool-form-submit">Add pool</button>
         @if (error(); as message) {
-          <p role="alert" data-testid="pool-form-error">{{ message }}</p>
+          <p role="alert" data-testid="pool-form-error">{{ message | fig }}</p>
         }
       </form>
       <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
       @for (p of shown(); track p.id) {
         <div [attr.data-testid]="'pool-row-' + p.name">
-          <h3>{{ p.name }}</h3>
-          <p>Total share <strong data-testid="pool-total-share">{{ p.total }}</strong></p>
-          <p>Balanced <strong data-testid="pool-balanced">{{ p.balanced ? 'yes' : 'no' }}</strong></p>
+          <h3>{{ p.name | fig }}</h3>
+          <p>Total share <strong data-testid="pool-total-share">{{ p.total | fig }}</strong></p>
+          <p>Balanced <strong data-testid="pool-balanced">{{ p.balanced ? 'yes' : 'no' | fig }}</strong></p>
           <ul [attr.aria-label]="'Members of ' + p.name">
             @for (m of p.members; track m.key) {
               <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
-                {{ m.name }}: <span data-testid="pool-share">{{ m.share }}</span>
-                Cut <span data-testid="pool-cut">{{ m.cut }}</span>
+                {{ m.name }}: <span data-testid="pool-share">{{ m.share | fig }}</span>
+                Cut <span data-testid="pool-cut">{{ m.cut | fig }}</span>
                 @if (m.retired) {
                   (retired)
                 }
@@ -192,7 +194,7 @@ function csvField(value: string): string {
             />
             <button type="submit" data-testid="pool-member-add">Add member</button>
             @if (memberErrors()[p.id]; as message) {
-              <p role="alert" data-testid="pool-error">{{ message }}</p>
+              <p role="alert" data-testid="pool-error">{{ message | fig }}</p>
             }
           </form>
         </div>

@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 import { StatusSummary } from '../summary/summary';
 
 // The sheet's counters, shown at all times: its people (retired included), its claims per status as the summary
@@ -6,23 +7,24 @@ import { StatusSummary } from '../summary/summary';
 // and the signed-in user's own due-total and overdue-total, when a person on the sheet has their name.
 @Component({
   selector: 'app-header',
+  imports: [FigurePipe],
   template: `
     <header aria-label="Sheet counters">
       <dl>
         <dt>People</dt>
-        <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
+        <dd data-testid="header-people-count">{{ peopleCount() | fig }}</dd>
         @for (s of statuses(); track s.status) {
-          <dt>{{ s.status }}</dt>
-          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
+          <dt>{{ s.status | fig }}</dt>
+          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count | fig }}</dd>
         }
         <dt>Due total</dt>
-        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
+        <dd data-testid="header-due-total">{{ dueTotal() | fig }}</dd>
         <dt>Overdue total</dt>
-        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+        <dd data-testid="header-overdue-total">{{ overdueTotal() | fig }}</dd>
         <dt>My due total</dt>
-        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
+        <dd data-testid="my-due-total">{{ myDueTotal() | fig }}</dd>
         <dt>My overdue total</dt>
-        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+        <dd data-testid="my-overdue-total">{{ myOverdueTotal() | fig }}</dd>
       </dl>
     </header>
   `,

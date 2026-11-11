@@ -69,7 +69,7 @@ public class RateController {
      * a blank or missing from-date means the rate applies from the beginning of time. An optional to-date likewise:
      * blank or missing means the rate has no end.
      */
-    public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String pct,
+    public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from,
             @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String to) {
 
@@ -138,7 +138,7 @@ public class RateController {
     @GetMapping("/preview")
     public RollupService.RatePreview preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestParam @Pattern(regexp = "[ABC]") String grade,
-            @RequestParam @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String pct,
+            @RequestParam @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return service.preview(sheetId.trim(), grade, new BigDecimal(pct.trim()).setScale(2, RoundingMode.UNNECESSARY));
     }

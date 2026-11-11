@@ -1,9 +1,11 @@
 import { Component, inject, signal } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 import { VoidReasons } from '../../core/void-reasons';
 
 // The sheet's void reasons: while there are any, a claim is voided with one of them.
 @Component({
   selector: 'app-void-reasons',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="void-reasons-heading">
       <h2 id="void-reasons-heading">Void reasons</h2>
@@ -17,12 +19,12 @@ import { VoidReasons } from '../../core/void-reasons';
         />
         <button type="submit" data-testid="void-reason-add">Add void reason</button>
         @if (error(); as message) {
-          <p role="alert" data-testid="void-reason-error">{{ message }}</p>
+          <p role="alert" data-testid="void-reason-error">{{ message | fig }}</p>
         }
       </form>
       <ul aria-label="Void reasons">
         @for (r of reasons.list(); track r.id) {
-          <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ r.reason }}</li>
+          <li [attr.data-testid]="'void-reason-row-' + r.reason">{{ r.reason | fig }}</li>
         }
       </ul>
     </section>

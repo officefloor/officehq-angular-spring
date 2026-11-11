@@ -1,4 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -32,6 +33,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
 // The sheet's periods in date order, each with its due-total and whether it is closed, and the form that adds a period.
 @Component({
   selector: 'app-periods',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -69,7 +71,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
         />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as message) {
-          <p role="alert" data-testid="period-form-error">{{ message }}</p>
+          <p role="alert" data-testid="period-form-error">{{ message | fig }}</p>
         }
       </form>
       <form (submit)="generate($event)">
@@ -103,10 +105,10 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
       @if (generated() !== null) {
-        <p role="status">Made <span data-testid="period-generated">{{ generated() }}</span> periods.</p>
+        <p role="status">Made <span data-testid="period-generated">{{ generated() | fig }}</span> periods.</p>
       }
       @if (generateError(); as message) {
-        <p role="alert" data-testid="period-generate-error">{{ message }}</p>
+        <p role="alert" data-testid="period-generate-error">{{ message | fig }}</p>
       }
       <table>
         <thead>
@@ -116,13 +118,13 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
         <tbody>
           @for (p of periods(); track p.id) {
             <tr [attr.data-testid]="'period-row-' + p.name">
-              <th scope="row" data-testid="period-name">{{ p.name }}</th>
-              <td data-testid="period-from">{{ p.from }}</td>
-              <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.name) ?? '0.00' }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
-              <td data-testid="period-fy">{{ p.fy }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+              <th scope="row" data-testid="period-name">{{ p.name | fig }}</th>
+              <td data-testid="period-from">{{ p.from | fig }}</td>
+              <td data-testid="period-to">{{ p.to | fig }}</td>
+              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.name) ?? '0.00' | fig }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' | fig }}</td>
+              <td data-testid="period-fy">{{ p.fy | fig }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' | fig }}</td>
               <td>
                 <button
                   type="button"
@@ -150,7 +152,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
                 </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
-                    <p role="alert" data-testid="period-error">{{ e.message }}</p>
+                    <p role="alert" data-testid="period-error">{{ e.message | fig }}</p>
                   }
                 }
               </td>

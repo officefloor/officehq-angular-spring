@@ -35,7 +35,7 @@ public class RateLog {
     @Column(name = "to_date")
     private LocalDate toDate;
 
-    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
+    @Column(name = "pct", nullable = false, precision = 7, scale = 2)
     private BigDecimal pct;
 
     @Column(name = "set_on", nullable = false)

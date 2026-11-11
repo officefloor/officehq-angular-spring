@@ -1,4 +1,5 @@
 import { HttpClient } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -8,6 +9,7 @@ import { Session } from '../../core/session';
 // the other sheets' by sheet id. It records nothing.
 @Component({
   selector: 'app-tree-search',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="tree-search-heading">
       <h2 id="tree-search-heading">Search the sheet tree</h2>
@@ -21,13 +23,13 @@ import { Session } from '../../core/session';
         />
         <button type="submit" data-testid="search">Search</button>
         @if (error(); as message) {
-          <p role="alert" data-testid="search-error">{{ message }}</p>
+          <p role="alert" data-testid="search-error">{{ message | fig }}</p>
         }
       </form>
-      <p>Found <strong data-testid="search-count">{{ count() ?? '' }}</strong></p>
+      <p>Found <strong data-testid="search-count">{{ count() ?? '' | fig }}</strong></p>
       <ol aria-label="Search results">
         @for (line of lines(); track $index) {
-          <li data-testid="search-line">{{ line }}</li>
+          <li data-testid="search-line">{{ line | fig }}</li>
         }
       </ol>
     </section>

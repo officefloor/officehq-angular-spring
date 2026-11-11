@@ -102,8 +102,11 @@ public class PlanService {
         return saved;
     }
 
-    /** Make the claims of every plan date due and not yet made: how many were made. */
+    /** Make the claims of every plan date due and not yet made: how many were made (none for a viewer). */
     public int generate(String sheetId, String user) {
+        if (sheets.isViewer(sheetId, user)) {
+            return 0;
+        }
         LocalDate today = sheets.today(sheetId);
         Map<Long, Set<LocalDate>> made = dates.findBySheetId(sheetId).stream()
                 .collect(Collectors.groupingBy(PlanDate::getPlanId,

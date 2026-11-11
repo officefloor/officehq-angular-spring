@@ -1,4 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -168,6 +169,7 @@ export function trimmedSumDues(dues: string[]): string {
 // that sets a grade's rate from a date.
 @Component({
   selector: 'app-rates',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
@@ -180,7 +182,7 @@ export function trimmedSumDues(dues: string[]): string {
           (change)="grade.set(value($event)); error.set(null)"
         >
           @for (g of grades(); track g) {
-            <option [value]="g" [selected]="g === grade()">{{ g }}</option>
+            <option [value]="g" [selected]="g === grade()">{{ g | fig }}</option>
           }
         </select>
         <label for="rate-form-pct">Rate (%)</label>
@@ -209,7 +211,7 @@ export function trimmedSumDues(dues: string[]): string {
         />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as message) {
-          <p role="alert" data-testid="rate-form-error">{{ message }}</p>
+          <p role="alert" data-testid="rate-form-error">{{ message | fig }}</p>
         }
       </form>
       <form (submit)="preview($event)">
@@ -221,7 +223,7 @@ export function trimmedSumDues(dues: string[]): string {
           (change)="previewGrade.set(value($event)); previewResult.set(null); previewError.set(null)"
         >
           @for (g of grades(); track g) {
-            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+            <option [value]="g" [selected]="g === previewGrade()">{{ g | fig }}</option>
           }
         </select>
         <label for="rate-preview-pct">Candidate rate (%)</label>
@@ -235,12 +237,12 @@ export function trimmedSumDues(dues: string[]): string {
         <button type="submit" data-testid="rate-preview">Preview</button>
         @if (previewResult(); as result) {
           <p>
-            Claims changed: <span data-testid="rate-preview-count">{{ result.count }}</span>;
-            difference: <span data-testid="rate-preview-diff">{{ result.diff }}</span>
+            Claims changed: <span data-testid="rate-preview-count">{{ result.count | fig }}</span>;
+            difference: <span data-testid="rate-preview-diff">{{ result.diff | fig }}</span>
           </p>
         }
         @if (previewError(); as message) {
-          <p role="alert" data-testid="rate-preview-error">{{ message }}</p>
+          <p role="alert" data-testid="rate-preview-error">{{ message | fig }}</p>
         }
       </form>
       <form aria-label="Import rates" (submit)="importRates($event)">
@@ -254,10 +256,10 @@ export function trimmedSumDues(dues: string[]): string {
         ></textarea>
         <button type="submit" data-testid="import-rates-submit">Import rates</button>
         @if (importSet() !== null) {
-          Set <strong data-testid="import-rates-set">{{ importSet() }}</strong>
+          Set <strong data-testid="import-rates-set">{{ importSet() | fig }}</strong>
         }
         @if (importError(); as message) {
-          <p role="alert" data-testid="import-rates-error">{{ message }}</p>
+          <p role="alert" data-testid="import-rates-error">{{ message | fig }}</p>
         }
       </form>
       <table>
@@ -268,8 +270,8 @@ export function trimmedSumDues(dues: string[]): string {
         <tbody>
           @for (g of grades(); track g) {
             <tr>
-              <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">{{ current(g) ?? 'n/a' }}</td>
+              <th scope="row">{{ g | fig }}</th>
+              <td [attr.data-testid]="'rate-current-' + g">{{ current(g) ?? 'n/a' | fig }}</td>
             </tr>
           }
         </tbody>
@@ -282,11 +284,11 @@ export function trimmedSumDues(dues: string[]): string {
         <tbody>
           @for (r of ownRates(); track r.grade + '-' + r.from) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
-              <th scope="row">{{ r.grade }}</th>
-              <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
-              <td data-testid="rate-to">{{ r.to ?? 'no end' }}</td>
-              <td data-testid="rate-pct">{{ r.pct }}</td>
-              <td data-testid="rate-version">{{ r.version }}</td>
+              <th scope="row">{{ r.grade | fig }}</th>
+              <td data-testid="rate-from">{{ r.from ?? 'always' | fig }}</td>
+              <td data-testid="rate-to">{{ r.to ?? 'no end' | fig }}</td>
+              <td data-testid="rate-pct">{{ r.pct | fig }}</td>
+              <td data-testid="rate-version">{{ r.version | fig }}</td>
             </tr>
           }
         </tbody>
@@ -354,8 +356,8 @@ export class Rates {
     const sheet = this.session.sheet();
     if (!sheet) return;
     const pct = this.pct().trim();
-    if (!/^\d{1,3}(\.\d{1,2})?$/.test(pct)) {
-      this.error.set('Type a rate from 0.00 to 999.99 percent, with at most two decimals.');
+    if (!/^\d{1,5}(\.\d{1,2})?$/.test(pct)) {
+      this.error.set('Type a rate from 0.00 to 99999.99 percent, with at most two decimals.');
       return;
     }
     const from = this.from().trim();
@@ -407,8 +409,8 @@ export class Rates {
     const sheet = this.session.sheet();
     if (!sheet) return;
     const pct = this.previewPct().trim();
-    if (!/^\d{1,3}(\.\d{1,2})?$/.test(pct)) {
-      this.previewError.set('Type a candidate rate from 0.00 to 999.99 percent, with at most two decimals.');
+    if (!/^\d{1,5}(\.\d{1,2})?$/.test(pct)) {
+      this.previewError.set('Type a candidate rate from 0.00 to 99999.99 percent, with at most two decimals.');
       return;
     }
     try {

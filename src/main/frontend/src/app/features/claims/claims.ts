@@ -1,4 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, OnInit, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -256,6 +257,7 @@ export function sumAmounts(amounts: string[]): string {
 // opened, saves that claim. Rendered as a table cell inside the person's row.
 @Component({
   selector: 'td[app-claims]',
+  imports: [FigurePipe],
   template: `
     <form (submit)="submit($event)">
       <label [for]="fieldId('amount')">Amount</label>
@@ -306,7 +308,7 @@ export function sumAmounts(amounts: string[]): string {
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
       @if (error(); as message) {
-        <p role="alert" data-testid="claim-form-error">{{ message }}</p>
+        <p role="alert" data-testid="claim-form-error">{{ message | fig }}</p>
       }
     </form>
     <div>
@@ -318,7 +320,7 @@ export function sumAmounts(amounts: string[]): string {
       >
         <option value="" [selected]="template() === ''">No template</option>
         @for (t of templates.list(); track t.id) {
-          <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
+          <option [value]="t.name" [selected]="template() === t.name">{{ t.name | fig }}</option>
         }
       </select>
       <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">Add claim from template</button>
@@ -345,27 +347,27 @@ export function sumAmounts(amounts: string[]): string {
                   (change)="selectToggled.emit({ id: c.id, checked: checked($event) })"
                 />
               </td>
-              <td data-testid="claim-number">{{ c.number ?? '' }}</td>
-              <td data-testid="claim-amount">{{ c.amount }}</td>
-              <td data-testid="claim-date">{{ c.date }}</td>
-              <td data-testid="claim-note">{{ c.note }}</td>
-              <td data-testid="claim-due">{{ due(c) }}</td>
-              <td data-testid="claim-due-by">{{ c.dueBy }}</td>
-              <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</td>
-              <td data-testid="claim-status">{{ c.status }}</td>
-              <td data-testid="claim-batch">{{ c.settleBatch ?? '' }}</td>
-              <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
-              <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
-              <td data-testid="claim-period">{{ periodOf(c) }}</td>
-              <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
-              <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
-              <td data-testid="claim-tags">{{ tagsShown(c) }}</td>
-              <td data-testid="claim-deferred">{{ deferralRunning(c) ? 'yes' : 'no' }}</td>
-              <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
-              <td data-testid="claim-proofs">{{ c.proofs }}</td>
-              <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
-              <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</td>
-              <td data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</td>
+              <td data-testid="claim-number">{{ c.number ?? '' | fig }}</td>
+              <td data-testid="claim-amount">{{ c.amount | fig }}</td>
+              <td data-testid="claim-date">{{ c.date | fig }}</td>
+              <td data-testid="claim-note">{{ c.note | fig }}</td>
+              <td data-testid="claim-due">{{ due(c) | fig }}</td>
+              <td data-testid="claim-due-by">{{ c.dueBy | fig }}</td>
+              <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="claim-status">{{ c.status | fig }}</td>
+              <td data-testid="claim-batch">{{ c.settleBatch ?? '' | fig }}</td>
+              <td data-testid="claim-opened-by">{{ c.openedBy ?? '' | fig }}</td>
+              <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="claim-period">{{ periodOf(c) | fig }}</td>
+              <td data-testid="claim-corrects">{{ c.corrects ?? '' | fig }}</td>
+              <td data-testid="claim-ref">{{ c.ref ?? '' | fig }}</td>
+              <td data-testid="claim-tags">{{ tagsShown(c) | fig }}</td>
+              <td data-testid="claim-deferred">{{ deferralRunning(c) ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' | fig }}</td>
+              <td data-testid="claim-proofs">{{ c.proofs | fig }}</td>
+              <td data-testid="claim-split-from">{{ c.splitFrom ?? '' | fig }}</td>
+              <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="claim-reminded">{{ c.remindedOn ?? '' | fig }}</td>
               <td>
                 <ol class="claim-log">
                   @for (line of c.log; track $index) {
@@ -549,7 +551,7 @@ export function sumAmounts(amounts: string[]): string {
                 >
                   <option value="" [selected]="!reassignTo()[c.id]">Reassign to…</option>
                   @for (o of others(); track o.id) {
-                    <option [value]="o.id" [selected]="reassignTo()[c.id] === '' + o.id">{{ o.name }}</option>
+                    <option [value]="o.id" [selected]="reassignTo()[c.id] === '' + o.id">{{ o.name | fig }}</option>
                   }
                 </select>
                 <button
@@ -578,13 +580,13 @@ export function sumAmounts(amounts: string[]): string {
                   >
                     <option value="" [selected]="!chosenVoidReasons()[c.id]">No void reason</option>
                     @for (r of voidReasons.list(); track r.id) {
-                      <option [value]="r.reason" [selected]="chosenVoidReasons()[c.id] === r.reason">{{ r.reason }}</option>
+                      <option [value]="r.reason" [selected]="chosenVoidReasons()[c.id] === r.reason">{{ r.reason | fig }}</option>
                     }
                   </select>
                 }
                 @if (actionError(); as e) {
                   @if (e.id === c.id) {
-                    <p role="alert" data-testid="claim-error">{{ e.message }}</p>
+                    <p role="alert" data-testid="claim-error">{{ e.message | fig }}</p>
                   }
                 }
               </td>

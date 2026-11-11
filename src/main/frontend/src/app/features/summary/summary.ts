@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { FigurePipe } from '../../core/locale';
 
 /**
  * A grade's line of the summary: how many people not retired are on it today, their due-totals added up, and how many
@@ -36,6 +37,7 @@ export interface VoidReasonSummary {
 // The sheet at a glance: figures per grade, per period, per claim status and per void reason, each agreeing with the lists.
 @Component({
   selector: 'app-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="summary-heading">
       <h2 id="summary-heading">Summary</h2>
@@ -47,10 +49,10 @@ export interface VoidReasonSummary {
         <tbody>
           @for (g of grades(); track g.grade) {
             <tr>
-              <th scope="row">{{ g.grade }}</th>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+              <th scope="row">{{ g.grade | fig }}</th>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count | fig }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal | fig }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active | fig }}</td>
             </tr>
           }
         </tbody>
@@ -63,9 +65,9 @@ export interface VoidReasonSummary {
         <tbody>
           @for (p of periods(); track p.name) {
             <tr>
-              <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+              <th scope="row">{{ p.name | fig }}</th>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal | fig }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change | fig }}</td>
             </tr>
           }
         </tbody>
@@ -78,8 +80,8 @@ export interface VoidReasonSummary {
         <tbody>
           @for (s of statuses(); track s.status) {
             <tr>
-              <th scope="row">{{ s.status }}</th>
-              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
+              <th scope="row">{{ s.status | fig }}</th>
+              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count | fig }}</td>
             </tr>
           }
         </tbody>
@@ -93,8 +95,8 @@ export interface VoidReasonSummary {
           <tbody>
             @for (v of voidReasons(); track v.reason) {
               <tr>
-                <th scope="row">{{ v.reason }}</th>
-                <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count }}</td>
+                <th scope="row">{{ v.reason | fig }}</th>
+                <td [attr.data-testid]="'summary-void-' + v.reason + '-count'">{{ v.count | fig }}</td>
               </tr>
             }
           </tbody>
@@ -120,10 +122,11 @@ export interface ClassicPeriodSummary {
 // closed period's figure as fixed when it closed), and the sheet's due-total with no trimming.
 @Component({
   selector: 'app-classic-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="classic-summary-heading">
       <h2 id="classic-summary-heading">Classic summary</h2>
-      <p>Due total <strong data-testid="classic-due-total">{{ dueTotal() }}</strong></p>
+      <p>Due total <strong data-testid="classic-due-total">{{ dueTotal() | fig }}</strong></p>
       <table>
         <caption>By period (claims counted by their status now)</caption>
         <thead>
@@ -132,8 +135,8 @@ export interface ClassicPeriodSummary {
         <tbody>
           @for (p of periods(); track p.name) {
             <tr>
-              <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <th scope="row">{{ p.name | fig }}</th>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal | fig }}</td>
             </tr>
           }
         </tbody>

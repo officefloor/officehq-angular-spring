@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, linkedSignal, signal } from '@angular/core';
+import { LOCALES, Locale, UserLocale } from '../../core/locale';
 import { Session } from '../../core/session';
 import { AuditViewer } from '../audit-viewer/audit-viewer';
 import { Holidays } from '../holidays/holidays';
@@ -15,6 +16,23 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+      <form (submit)="saveLocale($event)">
+        <label for="user-locale">Locale</label>
+        <select
+          id="user-locale"
+          data-testid="user-locale"
+          (change)="localeInput.set(locale(value($event))); localeError.set(null)"
+        >
+          @for (l of locales; track l) {
+            <option [value]="l" [selected]="l === localeInput()">{{ l }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="user-locale-save">Save locale</button>
+        <span>Locale <strong data-testid="user-locale-current">{{ userLocale.locale() }}</strong></span>
+        @if (localeError(); as error) {
+          <p role="alert" data-testid="user-locale-error">{{ error }}</p>
+        }
+      </form>
       <form (submit)="load($event)">
         <label for="sheet-id">Sheet id</label>
         <input
@@ -99,6 +117,11 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
 })
 export class Home {
   protected readonly session = inject(Session);
+  protected readonly userLocale = inject(UserLocale);
+  protected readonly locales = LOCALES;
+  /** The locale picked in the select; follows the saved one whenever that is read. */
+  protected readonly localeInput = linkedSignal<Locale>(() => this.userLocale.locale());
+  protected readonly localeError = signal<string | null>(null);
   protected readonly name = signal('');
   protected readonly sheetId = signal('');
   protected readonly signinError = signal<string | null>(null);
@@ -123,6 +146,30 @@ export class Home {
     }
     this.signinError.set(null);
     this.session.signIn(name);
+    this.userLocale.locale.set('en');
+    void this.readLocale();
+  }
+
+  protected locale(value: string): Locale {
+    return value === 'de' ? 'de' : 'en';
+  }
+
+  private async readLocale(): Promise<void> {
+    try {
+      await this.userLocale.read();
+    } catch {
+      this.localeError.set('Your locale could not be read.');
+    }
+  }
+
+  protected async saveLocale(event: Event): Promise<void> {
+    event.preventDefault();
+    this.localeError.set(null);
+    try {
+      await this.userLocale.choose(this.localeInput());
+    } catch {
+      this.localeError.set('Your locale could not be saved.');
+    }
   }
 
   protected async load(event: Event): Promise<void> {
@@ -136,6 +183,7 @@ export class Home {
     this.clonedTo.set(null);
     try {
       await this.session.loadSheet(id);
+      void this.readLocale();
     } catch {
       this.sheetError.set(`Sheet ${id} could not be loaded.`);
     }

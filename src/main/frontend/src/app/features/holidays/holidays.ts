@@ -1,4 +1,5 @@
 import { HttpClient } from '@angular/common/http';
+import { FigurePipe } from '../../core/locale';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -15,6 +16,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // The sheet's holidays: a claim added is never due by one of them.
 @Component({
   selector: 'app-holidays',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="holidays-heading">
       <h2 id="holidays-heading">Holidays</h2>
@@ -29,12 +31,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         />
         <button type="submit" data-testid="holiday-add">Add holiday</button>
         @if (error(); as message) {
-          <p role="alert" data-testid="holiday-error">{{ message }}</p>
+          <p role="alert" data-testid="holiday-error">{{ message | fig }}</p>
         }
       </form>
       <ul aria-label="Holidays">
         @for (h of holidays(); track h.id) {
-          <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date }}</li>
+          <li [attr.data-testid]="'holiday-row-' + h.date">{{ h.date | fig }}</li>
         }
       </ul>
     </section>
