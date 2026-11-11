@@ -46,6 +46,8 @@ export interface Claim {
   lateEntry: boolean;
   /** The last day (yyyy-mm-dd) a reminder was written for the claim; null when it was never reminded. */
   remindedOn: string | null;
+  /** The claim's external reference, unique on the sheet regardless of case; null when it has none. */
+  ref: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
@@ -241,6 +243,13 @@ export function sumAmounts(amounts: string[]): string {
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set(null)"
       />
+      <label [for]="fieldId('ref')">Reference</label>
+      <input
+        [id]="fieldId('ref')"
+        data-testid="claim-form-ref"
+        [value]="ref()"
+        (input)="ref.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -254,7 +263,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -282,6 +291,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td data-testid="claim-period">{{ periodOf(c) }}</td>
               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
+              <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
               <td data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
               <td data-testid="claim-proofs">{{ c.proofs }}</td>
@@ -469,6 +479,8 @@ export class Claims implements OnInit {
   protected readonly note = signal('');
   /** The number of the settled claim a correction (a negative amount) corrects. */
   protected readonly corrects = signal('');
+  /** The claim's external reference: blank for none. */
+  protected readonly ref = signal('');
   /** The id of the claim whose editor is open, or null when the form adds a claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -547,6 +559,11 @@ export class Claims implements OnInit {
     return this.claims().find((c) => c.id === this.editing())?.dueBy ?? '';
   }
 
+  /** Whether the claim being edited is shown as a DRAFT. */
+  private editedDraft(): boolean {
+    return this.claims().find((c) => c.id === this.editing())?.status === 'DRAFT';
+  }
+
   /** The closed period the date (a claim's due-by) falls in, or undefined when none does. */
   private closedOn(date: string): Period | undefined {
     const period = periodOn(this.periods(), date);
@@ -576,7 +593,7 @@ export class Claims implements OnInit {
       return;
     }
     const was = this.editing();
-    const form = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
+    const form = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
     this.fill(claim);
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/lock`;
     const locking = firstValueFrom(this.http.post<Claim>(url, null, this.session.headers())).then(
@@ -592,6 +609,7 @@ export class Claims implements OnInit {
           this.date.set(form.date);
           this.note.set(form.note);
           this.corrects.set(form.corrects);
+          this.ref.set(form.ref);
         }
         this.actionError.set({ id: claim.id, message: this.editRefusal(claim, e) ?? 'This claim could not be opened for editing.' });
         return false;
@@ -627,6 +645,7 @@ export class Claims implements OnInit {
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
+    this.ref.set(claim.ref ?? '');
     this.error.set(null);
   }
 
@@ -656,6 +675,7 @@ export class Claims implements OnInit {
     this.date.set('');
     this.note.set('');
     this.corrects.set('');
+    this.ref.set('');
     this.error.set(null);
   }
 
@@ -807,7 +827,7 @@ export class Claims implements OnInit {
       this.actionError.set({ id: claim.id, message: refused });
       return;
     }
-    const body = { amount, date: claim.date, note: claim.note, corrects: claim.corrects };
+    const body = { amount, date: claim.date, note: claim.note, corrects: claim.corrects, ref: claim.ref };
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}`;
     try {
       const saved = await firstValueFrom(this.http.put<Claim>(url, body, this.session.headers()));
@@ -970,12 +990,17 @@ export class Claims implements OnInit {
       this.error.set('Type the number of the settled claim the correction corrects.');
       return;
     }
+    const ref = this.ref().trim();
+    if (ref.length > 255) {
+      this.error.set('Type a reference of at most 255 characters.');
+      return;
+    }
     const date = this.date().trim();
     if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       this.error.set('Pick a date for the claim, or leave it blank for today.');
       return;
     }
-    const body = { amount, date: date || null, note: this.note(), corrects: corrects || null };
+    const body = { amount, date: date || null, note: this.note(), corrects: corrects || null, ref: ref || null };
     const editing = this.editing();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.submitting = true;
@@ -997,6 +1022,8 @@ export class Claims implements OnInit {
         ? ` It is due by a date in the closed period ${closed.name}.`
         : retiredFrom !== null && dated > retiredFrom
           ? ` ${this.personName()} is retired from ${retiredFrom}.`
+          : ref && e instanceof HttpErrorResponse && e.status === 409 && (editing === null || this.editedDraft())
+          ? ` The reference ${ref} is already used on the sheet.`
           : editing !== null && e instanceof HttpErrorResponse && e.status === 409
           ? ' Only a DRAFT claim can be edited.'
           : editing !== null && e instanceof HttpErrorResponse && e.status === 423

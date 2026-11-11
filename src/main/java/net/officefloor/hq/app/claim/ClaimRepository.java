@@ -23,6 +23,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The person's claim with the number (numbers are unique on a sheet). */
     Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 
+    /** Whether a claim on the sheet has the reference, compared without regard to case. */
+    boolean existsBySheetIdAndRefIgnoreCase(String sheetId, String ref);
+
+    /** Whether a claim on the sheet other than the one with the id has the reference, compared without regard to case. */
+    boolean existsBySheetIdAndRefIgnoreCaseAndIdNot(String sheetId, String ref, Long id);
+
     /** The claim, locked until the transaction ends, so two changes of its status do not interleave. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")

@@ -88,6 +88,13 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        return add(sheetId, user, personId, amount, date, note, corrects, null);
+    }
+
+    /** Adds a claim with an external reference (blank: none), refused when the reference is already used on the sheet. */
+    @Transactional
+    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
@@ -102,11 +109,18 @@ public class ClaimService {
         claim.setCorrects(corrects);
         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
         claim.setDueBy(dueBy);
+        // Taking the next list place locks the sheet, so two adds of the same reference do not both pass the check.
         claim.setListed(sheets.nextListed(sheetId));
+        String reference = refOf(ref);
+        if (reference != null && claims.existsBySheetIdAndRefIgnoreCase(sheetId, reference)) {
+            throw new ClaimRefException(reference);
+        }
+        claim.setRef(reference);
         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
-        audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
+        audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved)
+                + (saved.getRef() == null ? "" : " ref=" + saved.getRef()));
         if (saved.isLateEntry()) {
             audit.recordOnCommit(record("LATE_ENTRY", user, person, saved));
         }
@@ -116,7 +130,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
@@ -135,6 +149,11 @@ public class ClaimService {
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()))
                 .requireClaimable(dated);
         LocalDate correctedDate = requireCorrection(sheetId, claim.getPersonId(), amount, corrects);
+        String reference = refOf(ref);
+        if (reference != null && claims.existsBySheetIdAndRefIgnoreCaseAndIdNot(sheetId, reference, id)) {
+            throw new ClaimRefException(reference);
+        }
+        claim.setRef(reference);
         claim.setAmount(amount);
         claim.setCorrects(corrects);
         claim.setDate(dated);
@@ -725,5 +744,10 @@ public class ClaimService {
 
     private static String noteOf(String note) {
         return note == null ? "" : note.trim();
+    }
+
+    /** The reference with surrounding spaces removed; null for a blank one (no reference). */
+    private static String refOf(String ref) {
+        return ref == null || ref.isBlank() ? null : ref.trim();
     }
 }

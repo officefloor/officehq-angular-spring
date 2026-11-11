@@ -99,6 +99,10 @@ public class Claim {
     @Column(name = "locked_by")
     private String lockedBy;
 
+    /** The claim's external reference, surrounding spaces removed; null when it has none. Unique on the sheet, regardless of case. */
+    @Column(name = "ref")
+    private String ref;
+
     protected Claim() {
     }
 
@@ -302,6 +306,14 @@ public class Claim {
 
     public void setLockedBy(String lockedBy) {
         this.lockedBy = lockedBy;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    public void setRef(String ref) {
+        this.ref = ref;
     }
 
     /** Whether a user other than this one has the claim's editor open. */

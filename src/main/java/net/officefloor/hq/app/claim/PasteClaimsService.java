@@ -14,7 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Adds a DRAFT claim per pasted line of name,amount,date,note, in order. The name must be on the sheet (compared as
  * names are); the amount, date and note are taken as the claim form takes them (a blank date is the sheet's entry date while set, else its today, the
- * note may hold commas or be absent). The whole is one change: if any line is refused, nothing is added.
+ * note may hold commas or be absent). A note ending in " #" and a reference gives the claim that external reference
+ * (not part of its note), checked as the claim form's is, so a reference used twice in the paste is refused too. The
+ * whole is one change: if any line is refused, nothing is added.
  */
 @Service
 public class PasteClaimsService {
@@ -24,7 +26,9 @@ public class PasteClaimsService {
 
     private static final int MAX_NOTE = 1000;
 
-    private record Line(Long personId, BigDecimal amount, LocalDate date, String note) {
+    private static final int MAX_REF = 255;
+
+    private record Line(Long personId, BigDecimal amount, LocalDate date, String note, String ref) {
     }
 
     private final PersonRepository people;
@@ -50,7 +54,7 @@ public class PasteClaimsService {
         }
         // Each claim is checked as the claim form's are; a refused one rolls back those added before it.
         for (Line line : lines) {
-            claims.add(sheetId, user, line.personId(), line.amount(), line.date(), line.note(), null);
+            claims.add(sheetId, user, line.personId(), line.amount(), line.date(), line.note(), null, line.ref());
         }
         return lines.size();
     }
@@ -72,10 +76,19 @@ public class PasteClaimsService {
         } catch (DateTimeParseException e) {
             throw new PasteClaimsException(number, "the date is not yyyy-mm-dd");
         }
-        String note = fields.length > 3 ? fields[3] : "";
+        String note = fields.length > 3 ? fields[3].trim() : "";
+        String ref = null;
+        int hash = note.lastIndexOf(" #");
+        if (hash >= 0 && !note.substring(hash + 2).isBlank()) {
+            ref = note.substring(hash + 2).trim();
+            note = note.substring(0, hash);
+        }
         if (note.length() > MAX_NOTE) {
             throw new PasteClaimsException(number, "the note is too long");
         }
-        return new Line(person.getId(), amount, date, note);
+        if (ref != null && ref.length() > MAX_REF) {
+            throw new PasteClaimsException(number, "the reference is too long");
+        }
+        return new Line(person.getId(), amount, date, note, ref);
     }
 }
