@@ -1,0 +1,92 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 81cd403b5..0121da1ba 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -27,6 +27,11 @@ export function counts(claim: Claim): boolean {
+   return claim.status === 'OPEN' || claim.status === 'SETTLED';
+ }
+ 
++/** The due fixed when the claim was settled, else its amount times its grade's rate on its date, or n/a with no rate. */
++export function claimDue(claim: Claim, rates: Rate[], grade: string): string {
++  return claim.settledDue ?? dueOf(claim.amount, rateOn(rates, grade, claim.date));
++}
++
+ type ClaimAction = 'open' | 'settle' | 'void';
+ 
+ /** Sums amounts with two decimals exactly, in whole cents. */
+@@ -160,7 +165,7 @@ export class Claims {
+ 
+   /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
+   protected due(claim: Claim): string {
+-    return claim.settledDue ?? dueOf(claim.amount, rateOn(this.rates(), this.grade(), claim.date));
++    return claimDue(claim, this.rates(), this.grade());
+   }
+ 
+   protected value(event: Event): string {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2ca9e9ffc..b9637ef4e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,8 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { Claim, Claims, counts, sumAmounts } from '../claims/claims';
+-import { Rate, Rates, dueOf, rateOn, sumDues } from '../rates/rates';
++import { Claim, Claims, claimDue, counts, sumAmounts } from '../claims/claims';
++import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
+ 
+ interface Person {
+   id: number;
+@@ -154,9 +154,14 @@ export class People {
+     return today === null ? undefined : rateOn(this.rates(), grade, today);
+   }
+ 
+-  /** The person's claimed times their grade's rate in force today, or n/a when none is. */
++  /**
++   * The sum of the person's OPEN and SETTLED claims' dues, each already rounded, skipping the n/a ones; n/a when
++   * their grade has no rate in force today, unless a settled claim keeps a fixed due.
++   */
+   protected dueTotalOf(person: Person): string {
+-    return dueOf(this.claimedBy(person.id), this.rateOf(person.grade));
++    const counted = this.claimsOf(person.id).filter(counts);
++    if (this.rateOf(person.grade) === undefined && !counted.some((c) => c.settledDue !== null)) return 'n/a';
++    return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade)));
+   }
+ 
+   /** Show a set rate at once, then re-read so the screen holds what the store does. */
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index a11e6f0c9..9a6ca8978 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -31,11 +31,14 @@ function hundredths(value: string): bigint {
+   return BigInt(whole || '0') * 100n + BigInt((fraction + '00').slice(0, 2));
+ }
+ 
+-/** An amount times a percent, divided by 100 and rounded half up to two decimals; n/a with no rate. */
++/** An amount times a percent, divided by 100 and rounded half to even to two decimals; n/a with no rate. */
+ export function dueOf(amount: string, pct: string | undefined): string {
+   if (pct === undefined) return 'n/a';
+-  // cents times hundredths of a percent are millionths of a unit: round them to cents.
+-  const cents = (hundredths(amount) * hundredths(pct) + 5000n) / 10000n;
++  // cents times hundredths of a percent are millionths of a unit: round them to cents, a half to the even cent.
++  const millionths = hundredths(amount) * hundredths(pct);
++  const rest = millionths % 10000n;
++  let cents = millionths / 10000n;
++  if (rest > 5000n || (rest === 5000n && cents % 2n === 1n)) cents += 1n;
+   return `${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`;
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dc35d2833..5efdb18a6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -76,7 +76,7 @@ public class ClaimService {
+         if (status == ClaimStatus.SETTLED) {
+             BigDecimal settledDue = rates.rateOn(sheetId, person.getGrade(), claim.getDate())
+                     .map(Rate::getPct)
+-                    .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
++                    .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                     .orElse(null);
+             claim.setSettledDue(settledDue);
+             due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
