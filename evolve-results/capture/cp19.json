@@ -1,0 +1,64 @@
+{
+  "checkpoint": 19,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp19_quick-add",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A quick-add bar on the people list takes a name and an amount and creates a DRAFT claim with that\namount, dated the sheet's today, with an empty note, for the named person. If the name is not on\nthe sheet the person is created first with grade A. Every rule that applies to the person and\nclaim forms applies here, and a refusal shows an error on the bar. The whole quick-add is one\nchange: a refused claim leaves no new person behind and writes nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA quick-add bar on the people list takes a name and an amount and creates a DRAFT claim with that\namount, dated the sheet's today, with an empty note, for the named person. If the name is not on\nthe sheet the person is created first with grade A. Every rule that applies to the person and\nclaim forms applies here, and a refusal shows an error on the bar. The whole quick-add is one\nchange: a refused claim leaves no new person behind and writes nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ea28bd1efc5139f6b34ad3443e00ff7b629fe761",
+  "reset_sha": "",
+  "preagent_sha": "0b88d393bf7ebe5a6a302a5fbe34ea795e4652e0",
+  "prev_sha": "0b88d393bf7ebe5a6a302a5fbe34ea795e4652e0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6735014,
+    "input_tokens": 26,
+    "output_tokens": 6375,
+    "cache_read_tokens": 483527,
+    "cache_creation_tokens": 56149,
+    "num_turns": 15,
+    "duration_ms": 218453,
+    "duration_api_ms": 61444,
+    "model": "claude-opus-5-5",
+    "session_id": "011ec395-6826-4306-9763-d9e4469c32e6",
+    "stop_reason": "success",
+    "result_text": "I added the quick-add bar to the people list, and all 4 acceptance tests pass in `bin/e2e`.\n\n**What it does:** you type a name and an amount, and it adds a DRAFT claim for that amount, dated the sheet's today, with an empty note. Names are matched ignoring case and surrounding spaces, so \" dot \" lands on Dot. If no one on the sheet has that name, the person is added first with grade A.\n\n**Server:**\n- A new `POST /api/sheets/{sheetId}/quick-add` endpoint (`claim/QuickAddController.java`) checks the name and amount the same way the person and claim forms do.\n- `claim/QuickAddService.java` does the whole quick-add in one transaction. It finds the person by name, or adds them through the usual person-adding code, then adds the claim through the usual claim-adding code. That means every existing rule still applies, such as a unique name and no claims in a closed period.\n- If the claim is refused, the whole transaction is rolled back, so no new person is left behind. Audit records are only written once the change is saved, so a refusal writes nothing to the audit file.\n- `PersonRepository` has one new lookup by name.\n\n**Front end** (`features/people/people.ts`): the bar has the test ids `quick-name`, `quick-amount`, `quick-submit` and `quick-error`. A blank name or a bad amount is refused in the browser before anything is sent. If the server refuses the add, the bar shows an error, which mentions the period by name when today falls in a closed one. Typing in the bar clears the error. After a successful add, the screen re-reads the sheet, so a newly created person's row appears straight away.\n\nNo database migration was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6735014,
+        "num_turns": 15,
+        "duration_ms": 218453,
+        "duration_api_ms": 61444,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp19.agent.jsonl",
+  "agent_diff_file": "cp19.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
