@@ -1,0 +1,592 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index 35843dd8a..44e3c37a2 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -2,11 +2,11 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/
+ import { provideHttpClient, withInterceptors } from '@angular/common/http';
+ import { provideRouter } from '@angular/router';
+ import { routes } from './app.routes';
+-import { asOfInterceptor } from './core/as-of.interceptor';
++import { asOfInterceptor, previewInterceptor } from './core/as-of.interceptor';
+ import { inFlightInterceptor } from './core/in-flight.interceptor';
+ 
+ // The app's wiring: the router and the HTTP client (which sends the screen's as-of date and counts
+ // the requests still waiting for their answer).
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor, inFlightInterceptor]))],
++  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor, previewInterceptor, inFlightInterceptor]))],
+ };
+diff --git a/src/main/frontend/src/app/core/as-of.interceptor.ts b/src/main/frontend/src/app/core/as-of.interceptor.ts
+index ffb698225..c4e53573a 100644
+--- a/src/main/frontend/src/app/core/as-of.interceptor.ts
++++ b/src/main/frontend/src/app/core/as-of.interceptor.ts
+@@ -7,3 +7,9 @@ export const asOfInterceptor: HttpInterceptorFn = (req, next) => {
+   const asOf = inject(Session).asOf();
+   return asOf && req.url.startsWith('/api/') ? next(req.clone({ setHeaders: { 'X-As-Of': asOf } })) : next(req);
+ };
++
++/** Sends the date the signed-in user previews the sheet's figures on with every API request, when one is set. */
++export const previewInterceptor: HttpInterceptorFn = (req, next) => {
++  const preview = inject(Session).preview();
++  return preview && req.url.startsWith('/api/') ? next(req.clone({ setHeaders: { 'X-Preview': preview } })) : next(req);
++};
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 9ed8eb620..41ad397a1 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -73,6 +73,19 @@ export class Session {
+    * the date, and refuses every change. Kept when another sheet is loaded.
+    */
+   readonly asOf = signal<string | null>(null);
++  /** The preview date each user has set on this screen, kept when another sheet is loaded. */
++  private readonly previews = signal<ReadonlyMap<string, string>>(new Map());
++  /**
++   * The date the signed-in user previews the sheet on (none: its today). Sent with every request
++   * (see previewInterceptor): the store works out every figure as if the sheet's today were that
++   * date, over its current records, while every change still uses the sheet's real today.
++   */
++  readonly preview = computed(() => this.previews().get(this.user() ?? '') ?? null);
++  /**
++   * The day the screen works its figures out on: the preview date when one is set (and the sheet is
++   * not shown as of a date), else the sheet's today. Defaults and checks of changes use `today()`.
++   */
++  readonly figureDay = computed(() => (this.asOf() ? this.today() : (this.preview() ?? this.today())));
+   /** Counts sheet loads, so features re-read the store each time a sheet is (re-)loaded. */
+   readonly loads = signal(0);
+   /** How many API requests are waiting for their answer (see inFlightInterceptor). */
+@@ -141,6 +154,26 @@ export class Session {
+     if (id) await this.loadSheet(id);
+   }
+ 
++  /** Preview the active sheet's figures on a date, re-read from the store. */
++  async setPreview(date: string): Promise<void> {
++    const user = this.user() ?? '';
++    this.previews.update((all) => new Map(all).set(user, date));
++    const id = this.sheet();
++    if (id) await this.loadSheet(id);
++  }
++
++  /** Show the active sheet's figures on its today again, re-read from the store. */
++  async clearPreview(): Promise<void> {
++    const user = this.user() ?? '';
++    this.previews.update((all) => {
++      const next = new Map(all);
++      next.delete(user);
++      return next;
++    });
++    const id = this.sheet();
++    if (id) await this.loadSheet(id);
++  }
++
+   async setToday(today: string): Promise<void> {
+     const res = await firstValueFrom(
+       this.http.post<SheetResponse>('/api/sheets/today', { id: this.sheet(), user: this.user(), today }),
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 82a1f77fc..c48423331 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -797,7 +797,7 @@ export class PersonClaims {
+     const late: Lateness = {
+       latePcts: this.latePcts(),
+       graces: this.graces(),
+-      today: this.session.today(),
++      today: this.session.figureDay(),
+       policyDate: this.policyDate(),
+       roundings: this.roundings(),
+     };
+@@ -810,17 +810,17 @@ export class PersonClaims {
+   }
+ 
+   protected overdueOf(c: Claim): boolean {
+-    return overdue(c, this.session.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
++    return overdue(c, this.session.figureDay(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
+   }
+ 
+   /** Whether the claim shows as late for review (see reviewLate). */
+   protected reviewLateOf(c: Claim): boolean {
+-    return reviewLate(c, this.session.today(), this.session.reviewSla());
++    return reviewLate(c, this.session.figureDay(), this.session.reviewSla());
+   }
+ 
+   /** Whether the claim shows as deferred: its deferral date not yet reached, a voided claim keeping its deferral. */
+   protected deferredOf(c: Claim): boolean {
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     return c.status === 'VOID' ? c.deferredUntil !== null && today !== null && today < c.deferredUntil : deferred(c, today);
+   }
+ 
+@@ -1231,7 +1231,7 @@ export class PersonClaims {
+             : status === 400
+               ? 'Enter an amount more than 0.00 and less than this claim\'s amount.'
+               : status === 409
+-                ? deferred(c, this.session.today())
++                ? deferred(c, this.session.figureDay())
+                   ? `This claim is deferred until ${c.deferredUntil} and cannot be split before then.`
+                   : `A ${c.status} claim cannot be split.`
+                 : 'Could not split this claim.';
+@@ -1283,7 +1283,7 @@ export class PersonClaims {
+               : status === 400
+                 ? 'Enter an amount more than 0.00 and less than this claim\'s amount.'
+                 : status === 409
+-                  ? deferred(c, this.session.today())
++                  ? deferred(c, this.session.figureDay())
+                     ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
+                     : `A ${c.status} claim cannot be part-settled.`
+                   : 'Could not settle part of this claim.';
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 0c678b9e6..8e29056d3 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -87,6 +87,22 @@ import { People } from '../people/people';
+               <p role="alert" data-testid="asof-error">{{ err }}</p>
+             }
+           </form>
++          <form aria-label="Preview date" (submit)="setPreview($event)">
++            <p>Preview <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></p>
++            <label for="preview-date">Preview figures on</label>
++            <input
++              id="preview-date"
++              type="date"
++              data-testid="preview-date"
++              [value]="previewInput()"
++              (input)="previewInput.set($any($event.target).value); previewError.set(null)"
++            />
++            <button type="submit" data-testid="preview-set">Set preview</button>
++            <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
++            @if (previewError(); as err) {
++              <p role="alert" data-testid="preview-error">{{ err }}</p>
++            }
++          </form>
+           <app-people />
+         } @else {
+           <p data-testid="sheet-none">No sheet loaded.</p>
+@@ -121,6 +137,8 @@ export class Home {
+   protected readonly todayInput = signal('');
+   protected readonly asOfInput = signal('');
+   protected readonly asOfError = signal<string | null>(null);
++  protected readonly previewInput = signal('');
++  protected readonly previewError = signal<string | null>(null);
+   protected readonly cloneInput = signal('');
+   /** The id of the last clone made of the sheet from this screen; blank for none. */
+   protected readonly clonedTo = signal('');
+@@ -205,6 +223,30 @@ export class Home {
+     }
+   }
+ 
++  protected async setPreview(event: Event): Promise<void> {
++    event.preventDefault();
++    this.previewError.set(null);
++    const date = this.previewInput().trim();
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
++      this.previewError.set('Enter a date to preview the figures on.');
++      return;
++    }
++    try {
++      await this.session.setPreview(date);
++    } catch {
++      this.previewError.set('Could not preview the figures on that date.');
++    }
++  }
++
++  protected async clearPreview(): Promise<void> {
++    this.previewError.set(null);
++    try {
++      await this.session.clearPreview();
++    } catch {
++      this.previewError.set('Could not show the figures on the sheet\'s today.');
++    }
++  }
++
+   protected async cloneSheet(event: Event): Promise<void> {
+     event.preventDefault();
+     this.sheetError.set(null);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b4d931cb8..9e51a53c0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1312,7 +1312,7 @@ export class People {
+    *  person's due-total can be. */
+   protected readonly caps = signal<DatedValue[]>([]);
+   private readonly capCents = computed(() => {
+-    const cap = valueOn(this.caps(), this.session.today(), '');
++    const cap = valueOn(this.caps(), this.session.figureDay(), '');
+     return cap === '' ? null : cents(cap);
+   });
+   /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
+@@ -1353,7 +1353,7 @@ export class People {
+   private readonly lateness = computed<Lateness>(() => ({
+     latePcts: this.latePcts(),
+     graces: this.graces(),
+-    today: this.session.today(),
++    today: this.session.figureDay(),
+     policyDate: this.policyDate(),
+     roundings: this.roundings(),
+   }));
+@@ -1361,7 +1361,7 @@ export class People {
+    *  the end of a day, for the periods' due-totals. */
+   protected readonly dues = computed(() => {
+     const out: DatedDue[] = [];
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     for (const c of this.claims()) {
+       const p = this.peopleById().get(c.personId);
+       if (p === undefined) continue;
+@@ -1402,7 +1402,7 @@ export class People {
+   protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
+   /** Each grade's rate in force on the sheet's today. */
+   protected readonly pctOf = computed(() => {
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     return new Map<string, string | undefined>(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
+   });
+   /** The sheet's due-total: people's due-totals added up (skipping n/a), trimmed. */
+@@ -1558,7 +1558,7 @@ export class People {
+     const totals = new Map<string, number>(this.usedTags().map((t) => [t, 0]));
+     for (const c of this.claims()) for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
+     for (const p of this.people()) for (const t of p.tags) if (!totals.has(t)) totals.set(t, 0);
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     for (const p of this.people()) {
+       for (const c of this.claimsOf(p.id)) {
+         const tags = new Set([...c.tags, ...p.tags]);
+@@ -1576,7 +1576,7 @@ export class People {
+   protected readonly monthTotals = computed(() => {
+     const totals = new Map<string, number>();
+     for (const c of this.claims()) totals.set(c.date.slice(0, 7), 0);
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     for (const p of this.people()) {
+       for (const c of this.claimsOf(p.id)) {
+         if (!countsFor(p, c, today)) continue;
+@@ -1646,7 +1646,7 @@ export class People {
+   });
+   /** How many of the sheet's REVIEW claims are late for review on its today. */
+   protected readonly reviewLateCount = computed(() =>
+-    this.claims().filter((c) => reviewLate(c, this.session.today(), this.session.reviewSla())).length,
++    this.claims().filter((c) => reviewLate(c, this.session.figureDay(), this.session.reviewSla())).length,
+   );
+   protected readonly voidReasons = inject(VoidReasonList);
+   /** Per reason on the sheet's void reasons: how many VOID claims were voided with it. */
+@@ -1789,7 +1789,7 @@ export class People {
+ 
+   /** The person's grade in force on the sheet's today. */
+   protected gradeToday(p: Person): string {
+-    return gradeOn(p.grades, this.session.today());
++    return gradeOn(p.grades, this.session.figureDay());
+   }
+ 
+   /** The person's name as the screen shows it: "<name> (<grade in force on the sheet's today>)". */
+@@ -1813,7 +1813,7 @@ export class People {
+ 
+   /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does. */
+   private countedCents(p: Person | undefined, c: Claim): number {
+-    return countsFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
++    return countsFor(p, c, this.session.figureDay()) && !isCorrection(c) ? cents(c.amount) : 0;
+   }
+ 
+   /**
+@@ -1904,7 +1904,7 @@ export class People {
+    */
+   private figuresOf(p: Person): number | null {
+     const figures = this.claimsOf(p.id)
+-      .filter((c) => countsFor(p, c, this.session.today()))
++      .filter((c) => countsFor(p, c, this.session.figureDay()))
+       .map((c) => {
+         const f = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
+         return f === null ? null : ownPart(c, f);
+@@ -1922,7 +1922,7 @@ export class People {
+    * ones; a person holding none is absent.
+    */
+   private readonly heldParts = computed(() => {
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     const parts = new Map<number, { settled: number; open: number }>();
+     for (const c of this.claims()) {
+       if ((c.shares ?? []).length === 0) continue;
+@@ -1946,7 +1946,7 @@ export class People {
+   protected settledOpenOf(p: Person): { settled: number; open: number } {
+     const out = { settled: 0, open: 0 };
+     for (const c of this.claimsOf(p.id)) {
+-      if (!countsFor(p, c, this.session.today())) continue;
++      if (!countsFor(p, c, this.session.figureDay())) continue;
+       const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
+       const own = figure === null ? 0 : ownPart(c, figure);
+       if (isOpen(c)) out.open += own;
+@@ -1965,7 +1965,7 @@ export class People {
+    * 30 days up to and including the sheet's today.
+    */
+   protected isActive(p: Person): boolean {
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     if (!today) return false;
+     const since = plusDays(today, -29);
+     return this.claimsOf(p.id).some(
+@@ -1978,7 +1978,7 @@ export class People {
+    * sheet's today: 0 to 30 days (a claim dated after today included), 31 to 60, and 61 or more.
+    */
+   protected agedOf(p: Person): [number, number, number] {
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     const aged: [number, number, number] = [0, 0, 0];
+     if (!today) return aged;
+     for (const c of this.claimsOf(p.id)) {
+@@ -1992,8 +1992,8 @@ export class People {
+ 
+   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
+   protected overdueOf(p: Person): { count: number; cents: number } {
+-    const today = this.session.today();
+-    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.today())
++    const today = this.session.figureDay();
++    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.figureDay())
+       && overdue(c, today, graceOn(this.graces(), gradeOn(p.grades, c.date), c.date)));
+     return {
+       count: late.length,
+@@ -2007,7 +2007,7 @@ export class People {
+    * even to a whole number.
+    */
+   protected scoreOf(p: Person): number {
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     let settled = 0;
+     for (const c of this.claimsOf(p.id)) {
+       if (isOpen(c) || !countsFor(p, c, today) || (c.corrects ?? '').trim() !== '') continue;
+@@ -2049,7 +2049,7 @@ export class People {
+    * share divided by 100, rounded half to even, added up.
+    */
+   protected backingOf(personId: number): number {
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     if (!today) return 0;
+     const since = plusDays(today, -89);
+     return this.sharesOf(personId).reduce((sum, { patron, share }) => {
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 0b8e8b1fb..b755db9cd 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -400,12 +400,12 @@ export class Rates {
+   );
+   /** Each grade's rate in force on the sheet's today. */
+   protected readonly current = computed(() => {
+-    const today = this.session.today();
++    const today = this.session.figureDay();
+     return new Map(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
+   });
+   /** Each month (yyyy-mm) of the sheet's today's calendar year; none without a today. */
+   protected readonly calendarMonths = computed(() => {
+-    const year = this.session.today()?.slice(0, 4);
++    const year = this.session.figureDay()?.slice(0, 4);
+     if (!year) return [];
+     return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+   });
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index be08c5f4f..adeed0291 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -784,7 +784,7 @@ export class Settings {
+   /** The sheet's floors, dated, shared with whoever works out what is due. */
+   readonly floors = model<DatedValue[]>([]);
+   /** The floor in force on the sheet's today. */
+-  protected readonly floor = computed(() => valueOn(this.floors(), this.session.today(), START_FLOOR));
++  protected readonly floor = computed(() => valueOn(this.floors(), this.session.figureDay(), START_FLOOR));
+   /** The sheet's terms in days in force on its today: what a grade without its own terms uses. */
+   protected readonly terms = computed(() => this.inForce('terms', START_TERMS));
+   protected readonly grades = GRADES;
+@@ -805,19 +805,19 @@ export class Settings {
+   /** The sheet's late percents, dated, shared with whoever works out an overdue claim's late charge. */
+   readonly latePcts = model<DatedValue[]>([]);
+   /** The late percent in force on the sheet's today. */
+-  protected readonly latePct = computed(() => valueOn(this.latePcts(), this.session.today(), START_LATE_PCT));
++  protected readonly latePct = computed(() => valueOn(this.latePcts(), this.session.figureDay(), START_LATE_PCT));
+   /** The sheet's policy date (blank: its today), shared with whoever works out how a claim rounds. */
+   readonly policyDate = model('');
+   /** The sheet's caps, dated (blank: none), shared with whoever works out a person's due-total. */
+   readonly caps = model<DatedValue[]>([]);
+   /** The cap in force on the sheet's today; blank for none. */
+-  protected readonly cap = computed(() => valueOn(this.caps(), this.session.today(), ''));
++  protected readonly cap = computed(() => valueOn(this.caps(), this.session.figureDay(), ''));
+   /** The cap typed; null while its field has not been entered (left as it is). */
+   protected readonly capInput = signal<string | null>(null);
+   /** The sheet's rounding modes, dated (blank: none), shared with whoever works out how a claim rounds. */
+   readonly roundings = model<DatedValue[]>([]);
+   /** The rounding mode in force on the sheet's today; blank for none. */
+-  protected readonly rounding = computed(() => valueOn(this.roundings(), this.session.today(), ''));
++  protected readonly rounding = computed(() => valueOn(this.roundings(), this.session.figureDay(), ''));
+   /** The rounding mode typed; null while its field has not been entered (left as it is). */
+   protected readonly roundingInput = signal<string | null>(null);
+ 
+@@ -1250,7 +1250,7 @@ export class Settings {
+ 
+   /** A dated setting's value in force on the sheet's today; `start` before its first from-date. */
+   private inForce(key: string, start: string): string {
+-    return valueOn(this.datedOf(key), this.session.today(), start);
++    return valueOn(this.datedOf(key), this.session.figureDay(), start);
+   }
+ 
+   protected typeGradeTerms(grade: Grade, value: string): void {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 9f72ce06e..00e5e94bf 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -307,6 +307,13 @@ public class RollupService {
+             // the rows were put back behind the persistence context's back: read them afresh
+             entities.clear();
+         }
++        Optional<LocalDate> preview = AsOfFilter.previewing();
++        if (preview.isPresent()) {
++            // every sheet of the tree is previewed on the date, as the sheet itself is (see AsOfFilter)
++            entities.flush();
++            tree.forEach(id -> history.preview(id, preview.get()));
++            entities.clear();
++        }
+         List<TreePerson> treePeople = new ArrayList<>();
+         Map<String, BigDecimal> grades = new LinkedHashMap<>();
+         Map<String, Integer> statuses = new LinkedHashMap<>();
+@@ -525,6 +532,13 @@ public class RollupService {
+         return own;
+     }
+ 
++    /** The parts a person holds now of others' claims (see {@link #heldParts}); empty when they hold none. */
++    public Optional<BigDecimal> heldPart(String sheetId, long personId) {
++        Sheet sheet = sheet(sheetId);
++        return Optional.ofNullable(heldParts(sheet, rates.current(sheetId), claims.findBySheetIdOrderByIdDesc(sheetId),
++                people.findBySheetIdOrderByPositionAscIdAsc(sheetId)).get(personId));
++    }
++
+     /**
+      * Per holder (by person id), the parts they hold of the claims that count for their own person and
+      * have a figure; a person holding none is absent.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+index ab2d58786..ba07ba21a 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/AsOfFilter.java
+@@ -39,9 +39,20 @@ public class AsOfFilter extends OncePerRequestFilter {
+ 
+     public static final String HEADER = "X-As-Of";
+ 
++    /**
++     * The header carrying the date a user previews the sheet's figures on. A request that only reads
++     * is answered over the sheet's current records as if its today were that date, in a transaction
++     * that is then rolled back (so nothing a change of today does happens); any other request is
++     * served as it is, on the sheet's real today. An as-of date, when sent too, wins.
++     */
++    public static final String PREVIEW_HEADER = "X-Preview";
++
+     /** The request attribute holding the date a request is answered as of; absent when it is answered as it is now. */
+     public static final String AS_OF = AsOfFilter.class.getName() + ".asOf";
+ 
++    /** The request attribute holding the date a request's figures are previewed on; absent when there is none. */
++    public static final String PREVIEW = AsOfFilter.class.getName() + ".preview";
++
+     private static final String LOAD = "/api/sheets/load";
+ 
+     /**
+@@ -95,6 +106,25 @@ public class AsOfFilter extends OncePerRequestFilter {
+                 return;
+             }
+         }
++        LocalDate preview = null;
++        String previewHeader = request.getHeader(PREVIEW_HEADER);
++        if (asOf == null && previewHeader != null && !previewHeader.isBlank()) {
++            try {
++                preview = LocalDate.parse(previewHeader.trim());
++            } catch (DateTimeParseException e) {
++                response.sendError(HttpStatus.BAD_REQUEST.value(), "Not a date: " + previewHeader);
++                return;
++            }
++        }
++        if (preview != null && read && sheet != null && !path.equals(LOAD) && !UNDATED.contains(path)) {
++            LocalDate date = preview;
++            body.setAttribute(PREVIEW, date);
++            rolledBack(() -> {
++                history.preview(sheet, date);
++                chain.doFilter(body, response);
++            });
++            return;
++        }
+         if (asOf == null) {
+             chain.doFilter(body, response);
+             if (sheet != null && path.equals(LOAD)) {
+@@ -122,12 +152,24 @@ public class AsOfFilter extends OncePerRequestFilter {
+         }
+         LocalDate date = asOf;
+         body.setAttribute(AS_OF, date);
++        rolledBack(() -> {
++            history.restore(sheet, date);
++            chain.doFilter(body, response);
++        });
++    }
++
++    /** What is served in a transaction that is then rolled back. */
++    private interface Served {
++        void serve() throws IOException, ServletException;
++    }
++
++    /** Serve in a transaction that is then rolled back, so nothing it does is kept. */
++    private void rolledBack(Served served) throws IOException, ServletException {
+         try {
+             rolledBack.executeWithoutResult(status -> {
+                 status.setRollbackOnly();
+-                history.restore(sheet, date);
+                 try {
+-                    chain.doFilter(body, response);
++                    served.serve();
+                 } catch (IOException | ServletException e) {
+                     throw new IllegalStateException(e);
+                 }
+@@ -153,6 +195,12 @@ public class AsOfFilter extends OncePerRequestFilter {
+                 && attrs.getRequest().getAttribute(AS_OF) instanceof LocalDate date ? Optional.of(date) : Optional.empty();
+     }
+ 
++    /** The date the current request's figures are previewed on; empty when there is none. */
++    public static Optional<LocalDate> previewing() {
++        return RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs
++                && attrs.getRequest().getAttribute(PREVIEW) instanceof LocalDate date ? Optional.of(date) : Optional.empty();
++    }
++
+     /** The request with its body read once, so both this filter and the handler can read it. */
+     private final class Body extends HttpServletRequestWrapper {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetHistory.java b/src/main/java/net/officefloor/hq/app/sheet/SheetHistory.java
+index d9895ce97..77eafbaf7 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetHistory.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetHistory.java
+@@ -83,6 +83,14 @@ public class SheetHistory {
+         }
+     }
+ 
++    /**
++     * Put the sheet's today at a preview date over its current records, for the caller's transaction
++     * to read and then roll back; nothing when there is no such sheet.
++     */
++    public void preview(String sheetId, LocalDate date) {
++        jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", date, sheetId);
++    }
++
+     /**
+      * Within the caller's transaction, replace the sheet's rows by the last snapshot made on or
+      * before {@code asOf} and set its today to {@code asOf}. The caller must roll back.
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 2100ad4c1..ce8def204 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
++import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+@@ -155,6 +156,12 @@ public class StatementService {
+                 claim.bind(false, null);
+             }
+         }
++        // the parts they hold of others' claims count towards their due-total, as on screen
++        Optional<BigDecimal> held = rollup.heldPart(sheetId, person.getId());
++        if (held.isPresent()) {
++            total = total.add(held.get());
++            anyFigure = true;
++        }
+         // as on screen: n/a when the grade has no rate today and no claim that counts has a figure
+         BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, person.getId(), total) : null;
+         return new Tally(dueTotal, counted);
