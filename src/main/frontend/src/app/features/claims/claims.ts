@@ -15,6 +15,8 @@ export interface Claim {
   status: ClaimStatus;
   /** Given when the claim is opened; null for a DRAFT and once voided. */
   number: number | null;
+  /** The due fixed when the claim was settled, two decimals; null when it has none and its due is live. */
+  settledDue: string | null;
 }
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
@@ -154,9 +156,9 @@ export class Claims {
     return `claim-form-${field}-${this.personId()}`;
   }
 
-  /** The claim's amount times the rate, or n/a with no rate. */
+  /** The due fixed when the claim was settled, else its amount times the rate, or n/a with no rate. */
   protected due(claim: Claim): string {
-    return dueOf(claim.amount, this.pct());
+    return claim.settledDue ?? dueOf(claim.amount, this.pct());
   }
 
   protected value(event: Event): string {

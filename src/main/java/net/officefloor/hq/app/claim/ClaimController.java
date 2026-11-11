@@ -27,14 +27,18 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class ClaimController {
 
-    /** A claim as shown: the amount with two decimals, the date as yyyy-mm-dd. */
+    /**
+     * A claim as shown: the amount with two decimals, the date as yyyy-mm-dd, and the due fixed when it was
+     * settled (null when it has none, so its due is worked out from the current rate).
+     */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number) {
+            Long number, String settledDue) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
+                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
         }
     }
 

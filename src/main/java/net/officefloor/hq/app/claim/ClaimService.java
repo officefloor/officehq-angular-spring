@@ -8,6 +8,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,12 +20,15 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -63,7 +68,19 @@ public class ClaimService {
         if (!claim.getStatus().canMoveTo(status)) {
             throw new ClaimStatusException(id, claim.getStatus(), status);
         }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
         claim.setStatus(status);
+        // Settling fixes the due at the rate the person's grade has now; with no rate it stays live.
+        String due = "";
+        if (status == ClaimStatus.SETTLED) {
+            BigDecimal settledDue = rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+                    .map(Rate::getPct)
+                    .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
+                    .orElse(null);
+            claim.setSettledDue(settledDue);
+            due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
+        }
         // The CLAIM_VOIDED record carries the number the claim had.
         Long number = claim.getNumber();
         if (status == ClaimStatus.OPEN) {
@@ -73,15 +90,13 @@ public class ClaimService {
             claim.setNumber(null);
         }
         Claim saved = claims.saveAndFlush(claim);
-        Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
-                .orElseThrow(() -> new PersonNotFoundException(sheetId, saved.getPersonId()));
         String event = switch (status) {
             case OPEN -> "CLAIM_OPENED";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(record(event, user, person, saved) + numberOf(number));
+        audit.recordOnCommit(record(event, user, person, saved) + numberOf(number) + due);
         return saved;
     }
 
