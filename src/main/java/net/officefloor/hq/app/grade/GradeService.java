@@ -22,7 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link net.officefloor.hq.app.person.PersonService}); a retired default grade falls back to A.
  * A steward can merge a grade into another: everyone whose grade in force on the sheet's today is
  * the merged grade is given the other from the sheet's today, in list order, exactly as the person
- * form would.
+ * form would; then every grade record of theirs on the merged grade becomes the other, so all their
+ * claims, whatever their date, follow the other grade (figures frozen or bound by a statement are kept).
  */
 @Service
 public class GradeService {
@@ -101,7 +102,8 @@ public class GradeService {
     /**
      * Merge the grade {@code from} into {@code into}: each person whose grade in force on the sheet's
      * today is {@code from} is edited, in list order, to {@code into} from the sheet's today, as the
-     * person form would (name, terms and contact kept). Refused (403) to anyone but a steward, and
+     * person form would (name, terms and contact kept), and then every grade of theirs recorded as
+     * {@code from}, whatever its from-date, becomes {@code into}. Refused (403) to anyone but a steward, and
      * (400) for no grade there is or the same grade twice. Answers how many people were given the grade.
      */
     @Transactional
@@ -121,6 +123,7 @@ public class GradeService {
         for (Person p : merged) {
             people.update(sheetId, user, p.getId(), p.getVersion(), p.getName(), into, today, p.termsOn(today),
                     p.getContact());
+            people.regrade(sheetId, p.getId(), from, into);
         }
         rollup.recordChanges(sheetId, user, before);
         return merged.size();

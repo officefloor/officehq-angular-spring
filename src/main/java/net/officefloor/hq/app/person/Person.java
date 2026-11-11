@@ -226,6 +226,14 @@ public class Person {
         grades.add(new DatedGrade(fromDate, grade, madeOn));
     }
 
+    /**
+     * Make every grade recorded as {@code from} the grade {@code into}, each keeping its from-date and
+     * when it was recorded.
+     */
+    public void regrade(String from, String into) {
+        grades.replaceAll(g -> from.equals(g.getGrade()) ? new DatedGrade(g.getFromDate(), into, g.getMadeOn()) : g);
+    }
+
     /** The person's own terms from the beginning of time, or null when they have none. */
     public Integer getTerms() {
         return terms;

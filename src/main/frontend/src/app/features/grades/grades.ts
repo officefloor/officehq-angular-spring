@@ -8,7 +8,8 @@ import { Session } from '../../core/session';
 // three capital letters not yet a grade; it then shows in every grade select of the screen. People on a retired grade keep it, but it cannot be chosen for
 // a new person or in an edit (the store refuses it), and a retired default grade falls back to A.
 // A steward can merge a grade into another (two selects and a button): everyone on the merged grade
-// on the sheet's today is given the other from then; it shows how many were.
+// on the sheet's today is given the other, and every grade record of theirs on the merged grade becomes
+// the other, so all their claims, whatever their date, follow it; it shows how many were.
 
 @Component({
   selector: 'app-grades',

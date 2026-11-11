@@ -87,6 +87,15 @@ public class PersonService {
         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
+    /** Make every grade of the person recorded as {@code from} the grade {@code into}, whatever its from-date. */
+    @Transactional
+    public Person regrade(String sheetId, long id, String from, String into) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        person.regrade(from, into);
+        return save(person);
+    }
+
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         return add(sheetId, user, name, grade, terms, null);
