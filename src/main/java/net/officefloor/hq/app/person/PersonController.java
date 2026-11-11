@@ -81,6 +81,10 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** Which way to move a person in the list. */
+    public record MoveRequest(@NotNull @Pattern(regexp = "up|down") String direction) {
+    }
+
     /** The date to retire from; null for the sheet's today. */
     public record RetireRequest(LocalDate from) {
     }
@@ -139,7 +143,7 @@ public class PersonController {
         this.sheets = sheets;
     }
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in list order. */
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
@@ -223,6 +227,16 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireRequest request) {
         return view(service.retire(sheetId.trim(), user.trim(), id, request.from()), user.trim());
+    }
+
+    /** Move the person up or down the list, swapping them with the one above or below. */
+    @PostMapping("/{id}/move")
+    public List<PersonView> move(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid MoveRequest request) {
+        service.move(sheetId.trim(), user.trim(), id, request.direction().equals("up"));
+        return list(sheetId, user);
     }
 
     /** Add a hold of the person over dates. */

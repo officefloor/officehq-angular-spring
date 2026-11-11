@@ -48,7 +48,7 @@ public class PersonService {
     }
 
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     @Transactional
@@ -76,6 +76,7 @@ public class PersonService {
         person.setTerms(terms);
         person.setContact(contactKey);
         person.setAddedOn(sheetService.today(sheetId));
+        person.setPosition(people.maxPosition(sheetId) + 1);
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_ADDED", user, saved, grade)
                 + (terms != null ? " terms=" + terms : "")
@@ -143,6 +144,41 @@ public class PersonService {
                 + " name=" + saved.getName() + " from=" + saved.getRetiredFrom());
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Swap the person with the one above them in the list (up) or below them (down); refused for the top person moving
+     * up or the bottom one moving down.
+     */
+    @Transactional
+    public Person move(String sheetId, String user, Long id, boolean up) {
+        List<Person> ordered = list(sheetId);
+        int at = -1;
+        for (int i = 0; i < ordered.size(); i++) {
+            if (ordered.get(i).getId().equals(id)) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new PersonNotFoundException(sheetId, id);
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= ordered.size()) {
+            throw new PersonMoveRefusedException(ordered.get(at).getName() + " is already at the "
+                    + (up ? "top" : "bottom") + " of the list");
+        }
+        // Positions are renumbered from 1 in list order, with the two people swapped.
+        Collections.swap(ordered, at, to);
+        for (int i = 0; i < ordered.size(); i++) {
+            if (ordered.get(i).getPosition() != i + 1) {
+                ordered.get(i).setPosition(i + 1);
+                save(ordered.get(i));
+            }
+        }
+        Person moved = ordered.get(to);
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user + " name=" + moved.getName()
+                + " position=" + (to + 1));
+        return moved;
     }
 
     /** Hold the person from the date (null: the sheet's today) to the date (null: it does not end). */

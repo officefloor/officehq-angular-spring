@@ -69,6 +69,10 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonHold> holds = new ArrayList<>();
 
+    /** Where the person stands in the list: listed by it, then by id. */
+    @Column(name = "position", nullable = false)
+    private long position;
+
     /** Raised by one on each save; a save of an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -169,6 +173,14 @@ public class Person {
 
     public void setRetiredFrom(LocalDate retiredFrom) {
         this.retiredFrom = retiredFrom;
+    }
+
+    public long getPosition() {
+        return position;
+    }
+
+    public void setPosition(long position) {
+        this.position = position;
     }
 
     public LocalDate getAddedOn() {

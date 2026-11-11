@@ -453,6 +453,22 @@ function csvField(value: string): string {
                 >
                   Hold
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-move-up"
+                  [attr.aria-label]="'Move ' + p.name + ' up the list'"
+                  (click)="move(p, 'up')"
+                >
+                  Up
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-move-down"
+                  [attr.aria-label]="'Move ' + p.name + ' down the list'"
+                  (click)="move(p, 'down')"
+                >
+                  Down
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ e.message }}</p>
@@ -1379,6 +1395,27 @@ export class People {
       }
     } catch {
       this.rowError.set({ id: person.id, message: `${alias} is already a name or alias on the sheet.` });
+    }
+  }
+
+  /** Swap the person with the one above or below them in the list; refused at the top going up or the bottom going down. */
+  protected async move(person: Person, direction: 'up' | 'down'): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/move`;
+    try {
+      const list = await firstValueFrom(this.http.post<Person[]>(url, { direction }, this.session.headers()));
+      if (this.session.sheet() !== sheet) return;
+      // A read started before the move would show the old order: it is dropped.
+      this.reads++;
+      this.people.set(list);
+    } catch {
+      this.rowError.set({
+        id: person.id,
+        message: `${person.name} is already at the ${direction === 'up' ? 'top' : 'bottom'} of the list.`,
+      });
     }
   }
 

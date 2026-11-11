@@ -81,7 +81,7 @@ public class RollupService {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             List<Claim> theirs = counted.getOrDefault(person.getId(), List.of()).stream()
                     .filter(claim -> person.counts(claim, today))
                     .toList();
@@ -183,7 +183,7 @@ public class RollupService {
         List<List<Rate>> candidate = new ArrayList<>(sheetRates);
         candidate.set(0, own);
         Map<Long, Person> byId = new LinkedHashMap<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             byId.put(person.getId(), person);
         }
         int count = 0;
@@ -230,7 +230,7 @@ public class RollupService {
         List<List<Rate>> sheetRates = rateChain(sheetId);
         Map<Long, Person> byId = new LinkedHashMap<>();
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             byId.put(person.getId(), person);
             totals.put(person.getId(), zero());
         }

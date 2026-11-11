@@ -50,7 +50,7 @@ public class BulkOpenService {
             return new Result(0, selected.size());
         }
         Map<Long, Integer> personOrder = new HashMap<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             personOrder.put(person.getId(), personOrder.size());
         }
         List<Claim> ordered = new ArrayList<>(claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()

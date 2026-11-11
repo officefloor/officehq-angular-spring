@@ -38,7 +38,7 @@ public class BulkGradeService {
             return new Result(0);
         }
         Set<Long> selected = new HashSet<>(ids);
-        List<Person> ordered = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        List<Person> ordered = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> selected.contains(p.getId()))
                 .toList();
         if (ordered.size() != selected.size()) {
