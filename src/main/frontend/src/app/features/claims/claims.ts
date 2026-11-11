@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods';
@@ -28,6 +28,13 @@ export interface Claim {
   corrects: string | null;
   /** The date (yyyy-mm-dd) that decides how its live figures round: its own, or a correction's corrected claim's. */
   roundingDate: string;
+  /** Its place in its person's list: a claim with a later place is listed first (newest added, or last reassigned). */
+  listed: number;
+}
+
+/** Claims as listed: the latest list place first. */
+export function byListed(a: Claim, b: Claim): number {
+  return b.listed - a.listed || b.id - a.id;
 }
 
 /**
@@ -234,6 +241,25 @@ export function sumAmounts(amounts: string[]): string {
                     {{ a.label }}
                   </button>
                 }
+                <label class="visually-hidden" [for]="'claim-reassign-to-' + c.id">Reassign to</label>
+                <select
+                  [id]="'claim-reassign-to-' + c.id"
+                  data-testid="claim-reassign-to"
+                  (change)="setReassignTo(c.id, value($event))"
+                >
+                  <option value="" [selected]="!reassignTo()[c.id]">Reassign to…</option>
+                  @for (o of others(); track o.id) {
+                    <option [value]="o.id" [selected]="reassignTo()[c.id] === '' + o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="claim-reassign"
+                  [attr.aria-label]="'Reassign claim of ' + c.amount + ' on ' + c.date"
+                  (click)="reassign(c)"
+                >
+                  Reassign
+                </button>
                 <label class="visually-hidden" [for]="'claim-reject-reason-' + c.id">Reason to reject</label>
                 <input
                   [id]="'claim-reject-reason-' + c.id"
@@ -269,6 +295,8 @@ export class Claims {
   readonly rates = input.required<Rate[]>();
   /** The sheet's periods: a claim belongs to the one whose dates contain its date. */
   readonly periods = input.required<Period[]>();
+  /** The sheet's people, in the order they were added: a claim may be reassigned to any of the others. */
+  readonly people = input<{ id: number; name: string }[]>([]);
   /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
   readonly retiredFrom = input<string | null>(null);
   /** The ids of the sheet's claims selected to act on together. */
@@ -297,6 +325,10 @@ export class Claims {
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
   ];
+  /** The people other than this one, whom a claim may be reassigned to. */
+  protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
+  /** The id (as text) of the person picked to reassign each claim to, by claim id. */
+  protected readonly reassignTo = signal<Record<number, string>>({});
   /** The reason typed to reject each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
 
@@ -369,6 +401,43 @@ export class Claims {
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((all) => ({ ...all, [id]: reason }));
     if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  protected setReassignTo(id: number, personId: string): void {
+    this.reassignTo.update((all) => ({ ...all, [id]: personId }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /**
+   * Move a DRAFT, OPEN or PENDING claim to the person picked for it; the store refuses a SETTLED or VOID claim, a
+   * closed period, a person retired before its date, and a user who is not a steward.
+   */
+  protected async reassign(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const to = this.others().find((p) => String(p.id) === this.reassignTo()[claim.id]);
+    if (to === undefined) {
+      this.actionError.set({ id: claim.id, message: 'Pick the person to reassign this claim to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/reassign`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { personId: to.id }, this.session.headers()));
+      this.setReassignTo(claim.id, '');
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const closed = this.closedOn(claim.date);
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can reassign a claim.'
+          : closed
+            ? `This claim is dated in the closed period ${closed.name}: it cannot be reassigned.`
+            : claim.status === 'SETTLED' || claim.status === 'VOID'
+              ? `This claim is ${claim.status}: only a DRAFT, OPEN or PENDING claim can be reassigned.`
+              : `This claim could not be reassigned to ${to.name}.`;
+      this.actionError.set({ id: claim.id, message });
+    }
   }
 
   /**

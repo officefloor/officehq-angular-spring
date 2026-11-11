@@ -67,6 +67,10 @@ public class Claim {
     @Column(name = "rounding_date", nullable = false)
     private LocalDate roundingDate;
 
+    /** Its place in its person's list: a claim with a later place is listed first. */
+    @Column(name = "listed", nullable = false)
+    private long listed;
+
     protected Claim() {
     }
 
@@ -89,6 +93,18 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    public long getListed() {
+        return listed;
+    }
+
+    public void setListed(long listed) {
+        this.listed = listed;
     }
 
     public BigDecimal getAmount() {

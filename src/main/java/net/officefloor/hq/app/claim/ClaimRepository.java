@@ -12,6 +12,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** A sheet's claims, newest first. */
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
 
+    /** A sheet's claims as listed: the latest list place (the newest added, or the last reassigned) first. */
+    List<Claim> findBySheetIdOrderByListedDescIdDesc(String sheetId);
+
     List<Claim> findBySheetIdAndPersonIdOrderByIdAsc(String sheetId, Long personId);
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);

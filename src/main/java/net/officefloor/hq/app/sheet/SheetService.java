@@ -59,6 +59,18 @@ public class SheetService {
     }
 
     /**
+     * The next place in the sheet's claim lists: a claim with a later place is listed before one with an earlier
+     * place. The sheet's row is locked until the caller's transaction ends.
+     */
+    @Transactional
+    public long nextListed(String id) {
+        if (sheets.incrementLastListed(id) != 1) {
+            throw new SheetNotFoundException(id);
+        }
+        return sheets.lastListed(id);
+    }
+
+    /**
      * The next number in a sequence of its own on the sheet (a period's, or X for no period): the key, a dash, then
      * 1 for the first, then 2, and so on. The sheet's row is locked until the caller's transaction ends.
      */

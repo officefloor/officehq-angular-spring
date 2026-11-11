@@ -42,7 +42,7 @@ public class BulkOpenService {
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             personOrder.put(person.getId(), personOrder.size());
         }
-        List<Claim> ordered = new ArrayList<>(claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        List<Claim> ordered = new ArrayList<>(claims.findBySheetIdOrderByListedDescIdDesc(sheetId).stream()
                 .filter(c -> selected.contains(c.getId()))
                 .toList());
         // Stable: within a person the claims stay newest first.

@@ -32,11 +32,11 @@ public class ClaimController {
      * settled (null when it has none, so its due is worked out from the current rate), and who opened it;
      * whether the person's last statement bound it, and the due it bound it to (null: none, so n/a); and the number of
      * the claim it corrects (null unless it is a correction); and the date that decides how its live figures round (its
-     * own, or a correction's corrected claim's).
+     * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundingDate) {
+            LocalDate roundingDate, long listed) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -45,7 +45,7 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects(), claim.getRoundingDate());
+                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed());
         }
     }
 
@@ -157,6 +157,19 @@ public class ClaimController {
         // One line in the audit file: any run of white space in the reason becomes a single space.
         String reason = request.reason().trim().replaceAll("\\s+", " ");
         return ClaimView.of(service.reject(sheetId.trim(), user.trim(), id, reason));
+    }
+
+    /** The person a claim is moved to. */
+    public record ReassignRequest(@NotNull Long personId) {
+    }
+
+    /** Move a DRAFT, OPEN or PENDING claim to another person: a steward only. */
+    @PostMapping("/claims/{id}/reassign")
+    public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ReassignRequest request) {
+        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), id, request.personId()));
     }
 
     /** Void a DRAFT, OPEN or PENDING claim. */

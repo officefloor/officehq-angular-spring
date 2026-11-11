@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PersonGrade, claimDue, counts, dueFixed, gradeOn, isOpen, overdue, sumAmounts } from '../claims/claims';
+import { Claim, Claims, PersonGrade, byListed, claimDue, counts, dueFixed, gradeOn, isOpen, overdue, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
@@ -232,6 +232,7 @@ function csvField(value: string): string {
                 [grades]="p.grades"
                 [rates]="rates()"
                 [periods]="periods()"
+                [people]="people()"
                 [retiredFrom]="p.retiredFrom"
                 [selected]="selectedClaims()"
                 (selectToggled)="selectClaim($event.id, $event.checked)"
@@ -527,8 +528,8 @@ export class People {
     if (!sheet) return;
     this.claims.update((list) =>
       list.some((c) => c.id === claim.id)
-        ? list.map((c) => (c.id === claim.id ? claim : c))
-        : [claim, ...list].sort((a, b) => b.id - a.id),
+        ? list.map((c) => (c.id === claim.id ? claim : c)).sort(byListed)
+        : [claim, ...list].sort(byListed),
     );
     void this.read(sheet);
   }
