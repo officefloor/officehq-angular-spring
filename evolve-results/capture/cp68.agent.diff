@@ -1,0 +1,28 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index dca413a16..8992065a1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -650,9 +650,21 @@ export class People {
+       .join(', ');
+   }
+ 
+-  /** The person's patrons' due-totals added up, skipping the n/a ones; 0.00 with no patrons. */
++  /**
++   * The person's patrons' settled figures added up: each patron's SETTLED claims dated within the 90 days up to and
++   * including the sheet's today, each at its frozen figure; 0.00 with none.
++   */
+   protected backingOf(person: Person): string {
+-    return sumDues(this.patronsListOf(person).map((p) => this.dueTotalOf(p)));
++    const today = this.session.today();
++    if (today === null) return '0.00';
++    const since = plusDays(today, -89);
++    return sumDues(
++      this.patronsListOf(person).flatMap((p) =>
++        this.claimsOf(p.id)
++          .filter((c) => c.status === 'SETTLED' && since <= c.date && c.date <= today)
++          .map((c) => claimDue(c, this.rates(), p.grades, this.session)),
++      ),
++    );
+   }
+ 
+   /** The people the person could still name as a patron: everyone else on the sheet not already named. */
