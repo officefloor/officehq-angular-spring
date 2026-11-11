@@ -86,6 +86,15 @@ public class RateService {
                 .map(Rate::getPct);
     }
 
+    /** What the grade having the percent on every date would change on the sheet; nothing is saved. */
+    @Transactional(readOnly = true)
+    public RollupService.RatePreview preview(String sheetId, String grade, BigDecimal pct) {
+        if (!sheets.existsById(sheetId)) {
+            throw new SheetNotFoundException(sheetId);
+        }
+        return rollup.preview(sheetId, grade, pct);
+    }
+
     /**
      * Set the grade's rate from the from-date (null: from the beginning of time) through the to-date (null: no
      * end), replacing the one it had; a to-date before the from-date is refused.

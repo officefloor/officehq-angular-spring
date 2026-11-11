@@ -10,6 +10,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -81,6 +83,18 @@ public class RateController {
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return service.list(sheetId.trim()).stream().map(RateView::of).toList();
+    }
+
+    /**
+     * What setting the grade's rate to the percent on every date would change, saving nothing: how many OPEN and PENDING
+     * claims would show a different due, and the sum of the differences.
+     */
+    @GetMapping("/preview")
+    public RollupService.RatePreview preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestParam @Pattern(regexp = "[ABC]") String grade,
+            @RequestParam @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String pct,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.preview(sheetId.trim(), grade, new BigDecimal(pct.trim()).setScale(2, RoundingMode.UNNECESSARY));
     }
 
     @PutMapping("/{grade}")

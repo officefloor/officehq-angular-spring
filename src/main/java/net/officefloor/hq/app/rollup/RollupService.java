@@ -114,6 +114,46 @@ public class RollupService {
         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
     }
 
+    /** How many claims a candidate rate would change the due of, and the sum of new due minus current due (two decimals). */
+    public record RatePreview(int count, String diff) {
+    }
+
+    /**
+     * What the screen would show if the grade had the percent on every date, changing nothing: of the OPEN and PENDING
+     * claims whose person had the grade on the claim's date, how many would show a different due, and the sum of each
+     * new due minus its current one (an n/a due counting as 0.00). A claim bound by a statement keeps its stated due.
+     */
+    public RatePreview preview(String sheetId, String grade, BigDecimal pct) {
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
+        List<Rate> candidate = new ArrayList<>(sheetRates.stream().filter(r -> !r.getGrade().equals(grade)).toList());
+        candidate.add(new Rate(sheetId, grade, null, pct));
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            byId.put(person.getId(), person);
+        }
+        int count = 0;
+        BigDecimal diff = zero();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !claim.getStatus().isOpen() || !grade.equals(person.gradeOn(claim.getDate()))) {
+                continue;
+            }
+            BigDecimal now = dueOf(sheet, sheetRates, person, claim).map(RollupService::cents).orElse(null);
+            BigDecimal then = dueOf(sheet, candidate, person, claim).map(RollupService::cents).orElse(null);
+            if (Objects.equals(now, then)) {
+                continue;
+            }
+            count++;
+            diff = diff.add(then == null ? zero() : then).subtract(now == null ? zero() : now);
+        }
+        return new RatePreview(count, shown(diff));
+    }
+
+    private static BigDecimal cents(BigDecimal value) {
+        return value.setScale(2, RoundingMode.HALF_EVEN);
+    }
+
     /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
     private static BigDecimal trimmedSum(List<BigDecimal> figures) {
         List<BigDecimal> kept = new ArrayList<>(figures);

@@ -1,7 +1,14 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+
+/** What a candidate rate would change: how many claims' dues, and the sum of new minus current due. */
+export interface RatePreview {
+  count: number;
+  /** Two decimals, negative when lower. */
+  diff: string;
+}
 
 export interface Rate {
   grade: string;
@@ -142,6 +149,37 @@ export function trimmedSumDues(dues: string[]): string {
           <p role="alert" data-testid="rate-form-error">{{ message }}</p>
         }
       </form>
+      <form (submit)="preview($event)">
+        <label for="rate-preview-grade">Preview grade</label>
+        <select
+          id="rate-preview-grade"
+          data-testid="rate-preview-grade"
+          [value]="previewGrade()"
+          (change)="previewGrade.set(value($event)); previewError.set(null)"
+        >
+          @for (g of grades(); track g) {
+            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input
+          id="rate-preview-pct"
+          data-testid="rate-preview-pct"
+          inputmode="decimal"
+          [value]="previewPct()"
+          (input)="previewPct.set(value($event)); previewError.set(null)"
+        />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewResult(); as result) {
+          <p>
+            Claims changed: <span data-testid="rate-preview-count">{{ result.count }}</span>;
+            difference: <span data-testid="rate-preview-diff">{{ result.diff }}</span>
+          </p>
+        }
+        @if (previewError(); as message) {
+          <p role="alert" data-testid="rate-preview-error">{{ message }}</p>
+        }
+      </form>
       <table>
         <caption>In force today</caption>
         <thead>
@@ -189,6 +227,16 @@ export class Rates {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly previewGrade = signal('A');
+  protected readonly previewPct = signal('');
+  protected readonly previewResult = signal<RatePreview | null>(null);
+  protected readonly previewError = signal<string | null>(null);
+  /** A preview speaks of the rates and sheet it was worked out on: it goes once they change. */
+  private readonly previewStale = effect(() => {
+    this.rates();
+    this.session.sheet();
+    this.previewResult.set(null);
+  });
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
@@ -251,6 +299,31 @@ export class Rates {
       );
     } finally {
       this.submitting = false;
+    }
+  }
+
+  /** Shows what the candidate rate would change for the grade; nothing is saved. */
+  protected async preview(event: Event): Promise<void> {
+    event.preventDefault();
+    this.previewResult.set(null);
+    this.previewError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const pct = this.previewPct().trim();
+    if (!/^\d{1,3}(\.\d{1,2})?$/.test(pct)) {
+      this.previewError.set('Type a candidate rate from 0.00 to 999.99 percent, with at most two decimals.');
+      return;
+    }
+    try {
+      const result = await firstValueFrom(
+        this.http.get<RatePreview>(`/api/sheets/${encodeURIComponent(sheet)}/rates/preview`, {
+          ...this.session.headers(),
+          params: { grade: this.previewGrade(), pct },
+        }),
+      );
+      if (this.session.sheet() === sheet) this.previewResult.set(result);
+    } catch {
+      this.previewError.set('The preview could not be worked out.');
     }
   }
 }
