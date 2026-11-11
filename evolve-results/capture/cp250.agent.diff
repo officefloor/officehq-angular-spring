@@ -1,0 +1,189 @@
+diff --git a/src/main/frontend/src/app/features/policy/policy-viewer.ts b/src/main/frontend/src/app/features/policy/policy-viewer.ts
+index b996b262d..36d2223bb 100644
+--- a/src/main/frontend/src/app/features/policy/policy-viewer.ts
++++ b/src/main/frontend/src/app/features/policy/policy-viewer.ts
+@@ -3,9 +3,24 @@ import { Component, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
++interface PolicyRow {
++  version: number;
++  from: string;
++  key: string;
++  value: string;
++  claims: number;
++  dueTotal: string;
++}
++
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value;
++}
++
+ // The sheet's policy versions, shown on request: one line per version, oldest first, as
+ // <version> <from-date, or start> <key>=<value> <how many claims have it as their policy version>.
+ // Showing again re-reads them; the old lines are gone while they load.
++// The export button downloads them as a CSV file (version, from (blank for none), key, value, claims,
++// due-total: the due of those claims that count, added up).
+ @Component({
+   selector: 'app-policy-viewer',
+   template: `
+@@ -15,6 +30,10 @@ import { Session } from '../../core/session';
+       @if (error(); as err) {
+         <p role="alert" data-testid="policy-error">{{ err }}</p>
+       }
++      <button type="button" data-testid="export-policy" (click)="exportCsv()">Export policy versions (CSV)</button>
++      @if (exportError(); as err) {
++        <p role="alert" data-testid="export-policy-error">{{ err }}</p>
++      }
+       <ol aria-label="Policy versions">
+         @for (line of lines(); track $index) {
+           <li data-testid="policy-line">{{ line }}</li>
+@@ -29,6 +48,7 @@ export class PolicyViewer {
+ 
+   protected readonly lines = signal<string[]>([]);
+   protected readonly error = signal<string | null>(null);
++  protected readonly exportError = signal<string | null>(null);
+ 
+   constructor() {
+     effect(() => {
+@@ -36,6 +56,7 @@ export class PolicyViewer {
+       this.session.loads();
+       this.lines.set([]);
+       this.error.set(null);
++      this.exportError.set(null);
+     });
+   }
+ 
+@@ -52,4 +73,31 @@ export class PolicyViewer {
+       if (this.session.sheet() === sheet) this.error.set('The policy versions could not be read.');
+     }
+   }
++
++  /** Download the policy versions, oldest first, as a CSV file. */
++  protected async exportCsv(): Promise<void> {
++    this.exportError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    let rows: PolicyRow[];
++    try {
++      rows = await firstValueFrom(
++        this.http.post<PolicyRow[]>('/api/settings/policy/export', { sheet, user: this.session.user() }),
++      );
++    } catch {
++      if (this.session.sheet() === sheet) this.exportError.set('The policy versions could not be read.');
++      return;
++    }
++    if (this.session.sheet() !== sheet) return;
++    const lines = ['version,from,key,value,claims,due-total'];
++    for (const r of rows) {
++      lines.push([String(r.version), r.from, r.key, r.value, String(r.claims), r.dueTotal].map(csvField).join(','));
++    }
++    const url = URL.createObjectURL(new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' }));
++    const a = document.createElement('a');
++    a.href = url;
++    a.download = 'policy-' + sheet + '.csv';
++    a.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index b75a47cf9..f32901ef1 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -376,6 +376,29 @@ public class RollupService {
+         return out;
+     }
+ 
++    /**
++     * The figure of each of the sheet's claims that counts and has one, as the screen shows it, by claim id.
++     */
++    public Map<Long, BigDecimal> countedFigures(String sheetId) {
++        Sheet sheet = sheet(sheetId);
++        LocalDate today = sheet.getToday();
++        List<List<Rate>> sheetRates = rates.current(sheetId);
++        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
++        Map<Long, BigDecimal> out = new LinkedHashMap<>();
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            for (Claim claim : sheetClaims) {
++                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)) {
++                    continue;
++                }
++                BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
++                if (figure != null) {
++                    out.put(claim.getId(), figure);
++                }
++            }
++        }
++        return out;
++    }
++
+     /** How many of the sheet's claims that count are overdue on its today, as the people list's totals count them. */
+     public int overdueCount(String sheetId) {
+         Sheet sheet = sheet(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 1df6ebeb5..a0acc0e55 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -198,6 +198,11 @@ public class SettingController {
+         return service.policyLines(req.sheet().trim(), req.user().trim());
+     }
+ 
++    @PostMapping("/policy/export")
++    public List<SettingService.PolicyRow> policyExport(@Valid @RequestBody GetSettingsRequest req) {
++        return service.policyRows(req.sheet().trim(), req.user().trim());
++    }
++
+     @PostMapping("/set")
+     public SettingsResponse set(@Valid @RequestBody SetSettingsRequest req) {
+         String policy = req.policyDate() == null ? "" : req.policyDate().trim();
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 0f6ec736c..b3a1e671b 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Arrays;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
+@@ -149,6 +150,38 @@ public class SettingService {
+         return lines;
+     }
+ 
++    /** One policy version as exported: its number, from-date (blank for none), key, value, claims and their due-total. */
++    public record PolicyRow(int version, String from, String key, String value, int claims, String dueTotal) {
++    }
++
++    /**
++     * The policy versions, oldest first, with how many of the sheet's claims (not deleted) have each as
++     * their policy version, and the due of those of them that count, added up.
++     */
++    @Transactional
++    public List<PolicyRow> policyRows(String sheetId, String user) {
++        Sheet sheet = sheets.load(sheetId, user);
++        List<LoggedSetting> log = sheet.getPolicyLog();
++        int[] counts = new int[log.size() + 1];
++        BigDecimal[] dues = new BigDecimal[log.size() + 1];
++        Arrays.fill(dues, BigDecimal.ZERO.setScale(2));
++        Map<Long, BigDecimal> figures = rollup.countedFigures(sheetId);
++        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (c.getStatus() == ClaimStatus.DELETED || c.getDate() == null) continue;
++            int v = sheet.policyVersionOn(c.getDate());
++            counts[v]++;
++            BigDecimal figure = figures.get(c.getId());
++            if (figure != null) dues[v] = dues[v].add(figure);
++        }
++        List<PolicyRow> rows = new ArrayList<>();
++        for (int i = 0; i < log.size(); i++) {
++            LoggedSetting s = log.get(i);
++            rows.add(new PolicyRow(i + 1, s.getFromDate() == null ? "" : s.getFromDate().toString(), s.getKey(),
++                    policyValue(s), counts[i + 1], text(dues[i + 1])));
++        }
++        return rows;
++    }
++
+     private static String policyValue(LoggedSetting s) {
+         if (s.getValue() == null) return "";
+         if (s.getKey().equals(ROUNDING)) return Sheet.roundingName(s.getValue());
