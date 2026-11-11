@@ -403,6 +403,7 @@ function csvField(value: string): string {
       }
       <p>
         <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+        Last batch <strong data-testid="bulk-settle-batch">{{ session.lastSettleBatch() ?? '' }}</strong>
         @if (bulkSettleResult(); as r) {
           Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
           refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
@@ -1068,7 +1069,7 @@ export class People {
     const ids = [...this.selectedClaims()];
     try {
       const result = await firstValueFrom(
-        this.http.post<{ settled: number; refused: number }>(
+        this.http.post<{ settled: number; refused: number; batch: number | null }>(
           `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-settle`,
           { ids },
           this.session.headers(),
@@ -1077,6 +1078,7 @@ export class People {
       if (this.session.sheet() !== sheet) return;
       this.selectedClaims.set(new Set());
       this.bulkSettleResult.set(result);
+      this.session.lastSettleBatch.set(result.batch);
       await this.read(sheet);
     } catch {
       if (this.session.sheet() === sheet) this.bulkSettleError.set('The selected claims could not be settled.');

@@ -117,6 +117,23 @@ public class SheetService {
     }
 
     /**
+     * The next bulk settle batch number on the sheet: 1 for the first, then 2, and so on. The sheet's row is locked
+     * until the caller's transaction ends, so a batch whose claims all roll back takes no number.
+     */
+    @Transactional
+    public long nextSettleBatch(String id) {
+        if (sheets.incrementLastSettleBatch(id) != 1) {
+            throw new SheetNotFoundException(id);
+        }
+        return sheets.lastSettleBatch(id);
+    }
+
+    /** The number of the sheet's last bulk settle batch, as stored now: 0 while there has been none. */
+    public long lastSettleBatch(String id) {
+        return sheets.lastSettleBatch(id);
+    }
+
+    /**
      * The next place in the sheet's claim lists: a claim with a later place is listed before one with an earlier
      * place. The sheet's row is locked until the caller's transaction ends.
      */

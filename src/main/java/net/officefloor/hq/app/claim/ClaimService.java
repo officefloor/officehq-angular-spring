@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.LongSupplier;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -277,6 +278,20 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason) {
+        return changeStatus(sheetId, user, id, status, voidReason, null);
+    }
+
+    /**
+     * Settle a claim as part of a bulk settle, as {@link #changeStatus(String, String, Long, ClaimStatus)}: once it is
+     * SETTLED or PENDING it carries the batch number the supplier gives, asked for only then, within the same change.
+     */
+    @Transactional
+    public Claim settleInBatch(String sheetId, String user, Long id, LongSupplier batch) {
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, batch);
+    }
+
+    private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason,
+            LongSupplier batch) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
@@ -332,6 +347,10 @@ public class ClaimService {
         claim.setStatus(status);
         if (status == ClaimStatus.VOID) {
             claim.setVoidReason(reason);
+        }
+        // Settled one at a time, a claim carries no batch; settled by a bulk settle, it carries that batch's number.
+        if (status == ClaimStatus.SETTLED || status == ClaimStatus.PENDING) {
+            claim.setSettleBatch(batch == null ? null : batch.getAsLong());
         }
         // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
         String number = claim.getNumber();
@@ -415,6 +434,8 @@ public class ClaimService {
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
+        // Back to OPEN, it is no longer settled by the batch that sent it to PENDING.
+        claim.setSettleBatch(null);
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_REJECTED", user, person, saved) + numberOf(saved.getNumber())

@@ -119,6 +119,10 @@ public class Claim {
     @Column(name = "void_reason")
     private String voidReason;
 
+    /** The number of the bulk settle that settled the claim (or sent it to PENDING); null when settled one at a time, or not settled. */
+    @Column(name = "settle_batch")
+    private Long settleBatch;
+
     protected Claim() {
     }
 
@@ -362,6 +366,14 @@ public class Claim {
 
     public void setVoidReason(String voidReason) {
         this.voidReason = voidReason;
+    }
+
+    public Long getSettleBatch() {
+        return settleBatch;
+    }
+
+    public void setSettleBatch(Long settleBatch) {
+        this.settleBatch = settleBatch;
     }
 
     /** Whether a user other than this one has the claim's editor open. */

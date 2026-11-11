@@ -20,11 +20,15 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class SheetController {
 
-    /** The sheet as shown to the user: its today, whether it is archived, and whether the user is a viewer of it. */
-    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer) {
+    /**
+     * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, and the
+     * number of its last bulk settle batch (null while there has been none).
+     */
+    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch) {
 
         static SheetView of(Sheet sheet, boolean viewer) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer);
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer,
+                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
         }
     }
 

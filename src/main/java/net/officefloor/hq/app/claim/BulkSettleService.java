@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.LongSupplier;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
@@ -25,8 +26,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class BulkSettleService {
 
-    /** How many of the selected claims were settled and how many refused. */
-    public record Result(int settled, int refused) {
+    /** How many of the selected claims were settled and how many refused, and the sheet's last batch number after (null while none). */
+    public record Result(int settled, int refused, Long batch) {
     }
 
     private final ClaimRepository claims;
@@ -49,7 +50,7 @@ public class BulkSettleService {
         Set<Long> selected = new HashSet<>(ids);
         if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
             // A viewer, or anyone on an archived sheet, changes nothing: every selected claim is refused.
-            return new Result(0, selected.size());
+            return new Result(0, selected.size(), lastBatch(sheetId));
         }
         Map<Long, Integer> personOrder = new HashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
@@ -62,17 +63,28 @@ public class BulkSettleService {
         ordered.sort((a, b) -> Integer.compare(personOrder.getOrDefault(a.getPersonId(), Integer.MAX_VALUE),
                 personOrder.getOrDefault(b.getPersonId(), Integer.MAX_VALUE)));
         int settled = 0;
+        // The batch takes its number with the first claim it settles, so a bulk settle that settles none is no batch.
+        long[] batch = {0};
+        LongSupplier number = () -> batch[0] == 0 ? batch[0] = sheets.nextSettleBatch(sheetId) : batch[0];
         for (Claim claim : ordered) {
             try {
-                service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED);
+                service.settleInBatch(sheetId, user, claim.getId(), number);
                 settled++;
             } catch (ClaimStatusException | ClaimActionForbiddenException | ClaimDeferException | ClaimSettledByOpenerException | ClaimProofException
                     | PeriodClosedException
                     | ClaimNotFoundException | PersonNotFoundException refused) {
-                // Left as it is.
+                // Left as it is; had it taken the batch's number, that rolled back with it.
+                if (settled == 0) {
+                    batch[0] = 0;
+                }
             }
         }
         // A selected id not on the sheet is refused too.
-        return new Result(settled, selected.size() - settled);
+        return new Result(settled, selected.size() - settled, lastBatch(sheetId));
+    }
+
+    private Long lastBatch(String sheetId) {
+        long last = sheets.lastSettleBatch(sheetId);
+        return last == 0 ? null : last;
     }
 }

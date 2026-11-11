@@ -95,6 +95,10 @@ public class Sheet {
     @Column(name = "archived", nullable = false)
     private boolean archived;
 
+    /** The number of the sheet's last bulk settle batch: 0 while there has been none. Moved on only through the repository. */
+    @Column(name = "last_settle_batch", nullable = false, insertable = false, updatable = false)
+    private long lastSettleBatch;
+
     protected Sheet() {
     }
 
@@ -110,6 +114,10 @@ public class Sheet {
 
     public String getCreatedBy() {
         return createdBy;
+    }
+
+    public long getLastSettleBatch() {
+        return lastSettleBatch;
     }
 
     public LocalDate getToday() {

@@ -55,6 +55,8 @@ export interface Claim {
   voidReason: string | null;
   /** Its comments, oldest first. */
   comments: ClaimComment[];
+  /** The number of the bulk settle that settled it (or sent it to PENDING); null when settled one at a time, or not settled. */
+  settleBatch: number | null;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
@@ -290,7 +292,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th>
+            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -314,6 +316,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-due-by">{{ c.dueBy }}</td>
               <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
+              <td data-testid="claim-batch">{{ c.settleBatch ?? '' }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td data-testid="claim-period">{{ periodOf(c) }}</td>
