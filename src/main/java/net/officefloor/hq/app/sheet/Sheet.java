@@ -61,7 +61,7 @@ public class Sheet {
     public static final List<String> ROUNDING_MODES = List.of("half-up", "half-even");
 
     /** The actions the permission matrix covers. */
-    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen");
+    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen", "today");
 
     /** The standing rule for an action with no entry in the permission matrix: the roles that may take it. */
     private static final Map<String, Set<String>> STANDING_PERMISSIONS = Map.of(
@@ -745,6 +745,10 @@ public class Sheet {
         String entry = permissions.get(action);
         if (entry == null || entry.isBlank()) {
             // a restricted user acts as a clerk; only the people list they see is narrower
+            if ("today".equals(action)) {
+                // the standing rule for the sheet's today: anyone but a viewer
+                return true;
+            }
             String standing = "restricted".equals(role) ? "clerk" : role;
             return STANDING_PERMISSIONS.getOrDefault(action, Set.of()).contains(standing);
         }

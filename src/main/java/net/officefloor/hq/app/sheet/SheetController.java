@@ -80,8 +80,10 @@ public class SheetController {
 
     @PostMapping("/sheets/today")
     public SheetResponse setToday(@Valid @RequestBody SetTodayRequest req) {
-        // a viewer may not change the sheet's today (checked here: the role service depends on the sheet service)
+        // a viewer may not change the sheet's today, nor a role the permission matrix leaves out
+        // (checked here: the role service depends on the sheet service)
         roles.refuseViewer(req.id().trim(), req.user().trim());
+        roles.refuseUnlessPermitted(req.id().trim(), req.user().trim(), "today");
         return response(service.setToday(req.id().trim(), req.user().trim(), req.today()));
     }
 

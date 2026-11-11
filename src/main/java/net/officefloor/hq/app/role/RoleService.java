@@ -102,7 +102,8 @@ public class RoleService {
     public void refuseUnlessPermitted(String sheetId, String user, String action) {
         sheets.refuseIfArchived(sheetId);
         if (!sheets.sheet(sheetId).permits(action, roleOf(sheetId, user))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not " + action + " here.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your role may not "
+                    + ("today".equals(action) ? "change the sheet's today" : action) + " here.");
         }
     }
 

@@ -41,9 +41,10 @@ import { FigurePipe } from '../../core/figure';
 // The review threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
 // above the one in force on its date goes to REVIEW when opened, instead of OPEN, until a steward
 // reviews it. It saves, like the clerk limit, once its field has been entered (blank: none).
-// The permission matrix: for each of open, settle, void, reassign, close and reopen, the roles that
-// may do it, comma separated (blank: the standing rule, open, settle, void and close by clerk and
-// steward, reassign and reopen by steward). Each saves, like the clerk limit, once its field has
+// The permission matrix: for each of open, settle, void, reassign, close, reopen and today (changing
+// the sheet's today), the roles that may do it, comma separated (blank: the standing rule, open,
+// settle, void and close by clerk and steward, reassign and reopen by steward, today by anyone but
+// a viewer). Each saves, like the clerk limit, once its field has
 // been entered; it is not dated.
 // The escalation gap (a whole number of days; blank: off): reminding a claim whose previous reminder
 // was at least that many days before the sheet's today escalates it, once ever. It saves, like the
@@ -148,7 +149,7 @@ const SCORE = /^-?\d{1,6}$/;
 const PROOF_KINDS = /^(receipt|photo)(\s*,\s*(receipt|photo))*$/i;
 
 /** The actions the permission matrix covers. */
-const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+const PERM_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
 type PermAction = (typeof PERM_ACTIONS)[number];
 
 /** A permission matrix entry: roles comma separated. */
@@ -438,7 +439,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       @for (a of permActions; track a) {
-          <label [for]="'setting-perm-' + a">Roles that may {{ a }}, comma separated (blank: the standing rule)</label>
+          <label [for]="'setting-perm-' + a">Roles that may {{ permLabels[a] }}, comma separated (blank: the standing rule)</label>
           <input
             [id]="'setting-perm-' + a"
             [attr.data-testid]="'setting-perm-' + a"
@@ -783,7 +784,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </p>
       @for (a of permActions; track a) {
         <p>
-          Roles that may {{ a }}:
+          Roles that may {{ permLabels[a] }}:
           <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permissions()[a] ?? '' }}</strong>
           @if (!permissions()[a]) {
             <span>(the standing rule)</span>
@@ -933,6 +934,11 @@ export class Settings {
   /** The parent typed; null while its field has not been entered (left as it is). */
   protected readonly parentInput = signal<string | null>(null);
   protected readonly permActions = PERM_ACTIONS;
+  /** How each action reads in its label. */
+  protected readonly permLabels: Record<PermAction, string> = {
+    open: 'open', settle: 'settle', void: 'void', reassign: 'reassign', close: 'close', reopen: 'reopen',
+    today: "change the sheet's today",
+  };
   /** The permission matrix in force: for each action, its roles, blank for the standing rule. */
   protected readonly permissions = signal<Partial<Record<PermAction, string>>>({});
   /** The roles typed for each action; missing while its field has not been entered (left as it is). */
@@ -1549,6 +1555,7 @@ export class Settings {
           permReassign: perms.reassign ?? null,
           permClose: perms.close ?? null,
           permReopen: perms.reopen ?? null,
+          permToday: perms.today ?? null,
           graceDays,
           entryDate,
           graceA: gradeGraces.A ?? null,

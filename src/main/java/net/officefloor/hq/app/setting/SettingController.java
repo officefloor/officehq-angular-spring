@@ -92,6 +92,7 @@ public class SettingController {
             @Pattern(regexp = ROLES) String permOpen, @Pattern(regexp = ROLES) String permSettle,
             @Pattern(regexp = ROLES) String permVoid, @Pattern(regexp = ROLES) String permReassign,
             @Pattern(regexp = ROLES) String permClose, @Pattern(regexp = ROLES) String permReopen,
+            @Pattern(regexp = ROLES) String permToday,
             @Pattern(regexp = "\\s*|" + TERMS) String graceDays, @Pattern(regexp = DATE) String entryDate,
             @Pattern(regexp = "\\s*|" + TERMS) String graceA, @Pattern(regexp = "\\s*|" + TERMS) String graceB,
             @Pattern(regexp = "\\s*|" + TERMS) String graceC, @Pattern(regexp = DATE) String graceAFrom,
@@ -217,6 +218,7 @@ public class SettingController {
         permission(permissions, "reassign", req.permReassign());
         permission(permissions, "close", req.permClose());
         permission(permissions, "reopen", req.permReopen());
+        permission(permissions, "today", req.permToday());
         String grace = req.graceDays() == null ? "" : req.graceDays().trim();
         String entry = req.entryDate() == null ? "" : req.entryDate().trim();
         String pot = req.pot() == null ? "" : req.pot().trim();
