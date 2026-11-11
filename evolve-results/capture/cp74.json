@@ -1,0 +1,64 @@
+{
+  "checkpoint": 74,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp74_as-of-view",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An as-of date can be set on the screen (an entry, a set button and a clear button; show the as-of\ndate, or nothing). While it is set, every cell on the screen for the signed-in user (every figure,\nflag, list and line: in every row, every total, the header, the periods, the rates, the summary, and\nany panel added later unless its request says otherwise) is shown as it stood at the end of the last\nday on or before that date: every change made while the sheet's today was on or before the as-of\ndate counts, every later change does not, and the as-of date stands in for the sheet's today in\nevery figure (overdue, late charges, holds, deferrals, retirements, the grade and rate in force).\nThe audit file is unaffected, and every change, a statement as of a date included, is refused with\nits usual error while the as-of date is set. The as-of date belongs to the signed-in user's screen;\nother users are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn as-of date can be set on the screen (an entry, a set button and a clear button; show the as-of\ndate, or nothing). While it is set, every cell on the screen for the signed-in user (every figure,\nflag, list and line: in every row, every total, the header, the periods, the rates, the summary, and\nany panel added later unless its request says otherwise) is shown as it stood at the end of the last\nday on or before that date: every change made while the sheet's today was on or before the as-of\ndate counts, every later change does not, and the as-of date stands in for the sheet's today in\nevery figure (overdue, late charges, holds, deferrals, retirements, the grade and rate in force).\nThe audit file is unaffected, and every change, a statement as of a date included, is refused with\nits usual error while the as-of date is set. The as-of date belongs to the signed-in user's screen;\nother users are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2608acd5ff5664ab975a9ff661c6907651d4fe3f",
+  "reset_sha": "",
+  "preagent_sha": "3389665dc6493b15cb7c2755a486f0ea30e11874",
+  "prev_sha": "3389665dc6493b15cb7c2755a486f0ea30e11874",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.7550868,
+    "input_tokens": 50,
+    "output_tokens": 29717,
+    "cache_read_tokens": 1731574,
+    "cache_creation_tokens": 101779,
+    "num_turns": 27,
+    "duration_ms": 680030,
+    "duration_api_ms": 286575,
+    "model": "claude-opus-5-5",
+    "session_id": "ab6940ea-3310-4997-a480-42f1e8aa216f",
+    "stop_reason": "success",
+    "result_text": "All four tests in the as-of spec now pass when run with `bin/e2e`.\n\n**How it works**\n\n- **Saved copies of each sheet.** After every change that goes through, the server saves a copy of all the sheet's rows, filed under the sheet's today at the time. A later change on the same today replaces that day's copy. They're stored in a new table, `V49__sheet_snapshot.sql`. The server finds the sheet's tables from the database schema, so tables added later are covered too.\n- **Showing a past date.** The screen sends its as-of date with every request in an `X-As-Of` header (`core/as-of.interceptor.ts`). For a read or a sheet load, the server (`asof/AsOfFilter.java`) opens a database transaction and puts back the copy from the latest today on or before that date. If there is no such copy, the sheet starts empty. The as-of date then stands in for today, the normal read code runs, and the transaction is undone. Every figure (overdue, late charges, holds, deferrals, retirements, grade and rate in force) is worked out by the code that already exists, and nothing is written to the database or the audit file.\n- **Changes are blocked.** While an as-of date is set, every change, including a statement as of a date, is refused with a 409. Each form shows its usual error. Only the screen that set the date is affected; it's kept in that browser's session, and other users see the sheet as normal.\n- **Screen controls.** `asof-date`, `asof-set` and `asof-clear`, with the date shown in `sheet-asof`, are on the home screen. Setting or clearing the date reloads the whole sheet.\n\n**Other changes**\n\n- **Statement date fix (`people/people.ts`).** If a statement was refused, the date typed beside it stayed in the box, so the next plain \"Statement\" click was refused too. This is what failed scenario 2. The box now clears after a refusal, as AGENTS.md requires.\n- **Database lock wait.** I raised H2's `LOCK_TIMEOUT` to 10 seconds in `application.properties`. While an as-of page is loading, another user's change to the same sheet waits for it to finish instead of failing.\n\n**Trade-offs**\n\n- A change made at the same time as another user's could be saved into the other change's copy, because the copy is taken just after each change completes. Both are tagged with the same today, so it doesn't affect results here.\n- Each change stores a full copy of the sheet. That's cheap for sheets of this size but would grow with very large ones.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.7550868,
+        "num_turns": 27,
+        "duration_ms": 680030,
+        "duration_api_ms": 286575,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp74.agent.jsonl",
+  "agent_diff_file": "cp74.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
