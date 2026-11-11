@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing, adding, pausing and resuming the people's plans, and generating the claims they make. */
+/** Listing, adding, pausing, resuming and changing the amount of the people's plans, and generating the claims they make. */
 @RestController
 @RequestMapping("/api/plans")
 public class PlanController {
@@ -41,8 +41,14 @@ public class PlanController {
             @NotNull Long planId) {
     }
 
+    /** A plan's new amount: one the claim form takes without a correction. */
+    public record ChangeAmountRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull Long planId, @NotNull @Pattern(regexp = ClaimController.AMOUNT) String amount) {
+    }
+
+    /** A plan, its amount's changes oldest first, each as {@code <date> amount=<amount>}. */
     public record PlanResponse(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, String nextDates, boolean paused) {
+            LocalDate end, int generated, String nextDates, boolean paused, List<String> changes) {
     }
 
     /** What a generate did: how many claims were made, those claims in order, and the plans after it. */
@@ -57,7 +63,9 @@ public class PlanController {
                 plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
                 plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(),
                 String.join(", ", plan.datesAfter(today, NEXT_DATES).stream().map(LocalDate::toString).toList()),
-                plan.isPaused());
+                plan.isPaused(),
+                plan.getChanges().stream().map(c -> c.getChangedOn() + " amount="
+                        + c.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString()).toList());
     }
 
     private static Integer number(String digits) {
@@ -98,6 +106,13 @@ public class PlanController {
     public PlanResponse resume(@Valid @RequestBody PlanActionRequest req) {
         String sheet = req.sheet().trim();
         Plan plan = service.resume(sheet, req.user().trim(), req.planId());
+        return response(plan, sheets.today(sheet));
+    }
+
+    @PostMapping("/amount")
+    public PlanResponse changeAmount(@Valid @RequestBody ChangeAmountRequest req) {
+        String sheet = req.sheet().trim();
+        Plan plan = service.changeAmount(sheet, req.user().trim(), req.planId(), ClaimController.amount(req.amount()));
         return response(plan, sheets.today(sheet));
     }
 

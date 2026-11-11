@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -24,7 +25,8 @@ import java.util.Set;
  * Its plan dates are the start, then every that many days, up to the end; or, monthly, that day in
  * every month from the start's month (a day beyond the month's length on its last day), dates before
  * the start left out. It keeps each date it has made a claim for, and each time it was paused: a plan
- * date on or after a pause's day and before its resume's day is skipped, not postponed.
+ * date on or after a pause's day and before its resume's day is skipped, not postponed. Its amount
+ * can be changed; each change is kept, oldest first, and applies to the claims generated after it.
  */
 @Entity
 @Table(name = "plan")
@@ -64,6 +66,11 @@ public class Plan {
     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
     private List<PlanPause> pauses = new ArrayList<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_change", joinColumns = @JoinColumn(name = "plan_id"))
+    @OrderColumn(name = "seq")
+    private List<PlanChange> changes = new ArrayList<>();
+
     protected Plan() {
     }
 
@@ -92,6 +99,17 @@ public class Plan {
 
     public BigDecimal getAmount() {
         return amount;
+    }
+
+    /** Change the amount on the given day: the claims generated from then on take it. */
+    public void changeAmount(LocalDate on, BigDecimal newAmount) {
+        amount = newAmount;
+        changes.add(new PlanChange(on, newAmount));
+    }
+
+    /** The changes of the plan's amount, oldest first. */
+    public List<PlanChange> getChanges() {
+        return changes;
     }
 
     public LocalDate getStart() {

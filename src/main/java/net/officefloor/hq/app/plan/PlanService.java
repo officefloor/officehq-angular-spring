@@ -117,6 +117,26 @@ public class PlanService {
         return saved;
     }
 
+    /**
+     * Change the plan's amount on the sheet's today: the claims generated from then on take it, those
+     * already generated keep theirs.
+     */
+    @Transactional
+    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        roles.refuseViewer(sheetId, user);
+        sheets.load(sheetId, user);
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        plan.changeAmount(sheets.today(sheetId), amount);
+        Plan saved = plans.saveAndFlush(plan);
+        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " start=" + saved.getStart() + " amount="
+                + saved.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        return saved;
+    }
+
     /** Make the claims the sheet's plans are due to have made by its today: the claims made, in order. */
     @Transactional
     public List<Claim> generate(String sheetId, String user) {

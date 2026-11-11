@@ -2,7 +2,6 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { FigurePipe } from '../../core/figure';
 
 /** A person's plan, with how many claims it has made so far. */
 export interface Plan {
@@ -20,6 +19,8 @@ export interface Plan {
   nextDates: string;
   /** Whether the plan is paused now: its dates from the pause until a resume are skipped. */
   paused: boolean;
+  /** The changes of the amount, oldest first, each as `<date> amount=<amount>`. */
+  changes: string[];
 }
 
 // A person's plans and the form on their row that adds one: an amount, a start date, either every N
@@ -27,10 +28,11 @@ export interface Plan {
 // before the start. The sheet's generate button
 // (on the people screen) makes each plan's DRAFT claims; each plan shows how many it has made,
 // and its next five dates after the sheet's today. A plan can be paused and resumed from its row;
-// the dates while it is paused are skipped, not postponed.
+// the dates while it is paused are skipped, not postponed. Its amount can be changed from its row: the
+// claims generated from then on take the new amount; the plan lists its changes, oldest first.
 @Component({
   selector: 'app-person-plans',
-  imports: [FigurePipe],
+  imports: [],
   template: `
     <table [attr.aria-label]="'Plans of ' + personName()">
       <thead>
@@ -40,12 +42,23 @@ export interface Plan {
           <th scope="col">End</th><th scope="col">Made</th>
           <th scope="col">Next dates</th>
           <th scope="col">Paused</th><th scope="col">Pause or resume</th>
+          <th scope="col">Changes</th>
         </tr>
       </thead>
       <tbody>
         @for (pl of plans(); track pl.id) {
           <tr [attr.data-testid]="'plan-row-' + pl.id">
-            <td data-testid="plan-amount">{{ pl.amount | figure }}</td>
+            <td>
+              <label class="visually-hidden" [for]="'plan-amount-' + pl.id">Amount</label>
+              <input
+                [id]="'plan-amount-' + pl.id"
+                data-testid="plan-amount"
+                inputmode="decimal"
+                [value]="amountDrafts()[pl.id] ?? pl.amount"
+                (input)="draftAmount(pl, $any($event.target).value)"
+              />
+              <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl)">Save amount</button>
+            </td>
             <td data-testid="plan-start">{{ pl.start }}</td>
             <td data-testid="plan-every">{{ pl.every }}</td>
             <td data-testid="plan-day">{{ pl.day }}</td>
@@ -59,6 +72,13 @@ export interface Plan {
               @if (rowError()?.planId === pl.id) {
                 <p role="alert" data-testid="plan-error">{{ rowError()?.message }}</p>
               }
+            </td>
+            <td>
+              <ul>
+                @for (line of pl.changes; track $index) {
+                  <li data-testid="plan-change-line">{{ line }}</li>
+                }
+              </ul>
             </td>
           </tr>
         }
@@ -131,6 +151,8 @@ export class PersonPlans {
   protected readonly error = signal<string | null>(null);
   /** The error of the last pause or resume refused, on the plan's row. */
   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
+  /** The amounts typed on the plans' rows and not yet saved, by plan id. */
+  protected readonly amountDrafts = signal<Record<number, string>>({});
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
@@ -145,7 +167,53 @@ export class PersonPlans {
       this.endInput.set('');
       this.error.set(null);
       this.rowError.set(null);
+      this.amountDrafts.set({});
     });
+  }
+
+  protected draftAmount(plan: Plan, value: string): void {
+    this.amountDrafts.update((drafts) => ({ ...drafts, [plan.id]: value }));
+    if (this.rowError()?.planId === plan.id) this.rowError.set(null);
+  }
+
+  protected async changeAmount(plan: Plan): Promise<void> {
+    if (this.submitting) return;
+    this.rowError.set(null);
+    const amount = (this.amountDrafts()[plan.id] ?? plan.amount).trim();
+    if (!AMOUNT.test(amount)) {
+      this.rowError.set({ planId: plan.id, message: 'Enter an amount of 0.00 or more with up to two decimals.' });
+      return;
+    }
+    const sheet = this.session.sheet();
+    this.submitting = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Plan>('/api/plans/amount', {
+          sheet,
+          user: this.session.user(),
+          planId: plan.id,
+          amount,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.amountDrafts.update((drafts) => {
+        const rest = { ...drafts };
+        delete rest[plan.id];
+        return rest;
+      });
+      this.changed.emit(saved);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.rowError.set({
+        planId: plan.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Your role may not change plans.'
+            : 'Could not change this plan.',
+      });
+    } finally {
+      this.submitting = false;
+    }
   }
 
   protected async pauseOrResume(plan: Plan, pause: boolean): Promise<void> {
