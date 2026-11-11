@@ -112,21 +112,25 @@ public class SheetService {
     }
 
     /**
-     * The next claim number on the sheet: the sheets of its tree (its root parent and all the root's descendants)
-     * share one sequence, so it is the number after the last given on any of them. The rows of the tree's sheets are
-     * locked, in id order, until the caller's transaction ends, so two claims opened at once get different numbers.
+     * The next claim number on the sheet for a claim placed by the date: <FY>-<n>, counting from 1 within the fiscal
+     * year (by the sheet's fiscal start month) the date falls in. The sheets of its tree (its root parent and all the
+     * root's descendants) share one sequence per fiscal year, so n is the number after the last given in that year on
+     * any of them. The rows of the tree's sheets are locked, in id order, until the caller's transaction ends, so two
+     * claims opened at once get different numbers.
      */
     @Transactional
-    public long nextClaimNumber(String id) {
+    public String nextClaimNumber(String id, LocalDate date) {
+        Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
         SortedSet<String> tree = treeOf(id);
         for (String member : tree) {
             if (sheets.lockById(member) != 1 && member.equals(id)) {
                 throw new SheetNotFoundException(id);
             }
         }
-        long next = sheets.maxLastClaimNumber(tree) + 1;
-        sheets.setLastClaimNumber(id, next);
-        return next;
+        String year = sheet.fiscalYearOf(date);
+        long next = sheets.maxLastFiscalNumber(tree, year) + 1;
+        sheets.setLastFiscalNumber(id, year, next);
+        return year + "-" + next;
     }
 
     /** The ids of the sheets in the sheet's tree: its topmost ancestor and every sheet below it. */

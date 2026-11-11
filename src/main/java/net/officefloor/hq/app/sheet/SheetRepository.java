@@ -50,6 +50,20 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Query(value = "UPDATE sheet SET last_claim_number = :number WHERE id = :id", nativeQuery = true)
     int setLastClaimNumber(@Param("id") String id, @Param("number") long number);
 
+    /** The last claim number given in the fiscal year on any of the sheets; 0 when none has been given. */
+    @Query(value = "SELECT COALESCE(MAX(last_number), 0) FROM claim_fiscal_number"
+            + " WHERE sheet_id IN (:ids) AND fiscal_year = :year", nativeQuery = true)
+    long maxLastFiscalNumber(@Param("ids") Collection<String> ids, @Param("year") String year);
+
+    /** Sets the sheet's last claim number in the fiscal year; the sheet's row must be locked by the caller. */
+    @Modifying
+    @Query(value = "MERGE INTO claim_fiscal_number f USING (VALUES (:id, :year, :number)) v (sheet_id, fiscal_year, last_number)"
+            + " ON f.sheet_id = v.sheet_id AND f.fiscal_year = v.fiscal_year"
+            + " WHEN MATCHED THEN UPDATE SET last_number = v.last_number"
+            + " WHEN NOT MATCHED THEN INSERT (sheet_id, fiscal_year, last_number) VALUES (v.sheet_id, v.fiscal_year, v.last_number)",
+            nativeQuery = true)
+    int setLastFiscalNumber(@Param("id") String id, @Param("year") String year, @Param("number") long number);
+
     @Query(value = "SELECT parent FROM sheet WHERE id = :id", nativeQuery = true)
     String parentOf(@Param("id") String id);
 

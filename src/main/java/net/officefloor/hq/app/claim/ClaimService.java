@@ -973,13 +973,14 @@ public class ClaimService {
 
     /**
      * The number a claim due by the date gets when opened: while the sheet numbers by period, the next in its
-     * period's own sequence (X for no period); otherwise the next sheet-wide number.
+     * period's own sequence (X for no period); otherwise the next sheet-wide number in the fiscal
+     * year of the date (<FY>-<n>).
      */
     public String nextNumber(String sheetId, LocalDate date) {
         if (settings.get(sheetId).numbersByPeriod()) {
             return sheets.nextSequenceNumber(sheetId, periods.nameOn(sheetId, date).orElse("X"));
         }
-        return String.valueOf(sheets.nextClaimNumber(sheetId));
+        return sheets.nextClaimNumber(sheetId, date);
     }
 
     /** The terms of the person on the date: their own, else their grade's on that date, else the sheet's then. */
