@@ -12,6 +12,7 @@ import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.WatchService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.role.Role;
@@ -43,11 +44,13 @@ public class ClaimService {
     private final RoleService roles;
     private final SettingService settings;
     private final ClaimLogRepository logs;
+    private final WatchService watches;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
-            ClaimLogRepository logs) {
+            ClaimLogRepository logs, WatchService watches) {
         this.logs = logs;
+        this.watches = watches;
         this.periods = periods;
         this.roles = roles;
         this.settings = settings;
@@ -191,6 +194,9 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         audit.recordOnCommit(record(event, user, person, saved) + numberOf(number) + due);
+        if (status == ClaimStatus.SETTLED) {
+            watches.notifyWatchers(sheetId, user, person, number);
+        }
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -214,6 +220,7 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_APPROVED", user, person, saved) + numberOf(saved.getNumber()) + due);
+        watches.notifyWatchers(sheetId, user, person, saved.getNumber());
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -328,6 +335,7 @@ public class ClaimService {
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_RESETTLED", user, person, saved) + numberOf(saved.getNumber())
                 + " old=" + old + " new=" + shownDue(sheetId, person, saved));
+        watches.notifyWatchers(sheetId, user, person, saved.getNumber());
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

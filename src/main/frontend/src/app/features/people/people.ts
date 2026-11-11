@@ -34,6 +34,8 @@ interface Person {
   holds: PersonHold[];
   /** The ids of the other people on the sheet the person has named as their patrons. */
   patronIds: number[];
+  /** Whether the signed-in user watches the person. */
+  watched: boolean;
 }
 
 /** A hold of a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
@@ -184,7 +186,7 @@ function csvField(value: string): string {
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -209,7 +211,17 @@ function csvField(value: string): string {
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
+              <td data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</td>
               <td>
+                <button
+                  type="button"
+                  data-testid="person-watch"
+                  [attr.aria-pressed]="p.watched"
+                  [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name"
+                  (click)="watch(p)"
+                >
+                  {{ p.watched ? 'Unwatch' : 'Watch' }}
+                </button>
                 <button
                   type="button"
                   [attr.data-testid]="'person-edit-' + p.id"
@@ -740,6 +752,25 @@ export class People {
       await this.read(sheet);
     } catch {
       if (this.session.sheet() === sheet) this.bulkSettleError.set('The selected claims could not be settled.');
+    }
+  }
+
+  /** Start or stop watching the person as the signed-in user. */
+  protected async watch(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/watch`;
+    try {
+      const saved = await firstValueFrom(
+        this.http.put<Person>(url, { on: !person.watched }, this.session.headers()),
+      );
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be watched or unwatched.` });
     }
   }
 
