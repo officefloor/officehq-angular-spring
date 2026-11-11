@@ -23,4 +23,6 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     boolean existsBySheetIdAndNameKeyAndIdNot(String sheetId, String nameKey, Long id);
 
     boolean existsBySheetIdAndNameKey(String sheetId, String nameKey);
+
+    Optional<Person> findBySheetIdAndNameKey(String sheetId, String nameKey);
 }

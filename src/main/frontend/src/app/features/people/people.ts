@@ -60,6 +60,27 @@ interface Person {
           <p role="alert" data-testid="person-form-error">{{ message }}</p>
         }
       </form>
+      <form aria-label="Quick add a claim" (submit)="quickAdd($event)">
+        <label for="quick-name">Name</label>
+        <input
+          id="quick-name"
+          data-testid="quick-name"
+          [value]="quickName()"
+          (input)="quickName.set(value($event)); quickError.set(null)"
+        />
+        <label for="quick-amount">Amount</label>
+        <input
+          id="quick-amount"
+          data-testid="quick-amount"
+          inputmode="decimal"
+          [value]="quickAmount()"
+          (input)="quickAmount.set(value($event)); quickError.set(null)"
+        />
+        <button type="submit" data-testid="quick-submit">Quick add claim</button>
+        @if (quickError(); as message) {
+          <p role="alert" data-testid="quick-error">{{ message }}</p>
+        }
+      </form>
       <table>
         <thead>
           <tr>
@@ -167,6 +188,11 @@ export class People {
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
   protected readonly error = signal<string | null>(null);
+  /** The quick-add bar: a name and an amount, and the error of its last refused submit. */
+  protected readonly quickName = signal('');
+  protected readonly quickAmount = signal('');
+  protected readonly quickError = signal<string | null>(null);
+  private quickAdding = false;
   /** The error of the last action on a person's row that was refused, and the person it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   private reads = 0;
@@ -181,6 +207,9 @@ export class People {
         this.rates.set([]);
         this.periods.set([]);
         this.reset();
+        this.quickName.set('');
+        this.quickAmount.set('');
+        this.quickError.set(null);
         if (sheet) void this.read(sheet);
       });
     });
@@ -324,6 +353,45 @@ export class People {
       }
     } finally {
       this.submitting = false;
+    }
+  }
+
+  /**
+   * Add a DRAFT claim of the amount, dated today with an empty note, for the person of the typed name; a name not on
+   * the sheet adds the person first, with grade A. Refused as a whole when either would be.
+   */
+  protected async quickAdd(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.quickAdding) return;
+    this.quickError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const name = this.quickName();
+    if (!name.trim()) {
+      this.quickError.set('Type the name of the person the claim is for.');
+      return;
+    }
+    const amount = this.quickAmount().trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+      this.quickError.set('Type an amount of 0.00 or more, with at most two decimals.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/quick-add`;
+    this.quickAdding = true;
+    try {
+      const added = await firstValueFrom(this.http.post<Claim>(url, { name, amount }, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.quickName.set('');
+        this.quickAmount.set('');
+        // Re-reads the sheet, which also brings in a person the quick-add created.
+        this.claimSaved(added);
+      }
+    } catch {
+      const closed = periodOn(this.periods(), this.session.today() ?? '');
+      const why = closed?.closed ? ` Today is in the closed period ${closed.name}.` : '';
+      this.quickError.set('The claim could not be added.' + why);
+    } finally {
+      this.quickAdding = false;
     }
   }
 
