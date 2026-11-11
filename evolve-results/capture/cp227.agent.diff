@@ -1,0 +1,14 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9e51a53c0..c7393b743 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -99,7 +99,8 @@ import { FigurePipe } from '../../core/figure';
+ // The export button downloads everyone, retired people included, in list order, as a CSV file
+ // (name, grade in force today, retired-from date or nothing, due-total as shown). It and the
+ // export-claims button first wait for the screen's reads to be answered, so an export taken while
+-// an as-of date is set has the as-of figures (the pools export reads the pools afresh as of it).
++// an as-of date is set has the as-of figures (the pools export reads the pools afresh as of it), and
++// one taken while a preview date is set has the preview figures (worked out on the preview date).
+ // The export-claims button downloads every claim as a CSV file the same way: people in list order,
+ // retired included, each person's claims oldest first, with person, number, date, amount, due,
+ // status and period as the claim's row shows them (an empty number or period, or n/a, as it is).
