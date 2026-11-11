@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.Locale;
+import net.officefloor.hq.app.claim.ClaimStatus;
 
 /** A person on a sheet. */
 @Entity
@@ -35,6 +36,10 @@ public class Person {
     /** The date the person is retired from; null while not retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
+
+    /** Whether the person is on hold: their OPEN claims then count in no live total. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
 
     /** Raised by one on each save; a save of an older version is refused. */
     @Version
@@ -92,6 +97,19 @@ public class Person {
 
     public void setRetiredFrom(LocalDate retiredFrom) {
         this.retiredFrom = retiredFrom;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
+    }
+
+    /** Whether a claim of the person in the status counts in the live totals: an OPEN one not while held. */
+    public boolean counts(ClaimStatus status) {
+        return status.counts() && !(held && status == ClaimStatus.OPEN);
     }
 
     /** Refused when the person is retired and the date is after their retirement date. */

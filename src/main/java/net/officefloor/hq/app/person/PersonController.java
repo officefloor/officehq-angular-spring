@@ -30,12 +30,12 @@ public class PersonController {
 
     /** A person as shown, with how many statements they have had and the due-total and date of the last one. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom) {
+            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held) {
 
         static PersonView of(Person person, StatementSummary statements) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
-                    person.isRetired(), person.getRetiredFrom());
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -100,6 +100,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireRequest request) {
         return view(service.retire(sheetId.trim(), user.trim(), id, request.from()));
+    }
+
+    /** Put the person on hold, or take them off it. */
+    @PostMapping("/{id}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.toggleHold(sheetId.trim(), user.trim(), id));
     }
 
     private PersonView view(Person person) {

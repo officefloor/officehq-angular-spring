@@ -66,7 +66,9 @@ public class RollupService {
         BigDecimal claimedTotal = zero();
         BigDecimal dueTotal = zero();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            List<Claim> theirs = counted.getOrDefault(person.getId(), List.of());
+            List<Claim> theirs = counted.getOrDefault(person.getId(), List.of()).stream()
+                    .filter(claim -> person.counts(claim.getStatus()))
+                    .toList();
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             boolean anyDue = today != null && rateOn(sheetRates, person.getGrade(), today).isPresent();
@@ -91,7 +93,7 @@ public class RollupService {
 
     /**
      * The due-total of the dates from and to, both inclusive, as the screen shows a period's: the dues of the OPEN
-     * and SETTLED claims dated in them, skipping those with no due.
+     * and SETTLED claims dated in them, skipping those with no due and the OPEN ones of a person on hold.
      */
     public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
@@ -102,7 +104,7 @@ public class RollupService {
         BigDecimal total = zero();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !claim.getStatus().counts() || claim.getDate().isBefore(from)
+            if (person == null || !person.counts(claim.getStatus()) || claim.getDate().isBefore(from)
                     || claim.getDate().isAfter(to)) {
                 continue;
             }

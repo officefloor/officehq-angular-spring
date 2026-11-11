@@ -81,6 +81,20 @@ public class PersonService {
         return saved;
     }
 
+    /** Put the person on hold, or take them off it when they are held. */
+    @Transactional
+    public Person toggleHold(String sheetId, String user, Long id) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
+        person.setHeld(!person.isHeld());
+        Person saved = save(person);
+        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
+                + " by=" + user + " name=" + saved.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
     private static String record(String event, String user, Person person) {
         return event + " sheet=" + person.getSheetId() + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.getGrade();
