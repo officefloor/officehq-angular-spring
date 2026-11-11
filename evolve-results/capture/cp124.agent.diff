@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 20fb4f2ba..7466c0379 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -86,7 +86,7 @@ function cutOf(pot: number, share: number, shares: number): number {
+ /**
+  * Each member's cut of the pot (in cents), in member order: the pot times their share divided by the shares of the
+  * members with a cut added up, rounded half to even; a member without a cut (retired, or on hold on the sheet's today)
+- * gets 0. The remainder, the pot minus the cuts added up, goes to the member with a cut with the largest share (the
++ * gets 0, their share spread over the others. The remainder, the pot minus the cuts added up, goes to the member with a cut with the largest share (the
+  * earliest added on a tie), so the cuts total exactly the pot; with no member left with a cut, each is 0.
+  */
+ function cuts(pot: number, members: { share: number; excluded: boolean }[]): number[] {
+@@ -101,8 +101,8 @@ function cuts(pot: number, members: { share: number; excluded: boolean }[]): num
+   return out;
+ }
+ 
+-// The sheet's pools: each with its members (people and other pools) and their shares, its total share (a retired
+-// member's, or one whose dates leave out the sheet's today, counting as 0.00) and whether it is balanced (the total is exactly 100.00); in a balanced pool that has a
++// The sheet's pools: each with its members (people and other pools) and their shares, its total share (a member
++// whose dates leave out the sheet's today counting as 0.00) and whether it is balanced (the total is exactly 100.00); in a balanced pool that has a
+ // pot, each member's cut of it. A pool that is a member of none has the sheet's pot; a pool that is a member of
+ // another has its cut in that pool as its pot.
+ @Component({
+@@ -205,7 +205,7 @@ export class Pools {
+   protected readonly memberErrors = signal<Record<number, string>>({});
+ 
+   /**
+-   * Each pool's total share (a retired member's, or one whose dates leave out the sheet's today, counting as 0.00), whether it is balanced, and, in a balanced pool
++   * Each pool's total share (a member whose dates leave out the sheet's today counting as 0.00), whether it is balanced, and, in a balanced pool
+    * with a pot, each member's cut (in cents, in member order); null cuts for an unbalanced pool or one with no pot. A
+    * pool that is a member of none has the sheet's pot; one that is a member of another has its cut there as its pot.
+    */
+@@ -226,11 +226,12 @@ export class Pools {
+       if (known) return known;
+       // A member whose membership dates leave out the sheet's today is left out entirely: no share, no cut.
+       const outside = pool.members.map((m) => !this.dated(m, today));
+-      const out = pool.members.map(
+-        (m, i) => outside[i] || (m.personId !== null ? (byId.get(m.personId)?.retired ?? false) : false),
+-      );
+-      const total = pool.members.reduce((sum, m, i) => sum + (out[i] ? 0 : cents(m.share)), 0);
++      const total = pool.members.reduce((sum, m, i) => sum + (outside[i] ? 0 : cents(m.share)), 0);
+       const balanced = total === 10000;
++      // A retired person gets no cut; their share is spread over the members with a cut, as a held one's is.
++      const retired = pool.members.map((m) => (m.personId !== null ? (byId.get(m.personId)?.retired ?? false) : false));
++      // A pool whose every member is retired shows no cuts.
++      const allRetired = pool.members.some((_, i) => !outside[i]) && pool.members.every((_, i) => outside[i] || retired[i]);
+       // A person on hold on the sheet's today gets no cut; their share is spread over the members with a cut.
+       const held = pool.members.map((m) => {
+         const holds = m.personId !== null ? (byId.get(m.personId)?.holds ?? []) : [];
+@@ -248,8 +249,8 @@ export class Pools {
+         balanced,
+         outside,
+         cuts:
+-          balanced && pot !== null
+-            ? cuts(pot, pool.members.map((m, i) => ({ share: cents(m.share), excluded: out[i] || held[i] })))
++          balanced && pot !== null && !allRetired
++            ? cuts(pot, pool.members.map((m, i) => ({ share: cents(m.share), excluded: outside[i] || retired[i] || held[i] })))
+             : null,
+       };
+       figures.set(pool.id, result);
