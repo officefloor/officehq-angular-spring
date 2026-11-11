@@ -1,0 +1,64 @@
+{
+  "checkpoint": 118,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp118_import-rates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Rates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nRates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2fce95ecb9a1c1fa254a4eb64d2d269b709b8186",
+  "reset_sha": "",
+  "preagent_sha": "2cebdf449f3de1981723e43f720023baaa299497",
+  "prev_sha": "2cebdf449f3de1981723e43f720023baaa299497",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.956528,
+    "input_tokens": 14,
+    "output_tokens": 1472,
+    "cache_read_tokens": 454405,
+    "cache_creation_tokens": 7192,
+    "num_turns": 6,
+    "duration_ms": 249943,
+    "duration_api_ms": 87875,
+    "model": "claude-opus-5-5",
+    "session_id": "c63ff39a-3c38-4fc2-8df6-142b3dc8ff7f",
+    "stop_reason": "success",
+    "result_text": "Rates can now be pasted into a rate import box, and all 4 Playwright tests pass.\n\nThe first `bin/e2e` run failed all 4 tests because the app couldn't start: something else was already using port 3000. I reran it as `PORT=3917 bin/e2e`.\n\n**How it works**\n- Each line is grade,rate,from,to; the from- and to-dates may be left out or blank, and blank lines are skipped.\n- Every line is checked first against the rate form's rules: grade A, B or C; a rate up to 999.99 with at most two decimals; real dates; to not before from.\n- If any line fails, or the box is empty, an error shows and nothing is saved to the store or the audit file. The error says which line was refused and why.\n- Otherwise each line is set in order through the same code the rate form uses. A rate for the same grade and from-date is replaced, `RATE_SET` and any rollup records are written, and the box shows how many rates were set.\n\n**What changed**\n- **Server:** a new `ImportRatesService` and `ImportRatesException`, plus a `POST /api/sheets/{sheetId}/rates/import` endpoint in `RateController.java`. All lines are set in one transaction.\n- **Front end:** the import box is in the Rates panel (`features/rates/rates.ts`). After a successful import, `people.ts` re-reads the sheet so the dues and rates on screen update. The box clears when another sheet is loaded.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.956528,
+        "num_turns": 6,
+        "duration_ms": 249943,
+        "duration_api_ms": 87875,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp118.agent.jsonl",
+  "agent_diff_file": "cp118.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
