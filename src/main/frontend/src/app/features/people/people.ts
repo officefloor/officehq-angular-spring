@@ -5,7 +5,8 @@ import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, capped, excessOver, rateOn, sumDues, trimmedSumDues } from '../rates/rates';
-import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
 
 interface Person {
@@ -459,7 +460,7 @@ function csvField(value: string): string {
         </table>
       }
     </section>
-    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
   `,
 })
 export class People {
@@ -572,6 +573,14 @@ export class People {
     ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({
       status,
       count: this.claims().filter((c) => c.status === status).length,
+    })),
+  );
+  private readonly voidReasons = inject(VoidReasons);
+  /** Per void reason on the sheet's list: how many VOID claims were voided with it. */
+  protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>
+    this.voidReasons.list().map((r) => ({
+      reason: r.reason,
+      count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === r.reason).length,
     })),
   );
   protected readonly name = signal('');

@@ -3,11 +3,12 @@ import { Session } from '../../core/session';
 import { Holidays } from '../holidays/holidays';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
+import { VoidReasonsList } from '../void-reasons/void-reasons';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [Holidays, People, Settings],
+  imports: [Holidays, People, Settings, VoidReasonsList],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -58,6 +59,7 @@ import { Settings } from '../settings/settings';
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         <app-settings />
         <app-holidays />
+        <app-void-reasons />
         <app-people />
       }
     } @else {

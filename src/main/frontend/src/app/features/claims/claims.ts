@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { VoidReasons } from '../../core/void-reasons';
 import { Period, periodOn } from '../periods/periods';
 import { Rate, Rounding, dueOf, floored, percentOf, rateOn, sumDues } from '../rates/rates';
 
@@ -50,6 +51,8 @@ export interface Claim {
   ref: string | null;
   /** The claim's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; null when it has none. */
   tags: string | null;
+  /** The reason the claim was voided with, from the sheet's list; null when none. */
+  voidReason: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
@@ -451,6 +454,20 @@ export function sumAmounts(amounts: string[]): string {
                   [value]="rejectReasons()[c.id] ?? ''"
                   (input)="setRejectReason(c.id, value($event))"
                 />
+                @if (voidReasons.list().length > 0) {
+                  <label class="visually-hidden" [for]="'claim-void-reason-' + c.id">Reason to void</label>
+                  <select
+                    [id]="'claim-void-reason-' + c.id"
+                    data-testid="claim-void-reason"
+                    [value]="chosenVoidReasons()[c.id] ?? ''"
+                    (change)="setVoidReason(c.id, value($event))"
+                  >
+                    <option value="" [selected]="!chosenVoidReasons()[c.id]">No void reason</option>
+                    @for (r of voidReasons.list(); track r.id) {
+                      <option [value]="r.reason" [selected]="chosenVoidReasons()[c.id] === r.reason">{{ r.reason }}</option>
+                    }
+                  </select>
+                }
                 @if (actionError(); as e) {
                   @if (e.id === c.id) {
                     <p role="alert" data-testid="claim-error">{{ e.message }}</p>
@@ -467,6 +484,7 @@ export function sumAmounts(amounts: string[]): string {
 export class Claims implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  protected readonly voidReasons = inject(VoidReasons);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -521,6 +539,8 @@ export class Claims implements OnInit {
   protected readonly reassignTo = signal<Record<number, string>>({});
   /** The reason typed to reject each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The void reason chosen for each claim from the sheet's list, by claim id. */
+  protected readonly chosenVoidReasons = signal<Record<number, string>>({});
   /** The date (yyyy-mm-dd) picked to defer each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The new date (yyyy-mm-dd) picked to re-date each OPEN or PENDING claim to, by claim id. */
@@ -706,6 +726,11 @@ export class Claims implements OnInit {
 
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((all) => ({ ...all, [id]: reason }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  protected setVoidReason(id: number, reason: string): void {
+    this.chosenVoidReasons.update((all) => ({ ...all, [id]: reason }));
     if (this.actionError()?.id === id) this.actionError.set(null);
   }
 
@@ -958,9 +983,16 @@ export class Claims implements OnInit {
       this.actionError.set({ id: claim.id, message: 'Type a reason to reject this claim.' });
       return;
     }
+    const listed = this.voidReasons.list().map((r) => r.reason);
+    const voidReason = this.chosenVoidReasons()[claim.id] ?? '';
+    if (action === 'void' && listed.length > 0 && !listed.includes(voidReason)) {
+      this.actionError.set({ id: claim.id, message: 'Choose a reason from the void reasons to void this claim.' });
+      return;
+    }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/${action}`;
     try {
-      const body = action === 'reject' ? { reason } : null;
+      const body =
+        action === 'reject' ? { reason } : action === 'void' ? { reason: listed.length > 0 ? voidReason : null } : null;
       const saved = await firstValueFrom(this.http.post<Claim>(url, body, this.session.headers()));
       if (action === 'reject') this.setRejectReason(claim.id, '');
       if (this.session.sheet() === sheet) this.saved.emit(saved);
@@ -979,6 +1011,8 @@ export class Claims implements OnInit {
             : 'Only a steward can approve or reject a pending claim, and not the one who opened it.'
           : closed
               ? `This claim is due by a date in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
+              : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
+                ? 'Choose a reason from the void reasons to void this claim.'
               : e instanceof HttpErrorResponse && e.status === 422 && (action === 'settle' || action === 'approve')
                 ? `This claim's due is above the proof threshold: add a proof before it can be ${pastOf[action]}.`
               : action === 'settle' && this.deferred(claim)

@@ -23,6 +23,8 @@ import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReason;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,10 +57,13 @@ public class ClaimService {
     private final WatchService watches;
     private final HolidayService holidays;
     private final SheetTagRepository tags;
+    private final VoidReasonService voidReasons;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
-            ClaimLogRepository logs, WatchService watches, HolidayService holidays, SheetTagRepository tags) {
+            ClaimLogRepository logs, WatchService watches, HolidayService holidays, SheetTagRepository tags,
+            VoidReasonService voidReasons) {
+        this.voidReasons = voidReasons;
         this.tags = tags;
         this.holidays = holidays;
         this.logs = logs;
@@ -228,6 +233,15 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status) {
+        return changeStatus(sheetId, user, id, status, null);
+    }
+
+    /**
+     * Move a claim to another status, as {@link #changeStatus(String, String, Long, ClaimStatus)}. While the sheet's
+     * list of void reasons is not empty, a void needs a reason from it; the claim keeps the reason it was voided with.
+     */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
@@ -248,6 +262,7 @@ public class ClaimService {
             requireSettledVoidable(sheetId, user, claim);
         }
         periods.requireOpen(sheetId, claim.getDueBy());
+        String reason = status == ClaimStatus.VOID ? requireVoidReason(sheetId, id, voidReason) : null;
         // A deferred claim cannot be settled until the sheet's today reaches the date it is deferred until.
         if (status == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ClaimDeferException(id, "it is deferred until " + claim.getDeferredUntil());
@@ -277,6 +292,9 @@ public class ClaimService {
         String due = status == ClaimStatus.SETTLED ? settle(sheetId, person, claim)
                 : voidsSettled ? " reversed=" + shownDue(sheetId, person, claim) : "";
         claim.setStatus(status);
+        if (status == ClaimStatus.VOID) {
+            claim.setVoidReason(reason);
+        }
         // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
         String number = claim.getNumber();
         if (status == ClaimStatus.OPEN) {
@@ -293,12 +311,32 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit.recordOnCommit(record(event, user, person, saved) + numberOf(number) + due);
+        audit.recordOnCommit(record(event, user, person, saved) + numberOf(number) + due
+                + (reason == null ? "" : " reason=" + reason));
         if (status == ClaimStatus.SETTLED) {
             watches.notifyWatchers(sheetId, user, person, number);
         }
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * The reason a claim is voided with: none while the sheet's list of void reasons is empty, else the one given,
+     * which must be on the list.
+     */
+    private String requireVoidReason(String sheetId, Long id, String given) {
+        List<String> listed = voidReasons.list(sheetId).stream().map(VoidReason::getReason).toList();
+        if (listed.isEmpty()) {
+            return null;
+        }
+        String reason = given == null ? "" : given.trim();
+        if (reason.isEmpty()) {
+            throw new ClaimVoidReasonException(id, "choose a reason from the sheet's void reasons");
+        }
+        if (!listed.contains(reason)) {
+            throw new ClaimVoidReasonException(id, reason + " is not one of the sheet's void reasons");
+        }
+        return reason;
     }
 
     /**

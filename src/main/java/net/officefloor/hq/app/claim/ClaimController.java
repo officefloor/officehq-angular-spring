@@ -37,13 +37,14 @@ public class ClaimController {
      * its status log, oldest first; and the date it is deferred until (null when never deferred); and how many proofs
      * it has; and the number of the claim it was split off (null unless it was); and the user whose open editor locks
      * it (null when not locked); and the last day it was reminded (null when never); and its external reference (null
-     * when it has none); and its tags, sorted and comma separated (null when it has none).
+     * when it has none); and its tags, sorted and comma separated (null when it has none); and the reason it was voided
+     * with (null when none).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
-            String tags) {
+            String tags, String voidReason) {
 
         static ClaimView of(Claim claim, List<ClaimLog> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -56,7 +57,7 @@ public class ClaimController {
                     log.stream().map(ClaimLogView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
-                    claim.getTags());
+                    claim.getTags(), claim.getVoidReason());
         }
     }
 
@@ -321,12 +322,21 @@ public class ClaimController {
         return view(service.remind(sheetId.trim(), user.trim(), id));
     }
 
-    /** Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED one. */
+    /** The reason a claim is voided with, from the sheet's list of void reasons; blank or missing for none. */
+    public record VoidRequest(@Size(max = 255) String reason) {
+    }
+
+    /**
+     * Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED one; while the
+     * sheet has void reasons, with one of them.
+     */
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.VOID));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) @Valid VoidRequest request) {
+        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.VOID,
+                request == null ? null : request.reason()));
     }
 
     /** The claim as shown, with its status log. */

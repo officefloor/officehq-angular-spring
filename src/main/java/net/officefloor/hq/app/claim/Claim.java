@@ -107,6 +107,10 @@ public class Claim {
     @Column(name = "tags")
     private String tags;
 
+    /** The reason the claim was voided with, from the sheet's list; null when voided without one, or not VOID. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     protected Claim() {
     }
 
@@ -326,6 +330,14 @@ public class Claim {
 
     public void setTags(String tags) {
         this.tags = tags;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     /** Whether a user other than this one has the claim's editor open. */
