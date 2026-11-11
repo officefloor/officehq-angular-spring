@@ -1,0 +1,563 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 9d9822962..237083e7d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -58,6 +58,22 @@ export interface Claim {
+   comments: ClaimComment[];
+   /** The number of the bulk settle that settled it (or sent it to PENDING); null when settled one at a time, or not settled. */
+   settleBatch: number | null;
++  /** Its lines, oldest first: with any, its amount is their quantities times their unit amounts added up. */
++  lines: ClaimLine[];
++}
++
++/** A line of a claim: a label, a quantity (a whole number, at least 1) and a unit amount (two decimals). */
++export interface ClaimLine {
++  label: string;
++  qty: number;
++  unit: string;
++}
++
++/** What is typed for a new line of a claim. */
++interface LineEntry {
++  label: string;
++  qty: string;
++  unit: string;
+ }
+ 
+ /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+@@ -308,7 +324,7 @@ export function sumAmounts(amounts: string[]): string {
+         <thead>
+           <tr>
+             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
+-            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th>
++            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -375,6 +391,47 @@ export function sumAmounts(amounts: string[]): string {
+                   Comment
+                 </button>
+               </td>
++              <td>
++                <ol class="claim-lines">
++                  @for (line of c.lines; track $index) {
++                    <li data-testid="claim-lines-line">{{ line.label }} {{ line.qty }} x {{ line.unit }}</li>
++                  }
++                </ol>
++                <label class="visually-hidden" [for]="'claim-line-label-' + c.id">Line label</label>
++                <input
++                  [id]="'claim-line-label-' + c.id"
++                  data-testid="claim-line-label"
++                  placeholder="Label"
++                  [value]="lineEntries()[c.id]?.label ?? ''"
++                  (input)="setLineEntry(c.id, 'label', value($event))"
++                />
++                <label class="visually-hidden" [for]="'claim-line-qty-' + c.id">Line quantity</label>
++                <input
++                  [id]="'claim-line-qty-' + c.id"
++                  data-testid="claim-line-qty"
++                  inputmode="numeric"
++                  placeholder="Qty"
++                  [value]="lineEntries()[c.id]?.qty ?? ''"
++                  (input)="setLineEntry(c.id, 'qty', value($event))"
++                />
++                <label class="visually-hidden" [for]="'claim-line-unit-' + c.id">Line unit amount</label>
++                <input
++                  [id]="'claim-line-unit-' + c.id"
++                  data-testid="claim-line-unit"
++                  inputmode="decimal"
++                  placeholder="Unit amount"
++                  [value]="lineEntries()[c.id]?.unit ?? ''"
++                  (input)="setLineEntry(c.id, 'unit', value($event))"
++                />
++                <button
++                  type="button"
++                  data-testid="claim-line-add"
++                  [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date"
++                  (click)="addLine(c)"
++                >
++                  Add line
++                </button>
++              </td>
+               <td>
+                 <button
+                   type="button"
+@@ -608,6 +665,8 @@ export class Claims implements OnInit {
+   protected readonly splitAmounts = signal<Record<number, string>>({});
+   /** The comment typed for each claim, by claim id. */
+   protected readonly commentTexts = signal<Record<number, string>>({});
++  /** The new line typed for each DRAFT claim, by claim id. */
++  protected readonly lineEntries = signal<Record<number, LineEntry>>({});
+   /** The new amount typed for each DRAFT claim in its row, by claim id. */
+   protected readonly inlineAmounts = signal<Record<number, string>>({});
+ 
+@@ -957,6 +1016,58 @@ export class Claims implements OnInit {
+     }
+   }
+ 
++  protected setLineEntry(id: number, field: keyof LineEntry, text: string): void {
++    this.lineEntries.update((all) => {
++      const entry = all[id] ?? { label: '', qty: '', unit: '' };
++      return { ...all, [id]: { ...entry, [field]: text } };
++    });
++    if (this.actionError()?.id === id) this.actionError.set(null);
++  }
++
++  /**
++   * Add a line to a DRAFT claim, which counts as editing it: refused alike for a viewer, a claim not DRAFT, one in a
++   * closed period and one another user has open, and for an empty label, a quantity that is not a whole number of at
++   * least 1 and a unit amount with more than two decimals.
++   */
++  protected async addLine(claim: Claim): Promise<void> {
++    this.actionError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const entry = this.lineEntries()[claim.id] ?? { label: '', qty: '', unit: '' };
++    const label = entry.label.trim();
++    const qty = entry.qty.trim();
++    const unit = entry.unit.trim();
++    if (label === '' || label.length > 255) {
++      this.actionError.set({ id: claim.id, message: 'Type a label of at most 255 characters for the line.' });
++      return;
++    }
++    if (!/^0*[1-9]\d{0,5}$/.test(qty)) {
++      this.actionError.set({ id: claim.id, message: 'Type a whole number of at least 1 as the quantity.' });
++      return;
++    }
++    if (!/^\d{1,10}(\.\d{1,2})?$/.test(unit)) {
++      this.actionError.set({ id: claim.id, message: 'Type a unit amount with at most two decimals.' });
++      return;
++    }
++    const refused = this.editRefusal(claim, null);
++    if (refused !== null) {
++      this.actionError.set({ id: claim.id, message: refused });
++      return;
++    }
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/lines`;
++    try {
++      const saved = await firstValueFrom(this.http.post<Claim>(url, { label, qty, unit }, this.session.headers()));
++      this.lineEntries.update((all) => ({ ...all, [claim.id]: { label: '', qty: '', unit: '' } }));
++      if (this.session.sheet() === sheet) this.saved.emit(saved);
++    } catch (e) {
++      const message =
++        e instanceof HttpErrorResponse && e.status === 422
++          ? 'The lines of this claim would add up to more than a claim can hold.'
++          : (this.editRefusal(claim, e) ?? 'This line could not be added to the claim.');
++      this.actionError.set({ id: claim.id, message });
++    }
++  }
++
+   protected setInlineAmount(id: number, amount: string): void {
+     this.inlineAmounts.update((all) => ({ ...all, [id]: amount }));
+     if (this.actionError()?.id === id) this.actionError.set(null);
+@@ -983,6 +1094,13 @@ export class Claims implements OnInit {
+       this.actionError.set({ id: claim.id, message: refused });
+       return;
+     }
++    if (claim.lines.length > 0 && Number(amount) !== Number(claim.amount)) {
++      this.actionError.set({
++        id: claim.id,
++        message: `This claim has lines: its amount is ${claim.amount}, their quantities times their unit amounts added up.`,
++      });
++      return;
++    }
+     const body = { amount, date: claim.date, note: claim.note, corrects: claim.corrects, ref: claim.ref, tags: claim.tags };
+     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}`;
+     try {
+@@ -1195,6 +1313,11 @@ export class Claims implements OnInit {
+       this.error.set('Type an amount with at most two decimals; a negative one is a correction.');
+       return;
+     }
++    const lined = this.claims().find((c) => c.id === this.editing() && c.lines.length > 0);
++    if (lined && Number(amount) !== Number(lined.amount)) {
++      this.error.set(`This claim has lines: its amount is ${lined.amount}, their quantities times their unit amounts added up.`);
++      return;
++    }
+     const corrects = this.corrects().trim();
+     if (corrects.length > 255) {
+       this.error.set('Type the number of the settled claim the correction corrects.');
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimAmountFromLinesException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimAmountFromLinesException.java
+new file mode 100644
+index 000000000..9e0981d96
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimAmountFromLinesException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** An edit typing another amount for a claim with lines: its amount is its lines added up. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimAmountFromLinesException extends RuntimeException {
++
++    public ClaimAmountFromLinesException(Long id) {
++        super("Claim " + id + " has lines: its amount is their quantities times their unit amounts added up");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index ae23ed613..46ecb6551 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -44,14 +44,15 @@ public class ClaimController {
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
+             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
+-            String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch) {
++            String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
++            List<ClaimLineView> lines) {
+ 
+-        /** A claim with no comments yet. */
++        /** A claim with no comments or lines yet. */
+         static ClaimView of(Claim claim, List<ClaimLog> log) {
+-            return of(claim, log, List.of());
++            return of(claim, log, List.of(), List.of());
+         }
+ 
+-        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments) {
++        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
+             return new ClaimView(claim.getId(), claim.getPersonId(),
+                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+@@ -63,7 +64,17 @@ public class ClaimController {
+                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
+                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
+                     claim.getTags(), claim.getVoidReason(),
+-                    comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch());
++                    comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
++                    lines.stream().map(ClaimLineView::of).toList());
++        }
++    }
++
++    /** A line of a claim: its label, its quantity and its unit amount with two decimals. */
++    public record ClaimLineView(String label, int qty, String unit) {
++
++        static ClaimLineView of(ClaimLine line) {
++            return new ClaimLineView(line.getLabel(), line.getQty(),
++                    line.getUnit().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+         }
+     }
+ 
+@@ -151,9 +162,11 @@ public class ClaimController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         Map<Long, List<ClaimLog>> logs = service.logs(sheetId.trim());
+         Map<Long, List<ClaimComment>> comments = service.comments(sheetId.trim());
++        Map<Long, List<ClaimLine>> lines = service.lines(sheetId.trim());
+         return service.list(sheetId.trim()).stream()
+                 .map(claim -> ClaimView.of(claim, logs.getOrDefault(claim.getId(), List.of()),
+-                        comments.getOrDefault(claim.getId(), List.of())))
++                        comments.getOrDefault(claim.getId(), List.of()),
++                        lines.getOrDefault(claim.getId(), List.of())))
+                 .toList();
+     }
+ 
+@@ -400,8 +413,37 @@ public class ClaimController {
+         return view(service.comment(sheetId.trim(), user.trim(), id, text));
+     }
+ 
+-    /** The claim as shown, with its status log and comments. */
++    /**
++     * A line of a claim: a label, a quantity (a whole number, at least 1) and a unit amount with up to two decimals.
++     */
++    public record LineRequest(
++            @NotNull @Size(max = 255) String label,
++            @NotNull @Pattern(regexp = "\\s*0*[1-9]\\d{0,5}\\s*") String qty,
++            @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String unit) {
++
++        int qtyValue() {
++            return Integer.parseInt(qty.trim());
++        }
++
++        BigDecimal unitValue() {
++            return new BigDecimal(unit.trim()).setScale(2, RoundingMode.UNNECESSARY);
++        }
++    }
++
++    /** Add a line to a DRAFT claim, its amount then its lines added up; refused as an edit of the claim would be. */
++    @PostMapping("/claims/{id}/lines")
++    public ClaimView addLine(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid LineRequest request) {
++        // One line in the audit file: any run of white space in the label becomes a single space.
++        String label = request.label().trim().replaceAll("\\s+", " ");
++        return view(service.addLine(sheetId.trim(), user.trim(), id, label, request.qtyValue(),
++                request.unitValue()));
++    }
++
++    /** The claim as shown, with its status log, comments and lines. */
+     ClaimView view(Claim claim) {
+-        return ClaimView.of(claim, service.logOf(claim), service.commentsOf(claim));
++        return ClaimView.of(claim, service.logOf(claim), service.commentsOf(claim), service.linesOf(claim));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimLine.java b/src/main/java/net/officefloor/hq/app/claim/ClaimLine.java
+new file mode 100644
+index 000000000..8c867c52e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimLine.java
+@@ -0,0 +1,70 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++
++/** A line of a claim: a label, a quantity (a whole number, at least 1) and a unit amount (two decimals). */
++@Entity
++@Table(name = "claim_line")
++public class ClaimLine {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "claim_id", nullable = false)
++    private Long claimId;
++
++    @Column(name = "label", nullable = false)
++    private String label;
++
++    @Column(name = "qty", nullable = false)
++    private int qty;
++
++    @Column(name = "unit", nullable = false, precision = 12, scale = 2)
++    private BigDecimal unit;
++
++    protected ClaimLine() {
++    }
++
++    public ClaimLine(String sheetId, Long claimId, String label, int qty, BigDecimal unit) {
++        this.sheetId = sheetId;
++        this.claimId = claimId;
++        this.label = label;
++        this.qty = qty;
++        this.unit = unit;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getClaimId() {
++        return claimId;
++    }
++
++    public String getLabel() {
++        return label;
++    }
++
++    public int getQty() {
++        return qty;
++    }
++
++    public BigDecimal getUnit() {
++        return unit;
++    }
++
++    /** The quantity times the unit amount. */
++    public BigDecimal total() {
++        return unit.multiply(BigDecimal.valueOf(qty));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimLineException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimLineException.java
+new file mode 100644
+index 000000000..4b19735fb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimLineException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A claim line refused: an empty label, or a total the claim's amount cannot hold. */
++@ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
++public class ClaimLineException extends RuntimeException {
++
++    public ClaimLineException(Long id, String why) {
++        super("Claim " + id + ": " + why);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimLineRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimLineRepository.java
+new file mode 100644
+index 000000000..21f46f23c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimLineRepository.java
+@@ -0,0 +1,24 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.Collection;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Modifying;
++import org.springframework.data.jpa.repository.Query;
++
++public interface ClaimLineRepository extends JpaRepository<ClaimLine, Long> {
++
++    /** A sheet's claim lines, oldest first. */
++    List<ClaimLine> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** A claim's lines, oldest first. */
++    List<ClaimLine> findByClaimIdOrderByIdAsc(Long claimId);
++
++    /** Whether the claim has any line. */
++    boolean existsByClaimId(Long claimId);
++
++    /** Move the lines of the claims to another sheet. */
++    @Modifying(flushAutomatically = true)
++    @Query("update ClaimLine l set l.sheetId = :sheetId where l.claimId in :claimIds")
++    int moveTo(Collection<Long> claimIds, String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a03c78eb2..cac20f580 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -58,11 +58,13 @@ public class ClaimService {
+     private final SheetTagRepository tags;
+     private final VoidReasonService voidReasons;
+     private final ClaimCommentRepository comments;
++    private final ClaimLineRepository lines;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
+             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
+             ClaimLogRepository logs, WatchService watches, HolidayService holidays, SheetTagRepository tags,
+-            VoidReasonService voidReasons, ClaimCommentRepository comments) {
++            VoidReasonService voidReasons, ClaimCommentRepository comments, ClaimLineRepository lines) {
++        this.lines = lines;
+         this.comments = comments;
+         this.voidReasons = voidReasons;
+         this.tags = tags;
+@@ -130,6 +132,58 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** The lines of the sheet's claims by claim id, each oldest first. */
++    public Map<Long, List<ClaimLine>> lines(String sheetId) {
++        return lines.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .collect(Collectors.groupingBy(ClaimLine::getClaimId, Collectors.toList()));
++    }
++
++    /** The claim's lines, oldest first. */
++    public List<ClaimLine> linesOf(Claim claim) {
++        return lines.findByClaimIdOrderByIdAsc(claim.getId());
++    }
++
++    /**
++     * Add a line to a claim, which counts as editing it: refused, like an edit, for a claim that is not a DRAFT, due
++     * by a date in a closed period or locked by another user, and for an empty label. The claim's amount becomes its
++     * lines' quantities times their unit amounts added up.
++     */
++    @Transactional
++    public Claim addLine(String sheetId, String user, Long id, String label, int qty, BigDecimal unit) {
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Claim claim = claims.findForUpdate(id, sheetId)
++                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ClaimNotEditableException(id, claim.getStatus());
++        }
++        if (claim.isLockedAgainst(user)) {
++            throw new ClaimLockedException(id, claim.getLockedBy());
++        }
++        periods.requireOpen(sheetId, claim.getDueBy());
++        String labelled = label == null ? "" : label.trim();
++        if (labelled.isEmpty()) {
++            throw new ClaimLineException(id, "a line needs a label");
++        }
++        BigDecimal amount = unit.multiply(BigDecimal.valueOf(qty));
++        for (ClaimLine line : lines.findByClaimIdOrderByIdAsc(id)) {
++            amount = amount.add(line.total());
++        }
++        amount = amount.setScale(2, RoundingMode.UNNECESSARY);
++        if (amount.precision() - amount.scale() > 10) {
++            throw new ClaimLineException(id, "its lines add up to more than a claim can hold");
++        }
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
++        lines.save(new ClaimLine(sheetId, id, labelled, qty, unit));
++        claim.setAmount(amount);
++        claim.setEditedBy(user);
++        Claim saved = claims.saveAndFlush(claim);
++        audit.recordOnCommit(record("CLAIM_LINE_ADDED", user, person, saved) + " label=" + labelled + " qty=" + qty
++                + " unit=" + unit.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
+     @Transactional
+     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+             String corrects) {
+@@ -203,6 +257,10 @@ public class ClaimService {
+         LocalDate dated = dateOr(sheetId, date);
+         // Its due-by, and so its period, stays as fixed when it was added.
+         periods.requireOpen(sheetId, claim.getDueBy());
++        // A claim with lines keeps their sum as its amount.
++        if (amount.compareTo(claim.getAmount()) != 0 && lines.existsByClaimId(id)) {
++            throw new ClaimAmountFromLinesException(id);
++        }
+         people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()))
+                 .requireClaimable(dated);
+diff --git a/src/main/java/net/officefloor/hq/app/person/TransferService.java b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+index 070a1da4b..cb90897df 100644
+--- a/src/main/java/net/officefloor/hq/app/person/TransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+@@ -9,6 +9,7 @@ import java.util.Map;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimCommentRepository;
++import net.officefloor.hq.app.claim.ClaimLineRepository;
+ import net.officefloor.hq.app.claim.ClaimLog;
+ import net.officefloor.hq.app.claim.ClaimLogRepository;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+@@ -51,6 +52,7 @@ public class TransferService {
+     private final ClaimRepository claims;
+     private final ClaimLogRepository logs;
+     private final ClaimCommentRepository comments;
++    private final ClaimLineRepository lines;
+     private final ClaimService claimService;
+     private final SheetTagRepository tags;
+     private final StatementRepository statements;
+@@ -65,7 +67,8 @@ public class TransferService {
+             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
+             ClaimCommentRepository comments, ClaimService claimService, SheetTagRepository tags,
+             StatementRepository statements, PoolRepository pools, RoleService roles, SheetService sheets,
+-            RollupService rollup, Audit audit, PersonService personService) {
++            RollupService rollup, Audit audit, PersonService personService, ClaimLineRepository lines) {
++        this.lines = lines;
+         this.people = people;
+         this.aliases = aliases;
+         this.patrons = patrons;
+@@ -192,6 +195,7 @@ public class TransferService {
+         if (!claimIds.isEmpty()) {
+             logs.moveTo(claimIds, to);
+             comments.moveTo(claimIds, to);
++            lines.moveTo(claimIds, to);
+         }
+ 
+         // The statements follow the person; patron links, pool memberships and watches are dropped.
+diff --git a/src/main/resources/db/migration/V77__claim_line.sql b/src/main/resources/db/migration/V77__claim_line.sql
+new file mode 100644
+index 000000000..75fac4bb5
+--- /dev/null
++++ b/src/main/resources/db/migration/V77__claim_line.sql
+@@ -0,0 +1,12 @@
++-- A DRAFT claim's lines, in the order of their ids. Each keeps a label, a quantity (a whole number, at least 1) and
++-- a unit amount (two decimals); a claim with lines has the quantities times the unit amounts added up as its amount.
++CREATE TABLE claim_line (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100)   NOT NULL REFERENCES sheet (id),
++    claim_id BIGINT         NOT NULL REFERENCES claim (id),
++    label    VARCHAR(255)   NOT NULL,
++    qty      INT            NOT NULL CHECK (qty >= 1),
++    unit     DECIMAL(12, 2) NOT NULL CHECK (unit >= 0)
++);
++CREATE INDEX claim_line_sheet ON claim_line (sheet_id, id);
++CREATE INDEX claim_line_claim ON claim_line (claim_id, id);
