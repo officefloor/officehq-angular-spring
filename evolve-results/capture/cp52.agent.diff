@@ -1,0 +1,181 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index a82613adb..edf9f1cc6 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -81,6 +81,17 @@ export function deferred(claim: Claim, today: string | null): boolean {
+   return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+ }
+ 
++/**
++ * The status the claim had at the end of the date, as its status log records it: its last line logged on or before
++ * the date; null when it has lines but none by then (it was added later). With no log at all, its status now.
++ */
++export function statusOn(claim: Claim, date: string): ClaimStatus | null {
++  if (claim.log.length === 0) return claim.status;
++  let found: ClaimStatus | null = null;
++  for (const line of claim.log) if (line.date <= date) found = line.status;
++  return found;
++}
++
+ /** Whether a claim is handled as open: OPEN or PENDING. It goes overdue, bears the late charge, and a hold takes it out. */
+ export function isOpen(claim: Claim): boolean {
+   return claim.status === 'OPEN' || claim.status === 'PENDING';
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3c34d0848..38a8db114 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, dueFixed, gradeOn, isOpen, overdue, sumAmounts } from '../claims/claims';
++import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, statusOn, sumAmounts } from '../claims/claims';
+ import { Period, Periods, periodOn } from '../periods/periods';
+ import { Rate, Rates, capped, excessOver, rateOn, sumDues } from '../rates/rates';
+ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+@@ -55,6 +55,18 @@ function live(claim: Claim, holds: PersonHold[], today: string | null): boolean
+   return counts(claim, today) && !(isOpen(claim) && !bound(claim) && heldOn(holds, claim.date));
+ }
+ 
++/**
++ * Whether the claim counts in a period's due-total: by the status it had at the end of the period's last day, an OPEN,
++ * PENDING or SETTLED one, but one open then and dated within a hold of its person not unless a statement binds it, and
++ * one deferred on the sheet's today not at all.
++ */
++function liveAtEnd(claim: Claim, holds: PersonHold[], today: string | null, end: string): boolean {
++  const status = statusOn(claim, end);
++  if (status === null || deferred(claim, today)) return false;
++  const open = status === 'OPEN' || status === 'PENDING';
++  return (open || status === 'SETTLED') && !(open && !bound(claim) && heldOn(holds, claim.date));
++}
++
+ /** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */
+ function csvField(value: string): string {
+   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+@@ -370,8 +382,8 @@ export class People {
+   /** The sheet's periods in date order. */
+   protected readonly periods = signal<Period[]>([]);
+   /**
+-   * Each person's live due-total for each period, by person id and then period name: the dues of their OPEN, PENDING
+-   * and SETTLED claims dated in it, skipping the n/a ones; a period they have none in is missing.
++   * Each person's live due-total for each period, by person id and then period name: the dues as shown now of their
++   * claims dated in it that were OPEN, PENDING or SETTLED at the end of its last day, skipping the n/a ones; a period they have none in is missing.
+    */
+   private readonly livePersonPeriodDues = computed(() => {
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+@@ -379,7 +391,7 @@ export class People {
+     for (const c of this.claims()) {
+       const period = periodOn(this.periods(), c.date);
+       const person = byId.get(c.personId);
+-      if (!period || person === undefined || !live(c, person.holds, this.session.today())) continue;
++      if (!period || person === undefined || !liveAtEnd(c, person.holds, this.session.today(), period.to)) continue;
+       const theirs = dues.get(person.id) ?? new Map<string, string[]>();
+       const list = theirs.get(period.name) ?? [];
+       list.push(claimDue(c, this.rates(), person.grades, this.session));
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index f80dcaaed..0e23c2f38 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -163,6 +163,16 @@ public class Person {
+                 && !claim.isDeferredOn(today);
+     }
+ 
++    /**
++     * Whether the claim counts in a period's due-total, given the status it had at the end of the period's last day
++     * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and dated within a hold not
++     * unless a statement binds it, and an OPEN one deferred on the sheet's today not at all.
++     */
++    public boolean countsAsOf(Claim claim, ClaimStatus status, LocalDate today) {
++        return status != null && status.counts() && !(status.isOpen() && !claim.isBound() && heldOn(claim.getDate()))
++                && !claim.isDeferredOn(today);
++    }
++
+     /** Refused when the person is retired and the date is after their retirement date. */
+     public void requireClaimable(LocalDate date) {
+         if (retiredFrom != null && date.isAfter(retiredFrom)) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index f41bb499f..42d029ba9 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -12,7 +12,10 @@ import java.util.Objects;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimLog;
++import net.officefloor.hq.app.claim.ClaimLogRepository;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+@@ -42,14 +45,16 @@ public class RollupService {
+ 
+     private final PersonRepository people;
+     private final ClaimRepository claims;
++    private final ClaimLogRepository logs;
+     private final RateRepository rates;
+     private final SheetRepository sheets;
+     private final Audit audit;
+ 
+-    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
+-            SheetRepository sheets, Audit audit) {
++    public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
++            RateRepository rates, SheetRepository sheets, Audit audit) {
+         this.people = people;
+         this.claims = claims;
++        this.logs = logs;
+         this.rates = rates;
+         this.sheets = sheets;
+         this.audit = audit;
+@@ -111,8 +116,9 @@ public class RollupService {
+ 
+     /**
+      * Each person's due-total of the dates from and to, both inclusive, by person id for every person on the sheet, as
+-     * the screen shows a person's for a period: the dues of their OPEN and SETTLED claims dated in them, skipping those
+-     * with no due and the OPEN ones a hold of theirs leaves out; 0.00 with none.
++     * the screen shows a person's for a period: the dues as shown now of their claims dated in them that were OPEN,
++     * PENDING or SETTLED at the end of the to-date by their status log, skipping those with no due and the open ones a
++     * hold of theirs leaves out; 0.00 with none.
+      */
+     public Map<Long, BigDecimal> dueTotalsBetween(String sheetId, LocalDate from, LocalDate to) {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+@@ -124,9 +130,14 @@ public class RollupService {
+             byId.put(person.getId(), person);
+             totals.put(person.getId(), zero());
+         }
++        Map<Long, List<ClaimLog>> logOf = new LinkedHashMap<>();
++        for (ClaimLog line : logs.findBySheetIdOrderByIdAsc(sheetId)) {
++            logOf.computeIfAbsent(line.getClaimId(), id -> new ArrayList<>()).add(line);
++        }
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             Person person = byId.get(claim.getPersonId());
+-            if (person == null || !person.counts(claim, today) || claim.getDate().isBefore(from)
++            ClaimStatus status = statusOn(claim, logOf.getOrDefault(claim.getId(), List.of()), to);
++            if (person == null || !person.countsAsOf(claim, status, today) || claim.getDate().isBefore(from)
+                     || claim.getDate().isAfter(to)) {
+                 continue;
+             }
+@@ -182,6 +193,23 @@ public class RollupService {
+                         claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDueBy(), claim.getDate()));
+     }
+ 
++    /**
++     * The status the claim had at the end of the date by its log (oldest first): its last line logged on or before the
++     * date; null when it has lines but none by then. With no log at all, its status now.
++     */
++    private static ClaimStatus statusOn(Claim claim, List<ClaimLog> log, LocalDate date) {
++        if (log.isEmpty()) {
++            return claim.getStatus();
++        }
++        ClaimStatus found = null;
++        for (ClaimLog line : log) {
++            if (!line.getDate().isAfter(date)) {
++                found = line.getStatus();
++            }
++        }
++        return found;
++    }
++
+     /** As on the screen: an OPEN or PENDING claim whose due-by is before the sheet's today. */
+     private static boolean isOverdue(Claim claim, LocalDate today) {
+         return claim.getStatus().isOpen() && today != null && claim.getDueBy() != null
