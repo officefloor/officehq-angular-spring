@@ -1,0 +1,48 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3fb26a185..d126207dd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -462,6 +462,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+       </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
++      <button type="button" data-testid="dups-show" (click)="dupsShown.set(true)">Show duplicate claims</button>
++      @if (dupsShown()) {
++        <ul aria-label="Duplicate claims">
++          @for (d of dups(); track d) {
++            <li data-testid="dup-line">{{ d }}</li>
++          }
++        </ul>
++      }
+       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+       @if (bulkOpenResult(); as r) {
+         <p>
+@@ -1162,6 +1170,28 @@ export class People {
+     for (const c of this.claims()) by.set(c.personId, [...(by.get(c.personId) ?? []), c]);
+     return by;
+   });
++  /** Whether the duplicate claims are shown; they stay shown, kept up to date, once asked for. */
++  protected readonly dupsShown = signal(false);
++  /** For each person, date and amount with two or more claims (leaving out VOID and DELETED):
++   *  "<name> <date> <amount> x<count>", people in list order, then by date, then by amount. */
++  protected readonly dups = computed(() => {
++    const lines: string[] = [];
++    for (const p of this.people()) {
++      const groups = new Map<string, { date: string; cents: number; count: number }>();
++      for (const c of this.claimsOf(p.id)) {
++        if (c.status === 'VOID' || c.status === 'DELETED') continue;
++        const key = `${c.date} ${cents(c.amount)}`;
++        const g = groups.get(key) ?? { date: c.date, cents: cents(c.amount), count: 0 };
++        g.count++;
++        groups.set(key, g);
++      }
++      [...groups.values()]
++        .filter((g) => g.count >= 2)
++        .sort((a, b) => a.date.localeCompare(b.date) || a.cents - b.cents)
++        .forEach((g) => lines.push(`${p.name} ${g.date} ${money(g.cents)} x${g.count}`));
++    }
++    return lines;
++  });
+   private readonly peopleById = computed(() => new Map(this.people().map((p) => [p.id, p])));
+   protected readonly claimedTotal = computed(() =>
+     money(this.claims().reduce((sum, c) => sum + this.countedCents(this.peopleById().get(c.personId), c), 0)),
