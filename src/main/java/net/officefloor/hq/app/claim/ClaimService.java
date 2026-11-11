@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.person.Person;
@@ -50,10 +51,12 @@ public class ClaimService {
     private final SettingService settings;
     private final ClaimLogRepository logs;
     private final WatchService watches;
+    private final HolidayService holidays;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
-            ClaimLogRepository logs, WatchService watches) {
+            ClaimLogRepository logs, WatchService watches, HolidayService holidays) {
+        this.holidays = holidays;
         this.logs = logs;
         this.watches = watches;
         this.periods = periods;
@@ -89,8 +92,9 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
-        // Due by its date plus its person's terms on that date, fixed from now on; its period is the one of its due-by.
-        LocalDate dueBy = dated.plusDays(termsFor(sheetId, person, dated));
+        // Due by its date plus its person's terms on that date, moved past the sheet's holidays now, fixed from now on;
+        // its period is the one of its due-by.
+        LocalDate dueBy = dueByOf(sheetId, person, dated);
         periods.requireOpen(sheetId, dueBy);
         person.requireClaimable(dated);
         LocalDate correctedDate = requireCorrection(sheetId, personId, amount, corrects);
@@ -465,7 +469,7 @@ public class ClaimService {
         Claim kept = claims.saveAndFlush(claim);
         Claim part = new Claim(sheetId, kept.getPersonId(), amount, kept.getDate(), kept.getNote());
         part.setRoundingDate(kept.getRoundingDate());
-        part.setDueBy(kept.getDate().plusDays(termsFor(sheetId, person, kept.getDate())));
+        part.setDueBy(dueByOf(sheetId, person, kept.getDate()));
         part.setListed(sheets.nextListed(sheetId));
         part.setLateEntry(periods.softClosedOn(sheetId, part.getDueBy()));
         part.setStatus(ClaimStatus.OPEN);
@@ -699,6 +703,11 @@ public class ClaimService {
     }
 
     /** The terms of the person on the date: their own, else their grade's on that date, else the sheet's then. */
+    /** The date plus the person's terms on it, moved to the next day that is not one of the sheet's holidays. */
+    private LocalDate dueByOf(String sheetId, Person person, LocalDate date) {
+        return holidays.nextNonHoliday(sheetId, date.plusDays(termsFor(sheetId, person, date)));
+    }
+
     private int termsFor(String sheetId, Person person, LocalDate date) {
         return person.getTerms() != null ? person.getTerms()
                 : settings.termsFor(sheetId, person.gradeOn(date), date);
