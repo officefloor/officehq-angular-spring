@@ -1,0 +1,198 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e54b16dc6..d81a48609 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -250,6 +250,14 @@ function csvField(value: string): string {
+                 >
+                   Statement
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-unstate"
++                  [attr.aria-label]="'Cancel the last statement of ' + p.name"
++                  (click)="unstate(p)"
++                >
++                  Cancel statement
++                </button>
+                 <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
+                 <input
+                   [id]="'person-retire-date-' + p.id"
+@@ -836,6 +844,24 @@ export class People {
+     }
+   }
+ 
++  /** Cancel the person's last statement, then re-read so their claims show their live dues again. */
++  protected async unstate(person: Person): Promise<void> {
++    this.rowError.set(null);
++    this.patronError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
++    try {
++      const saved = await firstValueFrom(this.http.delete<Person>(url, this.session.headers()));
++      if (this.session.sheet() === sheet) {
++        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++        void this.read(sheet);
++      }
++    } catch {
++      this.rowError.set({ id: person.id, message: `The last statement of ${person.name} could not be cancelled.` });
++    }
++  }
++
+   /** Retire the person from the typed date, or from the sheet's today when none is typed. */
+   protected async retire(person: Person): Promise<void> {
+     this.rowError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index e87a66046..798692403 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -139,8 +139,9 @@ public class PeriodService {
+     }
+ 
+     /**
+-     * Close, in order of their to-dates, every open period whose to-date plus the grace days is before the today, as
+-     * a close by hand would, each recorded as closed automatically; none when the grace days are off (null).
++     * Close, in order of their to-dates, every open period (neither closed nor soft-closed) whose to-date plus the
++     * grace days is before the today, as a close by hand would, each recorded as closed automatically; none when the
++     * grace days are off (null).
+      */
+     @Transactional
+     public void autoClose(String sheetId, String user, LocalDate today, Integer graceDays) {
+@@ -151,7 +152,7 @@ public class PeriodService {
+             throw new SheetNotFoundException(sheetId);
+         }
+         list(sheetId).stream()
+-                .filter(p -> !p.isClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
++                .filter(p -> !p.isClosed() && !p.isSoftClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
+                 .sorted(Comparator.comparing(Period::getToDate))
+                 .forEach(p -> closeNow(sheetId, user, p, true));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 9c31b48d1..42fdbe826 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.statement.StatementService;
+ import net.officefloor.hq.app.statement.StatementSummary;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -140,6 +141,14 @@ public class PersonController {
+         return view(statements.take(sheetId.trim(), user.trim(), id), user.trim());
+     }
+ 
++    /** Cancel the person's last statement (a steward only): the claims it bound are live again. */
++    @DeleteMapping("/{id}/statement")
++    public PersonView cancelStatement(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return view(statements.cancelLast(sheetId.trim(), user.trim(), id), user.trim());
++    }
++
+     /** Retire the person from a date. */
+     @PostMapping("/{id}/retire")
+     public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/statement/NoStatementException.java b/src/main/java/net/officefloor/hq/app/statement/NoStatementException.java
+new file mode 100644
+index 000000000..c46607897
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/NoStatementException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.statement;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The cancelling of the last statement of a person who has none. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class NoStatementException extends RuntimeException {
++
++    public NoStatementException(String sheetId, Long personId) {
++        super("Person " + personId + " on sheet " + sheetId + " has no statement to cancel");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementCancelForbiddenException.java b/src/main/java/net/officefloor/hq/app/statement/StatementCancelForbiddenException.java
+new file mode 100644
+index 000000000..41bbbf36e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementCancelForbiddenException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.statement;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The cancelling of a person's last statement by a user who is not a steward of the sheet. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class StatementCancelForbiddenException extends RuntimeException {
++
++    public StatementCancelForbiddenException(String sheetId, String user) {
++        super("A statement on sheet " + sheetId + " cannot be cancelled by " + user + ": only a steward may");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 523f3b936..16054a8fd 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -15,6 +15,8 @@ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateService;
++import net.officefloor.hq.app.role.Role;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -34,9 +36,11 @@ public class StatementService {
+     private final SheetService sheets;
+     private final Audit audit;
+     private final RollupService rollup;
++    private final RoleService roles;
+ 
+     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
+-            RateService rates, SheetService sheets, Audit audit, RollupService rollup) {
++            RateService rates, SheetService sheets, Audit audit, RollupService rollup, RoleService roles) {
++        this.roles = roles;
+         this.statements = statements;
+         this.people = people;
+         this.claims = claims;
+@@ -109,6 +113,37 @@ public class StatementService {
+         return person;
+     }
+ 
++    /**
++     * A steward cancels the person's last statement: it is removed, so the statement before it (if any) is the last,
++     * and the claims it bound are live again; a figure an earlier statement bound them to is not restored. Refused
++     * for anyone else, and for a person with no statement.
++     */
++    @Transactional
++    public Person cancelLast(String sheetId, String user, Long personId) {
++        Person person = people.findForUpdate(personId, sheetId)
++                .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
++        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new StatementCancelForbiddenException(sheetId, user);
++        }
++        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
++        if (theirs.isEmpty()) {
++            throw new NoStatementException(sheetId, personId);
++        }
++        Statement last = theirs.get(theirs.size() - 1);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        List<Claim> bound = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
++        for (Claim claim : bound) {
++            claim.setStated(false, null);
++        }
++        claims.saveAllAndFlush(bound);
++        statements.delete(last);
++        statements.flush();
++        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " due-total=" + last.getDueTotal());
++        rollup.recordChanges(sheetId, user, before);
++        return person;
++    }
++
+     /**
+      * The figure under the claim's due: the due fixed when it was settled, else the one its last statement bound it
+      * to, else its amount times its grade's rate on its date (no floor); empty when it has none (n/a).
