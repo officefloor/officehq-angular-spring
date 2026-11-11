@@ -26,8 +26,12 @@ public class RollupController {
             Map<String, Integer> statusCounts, List<TreePerson> people, int overdueCount) {
     }
 
-    /** A person as the consolidated figures take them: their name and aliases, due-total (null for n/a) and overdue-total. */
-    public record TreePerson(List<String> names, String dueTotal, String overdueTotal) {
+    /**
+     * A person as the consolidated figures take them: their name and aliases, due-total (null for n/a),
+     * overdue-total, settled-total, open-total and cut total.
+     */
+    public record TreePerson(List<String> names, String dueTotal, String overdueTotal, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal,
@@ -72,7 +76,8 @@ public class RollupController {
 
     private static List<TreePerson> people(List<RollupService.TreePerson> people) {
         return people.stream().map(p -> new TreePerson(p.names(),
-                p.dueTotal() == null ? null : money(p.dueTotal()), money(p.overdueTotal()))).toList();
+                p.dueTotal() == null ? null : money(p.dueTotal()), money(p.overdueTotal()), money(p.settledTotal()),
+                money(p.openTotal()), money(p.cutTotal()))).toList();
     }
 
     private static Map<String, String> money(Map<String, BigDecimal> amounts) {

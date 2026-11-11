@@ -120,7 +120,7 @@ import { FigurePipe } from '../../core/figure';
 // Each person shows their settled-total (the figures of their SETTLED claims that count, at their
 // frozen figures, corrections included) and their open-total (the figures of their OPEN and PENDING
 // claims that count); together they make the sum of their figures before the cap. The sheet's
-// settled-total and open-total add up everyone's, untrimmed.
+// settled-total, open-total and cut total add up everyone's, trimmed.
 // A claim can be shared with other people on the sheet, each at a share percent: a holder's part is
 // the claim's figure times their share divided by 100, rounded half to even. Each holder's due-total,
 // settled-total and open-total count their parts of the claims that count; the claim's own person's
@@ -185,6 +185,9 @@ interface TreePerson {
   /** Null for n/a. */
   dueTotal: string | null;
   overdueTotal: string;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 /** The figures of a sheet's descendants: added up, and each of their people. */
@@ -301,6 +304,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       [consolidatedPeopleCount]="consolidated().peopleCount"
       [consolidatedDueTotal]="consolidated().dueTotal"
       [consolidatedOverdueTotal]="consolidated().overdueTotal"
+      [consolidatedSettledTotal]="consolidated().settledTotal"
+      [consolidatedOpenTotal]="consolidated().openTotal"
+      [consolidatedCutTotal]="consolidated().cutTotal"
       [consolidatedGrades]="consolidated().grades"
       [consolidatedStatuses]="consolidated().statuses"
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
@@ -1401,10 +1407,8 @@ export class People {
     }
     return totals;
   });
-  /** The sheet's cut total: everyone's cut totals added up, in whole cents. */
-  protected readonly cutTotal = computed(() =>
-    this.people().reduce((sum, p) => sum + this.cutTotalOf(p.id), 0),
-  );
+  /** The sheet's cut total: everyone's cut totals added up, trimmed, in whole cents. */
+  protected readonly cutTotal = computed(() => trimmedSum(this.people().map((p) => this.cutTotalOf(p.id))));
   /** What works out an overdue claim's late charge on the sheet's today. */
   private readonly lateness = computed<Lateness>(() => ({
     latePcts: this.latePcts(),
@@ -1469,12 +1473,12 @@ export class People {
   protected readonly dueTotal = computed(() =>
     money(trimmedSum(this.people().map((p) => this.dueOf(p)).filter((d): d is number => d !== null))),
   );
-  /** The sheet's settled-total and open-total: everyone's added up, untrimmed, in whole cents. */
+  /** The sheet's settled-total and open-total: everyone's added up, trimmed, in whole cents. */
   protected readonly settledOpenTotals = computed(() => {
     const each = this.people().map((p) => this.settledOpenOf(p));
     return {
-      settled: each.reduce((sum, t) => sum + t.settled, 0),
-      open: each.reduce((sum, t) => sum + t.open, 0),
+      settled: trimmedSum(each.map((t) => t.settled)),
+      open: trimmedSum(each.map((t) => t.open)),
     };
   });
   protected readonly dueText = dueText;
@@ -1495,6 +1499,9 @@ export class People {
             names: p.names,
             due: p.dueTotal === null ? null : cents(p.dueTotal),
             overdue: cents(p.overdueTotal),
+            settled: cents(p.settledTotal),
+            open: cents(p.openTotal),
+            cut: cents(p.cutTotal),
           })),
           grade: (g: string) => cents(asOfOwn.gradeDueTotals[g] ?? '0.00'),
           status: (s: string) => asOfOwn.statusCounts[s] ?? 0,
@@ -1504,6 +1511,9 @@ export class People {
             names: [p.name, ...p.aliases],
             due: this.dueOf(p),
             overdue: this.overdueOf(p).cents,
+            settled: this.settledOpenOf(p).settled,
+            open: this.settledOpenOf(p).open,
+            cut: this.cutTotalOf(p.id),
           })),
           grade: (g: string) => cents(this.gradeSummary().find((x) => x.grade === g)?.dueTotal ?? '0.00'),
           status: (s: string) => this.statusCount(s),
@@ -1515,12 +1525,18 @@ export class People {
         names: p.names,
         due: p.dueTotal === null ? null : cents(p.dueTotal),
         overdue: cents(p.overdueTotal),
+        settled: cents(p.settledTotal),
+        open: cents(p.openTotal),
+        cut: cents(p.cutTotal),
       })),
     ];
     return {
       peopleCount: distinctPeople(tree.map((p) => p.names)),
       dueTotal: money(trimmedSum(tree.map((p) => p.due).filter((d): d is number => d !== null))),
       overdueTotal: money(trimmedSum(tree.map((p) => p.overdue))),
+      settledTotal: money(trimmedSum(tree.map((p) => p.settled))),
+      openTotal: money(trimmedSum(tree.map((p) => p.open))),
+      cutTotal: money(trimmedSum(tree.map((p) => p.cut))),
       grades: [...new Set([...this.session.grades(), ...Object.keys(d.gradeDueTotals)])].sort().map((grade) => ({
         grade,
         dueTotal: money(own.grade(grade) + cents(d.gradeDueTotals[grade] ?? '0.00')),

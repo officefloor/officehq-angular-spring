@@ -40,6 +40,12 @@ import { FigurePipe } from '../../core/figure';
         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
         <dt>Overdue, with sub-sheets</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
+        <dt>Settled, with sub-sheets</dt>
+        <dd data-testid="consolidated-settled-total">{{ consolidatedSettledTotal() | figure }}</dd>
+        <dt>Open, with sub-sheets</dt>
+        <dd data-testid="consolidated-open-total">{{ consolidatedOpenTotal() | figure }}</dd>
+        <dt>Cut, with sub-sheets</dt>
+        <dd data-testid="consolidated-cut-total">{{ consolidatedCutTotal() | figure }}</dd>
         @for (g of consolidatedGrades(); track g.grade) {
           <dt>Grade {{ g.grade }} due, with sub-sheets</dt>
           <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</dd>
@@ -72,6 +78,9 @@ export class Header {
   readonly consolidatedPeopleCount = input.required<number>();
   readonly consolidatedDueTotal = input.required<string>();
   readonly consolidatedOverdueTotal = input.required<string>();
+  readonly consolidatedSettledTotal = input.required<string>();
+  readonly consolidatedOpenTotal = input.required<string>();
+  readonly consolidatedCutTotal = input.required<string>();
   readonly consolidatedGrades = input.required<{ grade: string; dueTotal: string }[]>();
   readonly consolidatedStatuses = input.required<StatusSummary[]>();
   readonly myDueTotal = input.required<string>();

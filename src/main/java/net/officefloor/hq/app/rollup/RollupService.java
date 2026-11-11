@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -111,25 +112,30 @@ public class RollupService {
      */
     public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
             Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts, List<TreePerson> people,
-            int overdueCount) {
+            int overdueCount, BigDecimal settledTotal, BigDecimal openTotal, BigDecimal cutTotal) {
     }
 
     /**
      * A person of a sheet of the tree, as the consolidated figures take them: their name and aliases,
-     * due-total (null for n/a) and overdue-total.
+     * due-total (null for n/a), overdue-total, settled-total, open-total and cut total.
      */
-    public record TreePerson(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    public record TreePerson(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal,
+            BigDecimal settledTotal, BigDecimal openTotal, BigDecimal cutTotal) {
     }
 
     /** The sheet's people as the consolidated figures take them, in the order they were added. */
     public List<TreePerson> treePeople(String sheetId) {
         Snapshot figures = snapshot(sheetId);
+        Map<Long, BigDecimal> settled = settledOpenByPerson(sheetId, false);
+        Map<Long, BigDecimal> open = settledOpenByPerson(sheetId, true);
+        Map<Long, BigDecimal> cuts = pools.getObject().cutTotalsNow(sheetId);
         List<TreePerson> out = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             Figures own = figures.people().get(person.getId());
             List<String> names = new ArrayList<>(List.of(person.getName()));
             names.addAll(person.getAliases());
-            out.add(new TreePerson(names, own.dueTotal(), own.overdueTotal()));
+            out.add(new TreePerson(names, own.dueTotal(), own.overdueTotal(), settled.get(person.getId()),
+                    open.get(person.getId()), cuts.getOrDefault(person.getId(), zero())));
         }
         return out;
     }
@@ -203,7 +209,7 @@ public class RollupService {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
-        Map<Long, BigDecimal> heldParts = heldParts(sheet, sheetRates, sheetClaims, sheetPeople);
+        Map<Long, BigDecimal> heldParts = heldParts(sheet, sheetRates, sheetClaims, sheetPeople, claim -> true);
         Map<Long, Person> byId = byId(sheetPeople);
         Map<Long, BigDecimal> cutTotals = sheet.getCap() == null ? Map.of() : pools.getObject().cutTotalsNow(sheetId);
         for (Person person : sheetPeople) {
@@ -329,7 +335,42 @@ public class RollupService {
                 treePeople.stream().map(TreePerson::dueTotal).filter(Objects::nonNull).toList());
         BigDecimal overdue = Snapshot.trimmed(treePeople.stream().map(TreePerson::overdueTotal).toList());
         return new Consolidated(distinctPeople(treePeople), due, overdue, grades, statuses, treePeople,
-                overdueCount);
+                overdueCount, Snapshot.trimmed(treePeople.stream().map(TreePerson::settledTotal).toList()),
+                Snapshot.trimmed(treePeople.stream().map(TreePerson::openTotal).toList()),
+                Snapshot.trimmed(treePeople.stream().map(TreePerson::cutTotal).toList()));
+    }
+
+    /**
+     * Each person's open-total (the figures of their OPEN and PENDING claims that count) or settled-total
+     * (those of their SETTLED claims that count), their own parts with the parts they hold of others',
+     * by person id, for every person on the sheet (0.00 when none).
+     */
+    private Map<Long, BigDecimal> settledOpenByPerson(String sheetId, boolean open) {
+        Sheet sheet = sheet(sheetId);
+        LocalDate today = sheet.getToday();
+        List<List<Rate>> sheetRates = rates.current(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> c.getStatus().isOpen() == open).toList();
+        List<Claim> allClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        Map<Long, Person> byId = byId(sheetPeople);
+        Map<Long, BigDecimal> held = heldParts(sheet, sheetRates, allClaims, sheetPeople,
+                c -> c.getStatus().isOpen() == open);
+        Map<Long, BigDecimal> out = new LinkedHashMap<>();
+        for (Person person : sheetPeople) {
+            BigDecimal total = held.getOrDefault(person.getId(), zero());
+            for (Claim claim : sheetClaims) {
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)) {
+                    continue;
+                }
+                BigDecimal figure = figure(sheet, sheetRates, allClaims, person, claim);
+                if (figure != null) {
+                    total = total.add(ownPart(sheet, sheetRates, allClaims, byId, claim, figure));
+                }
+            }
+            out.put(person.getId(), total);
+        }
+        return out;
     }
 
     /** How many of the sheet's claims that count are overdue on its today, as the people list's totals count them. */
@@ -566,20 +607,20 @@ public class RollupService {
     public Optional<BigDecimal> heldPart(String sheetId, long personId) {
         Sheet sheet = sheet(sheetId);
         return Optional.ofNullable(heldParts(sheet, rates.current(sheetId), claims.findBySheetIdOrderByIdDesc(sheetId),
-                people.findBySheetIdOrderByPositionAscIdAsc(sheetId)).get(personId));
+                people.findBySheetIdOrderByPositionAscIdAsc(sheetId), claim -> true).get(personId));
     }
 
     /**
      * Per holder (by person id), the parts they hold of the claims that count for their own person and
-     * have a figure; a person holding none is absent.
+     * have a figure, of the claims taken; a person holding none is absent.
      */
     private static Map<Long, BigDecimal> heldParts(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims,
-            List<Person> sheetPeople) {
+            List<Person> sheetPeople, Predicate<Claim> taken) {
         Map<Long, Person> byId = byId(sheetPeople);
         Map<Long, BigDecimal> parts = new LinkedHashMap<>();
         for (Claim claim : sheetClaims) {
             Person owner = byId.get(claim.getPersonId());
-            if (claim.getShares().isEmpty() || owner == null || !owner.counts(claim, sheet.getToday())) {
+            if (!taken.test(claim) || claim.getShares().isEmpty() || owner == null || !owner.counts(claim, sheet.getToday())) {
                 continue;
             }
             BigDecimal figure = figure(sheet, sheetRates, sheetClaims, owner, claim);
