@@ -10,6 +10,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -86,7 +87,7 @@ public class RollupService {
         }
 
         /** The sum of people's figures, leaving out the single highest and lowest when there are three or more. */
-        private static BigDecimal trimmed(List<BigDecimal> figures) {
+        static BigDecimal trimmed(List<BigDecimal> figures) {
             BigDecimal sum = figures.stream().reduce(zero(), BigDecimal::add);
             if (figures.size() < 3) {
                 return sum;
@@ -101,7 +102,59 @@ public class RollupService {
      * per grade the due-totals of the people on it (retired left out), and per status the count of claims in it.
      */
     public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
-            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {
+            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts, List<TreePerson> people) {
+    }
+
+    /**
+     * A person of a sheet of the tree, as the consolidated figures take them: their name and aliases,
+     * due-total (null for n/a) and overdue-total.
+     */
+    public record TreePerson(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    }
+
+    /** The sheet's people as the consolidated figures take them, in the order they were added. */
+    public List<TreePerson> treePeople(String sheetId) {
+        Snapshot figures = snapshot(sheetId);
+        List<TreePerson> out = new ArrayList<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            Figures own = figures.people().get(person.getId());
+            List<String> names = new ArrayList<>(List.of(person.getName()));
+            names.addAll(person.getAliases());
+            out.add(new TreePerson(names, own.dueTotal(), own.overdueTotal()));
+        }
+        return out;
+    }
+
+    /**
+     * The people of a tree counted once each: people whose names or aliases match (compared without
+     * regard to case), directly or through others, are one person.
+     */
+    public static int distinctPeople(List<TreePerson> tree) {
+        Map<String, Integer> owner = new LinkedHashMap<>();
+        int[] parent = new int[tree.size()];
+        for (int i = 0; i < tree.size(); i++) {
+            parent[i] = i;
+            for (String name : tree.get(i).names()) {
+                Integer other = owner.putIfAbsent(name.toLowerCase(Locale.ROOT), i);
+                if (other != null) {
+                    parent[root(parent, i)] = root(parent, other);
+                }
+            }
+        }
+        int count = 0;
+        for (int i = 0; i < tree.size(); i++) {
+            if (root(parent, i) == i) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int root(int[] parent, int i) {
+        while (parent[i] != i) {
+            i = parent[i];
+        }
+        return i;
     }
 
     private final PersonRepository people;
@@ -167,7 +220,9 @@ public class RollupService {
 
     /**
      * The figures of the sheet's descendants (its children, their children and so on; not the sheet
-     * itself), each sheet's due- and overdue-total as that sheet shows it, added up. When the request
+     * itself): their people (each counted once, see {@link #distinctPeople}), and the due- and
+     * overdue-totals of all their people, trimmed once over them all; the people themselves go with
+     * them, so the screen can trim once over the whole tree with the sheet's own. When the request
      * is answered as of a date (see {@link AsOfFilter}), each descendant is first restored as it stood
      * at the end of that day, its today the date, in the request's rolled-back transaction; the tree
      * itself (each sheet's parent) is as it is now.
@@ -191,20 +246,18 @@ public class RollupService {
             // the rows were put back behind the persistence context's back: read them afresh
             entities.clear();
         }
-        int count = 0;
-        BigDecimal due = zero();
-        BigDecimal overdue = zero();
+        List<TreePerson> treePeople = new ArrayList<>();
         Map<String, BigDecimal> grades = new LinkedHashMap<>();
         Map<String, Integer> statuses = new LinkedHashMap<>();
         for (String id : tree) {
-            Snapshot figures = snapshot(id);
-            count += figures.people().size();
-            due = due.add(figures.dueTotal());
-            overdue = overdue.add(figures.overdueTotal());
-            figures.gradeDueTotals().forEach((grade, total) -> grades.merge(grade, total, BigDecimal::add));
+            treePeople.addAll(treePeople(id));
+            snapshot(id).gradeDueTotals().forEach((grade, total) -> grades.merge(grade, total, BigDecimal::add));
             statusCounts(id).forEach((status, n) -> statuses.merge(status, n, Integer::sum));
         }
-        return new Consolidated(count, due, overdue, grades, statuses);
+        BigDecimal due = Snapshot.trimmed(
+                treePeople.stream().map(TreePerson::dueTotal).filter(Objects::nonNull).toList());
+        BigDecimal overdue = Snapshot.trimmed(treePeople.stream().map(TreePerson::overdueTotal).toList());
+        return new Consolidated(distinctPeople(treePeople), due, overdue, grades, statuses, treePeople);
     }
 
     /** Per status, how many of the sheet's claims as the store holds them are in it (retired people's included). */

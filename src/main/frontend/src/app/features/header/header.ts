@@ -6,7 +6,9 @@ import { FigurePipe } from '../../core/figure';
 // sheet (retired people included), how many claims are in each status (as the summary counts them)
 // and the sheet's due- and overdue-totals (as the people list's totals show them). Then the same
 // figures consolidated over the sheet and all its descendants (the sheets naming it as parent, and
-// theirs): each sheet's as that sheet shows it, added up; a sheet with no children shows its own.
+// theirs): the people counted once each (people whose names or aliases match, compared without
+// regard to case, are one person), and the due- and overdue-totals of every person of the tree
+// added up, leaving out the single highest and lowest over the whole tree when three or more have one.
 // With them, per grade the due-totals of the people on it (retired left out) and per status the
 // count of claims in it, each over the whole tree.
 // Last, the signed-in user's own figures: the due- and overdue-totals of the person on the sheet

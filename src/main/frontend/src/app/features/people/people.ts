@@ -165,7 +165,16 @@ interface PastRetirement {
 }
 
 /** One of a person's holds: from its from-date to its to-date (null: open-ended), both inclusive. */
-/** The figures of a sheet's descendants added up: each sheet's as that sheet shows it. */
+/** A person of a sheet of the tree, as the consolidated figures take them. */
+interface TreePerson {
+  /** Their name, then their aliases. */
+  names: string[];
+  /** Null for n/a. */
+  dueTotal: string | null;
+  overdueTotal: string;
+}
+
+/** The figures of a sheet's descendants: added up, and each of their people. */
 interface Descendants {
   peopleCount: number;
   dueTotal: string;
@@ -181,7 +190,10 @@ interface Descendants {
     overdueTotal: string;
     gradeDueTotals: Record<string, string>;
     statusCounts: Record<string, number>;
+    people: TreePerson[];
   } | null;
+  /** Every person of the descendants, as the consolidated figures take them. */
+  people: TreePerson[];
 }
 
 const NO_DESCENDANTS: Descendants = {
@@ -191,6 +203,7 @@ const NO_DESCENDANTS: Descendants = {
   gradeDueTotals: {},
   statusCounts: {},
   own: null,
+  people: [],
 };
 
 interface DatedHold {
@@ -1377,23 +1390,36 @@ export class People {
     const asOfOwn = this.session.asOf() ? d.own : null;
     const own = asOfOwn
       ? {
-          peopleCount: asOfOwn.peopleCount,
-          due: cents(asOfOwn.dueTotal),
-          overdue: cents(asOfOwn.overdueTotal),
+          people: asOfOwn.people.map((p) => ({
+            names: p.names,
+            due: p.dueTotal === null ? null : cents(p.dueTotal),
+            overdue: cents(p.overdueTotal),
+          })),
           grade: (g: string) => cents(asOfOwn.gradeDueTotals[g] ?? '0.00'),
           status: (s: string) => asOfOwn.statusCounts[s] ?? 0,
         }
       : {
-          peopleCount: this.people().length,
-          due: cents(this.dueTotal()),
-          overdue: this.overdueTotals().cents,
+          people: this.people().map((p) => ({
+            names: [p.name, ...p.aliases],
+            due: this.dueOf(p),
+            overdue: this.overdueOf(p).cents,
+          })),
           grade: (g: string) => cents(this.gradeSummary().find((x) => x.grade === g)?.dueTotal ?? '0.00'),
           status: (s: string) => this.statusCount(s),
         };
+    // the trim and the people count run once over every person of the tree
+    const tree = [
+      ...own.people,
+      ...d.people.map((p) => ({
+        names: p.names,
+        due: p.dueTotal === null ? null : cents(p.dueTotal),
+        overdue: cents(p.overdueTotal),
+      })),
+    ];
     return {
-      peopleCount: own.peopleCount + d.peopleCount,
-      dueTotal: money(own.due + cents(d.dueTotal)),
-      overdueTotal: money(own.overdue + cents(d.overdueTotal)),
+      peopleCount: distinctPeople(tree.map((p) => p.names)),
+      dueTotal: money(trimmedSum(tree.map((p) => p.due).filter((d): d is number => d !== null))),
+      overdueTotal: money(trimmedSum(tree.map((p) => p.overdue))),
       grades: GRADES.map((grade) => ({
         grade,
         dueTotal: money(own.grade(grade) + cents(d.gradeDueTotals[grade] ?? '0.00')),
@@ -2968,6 +2994,25 @@ export class People {
  * A sheet total of people's figures: with three or more, the single highest and the single lowest
  * are left out.
  */
+/**
+ * How many people there are, counting once those whose names or aliases match (compared without
+ * regard to case), directly or through others.
+ */
+function distinctPeople(names: readonly (readonly string[])[]): number {
+  const parent = names.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : root(parent[i]));
+  const owner = new Map<string, number>();
+  names.forEach((each, i) => {
+    for (const name of each) {
+      const key = name.toLowerCase();
+      const other = owner.get(key);
+      if (other === undefined) owner.set(key, i);
+      else parent[root(i)] = root(other);
+    }
+  });
+  return parent.filter((_, i) => root(i) === i).length;
+}
+
 function trimmedSum(figures: readonly number[]): number {
   const sum = figures.reduce((s, f) => s + f, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
