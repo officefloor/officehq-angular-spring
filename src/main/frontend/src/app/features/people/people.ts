@@ -6,6 +6,7 @@ import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, dueFixed
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+import { Header } from '../header/header';
 
 interface Person {
   id: number;
@@ -64,8 +65,14 @@ function csvField(value: string): string {
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Periods, Rates, Summary],
+  imports: [Claims, Header, Periods, Rates, Summary],
   template: `
+    <app-header
+      [peopleCount]="people().length"
+      [statuses]="statusSummary()"
+      [dueTotal]="dueTotal()"
+      [overdueTotal]="overdueTotal()"
+    />
     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
