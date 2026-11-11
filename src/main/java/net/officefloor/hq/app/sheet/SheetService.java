@@ -16,7 +16,9 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.pool.PoolService;
 import net.officefloor.hq.app.rollup.RollupService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -38,10 +40,14 @@ public class SheetService {
     private final ClaimRepository claims;
     private final FiscalClaimNumberRepository fiscalNumbers;
     private final JdbcTemplate jdbc;
+    /** The pools, whose members' cuts a closing period fixes (looked up when needed: they rely on this service). */
+    private final ObjectProvider<PoolService> pools;
 
     public SheetService(SheetRepository sheets, RollupService rollup, PeriodRepository periods, Audit audit,
-            ClaimRepository claims, FiscalClaimNumberRepository fiscalNumbers, JdbcTemplate jdbc) {
+            ClaimRepository claims, FiscalClaimNumberRepository fiscalNumbers, JdbcTemplate jdbc,
+            ObjectProvider<PoolService> pools) {
         this.jdbc = jdbc;
+        this.pools = pools;
         this.fiscalNumbers = fiscalNumbers;
         this.audit = audit;
         this.claims = claims;
@@ -230,24 +236,24 @@ public class SheetService {
     }
 
     /**
-     * Close an open period, fixing its due-total now, and record it ({@code auto=yes} when closed by
+     * Close an open period, fixing its due-total and each pool member's cut now, and record it ({@code auto=yes} when closed by
      * a change of the sheet's today). The caller holds the sheet.
      */
     @Transactional
     public Period closePeriod(String id, String user, Period period, boolean auto) {
         period.close(rollup.dueBetweenByPerson(id, period.getFromDate(), period.getToDate()),
-                rollup.carriedByPerson(id, period));
+                rollup.carriedByPerson(id, period), pools.getObject().cutsNow(id));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + id + " by=" + user + " period=" + saved.getName() + " total="
                 + saved.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString() + (auto ? " auto=yes" : ""));
         return saved;
     }
 
-    /** Soft-close an open period, fixing its due-total now, and record it. The caller holds the sheet. */
+    /** Soft-close an open period, fixing its due-total and each pool member's cut now, and record it. The caller holds the sheet. */
     @Transactional
     public Period softClosePeriod(String id, String user, Period period) {
         period.softClose(rollup.dueBetweenByPerson(id, period.getFromDate(), period.getToDate()),
-                rollup.carriedByPerson(id, period));
+                rollup.carriedByPerson(id, period), pools.getObject().cutsNow(id));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + id + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedDue().setScale(2, RoundingMode.UNNECESSARY).toPlainString());

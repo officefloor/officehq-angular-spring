@@ -42,11 +42,14 @@ export interface PoolMember {
   retired: boolean;
   /** Their cut of the pot, two decimals; blank when the pool is unbalanced, there is no pot or their dates leave out today. */
   cut: string;
-  /** Their cut at the end of each period ended by the sheet's today, in the periods' order. */
+  /**
+   * Their cut for each closed or soft-closed period, fixed when it closed, and at the end of each
+   * other period ended by the sheet's today, in the periods' order (worked out by the store).
+   */
   cuts: PeriodCut[];
 }
 
-/** A member's cut as it stood at the end of a period; blank when there was none. */
+/** A member's cut as fixed when a period closed, or as it stood at its end; blank when there was none. */
 export interface PeriodCut {
   period: string;
   cut: string;

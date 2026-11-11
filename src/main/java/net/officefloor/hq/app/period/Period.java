@@ -18,7 +18,8 @@ import java.util.Map;
 
 /**
  * A period on a sheet: a name and a from and to date, both inclusive. A closed period keeps the
- * due-total it had when it was closed, and each person's due-total and carried figure for it at that moment; so does a
+ * due-total it had when it was closed, each person's due-total and carried figure for it and each pool member's
+ * cut at that moment; so does a
  * soft-closed one, whose claims can still change.
  */
 @Entity
@@ -75,6 +76,16 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "opening", nullable = false)
     private Map<Long, BigDecimal> openings = new HashMap<>();
+
+    /**
+     * Each pool member's cut fixed when the period was closed, by the member's place on the sheet (see
+     * {@code PoolService}); empty while open.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "member_key")
+    @Column(name = "cut", nullable = false)
+    private Map<String, String> closedCuts = new HashMap<>();
 
     /** The last number given to a claim opened in this period under numbering per period. */
     @Column(name = "last_claim_number", nullable = false)
@@ -155,6 +166,10 @@ public class Period {
         return openings;
     }
 
+    public Map<String, String> getClosedCuts() {
+        return closedCuts;
+    }
+
     /** Add an amount to a person's opening balance for the period. */
     public void addOpening(long personId, BigDecimal amount) {
         openings.merge(personId, amount, BigDecimal::add);
@@ -166,11 +181,11 @@ public class Period {
     }
 
     /**
-     * Close the period, fixing each person's due-total and carried figure for it at this moment; its
-     * own due-total is the sum of their due-totals.
+     * Close the period, fixing each person's due-total and carried figure for it, and each pool
+     * member's cut, at this moment; its own due-total is the sum of their due-totals.
      */
-    public void close(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried) {
-        fix(dues, carried);
+    public void close(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried, Map<String, String> cuts) {
+        fix(dues, carried, cuts);
         this.closed = true;
         this.softClosed = false;
     }
@@ -179,12 +194,14 @@ public class Period {
      * Soft-close the period, fixing its figures as {@link #close} does while its claims can still
      * change.
      */
-    public void softClose(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried) {
-        fix(dues, carried);
+    public void softClose(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried, Map<String, String> cuts) {
+        fix(dues, carried, cuts);
         this.softClosed = true;
     }
 
-    private void fix(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried) {
+    private void fix(Map<Long, BigDecimal> dues, Map<Long, BigDecimal> carried, Map<String, String> cuts) {
+        this.closedCuts.clear();
+        this.closedCuts.putAll(cuts);
         this.closedDues.clear();
         this.closedDues.putAll(dues);
         this.closedCarried.clear();
@@ -192,8 +209,9 @@ public class Period {
         this.closedDue = dues.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** Reopen the period: its due-total is live again. */
+    /** Reopen the period: its due-total and its members' cuts are live again. */
     public void reopen() {
+        this.closedCuts.clear();
         this.closed = false;
         this.softClosed = false;
         this.closedDue = null;

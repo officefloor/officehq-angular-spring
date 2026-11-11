@@ -73,6 +73,10 @@ import org.springframework.web.server.ResponseStatusException;
  * their cut as it stood at the end of that period: the sheet as {@link SheetHistory} kept it then
  * (the pools, their members, the pot and the holds), with that day as its today; blank when the
  * member, or a cut, was not there then.
+ * <p>
+ * Closing or soft-closing a period instead fixes every member's cut for it as it stood at that moment
+ * (see {@link #cutsNow}): from then on the period shows those, whatever its to-date, blank for a member
+ * not there then. Reopening it makes its cuts live again.
  */
 @Service
 public class PoolService {
@@ -141,40 +145,49 @@ public class PoolService {
     }
 
     /**
-     * The pools as they stand now, each member with their cut at the end of every period whose to-date
-     * is on or before the sheet's today (in the periods' order). Those are read from the sheet restored
-     * as it stood at the end of each such day, in a transaction that is then rolled back (the
-     * request's own when it is answered as of a date, see {@link net.officefloor.hq.app.sheet.AsOfFilter}).
+     * The pools as they stand now, each member with their cut for every period closed or soft-closed
+     * (as fixed then) and every other period whose to-date is on or before the sheet's today (in the
+     * periods' order). The latter are read from the sheet restored as it stood at the end of each such
+     * day, in a transaction that is then rolled back (the request's own when it is answered as of a
+     * date, see {@link net.officefloor.hq.app.sheet.AsOfFilter}).
      */
     public List<PoolView> list(String sheetId) {
-        record Now(List<PoolView> views, List<Period> ended) {
+        record Shown(String name, Map<String, String> fixed, LocalDate end) {
+        }
+        record Now(List<PoolView> views, List<Shown> shown) {
         }
         Now now = readOnly.execute(status -> {
             LocalDate today = sheetRows.findById(sheetId).map(s -> s.getToday()).orElse(null);
-            List<Period> ended = today == null ? List.of()
-                    : periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
-                            .filter(p -> !p.getToDate().isAfter(today)).toList();
-            return new Now(current(sheetId), ended);
+            List<Shown> shown = new ArrayList<>();
+            for (Period p : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
+                if (p.isClosed() || p.isSoftClosed()) {
+                    shown.add(new Shown(p.getName(), Map.copyOf(p.getClosedCuts()), null));
+                } else if (today != null && !p.getToDate().isAfter(today)) {
+                    shown.add(new Shown(p.getName(), null, p.getToDate()));
+                }
+            }
+            return new Now(current(sheetId), shown);
         });
         if (now.views().isEmpty()) {
             return now.views();
         }
         List<Map<String, String>> then = new ArrayList<>();
-        if (!now.ended().isEmpty()) {
+        for (Shown s : now.shown()) {
+            then.add(s.fixed());
+        }
+        if (now.shown().stream().anyMatch(s -> s.fixed() == null)) {
             rolledBack.executeWithoutResult(status -> {
                 status.setRollbackOnly();
-                for (Period period : now.ended()) {
+                for (int i = 0; i < now.shown().size(); i++) {
+                    Shown s = now.shown().get(i);
+                    if (s.fixed() != null) {
+                        continue;
+                    }
                     entities.flush();
-                    history.restore(sheetId, period.getToDate());
+                    history.restore(sheetId, s.end());
                     // the rows were put back behind the persistence context's back: read them afresh
                     entities.clear();
-                    Map<String, String> cuts = new HashMap<>();
-                    for (PoolView pool : current(sheetId)) {
-                        for (MemberView m : pool.members()) {
-                            cuts.put(key(pool, m), m.cut());
-                        }
-                    }
-                    then.add(cuts);
+                    then.set(i, cutsOf(current(sheetId)));
                 }
                 entities.clear();
             });
@@ -184,14 +197,32 @@ public class PoolService {
             List<MemberView> views = new ArrayList<>();
             for (MemberView m : pool.members()) {
                 List<PeriodCut> cuts = new ArrayList<>();
-                for (int i = 0; i < now.ended().size(); i++) {
-                    cuts.add(new PeriodCut(now.ended().get(i).getName(), then.get(i).getOrDefault(key(pool, m), "")));
+                for (int i = 0; i < now.shown().size(); i++) {
+                    cuts.add(new PeriodCut(now.shown().get(i).name(), then.get(i).getOrDefault(key(pool, m), "")));
                 }
                 views.add(m.withCuts(cuts));
             }
             out.add(new PoolView(pool.id(), pool.name(), views, pool.totalShare(), pool.balanced(), pool.crew()));
         }
         return out;
+    }
+
+    /**
+     * Every member's cut as the pools stand now, by the member's place on the sheet (blank for none):
+     * what a closing period fixes. Read within the caller's transaction.
+     */
+    public Map<String, String> cutsNow(String sheetId) {
+        return cutsOf(current(sheetId));
+    }
+
+    private static Map<String, String> cutsOf(List<PoolView> pools) {
+        Map<String, String> cuts = new HashMap<>();
+        for (PoolView pool : pools) {
+            for (MemberView m : pool.members()) {
+                cuts.put(key(pool, m), m.cut());
+            }
+        }
+        return cuts;
     }
 
     /** A member's place on the sheet, the same over time: the pool (a crew's by its negated id) and the person or pool. */
