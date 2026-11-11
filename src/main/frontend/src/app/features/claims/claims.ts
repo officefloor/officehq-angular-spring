@@ -139,7 +139,7 @@ export function overdue(claim: Claim, today: string | null): boolean {
   return isOpen(claim) && today !== null && claim.dueBy < today;
 }
 
-type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
+type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
 
 /** Sums amounts with two decimals exactly, in whole cents. */
 export function sumAmounts(amounts: string[]): string {
@@ -336,6 +336,7 @@ export class Claims {
     { action: 'void', label: 'Void' },
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
+    { action: 'resettle', label: 'Re-settle' },
   ];
   /** The people other than this one, whom a claim may be reassigned to. */
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
@@ -448,7 +449,7 @@ export class Claims {
   }
 
   /**
-   * Open, settle, void, approve or reject a claim; the store refuses a change its status, or the user's role, does not
+   * Open, settle, void, approve, reject or re-settle a claim; the store refuses a change its status, or the user's role, does not
    * allow. Rejecting takes the reason typed for the claim.
    */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
@@ -472,10 +473,14 @@ export class Claims {
         e instanceof HttpErrorResponse && e.status === 403
           ? action === 'settle'
             ? 'Whoever opened this claim cannot also settle it: another user must settle it.'
+            : action === 'resettle'
+            ? 'Only a steward can re-settle a claim.'
             : 'Only a steward can approve or reject a pending claim, and not the one who opened it.'
           : closed
               ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
-              : `This claim's status does not let it be ${pastOf[action]}.`;
+              : action === 'resettle'
+                ? `This claim is ${claim.status}: only a SETTLED claim can be re-settled.`
+                : `This claim's status does not let it be ${pastOf[action]}.`;
       this.actionError.set({ id: claim.id, message });
     }
   }
@@ -541,4 +546,5 @@ const pastOf: Record<ClaimAction, string> = {
   void: 'voided',
   approve: 'approved',
   reject: 'rejected',
+  resettle: 're-settled',
 };

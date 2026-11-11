@@ -254,6 +254,37 @@ public class ClaimService {
         return saved;
     }
 
+    /**
+     * A steward re-settles a SETTLED claim: its due is frozen again at the figure it would have today as an OPEN claim
+     * bound by no statement (today's rates, grades and floor, with its late charge as of today). Refused for any other
+     * status, a closed period, or a user not a steward.
+     */
+    @Transactional
+    public Claim resettle(String sheetId, String user, Long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimResettleForbiddenException(id, user);
+        }
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ClaimStatusException(id, claim.getStatus(), ClaimStatus.SETTLED);
+        }
+        periods.requireOpen(sheetId, claim.getDate());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        String old = shownDue(sheetId, person, claim);
+        BigDecimal figure = dueOf(sheetId, person, claim);
+        claim.setSettledDue(settings.get(sheetId).withLateCharge(figure, !claim.isCorrection(), claim.getDueBy(),
+                claim.getDate()));
+        Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
+        audit.recordOnCommit(record("CLAIM_RESETTLED", user, person, saved) + numberOf(saved.getNumber())
+                + " old=" + old + " new=" + shownDue(sheetId, person, saved));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
     /** The PENDING claim a steward decides; refused for any other status, a closed period, or a user not a steward. */
     private Claim pendingForDecision(String sheetId, String user, Long id, ClaimStatus to) {
         Claim claim = claims.findForUpdate(id, sheetId)

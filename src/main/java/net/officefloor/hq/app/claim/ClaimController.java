@@ -164,6 +164,14 @@ public class ClaimController {
         return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
     }
 
+    /** Re-settle a SETTLED claim at its figure as of today: a steward only. */
+    @PostMapping("/claims/{id}/resettle")
+    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.resettle(sheetId.trim(), user.trim(), id));
+    }
+
     /** A steward's reason for rejecting a PENDING claim. */
     public record RejectRequest(@NotBlank @Size(max = 1000) String reason) {
     }
