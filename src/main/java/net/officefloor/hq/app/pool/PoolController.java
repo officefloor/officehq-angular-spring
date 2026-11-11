@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.pool;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -24,11 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PoolController {
 
-    /** A member as shown: the person's id and their share (two decimals). */
-    public record PoolMemberView(Long personId, String share) {
+    /** A member as shown: the person's id, or the member pool's id, and their share (two decimals). */
+    public record PoolMemberView(Long personId, Long poolId, String share) {
 
         static PoolMemberView of(PoolMember m) {
-            return new PoolMemberView(m.getPersonId(), m.getShare().toPlainString());
+            return new PoolMemberView(m.getPersonId(), m.getMemberPoolId(), m.getShare().toPlainString());
         }
     }
 
@@ -44,9 +45,17 @@ public class PoolController {
     public record PoolRequest(@NotNull @NotBlank @Size(max = 255) String name) {
     }
 
-    /** A member to add: the person and their share, more than 0.00 and at most 100.00, with at most two decimals. */
-    public record PoolMemberRequest(@NotNull Long personId,
+    /**
+     * A member to add: the person, or else another pool, and their share, more than 0.00 and at most 100.00, with at
+     * most two decimals.
+     */
+    public record PoolMemberRequest(Long personId, Long poolId,
             @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
+
+        @AssertTrue(message = "a member is a person or a pool")
+        public boolean isOneMember() {
+            return (personId == null) != (poolId == null);
+        }
     }
 
     private final PoolService service;
@@ -76,7 +85,10 @@ public class PoolController {
             @PathVariable Long poolId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PoolMemberRequest request) {
-        return PoolView.of(service.addMember(sheetId.trim(), user.trim(), poolId, request.personId(),
-                new BigDecimal(request.share().trim())));
+        BigDecimal share = new BigDecimal(request.share().trim());
+        if (request.poolId() != null) {
+            return PoolView.of(service.addMemberPool(sheetId.trim(), user.trim(), poolId, request.poolId(), share));
+        }
+        return PoolView.of(service.addMember(sheetId.trim(), user.trim(), poolId, request.personId(), share));
     }
 }

@@ -132,12 +132,12 @@ public class MergeService {
         // Pool memberships move, shares added where the other is a member already.
         for (Pool pool : pools.findBySheetIdOrderByIdAsc(sheetId)) {
             PoolMember membership = pool.getMembers().stream()
-                    .filter(m -> m.getPersonId().equals(from.getId())).findFirst().orElse(null);
+                    .filter(m -> from.getId().equals(m.getPersonId())).findFirst().orElse(null);
             if (membership == null) {
                 continue;
             }
             PoolMember existing = pool.getMembers().stream()
-                    .filter(m -> m.getPersonId().equals(into.getId())).findFirst().orElse(null);
+                    .filter(m -> into.getId().equals(m.getPersonId())).findFirst().orElse(null);
             if (existing != null) {
                 existing.setShare(existing.getShare().add(membership.getShare()));
                 pool.getMembers().remove(membership);

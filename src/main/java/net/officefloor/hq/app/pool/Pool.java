@@ -14,7 +14,7 @@ import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
 
-/** A pool on a sheet: people, each with a share percent. */
+/** A pool on a sheet: people and other pools, each with a share percent. */
 @Entity
 @Table(name = "pool")
 public class Pool {
@@ -60,6 +60,10 @@ public class Pool {
     }
 
     public boolean hasMember(Long personId) {
-        return members.stream().anyMatch(m -> m.getPersonId().equals(personId));
+        return members.stream().anyMatch(m -> personId.equals(m.getPersonId()));
+    }
+
+    public boolean hasMemberPool(Long poolId) {
+        return members.stream().anyMatch(m -> poolId.equals(m.getMemberPoolId()));
     }
 }

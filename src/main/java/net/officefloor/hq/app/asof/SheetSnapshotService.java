@@ -152,6 +152,8 @@ public class SheetSnapshotService {
 
     private static List<Table> discover(DatabaseMetaData meta) throws SQLException {
         Map<String, List<String>> columns = new LinkedHashMap<>();
+        // The columns that may be null, as TABLE.COLUMN.
+        Set<String> nullable = new LinkedHashSet<>();
         try (ResultSet rs = meta.getTables(null, "PUBLIC", "%", new String[] { "TABLE", "BASE TABLE" })) {
             while (rs.next()) {
                 String name = rs.getString("TABLE_NAME").toUpperCase(Locale.ROOT);
@@ -165,6 +167,9 @@ public class SheetSnapshotService {
                 while (rs.next()) {
                     if (!"YES".equalsIgnoreCase(rs.getString("IS_GENERATEDCOLUMN"))) {
                         e.getValue().add(rs.getString("COLUMN_NAME").toUpperCase(Locale.ROOT));
+                    }
+                    if ("YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"))) {
+                        nullable.add(e.getKey() + "." + rs.getString("COLUMN_NAME").toUpperCase(Locale.ROOT));
                     }
                 }
             }
@@ -189,12 +194,20 @@ public class SheetSnapshotService {
             } else if (e.getValue().contains("SHEET_ID")) {
                 where.put(name, "sheet_id = ?");
             } else {
+                // Through a reference to a table carrying the sheet's id: one that is never null, when there is one,
+                // so that every row is reached.
+                Map.Entry<String, String> through = null;
                 for (Map.Entry<String, String> ref : refs.get(name).entrySet()) {
                     List<String> parent = columns.get(ref.getValue());
                     if (parent != null && parent.contains("SHEET_ID")) {
-                        where.put(name, ref.getKey() + " IN (SELECT id FROM " + ref.getValue() + " WHERE sheet_id = ?)");
-                        break;
+                        if (through == null || (nullable.contains(name + "." + through.getKey())
+                                && !nullable.contains(name + "." + ref.getKey()))) {
+                            through = ref;
+                        }
                     }
+                }
+                if (through != null) {
+                    where.put(name, through.getKey() + " IN (SELECT id FROM " + through.getValue() + " WHERE sheet_id = ?)");
                 }
             }
         }

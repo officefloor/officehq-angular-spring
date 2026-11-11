@@ -165,7 +165,7 @@ public class TransferService {
                 .filter(p -> p.getPersonId().equals(from.getId()) || p.getPatronId().equals(from.getId()))
                 .toList());
         for (Pool pool : pools.findBySheetIdOrderByIdAsc(sheetId)) {
-            if (pool.getMembers().removeIf(m -> m.getPersonId().equals(from.getId()))) {
+            if (pool.getMembers().removeIf(m -> from.getId().equals(m.getPersonId()))) {
                 pools.saveAndFlush(pool);
             }
         }
