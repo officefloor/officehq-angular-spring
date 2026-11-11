@@ -1,0 +1,64 @@
+{
+  "checkpoint": 158,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp158_column-chooser",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5398b2ad13964a1a15af576cd53dded0a2ad914d",
+  "reset_sha": "",
+  "preagent_sha": "ef026fdaf1f03c82a84dc4c017023ea03a26686d",
+  "prev_sha": "ef026fdaf1f03c82a84dc4c017023ea03a26686d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7209874000000001,
+    "input_tokens": 32,
+    "output_tokens": 8946,
+    "cache_read_tokens": 647737,
+    "cache_creation_tokens": 51549,
+    "num_turns": 16,
+    "duration_ms": 312037,
+    "duration_api_ms": 84103,
+    "model": "claude-opus-5-5",
+    "session_id": "a9c3affc-95aa-4c39-a9e8-005d6577f45d",
+    "stop_reason": "success",
+    "result_text": "I added the column chooser and all four Playwright tests pass under `bin/e2e`.\n\n**What the user sees:** above the people table there's now a \"Columns shown\" box with one checkbox per column, each tagged `column-<key>`. Clicking a checkbox shows or hides that column straight away and saves the choice. When a column is off, both its cells and its table heading disappear, so the rest of the row stays lined up. Totals, the header bar, the summary and every other figure are unchanged. If the choice can't be read or saved, a `columns-error` message appears.\n\n**One column beyond the request:** the test also switches off `excess`, so the chooser has 15 columns: the 14 you listed plus `excess`.\n\n**How it's stored:** each user's choice is saved on the server, keyed by user name, the same way the per-user locale is. So it applies on every sheet that user opens, and another user's screen isn't affected. The pieces are:\n- a new table, `user_columns` (migration `V89__user_columns.sql`)\n- a small server package, `net.officefloor.hq.app.columns`, serving `GET`/`PUT /api/me/columns`. It quietly drops any column name it doesn't recognise, and it writes no audit record, like the locale setting.\n- a front-end service, `core/columns.ts`. It re-reads the user's choice each time a sheet is loaded, but a reply that arrives after a newer click is ignored so it can't undo that click.\n\nThe page changes are in `features/people/people.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7209874000000001,
+        "num_turns": 16,
+        "duration_ms": 312037,
+        "duration_api_ms": 84103,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp158.agent.jsonl",
+  "agent_diff_file": "cp158.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
