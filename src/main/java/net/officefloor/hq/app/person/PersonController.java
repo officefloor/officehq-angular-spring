@@ -36,6 +36,10 @@ public class PersonController {
     public record HoldView(LocalDate from, LocalDate to) {
     }
 
+    /** One of a person's past retirements, from its from-date to the day they were unretired. */
+    public record RetirementView(LocalDate from, LocalDate to) {
+    }
+
     /** One of a person's grades, from its from-date (null: from the beginning of time). */
     public record GradeView(String grade, LocalDate from) {
     }
@@ -45,7 +49,7 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, Integer terms, String contact, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
-            List<String> aliases, boolean clashing, String origin) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
                 boolean watched, List<String> aliases, Set<String> keysInTree) {
@@ -56,7 +60,8 @@ public class PersonController {
                     PersonService.patronShares(patronIds.size()).stream().map(BigDecimal::toPlainString).toList(),
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    watched, aliases, PersonService.clashing(person, aliases, keysInTree), person.getOriginSheet());
+                    watched, aliases, PersonService.clashing(person, aliases, keysInTree), person.getOriginSheet(),
+                    person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList());
         }
     }
 
@@ -243,6 +248,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody RetireRequest request) {
         return view(service.retire(sheetId.trim(), user.trim(), id, request.from()), user.trim());
+    }
+
+    /** Unretire a retired person on the sheet's today. */
+    @PostMapping("/{id}/unretire")
+    public PersonView unretire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.unretire(sheetId.trim(), user.trim(), id), user.trim());
     }
 
     /** Move the person up or down the list, swapping them with the one above or below. */

@@ -69,6 +69,11 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonHold> holds = new ArrayList<>();
 
+    /** The person's past retirements, each ended by an unretire. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private List<PersonRetirement> retirements = new ArrayList<>();
+
     /** The sheet the person was transferred from; null when they were not transferred here. */
     @Column(name = "origin_sheet")
     private String originSheet;
@@ -209,6 +214,20 @@ public class Person {
         this.retiredOn = on;
     }
 
+    /** End the retirement on the date (the sheet's today), keeping it as a past retirement. */
+    public void unretire(LocalDate on) {
+        retirements.add(new PersonRetirement(retiredFrom, on));
+        this.retiredFrom = null;
+        this.retiredOn = null;
+    }
+
+    /** The person's past retirements by from-date, then to-date. */
+    public List<PersonRetirement> getRetirements() {
+        return retirements.stream()
+                .sorted(Comparator.comparing(PersonRetirement::getFromDate).thenComparing(PersonRetirement::getToDate))
+                .toList();
+    }
+
     /** Whether the person had been added by the end of the date: added while the sheet's today was on or before it. */
     public boolean addedBy(LocalDate date) {
         return addedOn == null || !addedOn.isAfter(date);
@@ -275,10 +294,18 @@ public class Person {
                 && !claim.isBound() && (heldOn(claim.getDate()) || retiredOn(today))) && !claim.isDeferredOn(today);
     }
 
-    /** Refused when the person is retired and the date is after their retirement date. */
+    /**
+     * Refused when the person is retired and the date is after their retirement date, or the date is after the
+     * from-date and before the to-date of a past retirement.
+     */
     public void requireClaimable(LocalDate date) {
         if (retiredFrom != null && date.isAfter(retiredFrom)) {
             throw new PersonRetiredException(name, retiredFrom, date);
+        }
+        for (PersonRetirement r : retirements) {
+            if (r.bars(date)) {
+                throw new PersonRetiredException(name, r.getFromDate(), date);
+            }
         }
     }
 

@@ -146,6 +146,24 @@ public class PersonService {
         return saved;
     }
 
+    /** Unretire the person on the sheet's today, keeping the retirement as a past one; refused when not retired. */
+    @Transactional
+    public Person unretire(String sheetId, String user, Long id) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
+        if (!person.isRetired()) {
+            throw new UnretireRefusedException(person.getName() + " is not retired");
+        }
+        LocalDate today = sheetService.today(sheetId);
+        person.unretire(today);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user
+                + " name=" + saved.getName() + " on=" + today);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
     /**
      * Swap the person with the one above them in the list (up) or below them (down); refused for the top person moving
      * up or the bottom one moving down.

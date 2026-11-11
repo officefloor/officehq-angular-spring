@@ -33,6 +33,8 @@ interface Person {
   retired: boolean;
   /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
   retiredFrom: string | null;
+  /** The person's past retirements by from-date, each from its from-date to the day they were unretired. */
+  retirements: { from: string; to: string }[];
   /** Whether the person has any hold. */
   held: boolean;
   /** The person's holds by from-date: their OPEN and PENDING claims dated within one, unless a statement binds them,
@@ -266,7 +268,7 @@ function csvField(value: string): string {
               <th scope="col">Due in {{ per.name }}</th>
             }
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
-            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">On hold</th><th scope="col">Active</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
             <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Watched</th>
@@ -304,6 +306,11 @@ function csvField(value: string): string {
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td>
+                @for (r of p.retirements; track $index) {
+                  <div data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</div>
+                }
+              </td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
@@ -374,6 +381,14 @@ function csvField(value: string): string {
                   (click)="retire(p)"
                 >
                   Retire
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-unretire"
+                  [attr.aria-label]="'Unretire ' + p.name"
+                  (click)="unretire(p)"
+                >
+                  Unretire
                 </button>
                 <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias of {{ p.name }}</label>
                 <input
@@ -514,6 +529,7 @@ function csvField(value: string): string {
                 [periods]="periods()"
                 [people]="people()"
                 [retiredFrom]="p.retiredFrom"
+                [retirements]="p.retirements"
                 [selected]="selectedClaims()"
                 (selectToggled)="selectClaim($event.id, $event.checked)"
                 (saved)="claimSaved($event)"
@@ -1586,6 +1602,24 @@ export class People {
       }
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be retired.` });
+    }
+  }
+
+  /** Unretire the person on the sheet's today (refused when not retired), then re-read so the totals show it. */
+  protected async unretire(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/unretire`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, {}, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be unretired: they are not retired.` });
     }
   }
 

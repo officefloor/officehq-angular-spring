@@ -553,6 +553,8 @@ export class Claims implements OnInit {
   readonly people = input<{ id: number; name: string }[]>([]);
   /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
   readonly retiredFrom = input<string | null>(null);
+  /** The person's past retirements: no claim can be dated after the from-date and before the to-date of one. */
+  readonly retirements = input<{ from: string; to: string }[]>([]);
   /** The ids of the sheet's claims selected to act on together. */
   readonly selected = input<ReadonlySet<number>>(new Set());
   /** A claim's checkbox was ticked or cleared. */
@@ -659,6 +661,16 @@ export class Claims implements OnInit {
   /** The name of the period the claim's due-by falls in, or blank when none. */
   protected periodOf(claim: Claim): string {
     return periodOn(this.periods(), claim.dueBy)?.name ?? '';
+  }
+
+  /**
+   * The from-date of the retirement that refuses a claim dated on the date: the current one when the date is after it,
+   * or a past one when the date is after its from-date and before its to-date; null when none does.
+   */
+  private retiredBefore(date: string): string | null {
+    const retiredFrom = this.retiredFrom();
+    if (retiredFrom !== null && date > retiredFrom) return retiredFrom;
+    return this.retirements().find((r) => date > r.from && date < r.to)?.from ?? null;
   }
 
   /** The due-by of the claim being edited, or blank when none is. */
@@ -862,7 +874,7 @@ export class Claims implements OnInit {
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch (e) {
       const closed = this.closedOn(claim.dueBy);
-      const retiredFrom = this.retiredFrom();
+      const retiredFrom = this.retiredBefore(date);
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Only a steward can re-date a claim.'
@@ -870,7 +882,7 @@ export class Claims implements OnInit {
             ? `This claim is ${claim.status}: only an OPEN or PENDING claim can be re-dated.`
             : closed
               ? `This claim is due by a date in the closed period ${closed.name}: it cannot be re-dated.`
-              : retiredFrom !== null && date > retiredFrom
+              : retiredFrom !== null
                 ? `${this.personName()} is retired from ${retiredFrom}: the claim cannot be dated after that.`
                 : 'This claim could not be re-dated.';
       this.actionError.set({ id: claim.id, message });
@@ -1152,11 +1164,11 @@ export class Claims implements OnInit {
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch (e) {
       const dated = this.session.newClaimDate() ?? '';
-      const retiredFrom = this.retiredFrom();
+      const retiredFrom = this.retiredBefore(dated);
       const why =
         e instanceof HttpErrorResponse && e.status === 404
           ? ` There is no template ${name}.`
-          : retiredFrom !== null && dated > retiredFrom
+          : retiredFrom !== null
             ? ` ${this.personName()} is retired from ${retiredFrom}.`
             : '';
       this.error.set('The claim could not be added from the template.' + why);
@@ -1220,10 +1232,10 @@ export class Claims implements OnInit {
     } catch (e) {
       const dated = date || ((editing === null ? this.session.newClaimDate() : this.session.today()) ?? '');
       const closed = editing === null ? undefined : this.closedOn(this.editedDueBy());
-      const retiredFrom = this.retiredFrom();
+      const retiredFrom = this.retiredBefore(dated);
       const why = closed
         ? ` It is due by a date in the closed period ${closed.name}.`
-        : retiredFrom !== null && dated > retiredFrom
+        : retiredFrom !== null
           ? ` ${this.personName()} is retired from ${retiredFrom}.`
           : ref && e instanceof HttpErrorResponse && e.status === 409 && (editing === null || this.editedDraft())
           ? ` The reference ${ref} is already used on the sheet.`
