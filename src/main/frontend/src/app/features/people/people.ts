@@ -58,6 +58,8 @@ import { FigurePipe } from '../../core/figure';
 // claims it bound are live again, and the row shows the statement before it (or none). A statement
 // can be taken as of a date on or before the sheet's today: it binds the claims that counted at the
 // end of that date to their figures as they stood then, and shows that date as its date.
+// The export-statement button downloads a person's statement as a CSV file: number, date, amount,
+// figure and status of each claim of theirs bound by their last statement, oldest first, the figure as the claim shows it.
 // Each claim shows the period its due-by falls in, and each period the due of the claims that counted in it
 // at its end (by the status each had then, as its log records it).
 // A person can be retired from a date (the sheet's today when left blank); with a date set they count
@@ -924,6 +926,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                   (click)="cancelStatement(p)"
                 >
                   Cancel statement
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-export-statement"
+                  [attr.aria-label]="'Export statement for ' + p.name"
+                  (click)="exportStatement(p)"
+                >
+                  Export statement
                 </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
                 <input
@@ -2635,6 +2645,20 @@ export class People {
       }
     }
     this.download('claims', lines);
+  }
+
+  /** Download the person's statement: each claim of theirs bound by their last statement, oldest first, with the bound figure as the claim shows it. */
+  protected async exportStatement(p: Person): Promise<void> {
+    const sheet = this.session.sheet();
+    await this.session.settled();
+    if (this.session.sheet() !== sheet) return;
+    const lines = ['number,date,amount,figure,status'];
+    for (const c of [...this.claimsOf(p.id)].reverse()) {
+      if (!c.stated) continue;
+      const figure = dueText(chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)));
+      lines.push([c.number ?? '', c.date, c.amount, figure, c.status].map(csvField).join(','));
+    }
+    this.download('statement-' + p.id, lines);
   }
 
   /** Download CSV lines, each ended by a line feed, as <what>-<sheet>.csv. */
