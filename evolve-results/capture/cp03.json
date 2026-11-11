@@ -1,0 +1,64 @@
+{
+  "checkpoint": 3,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp03_people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Keep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nKeep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "af06b90c1aa8cc77ede45f3282d84e9a113f4e4b",
+  "reset_sha": "",
+  "preagent_sha": "5bbae415043347d1526e9d7f67b64dea38f7ad58",
+  "prev_sha": "5bbae415043347d1526e9d7f67b64dea38f7ad58",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8794172000000001,
+    "input_tokens": 42,
+    "output_tokens": 14218,
+    "cache_read_tokens": 930726,
+    "cache_creation_tokens": 51093,
+    "num_turns": 22,
+    "duration_ms": 563035,
+    "duration_api_ms": 127588,
+    "model": "claude-opus-5-5",
+    "session_id": "d65eb498-a7cd-4668-8432-960fb1d0d97e",
+    "stop_reason": "success",
+    "result_text": "The people feature is in, and the acceptance test passes. The first `bin/e2e` run failed. I made a fix and it then passed three runs in a row, the last two with the fix in place.\n\n**What was added**\n- **Stored data:** a new `person` table (`V3__person.sql`) holding the sheet, name and grade. People are listed in the order of their ids, which is the order they were added.\n- **Server:** a new `person` package with the usual entity, repository, service and controller. It lists, adds and updates people under `/api/sheets/{sheetId}/people`. The server refuses a blank name or a grade other than A, B or C, and you can only edit a person on that sheet.\n- **Front end:** a new `People` component shown under the sheet on the home screen. It has the form (name, grade A/B/C, submit, plus a cancel button while editing) and the list of people with their name, grade and an edit button. Edit fills the form with that person's values and saving updates the row. An empty name shows the error under the form, and the error goes away as soon as the form is changed or submitted again. The person list is re-read from the server every time a sheet is loaded, including when the same id is loaded again.\n\n**Why the first run failed:** when the server had just started and was slow, the person list requested at sheet-load could come back after the first add and replace it with the empty list. Now a successful add or save fetches the list again, and any older request still running is ignored.\n\n**Choices worth knowing about**\n- Names are stored exactly as typed, so `\" ada \"` keeps its spaces. A name that is only spaces counts as empty and is refused.\n- Nothing is written to the audit file for adding or editing a person. The request and the test don't ask for it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8794172000000001,
+        "num_turns": 22,
+        "duration_ms": 563035,
+        "duration_api_ms": 127588,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp03.agent.jsonl",
+  "agent_diff_file": "cp03.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
