@@ -1,0 +1,660 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 16752dce1..653f07200 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -23,7 +23,7 @@ export class Session {
+   readonly loaded = signal(0);
+   /** The active sheet's floor (two decimals): a live due is at least it; null until the settings are read. */
+   readonly floor = signal<string | null>(null);
+-  /** The active sheet's terms: a claim is due by its date plus these many days; null until the settings are read. */
++  /** The active sheet's terms: a claim of a grade without its own is due by its date plus these many days; null until the settings are read. */
+   readonly terms = signal<number | null>(null);
+   /** The active sheet's late percent (two decimals): an overdue claim's due gains it of its figure every full 30 days. */
+   readonly latePct = signal<string | null>(null);
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 5bfa9cc76..163598d2f 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -30,6 +30,8 @@ export interface Claim {
+   roundingDate: string;
+   /** Its place in its person's list: a claim with a later place is listed first (newest added, or last reassigned). */
+   listed: number;
++  /** The day (yyyy-mm-dd) the claim is due by, fixed when it was added from the terms of its person's grade on its date. */
++  dueBy: string;
+ }
+ 
+ /** Claims as listed: the latest list place first. */
+@@ -108,7 +110,7 @@ export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], ses
+  * rounded like the claim's due; 0.00 when it is not overdue, and on a correction.
+  */
+ export function lateCharge(claim: Claim, figure: string, session: Session): string {
+-  const by = dueBy(claim, session.terms());
++  const by = claim.dueBy;
+   const today = session.today();
+   const pct = session.latePct();
+   if (!isOpen(claim) || isCorrection(claim) || by === '' || today === null || pct === null) return '0.00';
+@@ -121,17 +123,9 @@ export function dueFixed(claim: Claim): boolean {
+   return claim.settledDue !== null || (bound(claim) && claim.statedDue !== null);
+ }
+ 
+-/** The claim's date plus the terms in days (yyyy-mm-dd); blank until the terms are known. */
+-export function dueBy(claim: Claim, terms: number | null): string {
+-  if (terms === null) return '';
+-  const [y, m, d] = claim.date.split('-').map(Number);
+-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+-}
+-
+ /** Whether the claim is OPEN or PENDING and its due-by is before the sheet's today. */
+-export function overdue(claim: Claim, terms: number | null, today: string | null): boolean {
+-  const by = dueBy(claim, terms);
+-  return isOpen(claim) && by !== '' && today !== null && by < today;
++export function overdue(claim: Claim, today: string | null): boolean {
++  return isOpen(claim) && today !== null && claim.dueBy < today;
+ }
+ 
+ type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
+@@ -212,7 +206,7 @@ export function sumAmounts(amounts: string[]): string {
+               <td data-testid="claim-date">{{ c.date }}</td>
+               <td data-testid="claim-note">{{ c.note }}</td>
+               <td data-testid="claim-due">{{ due(c) }}</td>
+-              <td data-testid="claim-due-by">{{ dueBy(c) }}</td>
++              <td data-testid="claim-due-by">{{ c.dueBy }}</td>
+               <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</td>
+               <td data-testid="claim-status">{{ c.status }}</td>
+               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+@@ -341,14 +335,9 @@ export class Claims {
+     return claimDue(claim, this.rates(), this.grades(), this.session);
+   }
+ 
+-  /** The claim's date plus the sheet's terms. */
+-  protected dueBy(claim: Claim): string {
+-    return dueBy(claim, this.session.terms());
+-  }
+-
+   /** Whether the claim is OPEN and was due by a day before the sheet's today. */
+   protected overdue(claim: Claim): boolean {
+-    return overdue(claim, this.session.terms(), this.session.today());
++    return overdue(claim, this.session.today());
+   }
+ 
+   /** The name of the period the claim's date falls in, or blank when none. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5c48926f6..a63e8e4a6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -439,7 +439,7 @@ export class People {
+   /** The person's claims that count in the live totals and are overdue. */
+   protected overdueOf(person: Person): Claim[] {
+     return this.claimsOf(person.id).filter(
+-      (c) => live(c, person.held) && overdue(c, this.session.terms(), this.session.today()),
++      (c) => live(c, person.held) && overdue(c, this.session.today()),
+     );
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 04732ad65..487d1e5ad 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -10,6 +10,8 @@ interface SettingsView {
+   floor: string;
+   /** The days after its date a claim is due by. */
+   terms: number;
++  /** Each grade's own terms in days, by grade; a grade left out uses the sheet's terms. */
++  gradeTerms: Record<string, number>;
+   /** The percent of its figure an overdue claim's due gains every full 30 days, two decimals. */
+   latePct: string;
+   /** The date (yyyy-mm-dd) before which a claim rounds half up, and on or after which half to even; null: the today. */
+@@ -25,8 +27,9 @@ interface RoleView {
+ }
+ 
+ const ROLES = ['clerk', 'steward'];
++const GRADES = ['A', 'B', 'C'];
+ 
+-// The sheet's settings (its clerk limit, its floor, its terms, its late percent, its policy date and its period numbering from) and the roles of its user names, each with the form that sets it.
++// The sheet's settings (its clerk limit, its floor, its terms and each grade's own, its late percent, its policy date and its period numbering from) and the roles of its user names, each with the form that sets it.
+ @Component({
+   selector: 'app-settings',
+   template: `
+@@ -57,6 +60,16 @@ const ROLES = ['clerk', 'steward'];
+           [value]="terms()"
+           (input)="terms.set(value($event)); termsEdited = true; settingsError.set(null)"
+         />
++        @for (g of grades; track g) {
++          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (blank: the sheet's terms)</label>
++          <input
++            [id]="'setting-terms-' + g"
++            [attr.data-testid]="'setting-terms-' + g"
++            inputmode="numeric"
++            [value]="gradeTerms()[g] ?? ''"
++            (input)="setGradeTerms(g, value($event)); settingsError.set(null)"
++          />
++        }
+         <label for="setting-late-pct">Late percent (of an overdue claim's due, every full 30 days)</label>
+         <input
+           id="setting-late-pct"
+@@ -89,6 +102,9 @@ const ROLES = ['clerk', 'steward'];
+       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ current() ?? '' }}</strong></p>
+       <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' }}</strong></p>
+       <p>Terms in force: <strong data-testid="setting-terms-current">{{ session.terms() ?? '' }}</strong></p>
++      @for (g of grades; track g) {
++        <p>Terms for grade {{ g }} in force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ gradeTermsCurrent()[g] ?? '' }}</strong></p>
++      }
+       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' }}</strong></p>
+       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
+       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
+@@ -143,6 +159,12 @@ export class Settings {
+   protected readonly session = inject(Session);
+ 
+   protected readonly roles = ROLES;
++  protected readonly grades = GRADES;
++  /** Each grade's terms as typed, and as in force (blank when the grade has none of its own). */
++  protected readonly gradeTerms = signal<Record<string, string>>({});
++  protected readonly gradeTermsCurrent = signal<Record<string, string>>({});
++  /** The grades whose terms were typed in since the form was last saved or read. */
++  protected gradeTermsEdited = new Set<string>();
+   protected readonly current = signal<string | null>(null);
+   protected readonly clerkLimit = signal('');
+   protected readonly floor = signal('');
+@@ -176,6 +198,7 @@ export class Settings {
+         this.current.set(null);
+         this.session.floor.set(null);
+         this.session.terms.set(null);
++        this.gradeTermsCurrent.set({});
+         this.session.latePct.set(null);
+         this.session.policyDate.set(null);
+         this.periodNumberingFromCurrent.set(null);
+@@ -191,6 +214,11 @@ export class Settings {
+     return (event.target as HTMLInputElement).value;
+   }
+ 
++  protected setGradeTerms(grade: string, terms: string): void {
++    this.gradeTerms.update((all) => ({ ...all, [grade]: terms }));
++    this.gradeTermsEdited.add(grade);
++  }
++
+   protected async saveSettings(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.savingSettings) return;
+@@ -198,9 +226,10 @@ export class Settings {
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+     // Saving with nothing typed saves the clerk limit as it stands.
+-    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited);
++    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited);
+     const saveFloor = this.floorEdited;
+     const saveTerms = this.termsEdited;
++    const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g));
+     const saveLatePct = this.latePctEdited;
+     const savePolicyDate = this.policyDateEdited;
+     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
+@@ -222,6 +251,10 @@ export class Settings {
+       this.settingsError.set('Type terms of 0 or more whole days.');
+       return;
+     }
++    if (saveGradeTerms.some((g) => !/^\d{1,5}$/.test((this.gradeTerms()[g] ?? '').trim()))) {
++      this.settingsError.set('Type terms for a grade of 0 or more whole days.');
++      return;
++    }
+     if (saveLatePct && !/^\d{1,3}(\.\d{1,2})?$/.test(latePct)) {
+       this.settingsError.set('Type a late percent of 0.00 or more with at most two decimals.');
+       return;
+@@ -252,6 +285,13 @@ export class Settings {
+         saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/terms`, { terms }, this.session.headers()));
+         this.termsEdited = false;
+       }
++      for (const g of saveGradeTerms) {
++        const gradeTerms = (this.gradeTerms()[g] ?? '').trim();
++        saved = await firstValueFrom(
++          this.http.put<SettingsView>(`${url}/terms/${g}`, { terms: gradeTerms }, this.session.headers()),
++        );
++        this.gradeTermsEdited.delete(g);
++      }
+       if (saveLatePct) {
+         saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/late-pct`, { latePct }, this.session.headers()));
+         this.latePctEdited = false;
+@@ -341,6 +381,10 @@ export class Settings {
+     this.floor.set(settings.floor);
+     this.session.terms.set(settings.terms);
+     this.terms.set(String(settings.terms));
++    const gradeTerms: Record<string, string> = {};
++    for (const [g, t] of Object.entries(settings.gradeTerms)) gradeTerms[g] = String(t);
++    this.gradeTermsCurrent.set(gradeTerms);
++    this.gradeTerms.set(gradeTerms);
+     this.session.latePct.set(settings.latePct);
+     this.latePct.set(settings.latePct);
+     this.session.policyDate.set(settings.policyDate ?? '');
+@@ -350,6 +394,7 @@ export class Settings {
+     this.clerkLimitEdited = false;
+     this.floorEdited = false;
+     this.termsEdited = false;
++    this.gradeTermsEdited.clear();
+     this.latePctEdited = false;
+     this.policyDateEdited = false;
+     this.periodNumberingFromEdited = false;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 3045cfa4d..0eee2048f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -63,6 +63,10 @@ public class Claim {
+     @Column(name = "corrects")
+     private String corrects;
+ 
++    /** The day the claim is due by: fixed when it is added, from the terms of its person's grade on its date. */
++    @Column(name = "due_by", nullable = false)
++    private LocalDate dueBy;
++
+     /** The date that decides how the claim's live figures round: its own date, or a correction's corrected claim's. */
+     @Column(name = "rounding_date", nullable = false)
+     private LocalDate roundingDate;
+@@ -136,6 +140,14 @@ public class Claim {
+         this.date = date;
+     }
+ 
++    public LocalDate getDueBy() {
++        return dueBy;
++    }
++
++    public void setDueBy(LocalDate dueBy) {
++        this.dueBy = dueBy;
++    }
++
+     public LocalDate getRoundingDate() {
+         return roundingDate;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c7c0bde98..4db4f7b51 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -36,7 +36,7 @@ public class ClaimController {
+      */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
+-            LocalDate roundingDate, long listed) {
++            LocalDate roundingDate, long listed, LocalDate dueBy) {
+ 
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(),
+@@ -45,7 +45,7 @@ public class ClaimController {
+                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+-                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed());
++                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e74a0cee9..19cba6255 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -70,6 +70,8 @@ public class ClaimService {
+         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note));
+         claim.setCorrects(corrects);
+         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
++        // Due by its date plus the terms of its person's grade on that date, fixed from now on.
++        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated))));
+         claim.setListed(sheets.nextListed(sheetId));
+         Claim saved = claims.saveAndFlush(claim);
+         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
+@@ -254,7 +256,7 @@ public class ClaimService {
+     private String settle(String sheetId, Person person, Claim claim) {
+         BigDecimal figure = figureOf(sheetId, person, claim);
+         BigDecimal settledDue = figure == null || claim.isCorrection() ? figure
+-                : figure.add(settings.get(sheetId).lateCharge(figure, claim.getDate()));
++                : figure.add(settings.get(sheetId).lateCharge(figure, claim.getDueBy(), claim.getDate()));
+         claim.setSettledDue(settledDue);
+         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
+     }
+@@ -305,7 +307,7 @@ public class ClaimService {
+      */
+     private BigDecimal withLateCharge(String sheetId, Claim claim, BigDecimal due) {
+         return settings.get(sheetId).withLateCharge(due,
+-                claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDate());
++                claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDueBy(), claim.getDate());
+     }
+ 
+     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 120ad9b8a..5addc3a59 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -162,7 +162,7 @@ public class RollupService {
+                         .map(due -> sheet == null || claim.isCorrection() ? due : sheet.floored(due));
+         return sheet == null ? figure
+                 : figure.map(f -> sheet.withLateCharge(f,
+-                        claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDate()));
++                        claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDueBy(), claim.getDate()));
+     }
+ 
+     private static Optional<Rate> rateOn(List<Rate> sheetRates, String grade, LocalDate date) {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/GradeTerms.java b/src/main/java/net/officefloor/hq/app/setting/GradeTerms.java
+new file mode 100644
+index 000000000..7d7b8dbb5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/GradeTerms.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.setting;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A grade's own terms on a sheet: the days after its date a claim of a person of the grade is due by. */
++@Entity
++@Table(name = "grade_terms")
++public class GradeTerms {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "grade", nullable = false)
++    private String grade;
++
++    @Column(name = "terms", nullable = false)
++    private int terms;
++
++    protected GradeTerms() {
++    }
++
++    public GradeTerms(String sheetId, String grade, int terms) {
++        this.sheetId = sheetId;
++        this.grade = grade;
++        this.terms = terms;
++    }
++
++    public String getGrade() {
++        return grade;
++    }
++
++    public int getTerms() {
++        return terms;
++    }
++
++    public void setTerms(int terms) {
++        this.terms = terms;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/GradeTermsRepository.java b/src/main/java/net/officefloor/hq/app/setting/GradeTermsRepository.java
+new file mode 100644
+index 000000000..b5515b358
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/GradeTermsRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.setting;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface GradeTermsRepository extends JpaRepository<GradeTerms, Long> {
++
++    /** A sheet's grade terms in grade order. */
++    List<GradeTerms> findBySheetIdOrderByGrade(String sheetId);
++
++    Optional<GradeTerms> findBySheetIdAndGrade(String sheetId, String grade);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 02c20e604..e10f2f524 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.Map;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -26,17 +27,18 @@ public class SettingController {
+ 
+     /**
+      * The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals;
+-     * the terms in whole days; the late percent with two decimals; the policy date as yyyy-mm-dd, null when blank (the
++     * the terms in whole days; each grade's own terms in whole days, by grade (a grade without its own is left out);
++     * the late percent with two decimals; the policy date as yyyy-mm-dd, null when blank (the
+      * sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off).
+      */
+-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+-            LocalDate periodNumberingFrom) {
++    public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
++            String latePct, LocalDate policyDate, LocalDate periodNumberingFrom) {
+ 
+-        static SettingsView of(Sheet sheet) {
++        static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
+             return new SettingsView(sheet.getClerkLimit() == null ? null
+                     : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                     sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getTerms(),
+-                    sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getPolicyDate(),
++                    gradeTerms, sheet.getLatePct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getPolicyDate(),
+                     sheet.getPeriodNumberingFrom());
+         }
+     }
+@@ -91,49 +93,60 @@ public class SettingController {
+     @GetMapping
+     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return SettingsView.of(service.get(sheetId.trim()));
++        return view(service.get(sheetId.trim()));
+     }
+ 
+     @PutMapping
+     public SettingsView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid SettingsRequest request) {
+-        return SettingsView.of(service.setClerkLimit(sheetId.trim(), user.trim(), request.clerkLimitValue()));
++        return view(service.setClerkLimit(sheetId.trim(), user.trim(), request.clerkLimitValue()));
+     }
+ 
+     @PutMapping("/floor")
+     public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid FloorRequest request) {
+-        return SettingsView.of(service.setFloor(sheetId.trim(), user.trim(), request.floorValue()));
++        return view(service.setFloor(sheetId.trim(), user.trim(), request.floorValue()));
+     }
+ 
+     @PutMapping("/terms")
+     public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid TermsRequest request) {
+-        return SettingsView.of(service.setTerms(sheetId.trim(), user.trim(), request.termsValue()));
++        return view(service.setTerms(sheetId.trim(), user.trim(), request.termsValue()));
++    }
++
++    @PutMapping("/terms/{grade}")
++    public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid TermsRequest request) {
++        return view(service.setGradeTerms(sheetId.trim(), user.trim(), grade, request.termsValue()));
+     }
+ 
+     @PutMapping("/late-pct")
+     public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid LatePctRequest request) {
+-        return SettingsView.of(service.setLatePct(sheetId.trim(), user.trim(), request.latePctValue()));
++        return view(service.setLatePct(sheetId.trim(), user.trim(), request.latePctValue()));
+     }
+ 
+     @PutMapping("/policy-date")
+     public SettingsView setPolicyDate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody PolicyDateRequest request) {
+-        return SettingsView.of(service.setPolicyDate(sheetId.trim(), user.trim(), request.policyDate()));
++        return view(service.setPolicyDate(sheetId.trim(), user.trim(), request.policyDate()));
+     }
+ 
+     @PutMapping("/period-numbering-from")
+     public SettingsView setPeriodNumberingFrom(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody PeriodNumberingFromRequest request) {
+-        return SettingsView.of(
+-                service.setPeriodNumberingFrom(sheetId.trim(), user.trim(), request.periodNumberingFrom()));
++        return view(service.setPeriodNumberingFrom(sheetId.trim(), user.trim(), request.periodNumberingFrom()));
++    }
++
++    private SettingsView view(Sheet sheet) {
++        return SettingsView.of(sheet, service.gradeTerms(sheet.getId()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 47248023b..247d3b310 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.setting;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.LinkedHashMap;
++import java.util.Map;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -17,9 +19,11 @@ public class SettingService {
+     private final SheetRepository sheets;
+     private final Audit audit;
+     private final RollupService rollup;
++    private final GradeTermsRepository gradeTerms;
+ 
+-    public SettingService(SheetRepository sheets, Audit audit, RollupService rollup) {
++    public SettingService(SheetRepository sheets, Audit audit, RollupService rollup, GradeTermsRepository gradeTerms) {
+         this.sheets = sheets;
++        this.gradeTerms = gradeTerms;
+         this.audit = audit;
+         this.rollup = rollup;
+     }
+@@ -53,20 +57,47 @@ public class SettingService {
+     }
+ 
+     /**
+-     * Set the terms, the days after its date a claim is due by. Every save is recorded, even of the same value, then
+-     * the figures its late charges moved.
++     * Set the terms, the days after its date a claim of a grade without its own terms is due by. Every save is
++     * recorded, even of the same value. Claims already added keep their due-by.
+      */
+     @Transactional
+     public Sheet setTerms(String sheetId, String user, int terms) {
+         Sheet sheet = get(sheetId);
+-        RollupService.Snapshot before = rollup.snapshot(sheetId);
+         sheet.setTerms(terms);
+         Sheet saved = sheets.saveAndFlush(sheet);
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=terms value=" + terms);
+-        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
++    /** The grades with their own terms, in grade order; a grade not in it uses the sheet's terms. */
++    public Map<String, Integer> gradeTerms(String sheetId) {
++        Map<String, Integer> terms = new LinkedHashMap<>();
++        gradeTerms.findBySheetIdOrderByGrade(sheetId).forEach(t -> terms.put(t.getGrade(), t.getTerms()));
++        return terms;
++    }
++
++    /** The terms in force for a claim of a person of the grade: the grade's own, else the sheet's. */
++    public int termsFor(String sheetId, String grade) {
++        return gradeTerms.findBySheetIdAndGrade(sheetId, grade).map(GradeTerms::getTerms)
++                .orElseGet(() -> get(sheetId).getTerms());
++    }
++
++    /**
++     * Set a grade's own terms. Every save is recorded, even of the same value. Claims already added keep their
++     * due-by.
++     */
++    @Transactional
++    public Sheet setGradeTerms(String sheetId, String user, String grade, int terms) {
++        Sheet sheet = get(sheetId);
++        GradeTerms kept = gradeTerms.findBySheetIdAndGrade(sheetId, grade)
++                .orElseGet(() -> new GradeTerms(sheetId, grade, terms));
++        kept.setTerms(terms);
++        gradeTerms.saveAndFlush(kept);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=terms-" + grade + " value="
++                + terms);
++        return sheet;
++    }
++
+     /**
+      * Set the late percent, what an overdue claim's due gains for every full 30 days it is overdue. Every save is
+      * recorded, then the figures it moved.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 892d780e7..bdc2a7ff6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -32,7 +32,7 @@ public class Sheet {
+     @Column(name = "due_floor", nullable = false, precision = 12, scale = 2)
+     private BigDecimal floor = new BigDecimal("1.00");
+ 
+-    /** The number of days after its date that a claim is due by. */
++    /** The number of days after its date that a claim of a grade without its own terms is due by. */
+     @Column(name = "terms", nullable = false)
+     private int terms = 14;
+ 
+@@ -141,22 +141,22 @@ public class Sheet {
+ 
+     /**
+      * The late charge on a figure of an OPEN claim dated {@code date}: the late percent of the figure for every full
+-     * 30 days the sheet's today is past the claim's due-by (its date plus the terms), rounded as the claim's date has it;
+-     * zero when not overdue, null (n/a) when the figure is.
++     * 30 days the sheet's today is past the claim's due-by, rounded as the claim's date has it; zero when not overdue,
++     * null (n/a) when the figure is.
+      */
+-    public BigDecimal lateCharge(BigDecimal figure, LocalDate date) {
++    public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
+         if (figure == null) {
+             return null;
+         }
+-        long overdueDays = ChronoUnit.DAYS.between(date.plusDays(terms), today);
++        long overdueDays = ChronoUnit.DAYS.between(dueBy, today);
+         long periods = overdueDays <= 0 ? 0 : overdueDays / 30;
+         return figure.multiply(latePct).multiply(BigDecimal.valueOf(periods)).movePointLeft(2)
+                 .setScale(2, rounding(date));
+     }
+ 
+     /** The figure with its late charge added on top when the claim is OPEN; null (n/a) stays null. */
+-    public BigDecimal withLateCharge(BigDecimal figure, boolean open, LocalDate date) {
+-        return figure == null || !open ? figure : figure.add(lateCharge(figure, date));
++    public BigDecimal withLateCharge(BigDecimal figure, boolean open, LocalDate dueBy, LocalDate date) {
++        return figure == null || !open ? figure : figure.add(lateCharge(figure, dueBy, date));
+     }
+ 
+     /** A live due raised to the floor; null (n/a) stays null. */
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index efc8063e4..1eb9a190b 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -89,7 +89,7 @@ public class StatementService {
+             BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
+             BigDecimal due = claim.getSettledDue() != null ? figure
+                     : sheet.withLateCharge(figure, claim.getStatus().isOpen() && !claim.isCorrection(),
+-                            claim.getDate());
++                            claim.getDueBy(), claim.getDate());
+             if (due != null) {
+                 total = total.add(due);
+                 // A due under a grade the person had on an earlier date counts too.
+diff --git a/src/main/resources/db/migration/V29__grade_terms_claim_due_by.sql b/src/main/resources/db/migration/V29__grade_terms_claim_due_by.sql
+new file mode 100644
+index 000000000..eac99aba8
+--- /dev/null
++++ b/src/main/resources/db/migration/V29__grade_terms_claim_due_by.sql
+@@ -0,0 +1,14 @@
++-- Terms per grade: the days after its date a claim of a person of the grade is due by. A grade with no row uses the
++-- sheet's terms.
++CREATE TABLE grade_terms (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    grade    VARCHAR(1)   NOT NULL,
++    terms    INT          NOT NULL CHECK (terms >= 0)
++);
++CREATE UNIQUE INDEX grade_terms_sheet_grade ON grade_terms (sheet_id, grade);
++-- A claim's due-by, fixed when it is added: its date plus the terms of its person's grade on that date. Claims already
++-- kept take their date plus the sheet's terms.
++ALTER TABLE claim ADD COLUMN due_by DATE;
++UPDATE claim SET due_by = DATEADD(DAY, (SELECT s.terms FROM sheet s WHERE s.id = claim.sheet_id), claim_date);
++ALTER TABLE claim ALTER COLUMN due_by SET NOT NULL;
