@@ -135,6 +135,23 @@ function csvField(value: string): string {
           <p role="alert" data-testid="quick-error">{{ message }}</p>
         }
       </form>
+      <form aria-label="Paste claims" (submit)="pasteClaims($event)">
+        <label for="paste-claims">Paste claims, one per line: name,amount,date,note</label>
+        <textarea
+          id="paste-claims"
+          data-testid="paste-claims"
+          rows="4"
+          [value]="pasteText()"
+          (input)="pasteText.set(value($event)); pasteError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        @if (pasteAdded() !== null) {
+          Added <strong data-testid="paste-added">{{ pasteAdded() }}</strong>
+        }
+        @if (pasteError(); as message) {
+          <p role="alert" data-testid="paste-error">{{ message }}</p>
+        }
+      </form>
       <p>
         <input
           id="show-retired"
@@ -425,6 +442,11 @@ export class People {
   protected readonly quickAmount = signal('');
   protected readonly quickError = signal<string | null>(null);
   private quickAdding = false;
+  /** The paste box: its lines, how many its last paste added (null while it runs and before the first), its error. */
+  protected readonly pasteText = signal('');
+  protected readonly pasteAdded = signal<number | null>(null);
+  protected readonly pasteError = signal<string | null>(null);
+  private pasting = false;
   /** The error of the last action on a person's row that was refused, and the person it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** The patron chosen on each person's row, by person id, as the chosen person's id; blank with none chosen. */
@@ -465,6 +487,9 @@ export class People {
         this.quickName.set('');
         this.quickAmount.set('');
         this.quickError.set(null);
+        this.pasteText.set('');
+        this.pasteAdded.set(null);
+        this.pasteError.set(null);
         if (sheet) void this.read(sheet);
       });
     });
@@ -889,6 +914,44 @@ export class People {
       this.quickError.set('The claim could not be added.' + why);
     } finally {
       this.quickAdding = false;
+    }
+  }
+
+  /**
+   * Add a DRAFT claim per pasted line of name,amount,date,note, in order, for the person of that name on the sheet.
+   * Refused as a whole when any line would be.
+   */
+  protected async pasteClaims(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.pasting) return;
+    this.pasteError.set(null);
+    this.pasteAdded.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = this.pasteText();
+    if (!text.trim()) {
+      this.pasteError.set('Paste at least one line of name,amount,date,note.');
+      return;
+    }
+    this.pasting = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ added: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/paste`,
+          { text },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.pasteText.set('');
+      await this.read(sheet);
+      this.pasteAdded.set(result.added);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+      this.pasteError.set('The pasted claims could not be added; none were.' + detail);
+    } finally {
+      this.pasting = false;
     }
   }
 

@@ -92,14 +92,25 @@ public class ClaimController {
     public record BulkSettleRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
     }
 
+    /** Lines of name,amount,date,note to add as DRAFT claims. */
+    public record PasteRequest(@NotNull @Size(max = 1000000) String text) {
+    }
+
+    /** How many claims a paste added. */
+    public record PasteResult(int added) {
+    }
+
     private final ClaimService service;
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
+    private final PasteClaimsService paste;
 
-    public ClaimController(ClaimService service, BulkOpenService bulkOpen, BulkSettleService bulkSettle) {
+    public ClaimController(ClaimService service, BulkOpenService bulkOpen, BulkSettleService bulkSettle,
+            PasteClaimsService paste) {
         this.service = service;
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
+        this.paste = paste;
     }
 
     /** All the sheet's claims, newest first. */
@@ -120,6 +131,14 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return view(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
                 request.note(), request.correctsValue()));
+    }
+
+    /** Add a DRAFT claim per pasted line, in order; refused as a whole when any line would be. */
+    @PostMapping("/claims/paste")
+    public PasteResult paste(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PasteRequest request) {
+        return new PasteResult(paste.paste(sheetId.trim(), user.trim(), request.text()));
     }
 
     /** Edit a DRAFT claim; refused for any other status. */
