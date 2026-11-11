@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.period;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
@@ -77,10 +78,32 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodClosedException(name);
         }
+        return closeNow(sheetId, user, period, false);
+    }
+
+    /**
+     * Close, in order of their to-dates, every open period whose to-date plus the grace days is before the today, as
+     * a close by hand would, each recorded as closed automatically; none when the grace days are off (null).
+     */
+    @Transactional
+    public void autoClose(String sheetId, String user, LocalDate today, Integer graceDays) {
+        if (graceDays == null) {
+            return;
+        }
+        if (sheets.lockById(sheetId) == 0) {
+            throw new SheetNotFoundException(sheetId);
+        }
+        list(sheetId).stream()
+                .filter(p -> !p.isClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
+                .sorted(Comparator.comparing(Period::getToDate))
+                .forEach(p -> closeNow(sheetId, user, p, true));
+    }
+
+    private Period closeNow(String sheetId, String user, Period period, boolean auto) {
         period.close(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
-                + " total=" + saved.getClosedTotal().toPlainString());
+                + " total=" + saved.getClosedTotal().toPlainString() + (auto ? " auto=yes" : ""));
         return saved;
     }
 

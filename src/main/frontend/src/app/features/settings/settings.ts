@@ -20,6 +20,8 @@ interface SettingsView {
   periodNumberingFrom: string | null;
   /** The most a person's due-total can be, two decimals; null when there is no cap. */
   cap: string | null;
+  /** The days past its to-date after which a change of today closes an open period; null: off. */
+  graceDays: number | null;
   /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
   proofThreshold: string | null;
   /** The permission matrix, by action: the roles that may take it, comma separated; null: the standing rule. */
@@ -43,7 +45,7 @@ const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
 /** A date typed as yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, its late percent, its cap and its proof threshold; not dated: its policy date, its period numbering from and its permission matrix) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, its late percent, its cap and its proof threshold; not dated: its policy date, its period numbering from, its grace days and its permission matrix) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -154,6 +156,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'periodNumberingFrom'"
           (input)="periodNumberingFrom.set(value($event)); periodNumberingFromEdited = true; settingsError.set(null)"
         />
+        <label for="setting-grace-days">Grace days (an open period closes once today is past its end by more; blank: off)</label>
+        <input
+          id="setting-grace-days"
+          data-testid="setting-grace-days"
+          inputmode="numeric"
+          [value]="graceDays()"
+          (focus)="lastFocused = 'graceDays'"
+          (input)="graceDays.set(value($event)); graceDaysEdited = true; settingsError.set(null)"
+        />
         <label for="setting-cap">Cap (the most a person's due-total can be; blank: no cap)</label>
         <input
           id="setting-cap"
@@ -215,6 +226,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' }}</strong></p>
       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
+      <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
       @for (a of actions; track a) {
         <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' }}</strong></p>
@@ -290,6 +302,8 @@ export class Settings {
   protected readonly policyDate = signal('');
   protected readonly periodNumberingFrom = signal('');
   protected readonly periodNumberingFromCurrent = signal<string | null>(null);
+  protected readonly graceDays = signal('');
+  protected readonly graceDaysCurrent = signal<string | null>(null);
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
   /** The from-date typed for each dated setting, by key; blank: the sheet's today. */
@@ -301,10 +315,11 @@ export class Settings {
   protected latePctEdited = false;
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
+  protected graceDaysEdited = false;
   protected capEdited = false;
   protected proofThresholdEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap' | 'proofThreshold' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'graceDays' | 'cap' | 'proofThreshold' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -324,6 +339,7 @@ export class Settings {
         this.session.dated.set(null);
         this.session.policyDate.set(null);
         this.periodNumberingFromCurrent.set(null);
+        this.graceDaysCurrent.set(null);
         this.permsCurrent.set({});
         this.roleList.set([]);
         this.settingsError.set(null);
@@ -374,7 +390,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.capEdited && !this.proofThresholdEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.graceDaysEdited && !this.capEdited && !this.proofThresholdEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -383,6 +399,7 @@ export class Settings {
         case 'latePct': this.latePctEdited = true; break;
         case 'policyDate': this.policyDateEdited = true; break;
         case 'periodNumberingFrom': this.periodNumberingFromEdited = true; break;
+        case 'graceDays': this.graceDaysEdited = true; break;
         case 'cap': this.capEdited = true; break;
         case 'proofThreshold': this.proofThresholdEdited = true; break;
         default: if (this.lastFocused) this.permsEdited.add(this.lastFocused.slice('perm-'.length));
@@ -395,6 +412,7 @@ export class Settings {
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
+    const saveGraceDays = this.graceDaysEdited;
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const savePerms = ACTIONS.filter((a) => this.permsEdited.has(a));
@@ -404,6 +422,7 @@ export class Settings {
     const latePct = this.latePct().trim();
     const policyDate = this.policyDate().trim();
     const periodNumberingFrom = this.periodNumberingFrom().trim();
+    const graceDays = this.graceDays().trim();
     const cap = this.cap().trim();
     const proofThreshold = this.proofThreshold().trim();
     const froms = this.froms();
@@ -447,6 +466,10 @@ export class Settings {
     }
     if (savePeriodNumberingFrom && periodNumberingFrom !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(periodNumberingFrom)) {
       this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
+      return;
+    }
+    if (saveGraceDays && graceDays !== '' && !/^\d{1,5}$/.test(graceDays)) {
+      this.settingsError.set('Type grace days of 0 or more whole days, or leave it blank for off.');
       return;
     }
     if (saveCap && cap !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(cap)) {
@@ -509,6 +532,12 @@ export class Settings {
           ),
         );
         this.periodNumberingFromEdited = false;
+      }
+      if (saveGraceDays) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/grace-days`, { graceDays: graceDays === '' ? null : graceDays }, this.session.headers()),
+        );
+        this.graceDaysEdited = false;
       }
       if (saveCap) {
         saved = await firstValueFrom(
@@ -605,6 +634,8 @@ export class Settings {
     this.policyDate.set(settings.policyDate ?? '');
     this.periodNumberingFromCurrent.set(settings.periodNumberingFrom ?? '');
     this.periodNumberingFrom.set(settings.periodNumberingFrom ?? '');
+    this.graceDaysCurrent.set(settings.graceDays === null ? '' : String(settings.graceDays));
+    this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.cap.set(settings.cap ?? '');
     this.proofThreshold.set(settings.proofThreshold ?? '');
     this.permsCurrent.set(settings.permissions);
@@ -619,6 +650,7 @@ export class Settings {
     this.latePctEdited = false;
     this.policyDateEdited = false;
     this.periodNumberingFromEdited = false;
+    this.graceDaysEdited = false;
     this.capEdited = false;
     this.proofThresholdEdited = false;
   }

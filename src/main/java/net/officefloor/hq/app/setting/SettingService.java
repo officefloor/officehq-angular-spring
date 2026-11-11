@@ -15,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, its late percent, its cap and its proof threshold, each
- * dated (kept from a from-date); and its policy date, its period numbering from and its permission matrix, not dated.
+ * dated (kept from a from-date); and its policy date, its period numbering from, its grace days and its
+ * permission matrix, not dated.
  */
 @Service
 public class SettingService {
@@ -161,6 +162,17 @@ public class SettingService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=perm-" + action + " value="
                 + (roles == null ? "" : roles));
+        return saved;
+    }
+
+    /** Set the grace days; null means off. Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setGraceDays(String sheetId, String user, Integer graceDays) {
+        Sheet sheet = get(sheetId);
+        sheet.setGraceDays(graceDays);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=grace-days value="
+                + (graceDays == null ? "" : graceDays.toString()));
         return saved;
     }
 

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.LocalDate;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -16,10 +17,12 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final RollupService rollup;
+    private final PeriodService periods;
 
-    public SheetService(SheetRepository sheets, RollupService rollup) {
+    public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods) {
         this.sheets = sheets;
         this.rollup = rollup;
+        this.periods = periods;
     }
 
     public Sheet load(String id, String user) {
@@ -35,13 +38,17 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(() -> new SheetNotFoundException(id));
     }
 
-    /** Change the sheet's today; it has no audit record of its own, only the figures it moves. */
+    /**
+     * Change the sheet's today; it has no audit record of its own. Every open period past its grace days on the new
+     * today then closes, before the figures it moved are recorded.
+     */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
         RollupService.Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
+        periods.autoClose(id, user, today, saved.getGraceDays());
         rollup.recordChanges(id, user, before);
         return saved;
     }
