@@ -120,6 +120,14 @@ public class Period {
         this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
+    /** Fold one person's fixed due-total into another's, keeping the period's own (a merge of the two). */
+    public void mergePersonTotal(Long fromId, Long intoId) {
+        BigDecimal from = personTotals.remove(fromId);
+        if (from != null) {
+            personTotals.merge(intoId, from, BigDecimal::add);
+        }
+    }
+
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;

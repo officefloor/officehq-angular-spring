@@ -51,6 +51,11 @@ public class PersonAlias {
         return personId;
     }
 
+    /** Move the alias to another person on the sheet. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
     public String getAlias() {
         return alias;
     }

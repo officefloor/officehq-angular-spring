@@ -39,7 +39,16 @@ public class PoolMember {
         return personId;
     }
 
+    /** Make the membership another person's (a merge). */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
     public BigDecimal getShare() {
         return share;
+    }
+
+    public void setShare(BigDecimal share) {
+        this.share = share;
     }
 }

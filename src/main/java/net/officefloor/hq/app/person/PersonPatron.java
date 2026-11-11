@@ -49,4 +49,14 @@ public class PersonPatron {
     public Long getPatronId() {
         return patronId;
     }
+
+    /** Make the patron another person's (a merge). */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    /** Name another person as the patron instead (a merge). */
+    public void setPatronId(Long patronId) {
+        this.patronId = patronId;
+    }
 }

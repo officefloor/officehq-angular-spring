@@ -98,6 +98,10 @@ public class PersonController {
     public record AliasRequest(@Size(max = 200) String alias) {
     }
 
+    /** The person to merge into. */
+    public record MergeRequest(@NotNull Long intoId) {
+    }
+
     /** Whether the signed-in user is to watch the person. */
     public record WatchRequest(@NotNull Boolean on) {
     }
@@ -107,10 +111,12 @@ public class PersonController {
     private final SheetService sheets;
     private final WatchService watches;
     private final BulkGradeService bulkGrade;
+    private final MergeService merges;
 
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
-            WatchService watches, BulkGradeService bulkGrade) {
+            WatchService watches, BulkGradeService bulkGrade, MergeService merges) {
         this.service = service;
+        this.merges = merges;
         this.bulkGrade = bulkGrade;
         this.watches = watches;
         this.statements = statements;
@@ -216,6 +222,15 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid AliasRequest request) {
         return view(service.addAlias(sheetId.trim(), user.trim(), id, request.alias()), user.trim());
+    }
+
+    /** Merge the person into another on the sheet (a steward only): the person is removed; the other is returned. */
+    @PostMapping("/{id}/merge")
+    public PersonView merge(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid MergeRequest request) {
+        return view(merges.merge(sheetId.trim(), user.trim(), id, request.intoId()), user.trim());
     }
 
     /** Start or stop watching the person as the signed-in user. */

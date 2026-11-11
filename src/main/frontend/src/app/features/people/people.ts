@@ -343,6 +343,26 @@ function csvField(value: string): string {
                 >
                   Add alias
                 </button>
+                <label [for]="'person-merge-into-' + p.id" class="visually-hidden">Merge {{ p.name }} into</label>
+                <select
+                  [id]="'person-merge-into-' + p.id"
+                  data-testid="person-merge-into"
+                  [value]="mergeChoices()[p.id] ?? ''"
+                  (change)="setMergeChoice(p.id, value($event))"
+                >
+                  <option value="" [selected]="!mergeChoices()[p.id]">Merge into…</option>
+                  @for (o of mergeOptions(p); track o.id) {
+                    <option [value]="'' + o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-merge"
+                  [attr.aria-label]="'Merge ' + p.name + ' into the chosen person'"
+                  (click)="merge(p)"
+                >
+                  Merge
+                </button>
                 <ul class="holds">
                   @for (h of p.holds; track $index) {
                     <li data-testid="person-hold-line">Held {{ h.from }} to {{ h.to ?? 'open' }}</li>
@@ -546,6 +566,8 @@ export class People {
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The alias typed on each person's row, by person id. */
   protected readonly aliasInputs = signal<Record<number, string>>({});
+  /** The person chosen on each person's row to merge them into, by person id, as the chosen person's id. */
+  protected readonly mergeChoices = signal<Record<number, string>>({});
   /** The date typed beside each person's statement button, by person id: blank takes the statement now. */
   protected readonly statementAsOfs = signal<Record<number, string>>({});
   /** The from-date typed for each person's next hold, by person id. */
@@ -730,6 +752,7 @@ export class People {
         this.tags.set([]);
         this.retireDates.set({});
         this.aliasInputs.set({});
+        this.mergeChoices.set({});
         this.statementAsOfs.set({});
         this.holdFroms.set({});
         this.holdTos.set({});
@@ -784,6 +807,44 @@ export class People {
   protected setAliasInput(id: number, alias: string): void {
     this.aliasInputs.update((aliases) => ({ ...aliases, [id]: alias }));
     if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setMergeChoice(id: number, choice: string): void {
+    this.mergeChoices.update((choices) => ({ ...choices, [id]: choice }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** The people the person can be chosen to merge into: everyone else on the sheet. */
+  protected mergeOptions(person: Person): Person[] {
+    return this.people().filter((p) => p.id !== person.id);
+  }
+
+  /**
+   * Merge the person into the chosen one (a steward only, neither retired): the person leaves the list, then re-read
+   * so the other's claims, aliases, patrons and every total show what the store holds.
+   */
+  protected async merge(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const intoId = Number(this.mergeChoices()[person.id] ?? '');
+    if (!intoId) {
+      this.rowError.set({ id: person.id, message: 'Choose a person to merge into.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/merge`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, { intoId }, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.filter((p) => p.id !== person.id));
+        this.mergeChoices.update((choices) => ({ ...choices, [person.id]: '' }));
+        void this.read(sheet);
+      }
+    } catch {
+      const into = this.byId().get(intoId)?.name ?? 'that person';
+      this.rowError.set({ id: person.id, message: `${person.name} could not be merged into ${into}.` });
+    }
   }
 
   protected setRetireDate(id: number, date: string): void {
