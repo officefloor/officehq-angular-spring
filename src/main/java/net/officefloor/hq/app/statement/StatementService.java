@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
@@ -32,15 +33,17 @@ public class StatementService {
     private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            RateService rates, SheetService sheets, Audit audit) {
+            RateService rates, SheetService sheets, Audit audit, RollupService rollup) {
         this.statements = statements;
         this.people = people;
         this.claims = claims;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     /** Each person's statement summary on the sheet, by person id; a person with none is missing. */
@@ -64,6 +67,7 @@ public class StatementService {
     public Person take(String sheetId, String user, Long personId) {
         Person person = people.findForUpdate(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheets.today(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         // As on the screen: n/a when the grade has no rate today, unless a counting claim has a fixed due.
@@ -90,6 +94,7 @@ public class StatementService {
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted);
+        rollup.recordChanges(sheetId, user, before);
         return person;
     }
 

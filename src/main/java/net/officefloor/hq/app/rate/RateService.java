@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,11 +21,13 @@ public class RateService {
     private final RateRepository rates;
     private final SheetRepository sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
-    public RateService(RateRepository rates, SheetRepository sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetRepository sheets, Audit audit, RollupService rollup) {
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     public List<Rate> list(String sheetId) {
@@ -47,6 +50,7 @@ public class RateService {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException(sheetId);
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, fromDate).orElse(null);
         if (rate == null) {
             rate = new Rate(sheetId, grade, fromDate, pct);
@@ -62,6 +66,7 @@ public class RateService {
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + saved.getGrade()
                 + " rate=" + saved.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString()
                 + (saved.getFromDate() == null ? "" : " from=" + saved.getFromDate()));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 }

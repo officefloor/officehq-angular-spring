@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -23,14 +24,16 @@ public class ClaimService {
     private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Audit audit) {
+            Audit audit, RollupService rollup) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     public List<Claim> list(String sheetId) {
@@ -39,15 +42,18 @@ public class ClaimService {
 
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
         Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dateOr(sheetId, date), noteOf(note)));
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
     @Transactional
     public Claim update(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         claim.setAmount(amount);
@@ -57,6 +63,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, saved.getPersonId()));
         audit.recordOnCommit(record("CLAIM_EDITED", user, person, saved));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -74,6 +81,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(status);
         // Settling fixes the due at the rate the person's grade has on the claim's date; with no rate it stays live.
         String due = "";
@@ -102,6 +110,7 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         audit.recordOnCommit(record(event, user, person, saved) + numberOf(number) + due);
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
