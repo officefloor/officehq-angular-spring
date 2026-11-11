@@ -14,6 +14,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.SheetTag;
+import net.officefloor.hq.app.claim.SheetTagRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -35,9 +37,12 @@ public class PersonService {
     private final Audit audit;
     private final RollupService rollup;
     private final SheetService sheetService;
+    private final SheetTagRepository tags;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonAliasRepository aliases,
-            SheetRepository sheets, Audit audit, RollupService rollup, SheetService sheetService) {
+            SheetRepository sheets, Audit audit, RollupService rollup, SheetService sheetService,
+            SheetTagRepository tags) {
+        this.tags = tags;
         this.aliases = aliases;
         this.sheetService = sheetService;
         this.people = people;
@@ -59,6 +64,13 @@ public class PersonService {
     /** Add the person with their contact (blank: none), refused when another person on the sheet has it. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, null);
+    }
+
+    /** Add the person with their contact and their comma separated tags (blank: none). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            String tagText) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException(sheetId);
         }
@@ -75,6 +87,7 @@ public class PersonService {
         Person person = new Person(sheetId, name, grade);
         person.setTerms(terms);
         person.setContact(contactKey);
+        person.setTags(tagged(sheetId, tagText));
         person.setAddedOn(sheetService.today(sheetId));
         person.setPosition(people.maxPosition(sheetId) + 1);
         Person saved = save(person);
@@ -93,6 +106,13 @@ public class PersonService {
      */
     public Person update(String sheetId, String user, Long id, Long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, null);
+    }
+
+    /** Save the person as above, replacing their tags with the comma separated ones (blank: none; null: kept). */
+    @Transactional
+    public Person update(String sheetId, String user, Long id, Long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tagText) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
@@ -120,6 +140,9 @@ public class PersonService {
         person.setName(name);
         person.setTerms(terms);
         person.setContact(contactKey);
+        if (tagText != null) {
+            person.setTags(tagged(sheetId, tagText));
+        }
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
@@ -129,6 +152,25 @@ public class PersonService {
                 + (Objects.equals(contactBefore, contactKey) ? "" : " contact=" + (contactKey != null ? contactKey : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * The tags of comma separated text, each trimmed and lower-cased, without repeats, sorted and joined by commas
+     * (null when there are none), each noted as used on the sheet.
+     */
+    String tagged(String sheetId, String text) {
+        List<String> list = SheetTag.parse(text);
+        noteTags(sheetId, list);
+        return list.isEmpty() ? null : String.join(",", list);
+    }
+
+    /** Note each tag as used on the sheet. */
+    void noteTags(String sheetId, List<String> list) {
+        for (String tag : list) {
+            if (!tags.existsBySheetIdAndTag(sheetId, tag)) {
+                tags.save(new SheetTag(sheetId, tag));
+            }
+        }
     }
 
     /** Retire the person from the date, or from the sheet's today when none is given. */

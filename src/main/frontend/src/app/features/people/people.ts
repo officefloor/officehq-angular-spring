@@ -23,6 +23,8 @@ interface Person {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
+  /** The person's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; null when they have none. */
+  tags: string | null;
   /** Raised on each save; the editor sends back the one it loaded. */
   version: number;
   /** How many statements the person has had. */
@@ -192,6 +194,13 @@ function csvField(value: string): string {
           [value]="contact()"
           (input)="contact.set(value($event)); error.set(null)"
         />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input
+          id="person-form-tags"
+          data-testid="person-form-tags"
+          [value]="personTags()"
+          (input)="personTags.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -281,7 +290,7 @@ function csvField(value: string): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Aliases</th><th scope="col">From sheet</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Aliases</th><th scope="col">From sheet</th><th scope="col">Clashing</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
             }
@@ -309,6 +318,7 @@ function csvField(value: string): string {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ personTagsOf(p).join(', ') }}</td>
               <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
@@ -803,6 +813,11 @@ export class People {
   protected readonly consolidatedOverdueTotal = computed(() =>
     this.liveConsolidated()?.overdueTotal ?? sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
   );
+  /** The person's tags, sorted; none when they have none. */
+  protected personTagsOf(person: Person): string[] {
+    return person.tags ? person.tags.split(',') : [];
+  }
+
   /** Every tag ever used on the sheet, sorted. */
   protected readonly tags = signal<string[]>([]);
   /**
@@ -812,7 +827,7 @@ export class People {
   protected readonly tagTotals = computed(() =>
     this.tags().map((tag) => ({
       tag,
-      dueTotal: sumDues(this.people().map((p) => this.liveDuesOf(p, (c) => tagsOf(c).includes(tag)))),
+      dueTotal: sumDues(this.people().map((p) => this.liveDuesOf(p, (c) => tagsOf(c).includes(tag) || this.personTagsOf(p).includes(tag)))),
     })),
   );
   /**
@@ -874,6 +889,8 @@ export class People {
   protected readonly terms = signal('');
   /** The person's contact; blank for none. */
   protected readonly contact = signal('');
+  /** The person's tags, comma separated; blank for none. */
+  protected readonly personTags = signal('');
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded. */
@@ -1722,6 +1739,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set(person.terms === null ? '' : String(person.terms));
     this.contact.set(person.contact ?? '');
+    this.personTags.set(this.personTagsOf(person).join(', '));
     this.error.set(null);
   }
 
@@ -1738,6 +1756,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set('');
     this.contact.set('');
+    this.personTags.set('');
     this.error.set(null);
   }
 
@@ -1754,6 +1773,7 @@ export class People {
       gradeFrom: this.gradeFrom() || null,
       terms: this.terms().trim() || null,
       contact: this.contact().trim() || null,
+      tags: this.personTags().trim(),
       version: editing === null ? null : this.editingVersion,
     };
     if (!body.name.trim()) {
@@ -1992,6 +2012,7 @@ export class People {
       this.grade.set(this.gradeOf(person));
       this.terms.set(person.terms === null ? '' : String(person.terms));
     this.contact.set(person.contact ?? '');
+      this.personTags.set(this.personTagsOf(person).join(', '));
     }
   }
 

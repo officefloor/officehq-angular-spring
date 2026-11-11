@@ -3,9 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import java.util.function.LongSupplier;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -950,8 +948,7 @@ public class ClaimService {
         if (text == null) {
             return null;
         }
-        List<String> list = Arrays.stream(text.split(",")).map(t -> t.trim().toLowerCase(Locale.ROOT))
-                .filter(t -> !t.isEmpty()).distinct().sorted().toList();
+        List<String> list = SheetTag.parse(text);
         for (String tag : list) {
             if (!tags.existsBySheetIdAndTag(sheetId, tag)) {
                 tags.save(new SheetTag(sheetId, tag));

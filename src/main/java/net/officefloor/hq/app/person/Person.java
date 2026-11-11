@@ -52,6 +52,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; null when they have none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** The date the person is retired from; null while not retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -169,6 +173,14 @@ public class Person {
     /** The contact as kept: trimmed and lower-cased; null when blank. */
     public static String contactKey(String contact) {
         return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     public LocalDate getRetiredFrom() {
@@ -319,6 +331,7 @@ public class Person {
         theirGrades.stream().skip(1).forEach(g -> copy.setGrade(g.getGrade(), g.getFromDate()));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         copy.retiredFrom = retiredFrom;
         copy.retiredOn = retiredOn;
         copy.addedOn = addedOn;

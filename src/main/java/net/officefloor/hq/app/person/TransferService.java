@@ -144,6 +144,8 @@ public class TransferService {
             grades.stream().skip(1).forEach(g -> arrived.setGrade(g.getGrade(), g.getFromDate()));
             arrived.setTerms(from.getTerms());
             arrived.setContact(from.getContact());
+            arrived.setTags(from.getTags());
+            personService.noteTags(to, SheetTag.parse(from.getTags()));
             arrived.setAddedOn(toSheet.getToday());
             arrived.setOriginSheet(sheetId);
             arrived.setPosition(people.maxPosition(to) + 1);
