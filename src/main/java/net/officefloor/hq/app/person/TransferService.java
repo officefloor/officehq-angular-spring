@@ -32,12 +32,14 @@ import org.springframework.transaction.annotation.Transactional;
  * archived one). The person arrives with every grade and its from-date, their terms, contact and aliases, and their
  * claims with their status, dates, notes, tags, frozen figures and logs; each claim that had a number takes the next
  * number of the other sheet, in the order the claims were opened (by the sheet's today when each was opened, then by
- * the order they were added). Figures a statement bound are lost and references are not carried. Where the other
- * sheet has a person with their name or one of their aliases, the person arrives merged into them, as a merge does:
+ * the order they were added). Figures a statement bound are kept, and references are not carried. The person's
+ * statements are counted with those of the person they arrive as or are merged into, whose last statement stays
+ * theirs (or, having none, becomes the transferred person's last). Where the other sheet has a person with their
+ * name or one of their aliases, the person arrives merged into them, as a merge does:
  * their claims are listed after that person's, their name and aliases join that person's aliases, and their grades,
  * terms and contact are dropped (two such people, or a retired one, refuse the transfer). Otherwise a name or alias
  * used elsewhere in the other sheet's tree, or a contact the other sheet has already, refuses the transfer. The person
- * leaves this sheet entirely: their statements, holds, patron links, pool memberships and watches are dropped.
+ * leaves this sheet entirely: their holds, patron links, pool memberships and watches are dropped.
  */
 @Service
 public class TransferService {
@@ -168,7 +170,6 @@ public class TransferService {
                 .sorted(Comparator.comparingLong(Claim::getListed).thenComparing(Claim::getId)).toList()) {
             claim.moveTo(to, saved.getId());
             claim.setListed(sheets.nextListed(to));
-            claim.setStated(false, null);
             claim.setRef(null);
             claim.setSettleBatch(null);
             claim.setLockedBy(null);
@@ -193,7 +194,8 @@ public class TransferService {
             comments.moveTo(claimIds, to);
         }
 
-        // The person leaves this sheet: patron links, pool memberships, statements and watches are dropped.
+        // The statements follow the person; patron links, pool memberships and watches are dropped.
+        statements.follow(from, saved);
         patrons.deleteAll(patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(p -> p.getPersonId().equals(from.getId()) || p.getPatronId().equals(from.getId()))
                 .toList());
@@ -202,7 +204,6 @@ public class TransferService {
                 pools.saveAndFlush(pool);
             }
         }
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         people.delete(from);
         people.flush();

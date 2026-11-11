@@ -59,7 +59,7 @@ public class StatementService {
     /** Each person's statement summary on the sheet, by person id; a person with none is missing. */
     public Map<Long, StatementSummary> summaries(String sheetId) {
         Map<Long, StatementSummary> by = new HashMap<>();
-        for (Statement s : statements.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Statement s : statements.findBySheetIdOrderBySeqAscIdAsc(sheetId)) {
             by.put(s.getPersonId(), by.getOrDefault(s.getPersonId(), StatementSummary.NONE).then(s));
         }
         return by;
@@ -67,7 +67,7 @@ public class StatementService {
 
     public StatementSummary summary(String sheetId, Long personId) {
         StatementSummary summary = StatementSummary.NONE;
-        for (Statement s : statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)) {
+        for (Statement s : statements.findBySheetIdAndPersonIdOrderBySeqAscIdAsc(sheetId, personId)) {
             summary = summary.then(s);
         }
         return summary;
@@ -133,7 +133,8 @@ public class StatementService {
         }
         claims.saveAllAndFlush(theirs);
         String dueTotal = anyDue ? sheet.capped(total).toPlainString() : "n/a";
-        statements.saveAndFlush(new Statement(sheetId, personId, today, today, dueTotal, counted));
+        statements.saveAndFlush(new Statement(sheetId, personId, today, today, dueTotal, counted,
+                nextSeq(sheetId, personId)));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted);
         rollup.recordChanges(sheetId, user, before);
@@ -151,7 +152,7 @@ public class StatementService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         // The claims' bindings stood then only when their last statement was taken by then.
-        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderBySeqAscIdAsc(sheetId, personId);
         boolean bindingsStood = taken.isEmpty() || taken.get(taken.size() - 1).madeBy(asOf);
         boolean anyDue = rates.rateAsOf(sheetId, person.gradeOn(asOf), asOf, asOf).isPresent();
         BigDecimal total = BigDecimal.ZERO.setScale(2);
@@ -192,11 +193,18 @@ public class StatementService {
         }
         claims.saveAllAndFlush(theirs);
         String dueTotal = anyDue ? sheet.capped(total, asOf).toPlainString() : "n/a";
-        statements.saveAndFlush(new Statement(sheetId, personId, asOf, sheet.getToday(), dueTotal, counted));
+        statements.saveAndFlush(new Statement(sheetId, personId, asOf, sheet.getToday(), dueTotal,
+                counted, nextSeq(sheetId, personId)));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted + " asof=" + asOf);
         rollup.recordChanges(sheetId, user, before);
         return person;
+    }
+
+    /** The place of the person's next statement: after their last. */
+    private long nextSeq(String sheetId, Long personId) {
+        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderBySeqAscIdAsc(sheetId, personId);
+        return taken.isEmpty() ? 1 : taken.get(taken.size() - 1).getSeq() + 1;
     }
 
     /** The status the claim had at the end of the date: its last status logged on or before it; null with none. */
@@ -222,7 +230,7 @@ public class StatementService {
         if (roles.roleOf(sheetId, user) != Role.STEWARD) {
             throw new StatementCancelForbiddenException(sheetId, user);
         }
-        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderBySeqAscIdAsc(sheetId, personId);
         if (theirs.isEmpty()) {
             throw new NoStatementException(sheetId, personId);
         }

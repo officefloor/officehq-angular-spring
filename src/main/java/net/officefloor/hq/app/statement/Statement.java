@@ -41,16 +41,22 @@ public class Statement {
     @Column(name = "claims", nullable = false)
     private int claims;
 
+    /** Where the statement stands among its person's statements (in the order of seq, then id). */
+    @Column(name = "seq", nullable = false)
+    private long seq;
+
     protected Statement() {
     }
 
-    public Statement(String sheetId, Long personId, LocalDate takenOn, LocalDate madeOn, String dueTotal, int claims) {
+    public Statement(String sheetId, Long personId, LocalDate takenOn, LocalDate madeOn, String dueTotal, int claims,
+            long seq) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.takenOn = takenOn;
         this.madeOn = madeOn;
         this.dueTotal = dueTotal;
         this.claims = claims;
+        this.seq = seq;
     }
 
     public Long getId() {
@@ -84,5 +90,16 @@ public class Statement {
 
     public int getClaims() {
         return claims;
+    }
+
+    public long getSeq() {
+        return seq;
+    }
+
+    /** The statement follows a person to the other person (on their sheet), standing at the place given. */
+    public void moveTo(String sheetId, Long personId, long seq) {
+        this.sheetId = sheetId;
+        this.personId = personId;
+        this.seq = seq;
     }
 }

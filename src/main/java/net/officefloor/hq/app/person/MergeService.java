@@ -24,10 +24,11 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Merges one person into another (a steward only; neither retired, not the same person). The merged person's claims
  * move to the other, keeping their numbers and dates, listed after the other's in the order they were added and
- * losing any figure a statement bound; their name and aliases become the other's aliases; their patrons are added to
+ * keeping any figure a statement bound; their name and aliases become the other's aliases; their patrons are added to
  * the other's and anyone naming them as patron names the other instead (never themselves, never twice); their pool
- * memberships move to the other (shares added where the other is a member already). Their statements, holds,
- * watchers and contact are dropped, and the merged person is removed.
+ * memberships move to the other (shares added where the other is a member already); their statements are counted
+ * with the other's, whose last statement stays theirs (or, having none, becomes the merged person's last). Their
+ * holds, watchers and contact are dropped, and the merged person is removed.
  */
 @Service
 public class MergeService {
@@ -81,13 +82,12 @@ public class MergeService {
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
 
-        // The claims, listed after the other's in the order they were added, each live again.
+        // The claims, listed after the other's in the order they were added, each keeping any figure a statement bound.
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()).stream()
                 .sorted(Comparator.comparingLong(Claim::getListed).thenComparing(Claim::getId))
                 .toList();
         for (Claim claim : theirs) {
             claim.setPersonId(into.getId());
-            claim.setStated(false, null);
             claim.setListed(sheets.nextListed(sheetId));
         }
         claims.saveAll(theirs);
@@ -155,8 +155,9 @@ public class MergeService {
             }
         }
 
-        // Statements, watchers, holds and contact go with the person.
-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
+        // Statements are counted with the other's (whose last stays theirs, or with none becomes the merged one's);
+        // watchers, holds and contact go with the person.
+        statements.follow(from, into);
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         claims.flush();
         people.delete(from);
