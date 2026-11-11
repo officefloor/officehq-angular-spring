@@ -256,12 +256,22 @@ public class Sheet {
      * sheet's today when it has none), half to even on or after it.
      */
     public RoundingMode rounding(LocalDate date) {
-        return date.isBefore(policyDate != null ? policyDate : today) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+        return rounding(date, today);
+    }
+
+    /** How a claim rounding by {@code date} rounds, with {@code asOf} standing in for the sheet's today. */
+    public RoundingMode rounding(LocalDate date, LocalDate asOf) {
+        return date.isBefore(policyDate != null ? policyDate : asOf) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
     /** The rate step: the amount at the percent, to two decimals rounded as a claim rounding by the date does. */
     public BigDecimal rateStep(BigDecimal amount, BigDecimal pct, LocalDate roundingDate) {
-        return amount.multiply(pct).movePointLeft(2).setScale(2, rounding(roundingDate));
+        return rateStep(amount, pct, roundingDate, today);
+    }
+
+    /** The rate step with {@code asOf} standing in for the sheet's today. */
+    public BigDecimal rateStep(BigDecimal amount, BigDecimal pct, LocalDate roundingDate, LocalDate asOf) {
+        return amount.multiply(pct).movePointLeft(2).setScale(2, rounding(roundingDate, asOf));
     }
 
     /**
@@ -270,27 +280,43 @@ public class Sheet {
      * figure, each rounded as the claim's date has it, added up; zero when not overdue, null (n/a) when the figure is.
      */
     public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
+        return lateCharge(figure, dueBy, date, today);
+    }
+
+    /** The late charge with {@code asOf} standing in for the sheet's today. */
+    public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date, LocalDate asOf) {
         if (figure == null) {
             return null;
         }
-        long overdueDays = ChronoUnit.DAYS.between(dueBy, today);
+        long overdueDays = ChronoUnit.DAYS.between(dueBy, asOf);
         long periods = overdueDays <= 0 ? 0 : overdueDays / 30;
         BigDecimal charge = BigDecimal.ZERO.setScale(2);
         for (long boundary = 1; boundary <= periods; boundary++) {
             charge = charge.add(figure.multiply(latePctOn(dueBy.plusDays(30 * boundary))).movePointLeft(2)
-                    .setScale(2, rounding(date)));
+                    .setScale(2, rounding(date, asOf)));
         }
         return charge;
     }
 
     /** The figure with its late charge added on top when the claim is OPEN; null (n/a) stays null. */
     public BigDecimal withLateCharge(BigDecimal figure, boolean open, LocalDate dueBy, LocalDate date) {
-        return figure == null || !open ? figure : figure.add(lateCharge(figure, dueBy, date));
+        return withLateCharge(figure, open, dueBy, date, today);
+    }
+
+    /** The figure with its late charge, with {@code asOf} standing in for the sheet's today. */
+    public BigDecimal withLateCharge(BigDecimal figure, boolean open, LocalDate dueBy, LocalDate date,
+            LocalDate asOf) {
+        return figure == null || !open ? figure : figure.add(lateCharge(figure, dueBy, date, asOf));
     }
 
     /** A due-total held down to the cap in force on the sheet's today; null (n/a), or no cap, leaves it as it is. */
     public BigDecimal capped(BigDecimal dueTotal) {
-        BigDecimal cap = getCap();
+        return capped(dueTotal, today);
+    }
+
+    /** A due-total held down to the cap in force on {@code asOf}, standing in for the sheet's today. */
+    public BigDecimal capped(BigDecimal dueTotal, LocalDate asOf) {
+        BigDecimal cap = decimalOn(CAP, asOf).orElse(null);
         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 

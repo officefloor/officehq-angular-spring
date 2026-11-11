@@ -52,6 +52,14 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The sheet's today when the person was added; null for a person added before that was kept. */
+    @Column(name = "added_on")
+    private LocalDate addedOn;
+
+    /** The sheet's today when the person's retirement was recorded; null when not retired or recorded before that was kept. */
+    @Column(name = "retired_on")
+    private LocalDate retiredOn;
+
     /** The person's holds: their OPEN claims dated within one, not bound by a statement, count in no live total. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "person_id", nullable = false)
@@ -145,6 +153,38 @@ public class Person {
         this.retiredFrom = retiredFrom;
     }
 
+    public LocalDate getAddedOn() {
+        return addedOn;
+    }
+
+    public void setAddedOn(LocalDate addedOn) {
+        this.addedOn = addedOn;
+    }
+
+    /** Record the retirement from the date, recorded while the sheet's today was {@code on}. */
+    public void retire(LocalDate retiredFrom, LocalDate on) {
+        this.retiredFrom = retiredFrom;
+        this.retiredOn = on;
+    }
+
+    /** Whether the person had been added by the end of the date: added while the sheet's today was on or before it. */
+    public boolean addedBy(LocalDate date) {
+        return addedOn == null || !addedOn.isAfter(date);
+    }
+
+    /**
+     * Whether the person's retirement date is reached on the date as they stood at the end of it: retired by a
+     * retirement recorded while the sheet's today was on or before it, from that date or earlier.
+     */
+    public boolean retiredAsOf(LocalDate date) {
+        return retiredOn(date) && (retiredOn == null || !retiredOn.isAfter(date));
+    }
+
+    /** Whether the date is within a hold the person had by the end of {@code asOf}. */
+    public boolean heldAsOf(LocalDate date, LocalDate asOf) {
+        return holds.stream().anyMatch(h -> h.madeBy(asOf) && h.covers(date));
+    }
+
     /** Whether the person's retirement date is reached on the date: it is on or after it. */
     public boolean retiredOn(LocalDate date) {
         return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
@@ -160,9 +200,9 @@ public class Person {
         return holds.stream().sorted(Comparator.comparing(PersonHold::getFromDate)).toList();
     }
 
-    /** Add a hold from the date to the date (null: it does not end). */
-    public void addHold(LocalDate fromDate, LocalDate toDate) {
-        holds.add(new PersonHold(fromDate, toDate));
+    /** Add a hold from the date to the date (null: it does not end), added while the sheet's today was {@code on}. */
+    public void addHold(LocalDate fromDate, LocalDate toDate, LocalDate on) {
+        holds.add(new PersonHold(fromDate, toDate, on));
     }
 
     /** Whether the date is within any of the person's holds. */

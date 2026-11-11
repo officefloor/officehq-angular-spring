@@ -9,7 +9,10 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimLog;
+import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -32,6 +35,7 @@ public class StatementService {
     private final StatementRepository statements;
     private final PersonRepository people;
     private final ClaimRepository claims;
+    private final ClaimLogRepository claimLogs;
     private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
@@ -39,8 +43,10 @@ public class StatementService {
     private final RoleService roles;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
-            RateService rates, SheetService sheets, Audit audit, RollupService rollup, RoleService roles) {
+            ClaimLogRepository claimLogs, RateService rates, SheetService sheets, Audit audit, RollupService rollup,
+            RoleService roles) {
         this.roles = roles;
+        this.claimLogs = claimLogs;
         this.statements = statements;
         this.people = people;
         this.claims = claims;
@@ -67,12 +73,32 @@ public class StatementService {
         return summary;
     }
 
+    /**
+     * Take a statement of the person on the sheet's today, or as of an earlier date ({@code asOf}, null: today);
+     * refused for a date after the sheet's today, or before the person was added.
+     */
     @Transactional
-    public Person take(String sheetId, String user, Long personId) {
+    public Person take(String sheetId, String user, Long personId, LocalDate asOf) {
         Person person = people.findForUpdate(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Sheet sheet = sheets.get(sheetId);
+        LocalDate today = sheet.getToday();
+        if (asOf == null) {
+            return take(sheet, user, person);
+        }
+        if (asOf.isAfter(today)) {
+            throw new StatementDateException(person.getName(), asOf, "it is after the sheet's today " + today);
+        }
+        if (!person.addedBy(asOf)) {
+            throw new StatementDateException(person.getName(), asOf, "the person was not on the sheet then");
+        }
+        return takeAsOf(sheet, user, person, asOf);
+    }
+
+    private Person take(Sheet sheet, String user, Person person) {
+        String sheetId = sheet.getId();
+        Long personId = person.getId();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate today = sheet.getToday();
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
         // As on the screen: n/a when the grade in force today has no rate today, unless a counting claim has a fixed due
@@ -106,11 +132,80 @@ public class StatementService {
         }
         claims.saveAllAndFlush(theirs);
         String dueTotal = anyDue ? sheet.capped(total).toPlainString() : "n/a";
-        statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
+        statements.saveAndFlush(new Statement(sheetId, personId, today, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted);
         rollup.recordChanges(sheetId, user, before);
         return person;
+    }
+
+    /**
+     * A statement as of an earlier date: the person's claims that counted at the end of it are bound to their figures
+     * as they stood then, counting only the changes made while the sheet's today was on or before it, and with that
+     * date standing in for the sheet's today in every figure. Every other claim of theirs is left unbound.
+     */
+    private Person takeAsOf(Sheet sheet, String user, Person person, LocalDate asOf) {
+        String sheetId = sheet.getId();
+        Long personId = person.getId();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        // The claims' bindings stood then only when their last statement was taken by then.
+        List<Statement> taken = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        boolean bindingsStood = taken.isEmpty() || taken.get(taken.size() - 1).madeBy(asOf);
+        boolean anyDue = rates.rateAsOf(sheetId, person.gradeOn(asOf), asOf, asOf).isPresent();
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        int counted = 0;
+        for (Claim claim : theirs) {
+            ClaimStatus status = statusAsOf(claim, asOf);
+            boolean bound = bindingsStood && claim.isStated() && status != ClaimStatus.PENDING;
+            boolean counts = status != null && status.counts()
+                    && !(status.isOpen() && !bound
+                            && (person.heldAsOf(claim.getDate(), asOf) || person.retiredAsOf(asOf)))
+                    && !(status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
+                            && asOf.isBefore(claim.getDeferredUntil()));
+            if (!counts) {
+                claim.setStated(false, null);
+                continue;
+            }
+            counted++;
+            BigDecimal settled = status == ClaimStatus.SETTLED ? claim.getSettledDue() : null;
+            if (settled != null || (bound && claim.getStatedDue() != null)) {
+                anyDue = true;
+            }
+            BigDecimal figure = settled != null ? settled
+                    : bound ? claim.getStatedDue()
+                    : rates.rateAsOf(sheetId, person.gradeOn(claim.getDate()), claim.getDate(), asOf)
+                            .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate(), asOf))
+                            .orElse(null);
+            BigDecimal due = settled != null || claim.isCorrection() ? figure
+                    : sheet.floored(sheet.withLateCharge(figure, status.isOpen(), claim.getDueBy(), claim.getDate(),
+                            asOf), claim.getDate());
+            if (due != null) {
+                total = total.add(due);
+                if (!claim.getDate().isAfter(asOf)) {
+                    anyDue = true;
+                }
+            }
+            claim.setStated(true, figure);
+        }
+        claims.saveAllAndFlush(theirs);
+        String dueTotal = anyDue ? sheet.capped(total, asOf).toPlainString() : "n/a";
+        statements.saveAndFlush(new Statement(sheetId, personId, asOf, sheet.getToday(), dueTotal, counted));
+        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + dueTotal + " claims=" + counted + " asof=" + asOf);
+        rollup.recordChanges(sheetId, user, before);
+        return person;
+    }
+
+    /** The status the claim had at the end of the date: its last status logged on or before it; null with none. */
+    private ClaimStatus statusAsOf(Claim claim, LocalDate asOf) {
+        ClaimStatus status = null;
+        for (ClaimLog log : claimLogs.findByClaimIdOrderByIdAsc(claim.getId())) {
+            if (!log.getDate().isAfter(asOf)) {
+                status = log.getStatus();
+            }
+        }
+        return status;
     }
 
     /**

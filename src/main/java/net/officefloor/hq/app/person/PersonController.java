@@ -78,6 +78,10 @@ public class PersonController {
     public record HoldRequest(LocalDate from, LocalDate to) {
     }
 
+    /** The date to take a statement as of; null for the sheet's today. */
+    public record StatementRequest(LocalDate asOf) {
+    }
+
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {
     }
@@ -133,12 +137,17 @@ public class PersonController {
                 request.grade(), request.gradeFrom(), request.termsValue()), user.trim());
     }
 
-    /** Take a statement of the person: record their due-total and bind their counting claims to their dues. */
+    /**
+     * Take a statement of the person, on the sheet's today or as of an earlier date: record their due-total and bind
+     * their counting claims to their dues.
+     */
     @PostMapping("/{id}/statement")
     public PersonView statement(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(statements.take(sheetId.trim(), user.trim(), id), user.trim());
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) StatementRequest request) {
+        return view(statements.take(sheetId.trim(), user.trim(), id, request == null ? null : request.asOf()),
+                user.trim());
     }
 
     /** Cancel the person's last statement (a steward only): the claims it bound are live again. */

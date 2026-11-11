@@ -23,7 +23,7 @@ interface Person {
   statementCount: number;
   /** The due-total recorded by the last statement; null with none. */
   statedTotal: string | null;
-  /** The sheet's today when the last statement was taken (yyyy-mm-dd); null with none. */
+  /** The date the last statement was taken as of (yyyy-mm-dd): the sheet's today then, or an earlier date given; null with none. */
   statementDate: string | null;
   /** Whether the person has a retirement date: they count as retired at once, whatever the date. */
   retired: boolean;
@@ -255,6 +255,14 @@ function csvField(value: string): string {
                 >
                   Edit
                 </button>
+                <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Take a statement of {{ p.name }} as of</label>
+                <input
+                  [id]="'person-statement-asof-' + p.id"
+                  type="date"
+                  data-testid="person-statement-asof"
+                  [value]="statementAsOfs()[p.id] ?? ''"
+                  (input)="setStatementAsOf(p.id, value($event))"
+                />
                 <button
                   type="button"
                   data-testid="person-statement"
@@ -406,6 +414,8 @@ export class People {
   );
   /** The date typed to retire each person from, by id; blank retires from the sheet's today. */
   protected readonly retireDates = signal<Record<number, string>>({});
+  /** The date typed beside each person's statement button, by person id: blank takes the statement now. */
+  protected readonly statementAsOfs = signal<Record<number, string>>({});
   /** The from-date typed for each person's next hold, by person id. */
   protected readonly holdFroms = signal<Record<number, string>>({});
   /** The to-date typed for each person's next hold, by person id. */
@@ -538,6 +548,7 @@ export class People {
         this.rates.set([]);
         this.periods.set([]);
         this.retireDates.set({});
+        this.statementAsOfs.set({});
         this.holdFroms.set({});
         this.holdTos.set({});
         this.patronChoices.set({});
@@ -575,6 +586,10 @@ export class People {
   protected setHoldTo(id: number, date: string): void {
     this.holdTos.update((dates) => ({ ...dates, [id]: date }));
     if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setStatementAsOf(id: number, date: string): void {
+    this.statementAsOfs.update((dates) => ({ ...dates, [id]: date }));
   }
 
   protected setRetireDate(id: number, date: string): void {
@@ -839,17 +854,28 @@ export class People {
     }
   }
 
-  /** Take a statement of the person, then re-read so their claims show the dues it bound them to. */
+  /**
+   * Take a statement of the person as of the typed date (blank: now), then re-read so their claims show the dues it
+   * bound them to.
+   */
   protected async statement(person: Person): Promise<void> {
     this.rowError.set(null);
     this.patronError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
+    const asOf = (this.statementAsOfs()[person.id] ?? '').trim();
+    if (asOf && !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+      this.rowError.set({ id: person.id, message: 'Pick a date to take the statement as of, or leave it blank for now.' });
+      return;
+    }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
     try {
-      const saved = await firstValueFrom(this.http.post<Person>(url, null, this.session.headers()));
+      const saved = await firstValueFrom(
+        this.http.post<Person>(url, asOf ? { asOf } : null, this.session.headers()),
+      );
       if (this.session.sheet() === sheet) {
         this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        this.statementAsOfs.update((dates) => ({ ...dates, [person.id]: '' }));
         void this.read(sheet);
       }
     } catch {

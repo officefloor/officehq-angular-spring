@@ -52,6 +52,7 @@ public class PersonService {
         }
         Person person = new Person(sheetId, name, grade);
         person.setTerms(terms);
+        person.setAddedOn(sheetService.today(sheetId));
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_ADDED", user, saved, grade)
                 + (terms != null ? " terms=" + terms : ""));
@@ -96,7 +97,8 @@ public class PersonService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
-        person.setRetiredFrom(from != null ? from : sheetService.today(sheetId));
+        LocalDate today = sheetService.today(sheetId);
+        person.retire(from != null ? from : today, today);
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
                 + " name=" + saved.getName() + " from=" + saved.getRetiredFrom());
@@ -114,7 +116,7 @@ public class PersonService {
         if (to != null && to.isBefore(fromDate)) {
             throw new HoldRefusedException("A hold of " + person.getName() + " cannot end before it starts");
         }
-        person.addHold(fromDate, to);
+        person.addHold(fromDate, to, sheetService.today(sheetId));
         Person saved = save(person);
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " from=" + fromDate);
