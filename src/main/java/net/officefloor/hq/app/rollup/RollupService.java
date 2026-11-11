@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -19,6 +20,8 @@ import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonAlias;
+import net.officefloor.hq.app.person.PersonAliasRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateLog;
@@ -53,16 +56,19 @@ public class RollupService {
     private final RateRepository rates;
     private final RateLogRepository rateLogs;
     private final SheetRepository sheets;
+    private final PersonAliasRepository aliases;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
-            RateRepository rates, RateLogRepository rateLogs, SheetRepository sheets, Audit audit) {
+            RateRepository rates, RateLogRepository rateLogs, SheetRepository sheets, PersonAliasRepository aliases,
+            Audit audit) {
         this.people = people;
         this.claims = claims;
         this.logs = logs;
         this.rates = rates;
         this.rateLogs = rateLogs;
         this.sheets = sheets;
+        this.aliases = aliases;
         this.audit = audit;
     }
 
@@ -154,6 +160,59 @@ public class RollupService {
         return new Consolidated(own.people().size() + descendants.people(),
                 shown(new BigDecimal(own.dueTotal()).add(new BigDecimal(descendants.dueTotal()))),
                 shown(new BigDecimal(own.overdueTotal()).add(new BigDecimal(descendants.overdueTotal()))));
+    }
+
+    /**
+     * Every person on the sheet and the other sheets of its tree (its topmost ancestor and all that one's descendants)
+     * whose name or an alias contains the text, case ignored, each as {@code <sheet id> <name> <due-total>} with the
+     * due-total as that sheet shows it: the sheet's people first in list order, then the other sheets' by sheet id.
+     */
+    public List<String> search(String sheetId, String text) {
+        String wanted = text.toLowerCase(Locale.ROOT);
+        List<String> others = new ArrayList<>();
+        String root = root(sheetId);
+        if (!root.equals(sheetId)) {
+            others.add(root);
+        }
+        for (String id : descendants(root)) {
+            if (!id.equals(sheetId)) {
+                others.add(id);
+            }
+        }
+        others.sort(null);
+        List<String> order = new ArrayList<>(List.of(sheetId));
+        order.addAll(others);
+        List<String> lines = new ArrayList<>();
+        for (String id : order) {
+            Map<Long, List<String>> aliasesOf = new LinkedHashMap<>();
+            for (PersonAlias alias : aliases.findBySheetId(id)) {
+                aliasesOf.computeIfAbsent(alias.getPersonId(), p -> new ArrayList<>()).add(alias.getAlias());
+            }
+            Map<Long, Figures> figures = snapshot(id).people();
+            for (Map.Entry<Long, Figures> entry : figures.entrySet()) {
+                Figures person = entry.getValue();
+                boolean matches = person.name().toLowerCase(Locale.ROOT).contains(wanted)
+                        || aliasesOf.getOrDefault(entry.getKey(), List.of()).stream()
+                                .anyMatch(alias -> alias.toLowerCase(Locale.ROOT).contains(wanted));
+                if (matches) {
+                    lines.add(id + " " + person.name() + " " + person.dueTotal());
+                }
+            }
+        }
+        return lines;
+    }
+
+    /** The sheet's topmost ancestor (the sheet itself with no parent); a parent loop stops where it comes back. */
+    private String root(String sheetId) {
+        List<String> seen = new ArrayList<>(List.of(sheetId));
+        String top = sheetId;
+        String parent = sheets.findById(sheetId).map(Sheet::getParent).orElse(null);
+        while (parent != null && !seen.contains(parent)) {
+            seen.add(parent);
+            top = parent;
+            parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
+        }
+        return top;
     }
 
     /** The ids of the sheet's descendants, each once, nearest first; a parent loop never brings back the sheet. */
