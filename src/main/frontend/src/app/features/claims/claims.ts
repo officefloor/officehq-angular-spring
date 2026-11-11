@@ -103,7 +103,7 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The claim's number on the sheet, given when opened; null while DRAFT. Sheet-wide (1, 2, ...), or
+  /** The claim's number on the sheet, given when settled or approved; null before then (unless numbered when opened, under the old rule). Sheet-wide (1, 2, ...), or
    *  under numbering per period <period name>-<n>, or X-<n> in no period. */
   number: string | null;
   /** The due fixed when the claim was settled; null while not settled or if its grade then had no rate. */

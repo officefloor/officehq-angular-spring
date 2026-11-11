@@ -174,7 +174,7 @@ public class SheetService {
     }
 
     /**
-     * The next number for a claim due by {@code date} opened on the sheet, never reused. Tree-wide
+     * The next number for a claim due by {@code date} settled on the sheet, never reused. Tree-wide
      * per fiscal year ({@code FY<yyyy>-<n>}, n counting from 1 within the fiscal year {@code date}
      * falls in by the sheet's fiscal start month): the sheets of a tree (a root and every sheet below
      * it) share one sequence per fiscal year, each number the next after the last given in that

@@ -59,7 +59,7 @@ public class Claim {
     private ClaimStatus status = ClaimStatus.DRAFT;
 
     /**
-     * The claim's number on its sheet, given when it is opened and kept once VOID; none while DRAFT.
+     * The claim's number on its sheet, given when it is settled (or approved) and kept once VOID; none before then (a claim numbered when opened, before numbering moved to settlement, keeps its number).
      * Sheet-wide ({@code 1}, {@code 2}, ...), or under numbering per period {@code <period name>-<n>}
      * or {@code X-<n>} in no period.
      */

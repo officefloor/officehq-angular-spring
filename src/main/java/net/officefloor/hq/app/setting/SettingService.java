@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
  * percent moves the figures, so the figures that move are recorded. Its policy date (none:
  * the sheet's today) decides how a claim's live figures round (see {@link Rounding}), so changing it
  * records the figures that move too. Its period-numbering-from date (none: off) decides how a claim
- * opened is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
+ * settled is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
  * Its cap (none: no cap) is the most a person's due-total can be, so changing it records the
  * figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
  * when it is created, so changing any terms moves no claim's due-by. A grade may have grace days (none: no grace): a

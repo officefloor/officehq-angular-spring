@@ -35,7 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
  * claim's reference, when it has one, is unique on its sheet without regard to case. A claim given no date
  * takes the sheet's today. A claim starts as DRAFT and moves through its statuses (see
  * {@link ClaimStatus}); a change its status does not allow is refused. Only a DRAFT can be edited:
- * to change an open claim, void it and add a new one. Settling a claim fixes its
+ * to change an open claim, void it and add a new one. Settling (or approving) a claim gives it the next number in its sequence by its due-by (one numbered before keeps its number) and fixes its
  * due at the rate its person's grade has then for the claim's date; an open claim's due stays live.
  * A claim records who opened it, and that user cannot settle it (four eyes). A claim bound by its
  * person's last statement keeps the figure it had then, and settling it fixes that figure. A claim
@@ -53,8 +53,8 @@ import org.springframework.web.server.ResponseStatusException;
  * figure plus the charge on it. A statement binds the floored figure, and settling fixes the charge into the settled due. A claim with
  * a negative amount is a correction: it is allowed only when it names, by number, a SETTLED claim
  * of the same person that it corrects. Its due has no floor and no late charge. A steward can move
- * a DRAFT, OPEN or PENDING claim to another person: it keeps its date, takes the next number (a
- * DRAFT, having none, gets none), loses any figure
+ * a DRAFT, OPEN or PENDING claim to another person: it keeps its date, takes the next number if it
+ * has one (a claim numbered before numbering moved to settlement), loses any figure
  * a statement bound it to, and is listed as its new person's newest claim. A steward can re-settle
  * a SETTLED claim: its due is fixed again at the figure it would have today as an open claim bound
  * by no statement (today's rates, grades, floor and late charge). An OPEN claim can be deferred to
@@ -67,7 +67,7 @@ import org.springframework.web.server.ResponseStatusException;
  * whose due is above the note threshold in force on its date cannot be opened while its note is empty.
  * A claim whose due is above the review threshold in force on its date goes to REVIEW when opened,
  * instead of OPEN: it records who opened it but takes no number, counts in no total, and cannot be
- * edited, settled or split; it can be voided. A steward's review makes it OPEN, numbered then (see
+ * edited, settled or split; it can be voided. A steward's review makes it OPEN (see
  * {@link #review}).
  * Who may open, settle, void or move a claim is the sheet's permission matrix (see
  * {@link Sheet#permits}): an action the user's role may not take is refused (403). When a claim is
@@ -383,8 +383,8 @@ public class ClaimService {
                 default -> throw new IllegalStateException();
             });
         }
-        // lock the sheet's numbering before reading the claim, so a claim is opened (and numbered) once
-        if (next == ClaimStatus.OPEN) {
+        // lock the sheet's numbering before reading the claim, so a claim is settled (and numbered) once
+        if (next == ClaimStatus.SETTLED) {
             sheets.lock(sheetId);
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -451,13 +451,16 @@ public class ClaimService {
         }
         claim.setStatus(next);
         if (next == ClaimStatus.OPEN && !review) {
-            claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDueBy()));
             claim.setOpenedBy(user);
         } else if (next == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
             claim.setReviewOn(sheets.today(sheetId));
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
+            // a claim takes its number when settled; one numbered before keeps it
+            if (claim.getNumber() == null) {
+                claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDueBy()));
+            }
         } else if (next == ClaimStatus.VOID) {
             claim.setVoidReason(voidedWith);
         }
@@ -486,16 +489,14 @@ public class ClaimService {
     }
 
     /**
-     * A steward's review of a REVIEW claim: it becomes OPEN and takes the next number, keeping who
-     * opened it; CLAIM_REVIEWED is written, then CLAIM_OPENED with its number. Refused (403) for
+     * A steward's review of a REVIEW claim: it becomes OPEN, still unnumbered, keeping who
+     * opened it; CLAIM_REVIEWED is written, then CLAIM_OPENED. Refused (403) for
      * anyone but a steward, (409) for a claim that is not REVIEW and (423) when due inside a closed
      * period.
      */
     @Transactional
     public Claim review(String sheetId, String user, long id) {
         roles.refuseViewer(sheetId, user);
-        // lock the sheet's numbering before reading the claim, as opening one does
-        sheets.lock(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
@@ -509,11 +510,11 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, claim.getDueBy());
         Person person = person(sheetId, claim.getPersonId());
         claim.setStatus(ClaimStatus.OPEN);
-        claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDueBy()));
         logStatus(sheetId, user, person, claim);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_REVIEWED", sheetId, user, person, saved));
-        audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, saved) + " number=" + saved.getNumber());
+        audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, saved)
+                + (saved.getNumber() != null ? " number=" + saved.getNumber() : ""));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -925,12 +926,12 @@ public class ClaimService {
 
     /**
      * Split an amount off an OPEN claim: the claim keeps the rest of its amount and is unbound from
-     * any statement; a new OPEN claim with the amount split off, the same date and note, the next
+     * any statement; a new OPEN claim with the amount split off, the same date and note, no
      * number, opened by the user and due by its date plus the terms in force on it, is listed first
      * under the person and shows the original's number as split-from. Refused (403) for a role that
      * may not open a claim, (409) for a claim that is not OPEN or is deferred, (400) for an amount
      * not above 0.00 and below the claim's, and (423) when the original is due inside a closed period
-     * (the split's own due-by is not checked). The split is numbered in, and a late entry of, the
+     * (the split's own due-by is not checked). The split is numbered (when settled) in, and a late entry of, the
      * period of its own due-by.
      */
     @Transactional
@@ -964,7 +965,6 @@ public class ClaimService {
         Claim split = new Claim(sheetId, person.getId(), amount, dated, dueBy(sheetId, dated, terms), terms,
                 claim.getNote(), null);
         split.setStatus(ClaimStatus.OPEN);
-        split.setNumber(sheets.nextClaimNumber(sheetId, split.getDueBy()));
         split.setLateEntry(periods.isSoftClosed(sheetId, split.getDueBy()));
         split.setOpenedBy(user);
         split.setSplitFrom(original.getNumber());
@@ -974,8 +974,10 @@ public class ClaimService {
         logStatus(sheetId, user, person, added);
         added = claims.saveAndFlush(added);
         audit.recordOnCommit(record("CLAIM_SPLIT", sheetId, user, person, original)
-                + " number=" + original.getNumber() + " into=" + added.getNumber());
-        audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, added) + " number=" + added.getNumber());
+                + (original.getNumber() != null ? " number=" + original.getNumber() : "")
+                + " into=" + (added.getNumber() != null ? added.getNumber() : ""));
+        audit.recordOnCommit(record("CLAIM_OPENED", sheetId, user, person, added)
+                + (added.getNumber() != null ? " number=" + added.getNumber() : ""));
         rollup.recordChanges(sheetId, user, before);
         return new Split(original, added);
     }

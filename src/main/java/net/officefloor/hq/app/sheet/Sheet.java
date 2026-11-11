@@ -105,7 +105,7 @@ public class Sheet {
     @Column(name = "policy_date")
     private LocalDate policyDate;
 
-    /** The date numbering per period starts: on or after it a claim opened is numbered within its period; null for off. */
+    /** The date numbering per period starts: on or after it a claim settled is numbered within its period; null for off. */
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
@@ -558,7 +558,7 @@ public class Sheet {
         return "FY" + (date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1);
     }
 
-    /** Whether a claim opened on the sheet's today is numbered within its period. */
+    /** Whether a claim settled on the sheet's today is numbered within its period. */
     public boolean numbersByPeriod() {
         return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
     }
