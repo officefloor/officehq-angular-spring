@@ -16,7 +16,9 @@ const WHOLE = /^\d{1,6}$/;
     <ul [attr.aria-label]="'Plans of ' + personName()">
       @for (pl of plans(); track pl.id) {
         <li [attr.data-testid]="'plan-row-' + pl.id">
-          {{ pl.amount }} from {{ pl.start }} every {{ pl.every }} days to {{ pl.end }};
+          {{ pl.amount }} from {{ pl.start }}
+          @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
+          to {{ pl.end }};
           made <span data-testid="plan-generated">{{ pl.generated }}</span>
         </li>
       }
@@ -46,6 +48,14 @@ const WHOLE = /^\d{1,6}$/;
         [value]="every()"
         (input)="every.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-form-day-' + personId()" class="visually-hidden">Or monthly on day of the month</label>
+      <input
+        [id]="'plan-form-day-' + personId()"
+        data-testid="plan-form-day"
+        placeholder="Or day of month"
+        [value]="day()"
+        (input)="day.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()" class="visually-hidden">Plan end</label>
       <input
         [id]="'plan-form-end-' + personId()"
@@ -71,6 +81,7 @@ export class PersonPlans {
   protected readonly amount = signal('');
   protected readonly start = signal('');
   protected readonly every = signal('');
+  protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
   /** Whether an add is waiting for its answer: a second add meanwhile is ignored. */
@@ -84,7 +95,13 @@ export class PersonPlans {
     event.preventDefault();
     if (this.adding) return;
     this.error.set(null);
-    const plan = { amount: this.amount().trim(), start: this.start().trim(), every: this.every().trim(), end: this.end().trim() };
+    const plan = {
+      amount: this.amount().trim(),
+      start: this.start().trim(),
+      every: this.every().trim(),
+      day: this.day().trim(),
+      end: this.end().trim(),
+    };
     if (!AMOUNT.test(plan.amount) || Number(plan.amount) <= 0) {
       this.error.set('Type an amount more than 0.00 with at most two decimals.');
       return;
@@ -93,8 +110,16 @@ export class PersonPlans {
       this.error.set('Type the start and end as yyyy-mm-dd.');
       return;
     }
-    if (!WHOLE.test(plan.every) || Number(plan.every) < 1) {
+    if ((plan.every === '') === (plan.day === '')) {
+      this.error.set('Type either every how many days or a day of the month, not both.');
+      return;
+    }
+    if (plan.every !== '' && (!WHOLE.test(plan.every) || Number(plan.every) < 1)) {
       this.error.set('Type every how many days as a whole number, at least 1.');
+      return;
+    }
+    if (plan.day !== '' && (!WHOLE.test(plan.day) || Number(plan.day) < 1 || Number(plan.day) > 31)) {
+      this.error.set('Type the day of the month as a whole number from 1 to 31.');
       return;
     }
     if (plan.end < plan.start) {
@@ -107,6 +132,7 @@ export class PersonPlans {
       this.amount.set('');
       this.start.set('');
       this.every.set('');
+      this.day.set('');
       this.end.set('');
     } catch (e) {
       const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';

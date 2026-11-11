@@ -20,7 +20,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Keeps the plans of a sheet's people. A plan has an amount (more than 0.00), a start date, an interval of every so
- * many days (at least 1) and an end date not before its start. Generate makes, for every plan on the sheet in the order
+ * many days (at least 1) or, run monthly, a day of the month (1 to 31), and an end date not before its start. Generate makes, for every plan on the sheet in the order
  * they were added, a DRAFT claim of its amount with an empty note for each plan date (the start, then every so many
  * days) up to its end and the sheet's today that it has made none for yet, each added as the claim form adds one: a
  * date the claim form refuses is skipped, and tried again by the next generate.
@@ -61,23 +61,29 @@ public class PlanService {
     }
 
     @Transactional
-    public Plan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
+    public Plan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start, Integer every,
+            Integer day, LocalDate end) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
         if (amount.signum() <= 0) {
             throw new PlanRefusedException("A plan's amount must be more than 0.00");
         }
-        if (every < 1) {
+        if ((every == null) == (day == null)) {
+            throw new PlanRefusedException("A plan repeats either every so many days or on a day of the month");
+        }
+        if (every != null && every < 1) {
             throw new PlanRefusedException("A plan repeats every 1 day or more");
+        }
+        if (day != null && (day < 1 || day > 31)) {
+            throw new PlanRefusedException("A plan's day of the month is 1 to 31");
         }
         if (end.isBefore(start)) {
             throw new PlanRefusedException("A plan's end may not be before its start");
         }
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, end));
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString()
-                + " start=" + start + " every=" + every + " end=" + end);
+                + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
         return saved;
     }
 

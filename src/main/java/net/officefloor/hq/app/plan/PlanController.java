@@ -27,30 +27,45 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PlanController {
 
-    /** A plan as shown: its amount with two decimals, its dates as yyyy-mm-dd, and how many claims it has made. */
-    public record PlanView(Long id, Long personId, String amount, LocalDate start, int every, LocalDate end,
-            long generated) {
+    /**
+     * A plan as shown: its amount with two decimals, its dates as yyyy-mm-dd, its interval in days or its day of the
+     * month (the other null), and how many claims it has made.
+     */
+    public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, long generated) {
 
         static PlanView of(Plan plan, long generated) {
             return new PlanView(plan.getId(), plan.getPersonId(),
                     plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getEnd(), generated);
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated);
         }
     }
 
-    /** An amount with up to two decimals, a start and end date, and the interval in whole days. */
+    /**
+     * An amount with up to two decimals, a start and end date, and either the interval in whole days or the day of the
+     * month (the other blank or left out).
+     */
     public record PlanRequest(
             @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             @NotNull LocalDate start,
-            @NotNull @Pattern(regexp = "\\s*\\d{1,6}\\s*") String every,
+            @Pattern(regexp = "\\s*(\\d{1,6})?\\s*") String every,
+            @Pattern(regexp = "\\s*(\\d{1,6})?\\s*") String day,
             @NotNull LocalDate end) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
 
-        int everyValue() {
-            return Integer.parseInt(every.trim());
+        Integer everyValue() {
+            return whole(every);
+        }
+
+        Integer dayValue() {
+            return whole(day);
+        }
+
+        private static Integer whole(String text) {
+            return text == null || text.isBlank() ? null : Integer.valueOf(text.trim());
         }
     }
 
@@ -81,7 +96,7 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PlanRequest request) {
         return PlanView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.start(),
-                request.everyValue(), request.end()), 0);
+                request.everyValue(), request.dayValue(), request.end()), 0);
     }
 
     /** Make the claims of every plan date due and not yet made. */

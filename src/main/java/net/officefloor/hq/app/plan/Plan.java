@@ -8,10 +8,15 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 
-/** A person's plan: a claim of the amount on the start date, then every so many days, up to the end date. */
+/**
+ * A person's plan: a claim of the amount on the start date, then every so many days, up to the end date; or, run
+ * monthly, on a day of each month from the start's month (falling on the month's last day when it is shorter), the
+ * dates before the start left out.
+ */
 @Entity
 @Table(name = "plan")
 public class Plan {
@@ -32,8 +37,13 @@ public class Plan {
     @Column(name = "start_date", nullable = false)
     private LocalDate start;
 
-    @Column(name = "every_days", nullable = false)
-    private int every;
+    /** Every so many days, or null when the plan runs monthly. */
+    @Column(name = "every_days")
+    private Integer every;
+
+    /** The day of the month (1 to 31) a monthly plan runs on, or null. */
+    @Column(name = "month_day")
+    private Integer day;
 
     @Column(name = "end_date", nullable = false)
     private LocalDate end;
@@ -41,19 +51,30 @@ public class Plan {
     protected Plan() {
     }
 
-    public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate start, int every, LocalDate end) {
+    public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
+            LocalDate end) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.start = start;
         this.every = every;
+        this.day = day;
         this.end = end;
     }
 
-    /** The plan dates on or before the day: the start, then every so many days, up to the end. */
-    public List<LocalDate> datesUpTo(LocalDate day) {
-        LocalDate last = end.isBefore(day) ? end : day;
+    /** The plan dates on or before the given day, up to the end. */
+    public List<LocalDate> datesUpTo(LocalDate upTo) {
+        LocalDate last = end.isBefore(upTo) ? end : upTo;
         List<LocalDate> dates = new ArrayList<>();
+        if (day != null) {
+            for (YearMonth month = YearMonth.from(start); !month.atDay(1).isAfter(last); month = month.plusMonths(1)) {
+                LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
+                if (!d.isBefore(start) && !d.isAfter(last)) {
+                    dates.add(d);
+                }
+            }
+            return dates;
+        }
         for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
             dates.add(d);
         }
@@ -80,8 +101,12 @@ public class Plan {
         return start;
     }
 
-    public int getEvery() {
+    public Integer getEvery() {
         return every;
+    }
+
+    public Integer getDay() {
+        return day;
     }
 
     public LocalDate getEnd() {

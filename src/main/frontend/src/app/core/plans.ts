@@ -3,14 +3,20 @@ import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
 
-/** A person's plan: a claim of the amount on the start date, then every so many days, up to the end date. */
+/**
+ * A person's plan: a claim of the amount on the start date, then every so many days, up to the end date; or, run
+ * monthly, on a day of each month from the start's month (the month's last day when it is shorter).
+ */
 export interface PlanView {
   id: number;
   personId: number;
   /** Two decimals, e.g. "2.50". */
   amount: string;
   start: string;
-  every: number;
+  /** Every so many days, or null when the plan runs monthly. */
+  every: number | null;
+  /** The day of the month (1 to 31) a monthly plan runs on, or null. */
+  day: number | null;
   end: string;
   /** How many claims the plan has made so far. */
   generated: number;
@@ -37,7 +43,7 @@ export class Plans {
   }
 
   /** Add a plan to the person on the active sheet; throws when the store refuses it. */
-  async add(personId: number, plan: { amount: string; start: string; every: string; end: string }): Promise<void> {
+  async add(personId: number, plan: { amount: string; start: string; every: string; day: string; end: string }): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
