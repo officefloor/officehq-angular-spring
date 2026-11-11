@@ -43,5 +43,8 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     long countBySheetIdAndPersonIdAndStatusInAndDueByBetween(String sheetId, Long personId,
             Collection<ClaimStatus> statuses, LocalDate from, LocalDate to);
 
+    /** How many of a person's claims are in the statuses. */
+    long countBySheetIdAndPersonIdAndStatusIn(String sheetId, Long personId, Collection<ClaimStatus> statuses);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 }

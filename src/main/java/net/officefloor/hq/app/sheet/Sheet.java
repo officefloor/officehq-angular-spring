@@ -140,6 +140,10 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The most claims a person may have OPEN or PENDING at once; null for none. Not dated. */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     /** The kinds of proof a claim above the proof threshold needs one of each of, comma separated; null for none. Not dated. */
     @Column(name = "proof_kinds")
     private String proofKinds;
@@ -248,6 +252,7 @@ public class Sheet {
         then.scoreHigh = scoreHigh;
         then.scoreLog = scoreLog;
         then.reviewSla = reviewSla;
+        then.maxOpen = maxOpen;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
         then.pot = pot;
@@ -545,6 +550,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getMaxOpen() {
+        return maxOpen;
+    }
+
+    public void setMaxOpen(Integer maxOpen) {
+        this.maxOpen = maxOpen;
     }
 
     /** The proof kinds, comma separated; null for none. Not dated. */
