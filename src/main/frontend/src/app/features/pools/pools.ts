@@ -143,7 +143,7 @@ export class Pools {
   private readonly session = inject(Session);
 
   /** The people on the sheet, in the order they were added. */
-  readonly people = input.required<PoolPerson[]>();
+  readonly people = input<PoolPerson[]>([]);
 
   protected readonly pools = signal<PoolView[]>([]);
   protected readonly name = signal('');
@@ -154,11 +154,11 @@ export class Pools {
   protected readonly memberErrors = signal<Record<number, string>>({});
 
   /**
-   * Each pool with its members' names and its total share: a retired member's share counts as 0.00. A balanced pool
-   * with a pot shows each member's cut of it; an unbalanced pool, or one with no pot, shows none (blank). A pool that
-   * is a member of none has the sheet's pot; one that is a member of another has its cut there as its pot.
+   * Each pool's total share (a retired member's counting as 0.00), whether it is balanced, and, in a balanced pool
+   * with a pot, each member's cut (in cents, in member order); null cuts for an unbalanced pool or one with no pot. A
+   * pool that is a member of none has the sheet's pot; one that is a member of another has its cut there as its pot.
    */
-  protected readonly shown = computed(() => {
+  private readonly figures = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const poolsById = new Map(this.pools().map((p) => [p.id, p]));
     const potText = this.session.pot();
@@ -193,8 +193,37 @@ export class Pools {
       figures.set(pool.id, result);
       return result;
     };
+    for (const pool of this.pools()) figuresOf(pool, 0);
+    return figures;
+  });
+
+  /**
+   * Each person's cut total (two decimals), by person id for every person on the sheet: their cuts in every pool they
+   * are a member of, added up; a pool that shows no cuts adds nothing.
+   */
+  readonly cutTotals = computed(() => {
+    const totals = new Map<number, number>(this.people().map((p) => [p.id, 0]));
+    const figures = this.figures();
+    for (const pool of this.pools()) {
+      const poolCuts = figures.get(pool.id)?.cuts;
+      if (!poolCuts) continue;
+      pool.members.forEach((m, i) => {
+        if (m.personId !== null && totals.has(m.personId)) totals.set(m.personId, totals.get(m.personId)! + poolCuts[i]);
+      });
+    }
+    return new Map([...totals].map(([id, total]) => [id, fromCents(total)]));
+  });
+
+  /** The sheet's cut total (two decimals): everyone's cut totals added up. */
+  readonly cutTotal = computed(() => fromCents([...this.cutTotals().values()].reduce((sum, t) => sum + cents(t), 0)));
+
+  /** Each pool with its members' names, its total share, whether it is balanced and each member's cut (blank: none). */
+  protected readonly shown = computed(() => {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const poolsById = new Map(this.pools().map((p) => [p.id, p]));
+    const figures = this.figures();
     return this.pools().map((pool) => {
-      const f = figuresOf(pool, 0);
+      const f = figures.get(pool.id)!;
       return {
         id: pool.id,
         name: pool.name,

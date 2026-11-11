@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
@@ -267,7 +267,7 @@ function csvField(value: string): string {
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
+            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Watched</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -312,6 +312,7 @@ function csvField(value: string): string {
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
+              <td data-testid="person-cut-total">{{ cutTotalOf(p) }}</td>
               <td data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</td>
               <td>
                 <button
@@ -592,6 +593,7 @@ function csvField(value: string): string {
       <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
       @if (tagTotals().length > 0) {
         <table>
           <caption>Due total by tag</caption>
@@ -664,6 +666,10 @@ export class People {
     }
     return by;
   });
+  /** The pools, whose cuts each person's cut total adds up. */
+  private readonly pools = viewChild(Pools);
+  /** The sheet's cut total: everyone's cut totals added up. */
+  protected readonly cutTotal = computed(() => this.pools()?.cutTotal() ?? '0.00');
   protected readonly claimedTotal = computed(() => sumAmounts(this.people().map((p) => this.claimedBy(p.id))));
   /** The sheet's rates, by grade and then from-date. */
   protected readonly rates = signal<Rate[]>([]);
@@ -1041,6 +1047,11 @@ export class People {
   protected periodDueTotalOf(person: Person, period: Period): string {
     if (period.closed || period.softClosed) return period.personTotals?.[person.id] ?? '0.00';
     return this.livePersonPeriodDues().get(person.id)?.get(period.name) ?? '0.00';
+  }
+
+  /** The person's cuts across every pool they are a member of, added up; a pool that shows no cuts adds nothing. */
+  protected cutTotalOf(person: Person): string {
+    return this.pools()?.cutTotals().get(person.id) ?? '0.00';
   }
 
   /** How far the sum of the person's dues is above the sheet's cap; 0.00 when it is not. */
