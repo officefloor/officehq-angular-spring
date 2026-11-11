@@ -1,0 +1,74 @@
+{
+  "checkpoint": 36,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp36_approvals",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    23,
+    26,
+    27,
+    32
+  ],
+  "replaced_tests": [
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+    "cp26_late-charge.spec.ts::late charge scenario 3",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1"
+  ],
+  "request": {
+    "spec": "When a clerk settles a claim whose due is above the clerk limit, the claim now goes to PENDING\ninstead of being refused (CLAIM_PENDING, naming the claim like every claim line). A PENDING claim\ncounts as open in every total, but is not bound by a statement: while PENDING it shows and totals\nits live figure. A steward approves it (it becomes SETTLED, frozen at that moment, CLAIM_APPROVED\nwith due=<due> at the end like CLAIM_SETTLED) or rejects it with a reason (back to OPEN, bound\nagain by the last statement if that statement included it, CLAIM_REJECTED with reason=<reason> at\nthe end). The opener cannot approve their own claim. In every other way a PENDING claim is handled\nlike an OPEN one: it cannot be edited, it can be voided (CLAIM_VOIDED), it goes overdue and bears\nthe late charge, and a hold takes it out of the totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a clerk settles a claim whose due is above the clerk limit, the claim now goes to PENDING\ninstead of being refused (CLAIM_PENDING, naming the claim like every claim line). A PENDING claim\ncounts as open in every total, but is not bound by a statement: while PENDING it shows and totals\nits live figure. A steward approves it (it becomes SETTLED, frozen at that moment, CLAIM_APPROVED\nwith due=<due> at the end like CLAIM_SETTLED) or rejects it with a reason (back to OPEN, bound\nagain by the last statement if that statement included it, CLAIM_REJECTED with reason=<reason> at\nthe end). The opener cannot approve their own claim. In every other way a PENDING claim is handled\nlike an OPEN one: it cannot be edited, it can be voided (CLAIM_VOIDED), it goes overdue and bears\nthe late charge, and a hold takes it out of the totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ac9bae029697a837f620a402139db77f7e45f91c",
+  "reset_sha": "",
+  "preagent_sha": "3ca0e0df3318051e018921d67fcefbe7478cf120",
+  "prev_sha": "3ca0e0df3318051e018921d67fcefbe7478cf120",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2948009999999999,
+    "input_tokens": 46,
+    "output_tokens": 18449,
+    "cache_read_tokens": 1353305,
+    "cache_creation_tokens": 81872,
+    "num_turns": 24,
+    "duration_ms": 438410,
+    "duration_api_ms": 164501,
+    "model": "claude-opus-5-5",
+    "session_id": "7963675c-3a48-4071-8795-e08dfde5e415",
+    "stop_reason": "success",
+    "result_text": "A claim settled by a clerk above the clerk limit now goes to PENDING instead of being refused, and a steward approves or rejects it. `bin/e2e` passes all 4 tests in the approvals spec.\n\n**Stored data**\n- `V27__claim_pending.sql` rebuilds the `status` column so it accepts `PENDING`. The database is H2 and the old CHECK constraint has an auto-generated name, so dropping it by name wasn't reliable.\n\n**Server**\n- **Statuses:** `ClaimStatus` has a new `PENDING` value. PENDING claims count in every total, and a new `isOpen()` (OPEN or PENDING) now decides overdue, the late charge, holds and voiding.\n- **Live figure while pending:** `Claim.isBound()` / `getBoundDue()` ignore the statement binding while a claim is PENDING, so it shows and totals its live figure. The stored binding is kept, so a rejected claim is bound to the last statement again. The rollup, statement and claim services all use these.\n- **Settling:** when a clerk settles above the limit, `ClaimService.changeStatus` sets the claim to PENDING and writes `CLAIM_PENDING` with the claim's number.\n- **New endpoints:**\n  - `POST .../approve` (`ClaimService.approve`): the claim becomes SETTLED with its due frozen at that moment, and `CLAIM_APPROVED \u2026 due=` is written.\n  - `POST .../reject` (`ClaimService.reject`): takes `{reason}`, puts the claim back to OPEN, and writes `CLAIM_REJECTED \u2026 reason=`.\n- **Who may decide:** approve and reject accept only a PENDING claim in an open period. They return 403 (`ClaimApprovalForbiddenException`) if the user isn't a steward, or if the user approving is the one who opened the claim.\n- `ClaimOverClerkLimitException` is deleted because nothing throws it any more.\n\n**Front end (`claims.ts`, `people.ts`)**\n- Each claim row has new Approve and Reject buttons (`claim-approve`, `claim-reject`) and a reason box (`claim-reject-reason`). A refusal shows in `claim-error`.\n- The due, late charge, overdue and hold rules follow the new rules above.\n\n**Choices the request didn't specify:**\n- **Rejecting is for stewards only.** The opener is allowed to reject; only approving is barred to them.\n- **A reason is required.** If it's blank, the screen shows an error and nothing is sent.\n- **The reason is put on one line before it's stored in the audit file.** Line breaks and runs of spaces become single spaces, so it can't split a line.\n- **A statement taken while a claim is PENDING includes it at its live figure.** That figure is what the claim is bound to if it's later rejected.\n\nI also updated a few comments in `people.ts` that still said only OPEN and SETTLED claims count.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2948009999999999,
+        "num_turns": 24,
+        "duration_ms": 438410,
+        "duration_api_ms": 164501,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp36.agent.jsonl",
+  "agent_diff_file": "cp36.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
