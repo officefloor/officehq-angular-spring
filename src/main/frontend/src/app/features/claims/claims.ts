@@ -158,6 +158,8 @@ export interface Claim {
   lines: ClaimLineItem[];
   /** The sheet's today when the claim last went to REVIEW; null when it never has. */
   reviewOn: string | null;
+  /** The sheet's today when the claim last went to PENDING; null when it never has. */
+  pendingOn: string | null;
   /** The user a steward last assigned the claim's review to; null when never assigned. */
   reviewAssigned: string | null;
   /** Whether a steward waived the claim's late charge: from then on it bears none. */
@@ -267,6 +269,13 @@ export function isOpen(c: Claim): boolean {
 export function reviewLate(c: Claim, today: string | null, sla: string): boolean {
   return c.status === 'REVIEW' && c.reviewOn !== null && today !== null && sla !== ''
     && plusDays(c.reviewOn, Number(sla)) < today;
+}
+
+/** Whether a PENDING claim is late pending on the sheet's today: its pending day plus the pending SLA
+ *  (whole days; blank: none) is before today. */
+export function pendingLate(c: Claim, today: string | null, sla: string): boolean {
+  return c.status === 'PENDING' && c.pendingOn !== null && today !== null && sla !== ''
+    && plusDays(c.pendingOn, Number(sla)) < today;
 }
 
 export function deferred(c: Claim, today: string | null): boolean {
@@ -464,6 +473,7 @@ export function money(c: number): string {
           <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
           <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
+          <span>Pending late <span data-testid="claim-pending-late">{{ pendingLateOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssigned ?? '' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
@@ -816,6 +826,11 @@ export class PersonClaims {
   /** Whether the claim shows as late for review (see reviewLate). */
   protected reviewLateOf(c: Claim): boolean {
     return reviewLate(c, this.session.figureDay(), this.session.reviewSla());
+  }
+
+  /** Whether the claim shows as late pending (see pendingLate). */
+  protected pendingLateOf(c: Claim): boolean {
+    return pendingLate(c, this.session.figureDay(), this.session.pendingSla());
   }
 
   /** Whether the claim shows as deferred: its deferral date not yet reached, a voided claim keeping its deferral. */

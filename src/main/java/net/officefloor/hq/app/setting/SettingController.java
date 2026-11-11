@@ -117,7 +117,8 @@ public class SettingController {
             @Pattern(regexp = DATE) String clerkLimitCFrom,
             @Pattern(regexp = "\\s*|" + SCORE) String scoreMid, @Pattern(regexp = "\\s*|" + SCORE) String scoreHigh,
             @Pattern(regexp = SWITCH) String scoreLog,
-            @Pattern(regexp = "\\s*|" + TERMS) String maxOpen) {
+            @Pattern(regexp = "\\s*|" + TERMS) String maxOpen,
+            @Pattern(regexp = "\\s*|" + TERMS) String pendingSla) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -135,6 +136,7 @@ public class SettingController {
      * And the review SLA in days, blank for none. And the proof kinds, comma separated, blank for none.
      * And the default grade, blank for none (A). And the score thresholds, mid and high, each blank for none.
      * And the score log switch, on or blank for off. And the most open claims a person may have, blank for none.
+     * And the pending SLA in days, blank for none.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
@@ -142,7 +144,7 @@ public class SettingController {
             List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot,
             String parent, int fiscalStartMonth, String alertThreshold, String rounding, String escalateAfter,
             String reviewSla, String proofKinds, String defaultGrade, String scoreMid, String scoreHigh,
-            String scoreLog, String maxOpen) {
+            String scoreLog, String maxOpen, String pendingSla) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -165,7 +167,8 @@ public class SettingController {
                 sheet.getScoreMid() == null ? "" : String.valueOf(sheet.getScoreMid()),
                 sheet.getScoreHigh() == null ? "" : String.valueOf(sheet.getScoreHigh()),
                 sheet.isScoreLog() ? "on" : "",
-                sheet.getMaxOpen() == null ? "" : String.valueOf(sheet.getMaxOpen()));
+                sheet.getMaxOpen() == null ? "" : String.valueOf(sheet.getMaxOpen()),
+                sheet.getPendingSla() == null ? "" : String.valueOf(sheet.getPendingSla()));
     }
 
     private static DatedValue dated(DatedSetting s) {
@@ -225,6 +228,7 @@ public class SettingController {
         String scoreMid = req.scoreMid() == null ? "" : req.scoreMid().trim();
         String scoreHigh = req.scoreHigh() == null ? "" : req.scoreHigh().trim();
         String maxOpen = req.maxOpen() == null ? "" : req.maxOpen().trim();
+        String pendingSla = req.pendingSla() == null ? "" : req.pendingSla().trim();
         return response(service.set(req.sheet().trim(), req.user().trim(),
                 req.clerkLimit() == null ? null : amount(req.clerkLimit(), req.clerkLimitFrom()), gradeClerkLimits,
                 req.floor() == null ? null : amount(req.floor(), req.floorFrom()),
@@ -250,7 +254,8 @@ public class SettingController {
                 req.scoreMid() != null, scoreMid.isEmpty() ? null : Integer.valueOf(scoreMid),
                 req.scoreHigh() != null, scoreHigh.isEmpty() ? null : Integer.valueOf(scoreHigh),
                 req.scoreLog() != null, req.scoreLog() != null && !req.scoreLog().isBlank(),
-                req.maxOpen() != null, maxOpen.isEmpty() ? null : Integer.valueOf(maxOpen)));
+                req.maxOpen() != null, maxOpen.isEmpty() ? null : Integer.valueOf(maxOpen),
+                req.pendingSla() != null, pendingSla.isEmpty() ? null : Integer.valueOf(pendingSla)));
     }
 
     /** A permission matrix entry given: its roles, lower case, comma separated without spaces. */

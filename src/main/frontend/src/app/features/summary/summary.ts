@@ -90,6 +90,7 @@ export interface StatusSummary {
         </tbody>
       </table>
       <p>Late for review <strong data-testid="summary-review-late-count">{{ reviewLateCount() }}</strong></p>
+      <p>Late pending <strong data-testid="summary-pending-late-count">{{ pendingLateCount() }}</strong></p>
       <table aria-label="By void reason">
         <thead>
           <tr>
@@ -116,6 +117,8 @@ export class Summary {
   readonly voidReasons = input.required<VoidReasonSummary[]>();
   /** How many REVIEW claims are late for review on the sheet's today. */
   readonly reviewLateCount = input.required<number>();
+  /** How many PENDING claims are late pending on the sheet's today. */
+  readonly pendingLateCount = input.required<number>();
 }
 
 // The classic summary, beside the summary: per period, its due-total counting each claim by its

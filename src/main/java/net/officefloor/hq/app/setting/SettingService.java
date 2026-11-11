@@ -91,6 +91,7 @@ public class SettingService {
     public static final String PROOF_KINDS = "proof-kinds";
     public static final String DEFAULT_GRADE = "default-grade";
     public static final String MAX_OPEN = "max-open";
+    public static final String PENDING_SLA = "pending-sla";
     /** The key of a permission matrix entry: {@code perm-<action>}. */
     public static final String PERMISSION = "perm-";
 
@@ -141,7 +142,7 @@ public class SettingService {
      * {@code changeAlert} (null for off), and the rounding mode when {@code rounding} is not null (half-up or
      * half-even, null for none; anything else refused (400) before anything is saved), and the escalation gap when
      * {@code changeEscalate} (null for off), and the review SLA when {@code changeReviewSla} (null for none), and the proof kinds when {@code changeProofKinds} (comma separated, null for none), and the default grade when
-     * {@code changeDefaultGrade} (A, B or C, null for none; anything else refused (400) before anything is saved), and the most open claims a person may have when {@code changeMaxOpen} (null for none). Each figure is recorded from its from-date, keeping the values
+     * {@code changeDefaultGrade} (A, B or C, null for none; anything else refused (400) before anything is saved), and the most open claims a person may have when {@code changeMaxOpen} (null for none), and the pending SLA when {@code changePendingSla} (null for none). Each figure is recorded from its from-date, keeping the values
      * already recorded (one already recorded from that date is replaced). Each one saved is
      * recorded, in that order.
      */
@@ -159,7 +160,8 @@ public class SettingService {
             boolean changeEscalate, Integer escalateAfter, boolean changeReviewSla, Integer reviewSla,
             boolean changeProofKinds, String proofKinds, boolean changeDefaultGrade, String defaultGrade,
             boolean changeScoreMid, Integer scoreMid, boolean changeScoreHigh, Integer scoreHigh,
-            boolean changeScoreLog, boolean scoreLog, boolean changeMaxOpen, Integer maxOpen) {
+            boolean changeScoreLog, boolean scoreLog, boolean changeMaxOpen, Integer maxOpen,
+            boolean changePendingSla, Integer pendingSla) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (changeParent && parent != null) {
@@ -324,6 +326,11 @@ public class SettingService {
             sheet.setMaxOpen(maxOpen);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, MAX_OPEN, maxOpen == null ? "" : maxOpen.toString()));
+        }
+        if (changePendingSla) {
+            sheet.setPendingSla(pendingSla);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, PENDING_SLA, pendingSla == null ? "" : pendingSla.toString()));
         }
         return sheet;
     }

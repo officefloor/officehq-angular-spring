@@ -161,7 +161,7 @@ public class ClaimController {
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
             List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq,
             LocalDate reviewOn, boolean waived, String statedCharged, int proofsReceipt, int proofsPhoto,
-            boolean held, List<ClaimShareLine> shares, String reviewAssigned) {
+            boolean held, List<ClaimShareLine> shares, String reviewAssigned, LocalDate pendingOn) {
     }
 
     /** One of the people a claim is shared with, in the order added: the holder's id and their share. */
@@ -205,7 +205,7 @@ public class ClaimController {
                 claim.isHeld(),
                 claim.getShares().stream().map(s -> new ClaimShareLine(s.getHolderId(), money(s.getShare())))
                         .toList(),
-                claim.getReviewAssigned());
+                claim.getReviewAssigned(), claim.getPendingOn());
     }
 
     public static BigDecimal amount(String amount) {

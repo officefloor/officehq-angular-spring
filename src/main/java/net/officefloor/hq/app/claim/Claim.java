@@ -172,6 +172,10 @@ public class Claim {
     @Column(name = "review_on")
     private LocalDate reviewOn;
 
+    /** The sheet's today when the claim last went to PENDING; none when it never has. */
+    @Column(name = "pending_on")
+    private LocalDate pendingOn;
+
     /** The user a steward last assigned the claim's review to; none when never assigned. */
     @Column(name = "review_assigned")
     private String reviewAssigned;
@@ -280,6 +284,7 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.reviewOn = reviewOn;
+        copy.pendingOn = pendingOn;
         copy.reviewAssigned = reviewAssigned;
         copy.waived = waived;
         copy.held = held;
@@ -602,6 +607,14 @@ public class Claim {
 
     public void setReviewOn(LocalDate reviewOn) {
         this.reviewOn = reviewOn;
+    }
+
+    public LocalDate getPendingOn() {
+        return pendingOn;
+    }
+
+    public void setPendingOn(LocalDate pendingOn) {
+        this.pendingOn = pendingOn;
     }
 
     public String getReviewAssigned() {

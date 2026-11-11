@@ -127,6 +127,8 @@ interface SettingsResponse {
   reviewSla: string;
   /** The most claims a person may have OPEN or PENDING at once, blank for none. */
   maxOpen: string;
+  /** The pending SLA in days, blank for none. */
+  pendingSla: string;
   /** The mid score threshold, blank for none. */
   scoreMid: string;
   /** The high score threshold, blank for none. */
@@ -525,6 +527,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="enterReviewSla($any($event.target))"
           (input)="reviewSlaInput.set($any($event.target).value); error.set(null)"
         />
+        <label for="setting-pending-sla">Days a claim may wait pending before it is late (blank: none)</label>
+        <input
+          id="setting-pending-sla"
+          data-testid="setting-pending-sla"
+          inputmode="numeric"
+          [value]="pendingSlaInput() ?? ''"
+          (focus)="enterPendingSla($any($event.target))"
+          (input)="pendingSlaInput.set($any($event.target).value); error.set(null)"
+        />
         <label for="setting-max-open">Most open or pending claims a person may have (blank: none)</label>
         <input
           id="setting-max-open"
@@ -739,6 +750,13 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Pending SLA (days):
+        <strong data-testid="setting-pending-sla-current">{{ session.pendingSla() }}</strong>
+        @if (session.pendingSla() === '') {
+          <span>(none)</span>
+        }
+      </p>
+      <p>
         Most open claims per person:
         <strong data-testid="setting-max-open-current">{{ maxOpen() }}</strong>
         @if (maxOpen() === '') {
@@ -894,6 +912,8 @@ export class Settings {
   protected readonly scoreLogInput = signal<string | null>(null);
   /** The review SLA typed; null while its field has not been entered (left as it is). */
   protected readonly reviewSlaInput = signal<string | null>(null);
+  /** The pending SLA typed; null while its field has not been entered (left as it is). */
+  protected readonly pendingSlaInput = signal<string | null>(null);
   /** The most open claims per person in force, blank for none. */
   protected readonly maxOpen = signal('');
   /** The most open claims per person typed; null while its field has not been entered (left as it is). */
@@ -950,6 +970,7 @@ export class Settings {
       this.alertInput.set(null);
       this.escalateInput.set(null);
       this.reviewSlaInput.set(null);
+      this.pendingSlaInput.set(null);
       this.maxOpenInput.set(null);
       this.scoreMidInput.set(null);
       this.scoreHighInput.set(null);
@@ -1117,6 +1138,15 @@ export class Settings {
     this.reviewSlaInput.set(this.session.reviewSla());
   }
 
+  /** Entering the pending SLA's field fills it with the SLA in force, selected, so it saves as it is
+   *  unless typed over. */
+  protected enterPendingSla(input: HTMLInputElement): void {
+    if (this.pendingSlaInput() !== null) return;
+    input.value = this.session.pendingSla();
+    input.select();
+    this.pendingSlaInput.set(this.session.pendingSla());
+  }
+
   /** Entering the most open claims' field fills it with the value in force, selected, so it saves as it is
    *  unless typed over. */
   protected enterMaxOpen(input: HTMLInputElement): void {
@@ -1260,7 +1290,7 @@ export class Settings {
 
   private show(
     res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
-      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'maxOpen' | 'proofKinds' | 'defaultGrade' | 'scoreMid' | 'scoreHigh' | 'scoreLog'>>,
+      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'pendingSla' | 'maxOpen' | 'proofKinds' | 'defaultGrade' | 'scoreMid' | 'scoreHigh' | 'scoreLog'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -1279,6 +1309,7 @@ export class Settings {
     this.escalateAfter.set(res.escalateAfter ?? '');
     if (res.parent !== undefined) this.session.parent.set(res.parent);
     this.session.reviewSla.set(res.reviewSla ?? '');
+    this.session.pendingSla.set(res.pendingSla ?? '');
     this.maxOpen.set(res.maxOpen ?? '');
     this.session.scoreMid.set(res.scoreMid ?? '');
     this.session.scoreHigh.set(res.scoreHigh ?? '');
@@ -1312,6 +1343,7 @@ export class Settings {
     const escalateAfter = this.escalateInput()?.trim() ?? null;
     const reviewSla = this.reviewSlaInput()?.trim() ?? null;
     const maxOpen = this.maxOpenInput()?.trim() ?? null;
+    const pendingSla = this.pendingSlaInput()?.trim() ?? null;
     const scoreMid = this.scoreMidInput()?.trim() ?? null;
     const scoreHigh = this.scoreHighInput()?.trim() ?? null;
     const scoreLog = this.scoreLogInput()?.trim() ?? null;
@@ -1425,6 +1457,10 @@ export class Settings {
       this.error.set('Enter a review SLA of 0 or more whole days, or leave it blank for none.');
       return;
     }
+    if (pendingSla !== null && pendingSla !== '' && !TERMS.test(pendingSla)) {
+      this.error.set('Enter a pending SLA of 0 or more whole days, or leave it blank for none.');
+      return;
+    }
     if (maxOpen !== null && maxOpen !== '' && !TERMS.test(maxOpen)) {
       this.error.set('Enter the most open claims per person as a whole number of 0 or more, or leave it blank for none.');
       return;
@@ -1536,6 +1572,7 @@ export class Settings {
           escalateAfter,
           reviewSla,
           maxOpen,
+          pendingSla,
           proofKinds,
           defaultGrade,
           clerkLimitA: gradeLimits.A ?? null,
@@ -1573,6 +1610,7 @@ export class Settings {
       this.alertInput.set(null);
       this.escalateInput.set(null);
       this.reviewSlaInput.set(null);
+      this.pendingSlaInput.set(null);
       this.maxOpenInput.set(null);
       this.scoreMidInput.set(null);
       this.scoreHighInput.set(null);

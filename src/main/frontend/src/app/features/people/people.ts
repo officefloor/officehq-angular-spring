@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, ownPart, sharePart, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, plusDays, reviewLate, roundingDate, statusAt } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, ownPart, sharePart, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, pendingLate, plusDays, reviewLate, roundingDate, statusAt } from '../claims/claims';
 import { AuditView } from '../audit/audit-view';
 import { Activity } from '../audit/activity';
 import { TreeSearch } from '../search/tree-search';
@@ -718,7 +718,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
           </tbody>
         </table>
       }
-      <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
+      <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" [pendingLateCount]="pendingLateCount()" />
       <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
       <table data-testid="people-list">
         <thead>
@@ -1647,6 +1647,10 @@ export class People {
   /** How many of the sheet's REVIEW claims are late for review on its today. */
   protected readonly reviewLateCount = computed(() =>
     this.claims().filter((c) => reviewLate(c, this.session.figureDay(), this.session.reviewSla())).length,
+  );
+  /** How many of the sheet's PENDING claims are late pending on its today. */
+  protected readonly pendingLateCount = computed(() =>
+    this.claims().filter((c) => pendingLate(c, this.session.figureDay(), this.session.pendingSla())).length,
   );
   protected readonly voidReasons = inject(VoidReasonList);
   /** Per reason on the sheet's void reasons: how many VOID claims were voided with it. */

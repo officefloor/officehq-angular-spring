@@ -481,6 +481,8 @@ public class ClaimService {
         } else if (next == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
             claim.setReviewOn(sheets.today(sheetId));
+        } else if (next == ClaimStatus.PENDING) {
+            claim.setPendingOn(sheets.today(sheetId));
         } else if (next == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
             // a claim takes its number when settled; one numbered before keeps it

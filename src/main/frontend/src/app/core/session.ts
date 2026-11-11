@@ -50,6 +50,8 @@ export class Session {
   readonly parent = signal('');
   /** The sheet's review SLA in whole days, blank for none. Set from the sheet's settings as they are read and saved. */
   readonly reviewSla = signal('');
+  /** The sheet's pending SLA in whole days, blank for none. Set from the sheet's settings as they are read and saved. */
+  readonly pendingSla = signal('');
   /** The sheet's mid score threshold, a whole number, blank for none. Set from the sheet's settings as they are read and saved. */
   readonly scoreMid = signal('');
   /** The sheet's high score threshold, a whole number, blank for none. Set from the sheet's settings as they are read and saved. */
@@ -208,6 +210,7 @@ export class Session {
     if (res.id !== this.sheet()) {
       this.parent.set('');
       this.reviewSla.set('');
+      this.pendingSla.set('');
       this.scoreMid.set('');
       this.scoreHigh.set('');
     }
