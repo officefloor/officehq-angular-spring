@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -147,6 +148,38 @@ public class SettingService {
                     + s.getKey() + "=" + policyValue(s) + " " + counts[i + 1]);
         }
         return lines;
+    }
+
+    /** One policy version as exported: its number, from-date (blank for none), key, value, claims and their due-total. */
+    public record PolicyRow(int version, String from, String key, String value, int claims, String dueTotal) {
+    }
+
+    /**
+     * The policy versions, oldest first, with how many of the sheet's claims (not deleted) have each as
+     * their policy version, and the due of those of them that count, added up.
+     */
+    @Transactional
+    public List<PolicyRow> policyRows(String sheetId, String user) {
+        Sheet sheet = sheets.load(sheetId, user);
+        List<LoggedSetting> log = sheet.getPolicyLog();
+        int[] counts = new int[log.size() + 1];
+        BigDecimal[] dues = new BigDecimal[log.size() + 1];
+        Arrays.fill(dues, BigDecimal.ZERO.setScale(2));
+        Map<Long, BigDecimal> figures = rollup.countedFigures(sheetId);
+        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (c.getStatus() == ClaimStatus.DELETED || c.getDate() == null) continue;
+            int v = sheet.policyVersionOn(c.getDate());
+            counts[v]++;
+            BigDecimal figure = figures.get(c.getId());
+            if (figure != null) dues[v] = dues[v].add(figure);
+        }
+        List<PolicyRow> rows = new ArrayList<>();
+        for (int i = 0; i < log.size(); i++) {
+            LoggedSetting s = log.get(i);
+            rows.add(new PolicyRow(i + 1, s.getFromDate() == null ? "" : s.getFromDate().toString(), s.getKey(),
+                    policyValue(s), counts[i + 1], text(dues[i + 1])));
+        }
+        return rows;
     }
 
     private static String policyValue(LoggedSetting s) {

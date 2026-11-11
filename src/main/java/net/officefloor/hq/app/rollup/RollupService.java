@@ -376,6 +376,29 @@ public class RollupService {
         return out;
     }
 
+    /**
+     * The figure of each of the sheet's claims that counts and has one, as the screen shows it, by claim id.
+     */
+    public Map<Long, BigDecimal> countedFigures(String sheetId) {
+        Sheet sheet = sheet(sheetId);
+        LocalDate today = sheet.getToday();
+        List<List<Rate>> sheetRates = rates.current(sheetId);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        Map<Long, BigDecimal> out = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            for (Claim claim : sheetClaims) {
+                if (!claim.getPersonId().equals(person.getId()) || !person.counts(claim, today)) {
+                    continue;
+                }
+                BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
+                if (figure != null) {
+                    out.put(claim.getId(), figure);
+                }
+            }
+        }
+        return out;
+    }
+
     /** How many of the sheet's claims that count are overdue on its today, as the people list's totals count them. */
     public int overdueCount(String sheetId) {
         Sheet sheet = sheet(sheetId);
