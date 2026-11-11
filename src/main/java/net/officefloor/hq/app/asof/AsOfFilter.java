@@ -35,6 +35,9 @@ public class AsOfFilter extends OncePerRequestFilter {
 
     private static final Pattern SHEET_PATH = Pattern.compile("^/api/sheets/([^/]+)(/.*)?$");
 
+    /** The read answered from the store as it is now, whatever the as-of date: the consolidated figures. */
+    private static final String LIVE = "/consolidated/figures";
+
     private final SheetSnapshotService snapshots;
     private final SheetService sheets;
     private final TransactionTemplate rolledBack;
@@ -61,6 +64,10 @@ public class AsOfFilter extends OncePerRequestFilter {
                 || HttpMethod.OPTIONS.matches(request.getMethod());
         boolean load = rest.equals("/load");
         String header = request.getHeader(HEADER);
+        if (read && rest.equals(LIVE)) {
+            chain.doFilter(request, response);
+            return;
+        }
         if (header == null || header.isBlank()) {
             chain.doFilter(request, response);
             if ((!read || load) && response.getStatus() < 400) {

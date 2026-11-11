@@ -25,4 +25,14 @@ public class ConsolidatedController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return rollups.descendantFigures(sheetId.trim());
     }
+
+    /**
+     * The people, due-total and overdue-total of the sheet and its descendants added up, as the store holds them now:
+     * an as-of view of the sheet leaves them live.
+     */
+    @GetMapping("/api/sheets/{sheetId}/consolidated/figures")
+    public RollupService.Consolidated consolidated(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return rollups.consolidatedFigures(sheetId.trim());
+    }
 }

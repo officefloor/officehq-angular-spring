@@ -105,6 +105,10 @@ public class PersonController {
     public record MergeRequest(@NotNull Long intoId) {
     }
 
+    /** The id of the sheet to transfer to. */
+    public record TransferRequest(@NotBlank @Size(max = 100) String to) {
+    }
+
     /** Whether the signed-in user is to watch the person. */
     public record WatchRequest(@NotNull Boolean on) {
     }
@@ -115,9 +119,11 @@ public class PersonController {
     private final WatchService watches;
     private final BulkGradeService bulkGrade;
     private final MergeService merges;
+    private final TransferService transfers;
 
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
-            WatchService watches, BulkGradeService bulkGrade, MergeService merges) {
+            WatchService watches, BulkGradeService bulkGrade, MergeService merges, TransferService transfers) {
+        this.transfers = transfers;
         this.service = service;
         this.merges = merges;
         this.bulkGrade = bulkGrade;
@@ -234,6 +240,15 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid MergeRequest request) {
         return view(merges.merge(sheetId.trim(), user.trim(), id, request.intoId()), user.trim());
+    }
+
+    /** Transfer the person to another sheet (a steward only): the person leaves this sheet; as they arrived is returned. */
+    @PostMapping("/{id}/transfer")
+    public PersonView transfer(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid TransferRequest request) {
+        return view(transfers.transfer(sheetId.trim(), user.trim(), id, request.to()), user.trim());
     }
 
     /** Start or stop watching the person as the signed-in user. */

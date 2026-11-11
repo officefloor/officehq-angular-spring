@@ -151,6 +151,12 @@ public class Claim {
         this.personId = personId;
     }
 
+    /** Move the claim to a person on another sheet. */
+    public void moveTo(String sheetId, Long personId) {
+        this.sheetId = sheetId;
+        this.personId = personId;
+    }
+
     public long getListed() {
         return listed;
     }

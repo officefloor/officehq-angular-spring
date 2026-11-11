@@ -141,6 +141,18 @@ public class RollupService {
         return new Consolidated(count, shown(due), shown(overdue));
     }
 
+    /**
+     * The figures of the sheet and its descendants as the store holds them now, each sheet's people, due-total and
+     * overdue-total as that sheet shows them, added up.
+     */
+    public Consolidated consolidatedFigures(String sheetId) {
+        Snapshot own = snapshot(sheetId);
+        Consolidated descendants = descendantFigures(sheetId);
+        return new Consolidated(own.people().size() + descendants.people(),
+                shown(new BigDecimal(own.dueTotal()).add(new BigDecimal(descendants.dueTotal()))),
+                shown(new BigDecimal(own.overdueTotal()).add(new BigDecimal(descendants.overdueTotal()))));
+    }
+
     /** The ids of the sheet's descendants, each once, nearest first; a parent loop never brings back the sheet. */
     private List<String> descendants(String sheetId) {
         List<String> seen = new ArrayList<>(List.of(sheetId));

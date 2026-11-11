@@ -385,6 +385,23 @@ function csvField(value: string): string {
                 >
                   Merge
                 </button>
+                <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
+                <input
+                  [id]="'person-transfer-to-' + p.id"
+                  type="text"
+                  data-testid="person-transfer-to"
+                  placeholder="Sheet id"
+                  [value]="transferTos()[p.id] ?? ''"
+                  (input)="setTransferTo(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-transfer"
+                  [attr.aria-label]="'Transfer ' + p.name + ' to the sheet typed'"
+                  (click)="transfer(p)"
+                >
+                  Transfer
+                </button>
                 <ul class="holds">
                   @for (h of p.holds; track $index) {
                     <li data-testid="person-hold-line">Held {{ h.from }} to {{ h.to ?? 'open' }}</li>
@@ -590,6 +607,8 @@ export class People {
   protected readonly aliasInputs = signal<Record<number, string>>({});
   /** The person chosen on each person's row to merge them into, by person id, as the chosen person's id. */
   protected readonly mergeChoices = signal<Record<number, string>>({});
+  /** The sheet id typed on each person's row to transfer them to, by person id. */
+  protected readonly transferTos = signal<Record<number, string>>({});
   /** The date typed beside each person's statement button, by person id: blank takes the statement now. */
   protected readonly statementAsOfs = signal<Record<number, string>>({});
   /** The from-date typed for each person's next hold, by person id. */
@@ -654,15 +673,19 @@ export class People {
   protected readonly overdueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.overdueTotalOf(p))));
   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
   private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+  /** While the sheet is shown as of a date, the sheet's and its descendants' figures as the store holds them now. */
+  private readonly liveConsolidated = signal<DescendantFigures | null>(null);
   /** The sheet's people and its descendants' added up. */
-  protected readonly consolidatedPeople = computed(() => this.people().length + this.descendantFigures().people);
+  protected readonly consolidatedPeople = computed(
+    () => this.liveConsolidated()?.people ?? this.people().length + this.descendantFigures().people,
+  );
   /** The sheet's due-total as shown and its descendants' added up. */
   protected readonly consolidatedDueTotal = computed(() =>
-    sumDues([this.dueTotal(), this.descendantFigures().dueTotal]),
+    this.liveConsolidated()?.dueTotal ?? sumDues([this.dueTotal(), this.descendantFigures().dueTotal]),
   );
   /** The sheet's overdue-total as shown and its descendants' added up. */
   protected readonly consolidatedOverdueTotal = computed(() =>
-    sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
+    this.liveConsolidated()?.overdueTotal ?? sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
   );
   /** Every tag ever used on the sheet, sorted. */
   protected readonly tags = signal<string[]>([]);
@@ -793,9 +816,11 @@ export class People {
         this.periods.set([]);
         this.tags.set([]);
         this.descendantFigures.set(NO_DESCENDANTS);
+        this.liveConsolidated.set(null);
         this.retireDates.set({});
         this.aliasInputs.set({});
         this.mergeChoices.set({});
+        this.transferTos.set({});
         this.statementAsOfs.set({});
         this.holdFroms.set({});
         this.holdTos.set({});
@@ -887,6 +912,38 @@ export class People {
     } catch {
       const into = this.byId().get(intoId)?.name ?? 'that person';
       this.rowError.set({ id: person.id, message: `${person.name} could not be merged into ${into}.` });
+    }
+  }
+
+  protected setTransferTo(id: number, to: string): void {
+    this.transferTos.update((tos) => ({ ...tos, [id]: to }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /**
+   * Transfer the person to the sheet typed (a steward only, not retired, not this sheet): the person leaves the list,
+   * then re-read so every total shows what the store holds.
+   */
+  protected async transfer(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const to = (this.transferTos()[person.id] ?? '').trim();
+    if (!to) {
+      this.rowError.set({ id: person.id, message: 'Type a sheet id to transfer to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/transfer`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, { to }, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.filter((p) => p.id !== person.id));
+        this.transferTos.update((tos) => ({ ...tos, [person.id]: '' }));
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be transferred to ${to}.` });
     }
   }
 
@@ -1613,14 +1670,18 @@ export class People {
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [list, claims, rates, periods, tags, descendants] = await Promise.all([
+    const asOf = this.session.asOf() !== null;
+    const [list, claims, rates, periods, tags, descendants, live] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
       firstValueFrom(this.http.get<Claim[]>(`${url}/claims`, this.session.headers())),
       firstValueFrom(this.http.get<Rate[]>(`${url}/rates`, this.session.headers())),
       firstValueFrom(this.http.get<Period[]>(`${url}/periods`, this.session.headers())),
       firstValueFrom(this.http.get<string[]>(`${url}/claims/tags`, this.session.headers())),
       firstValueFrom(this.http.get<DescendantFigures>(`${url}/descendants/figures`, this.session.headers())),
-    ]).catch(() => [null, null, null, null, null, null]);
+      asOf
+        ? firstValueFrom(this.http.get<DescendantFigures>(`${url}/consolidated/figures`, this.session.headers()))
+        : Promise.resolve(null),
+    ]).catch(() => [null, null, null, null, null, null, null]);
     // A later read wins over a slower earlier one.
     if (list && claims && rates && periods && tags && descendants && read === this.reads && this.session.sheet() === sheet) {
       this.people.set(list);
@@ -1629,6 +1690,7 @@ export class People {
       this.periods.set(periods);
       this.tags.set(tags);
       this.descendantFigures.set(descendants);
+      this.liveConsolidated.set(live);
     }
   }
 }

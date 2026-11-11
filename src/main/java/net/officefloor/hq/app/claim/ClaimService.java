@@ -856,7 +856,7 @@ public class ClaimService {
      * The number a claim due by the date gets when opened: while the sheet numbers by period, the next in its
      * period's own sequence (X for no period); otherwise the next sheet-wide number.
      */
-    private String nextNumber(String sheetId, LocalDate date) {
+    public String nextNumber(String sheetId, LocalDate date) {
         if (settings.get(sheetId).numbersByPeriod()) {
             return sheets.nextSequenceNumber(sheetId, periods.nameOn(sheetId, date).orElse("X"));
         }
