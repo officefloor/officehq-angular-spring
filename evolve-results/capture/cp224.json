@@ -1,0 +1,80 @@
+{
+  "checkpoint": 224,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp224_cap-includes-cuts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119,
+    143,
+    154,
+    189,
+    207
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals",
+    "cp143_fiscal-year.spec.ts::fiscal year scenario 3",
+    "cp154_classic-summary.spec.ts::classic summary scenario 1",
+    "cp189_default-grade.spec.ts::default grade scenario 2",
+    "cp207_year-end-rollover.spec.ts::year end rollover scenario 1"
+  ],
+  "request": {
+    "spec": "The cap now covers a person's due-total plus their cut total: their due-total is held to the cap\nless their cut total (not below 0.00), and the excess is what the figures exceed that by.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe cap now covers a person's due-total plus their cut total: their due-total is held to the cap\nless their cut total (not below 0.00), and the excess is what the figures exceed that by.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c4fbb7ee0f94bb0d45231a755f15a4153174f9be",
+  "reset_sha": "",
+  "preagent_sha": "b7ab17e2cee2063aee1d4fab368fca2312d9218a",
+  "prev_sha": "b7ab17e2cee2063aee1d4fab368fca2312d9218a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7927430000000001,
+    "input_tokens": 36,
+    "output_tokens": 9353,
+    "cache_read_tokens": 807335,
+    "cache_creation_tokens": 55509,
+    "num_turns": 18,
+    "duration_ms": 290085,
+    "duration_api_ms": 91826,
+    "model": "claude-opus-5-5",
+    "session_id": "cd7d6f5d-39cc-4d91-837f-c4c32d58993b",
+    "stop_reason": "success",
+    "result_text": "The cap now covers a person's due-total plus their cut total, and all 4 tests in `bin/e2e` pass.\n\n**How it works now:** a person's due-total is held to the cap minus their cut total, never below 0.00. Their excess is how far their figures go over that limit. For example, with a cap of 6.00, a cut of 5.00 and figures of 4.00, the due-total is 1.00 and the excess is 3.00.\n\n**What changed:**\n- **Server:** `Sheet.capped` now takes the person's cut total, and a new `PoolService.cutTotalsNow` adds up each person's cuts across all pools, crews included. The ROLLUP/TOTALS audit lines and statements use this. `RollupService` reaches `PoolService` through an `ObjectProvider` (the same way `SheetService` already does) to avoid a circular dependency.\n- **Pot changes:** since the pot sets the cuts, changing it now moves due-totals, so it records ROLLUP/TOTALS lines the way a cap change does. The test expects this.\n- **Front end:** `dueOf` and `excessOf` in `people.ts` use the cap minus the person's cut total.\n\n**Two gaps I left on purpose:**\n- **Pool membership and share edits** can also move cuts, so they change capped due-totals when a cap is set. They still don't write ROLLUP audit lines. The test doesn't cover this, and adding it would put new lines in the audit file. Tell me if you want it.\n- **Statements taken \"as of\" a past date** still apply the plain cap without cuts. Finding the cuts as they stood on that date would mean rebuilding past pool state, which this change doesn't need.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7927430000000001,
+        "num_turns": 18,
+        "duration_ms": 290085,
+        "duration_api_ms": 91826,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp224.agent.jsonl",
+  "agent_diff_file": "cp224.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

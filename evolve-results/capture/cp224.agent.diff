@@ -1,0 +1,238 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 550bb5076..b4d931cb8 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -103,8 +103,8 @@ import { FigurePipe } from '../../core/figure';
+ // The export-claims button downloads every claim as a CSV file the same way: people in list order,
+ // retired included, each person's claims oldest first, with person, number, date, amount, due,
+ // status and period as the claim's row shows them (an empty number or period, or n/a, as it is).
+-// The sheet may have a cap (the one in force on its today): a person's due-total is at most it, and their excess is how far the
+-// sum of their figures is above it (0.00 otherwise; a due-total of n/a is not capped). Every total
++// The sheet may have a cap (the one in force on its today): a person's due-total is at most it less their cut total (not below
++// 0.00), and their excess is how far the sum of their figures is above that (0.00 otherwise; a due-total of n/a is not capped). Every total
+ // of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
+ // People can be ticked and given a grade together from a from-date (the sheet's today when blank):
+ // each, in list order, is edited as the person form would, all or none; the count shows how many.
+@@ -1872,11 +1872,11 @@ export class People {
+     );
+   }
+ 
+-  /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */
++  /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap less their cut total. */
+   protected dueOf(p: Person): number | null {
+     const sum = this.figuresOf(p);
+-    const cap = this.capCents();
+-    return sum === null || cap === null ? sum : Math.min(sum, cap);
++    const room = this.roomOf(p);
++    return sum === null || room === null ? sum : Math.min(sum, room);
+   }
+ 
+   /** The person's cut total, in whole cents: 0 when no pool shows them a cut. */
+@@ -1884,11 +1884,17 @@ export class People {
+     return this.cutTotals().get(id) ?? 0;
+   }
+ 
+-  /** How far the sum of the person's figures is above the cap, in whole cents; 0 otherwise. */
++  /** How far the sum of the person's figures is above the cap less their cut total, in whole cents; 0 otherwise. */
+   protected excessOf(p: Person): number {
+     const sum = this.figuresOf(p);
++    const room = this.roomOf(p);
++    return sum === null || room === null ? 0 : Math.max(sum - room, 0);
++  }
++
++  /** The sheet's cap less the person's cut total (not below 0), in whole cents; null for no cap. */
++  private roomOf(p: Person): number | null {
+     const cap = this.capCents();
+-    return sum === null || cap === null ? 0 : Math.max(sum - cap, 0);
++    return cap === null ? null : Math.max(cap - this.cutTotalOf(p.id), 0);
+   }
+ 
+   /**
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 8203156c1..bbac3922a 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -215,6 +215,23 @@ public class PoolService {
+         return cutsOf(current(sheetId));
+     }
+ 
++    /**
++     * Each person's cut total as the pools stand now, by person id: their cuts across every pool
++     * (crews' included) they are a member of; a person with no cut is left out. Read within the
++     * caller's transaction.
++     */
++    public Map<Long, BigDecimal> cutTotalsNow(String sheetId) {
++        Map<Long, BigDecimal> totals = new HashMap<>();
++        for (PoolView pool : current(sheetId)) {
++            for (MemberView m : pool.members()) {
++                if (m.pool() == null && !m.cut().isEmpty()) {
++                    totals.merge(m.personId(), new BigDecimal(m.cut()), BigDecimal::add);
++                }
++            }
++        }
++        return totals;
++    }
++
+     private static Map<String, String> cutsOf(List<PoolView> pools) {
+         Map<String, String> cuts = new HashMap<>();
+         for (PoolView pool : pools) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index a9d5a19e6..9f72ce06e 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -32,6 +32,8 @@ import net.officefloor.hq.app.sheet.AsOfFilter;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetHistory;
+ import net.officefloor.hq.app.sheet.SheetRepository;
++import net.officefloor.hq.app.pool.PoolService;
++import org.springframework.beans.factory.ObjectProvider;
+ import org.springframework.stereotype.Service;
+ 
+ /**
+@@ -43,7 +45,7 @@ import org.springframework.stereotype.Service;
+  * of any figure. A person whose retirement date the sheet's today has reached: their OPEN and PENDING claims count in
+  * none of the figures, nor in a period's due-total; their SETTLED claims count in all. An overdue claim's figure has
+  * its late charge added on top, and a live due is then never below the floor in force on its claim's date. A person's
+- * due-total is at most the cap in force on the sheet's today, when there is one. With an alert threshold
++ * due-total is at most the cap in force on the sheet's today less their cut total (not below 0.00), when there is one. With an alert threshold
+  * set, the rollup lines are followed by one ALERT line per person (in list order) whose due-total went
+  * from at or below it (or none) to above it.
+  */
+@@ -172,9 +174,12 @@ public class RollupService {
+     private final SheetHistory history;
+     private final EntityManager entities;
+     private final Audit audit;
++    private final ObjectProvider<PoolService> pools;
+ 
+     public RollupService(PersonRepository people, ClaimRepository claims, RateChain rates, SheetRepository sheets,
+-            PeriodRepository periods, SheetHistory history, EntityManager entities, Audit audit) {
++            PeriodRepository periods, SheetHistory history, EntityManager entities, Audit audit,
++            ObjectProvider<PoolService> pools) {
++        this.pools = pools;
+         this.periods = periods;
+         this.history = history;
+         this.entities = entities;
+@@ -199,6 +204,7 @@ public class RollupService {
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+         Map<Long, BigDecimal> heldParts = heldParts(sheet, sheetRates, sheetClaims, sheetPeople);
++        Map<Long, BigDecimal> cutTotals = sheet.getCap() == null ? Map.of() : pools.getObject().cutTotalsNow(sheetId);
+         for (Person person : sheetPeople) {
+             BigDecimal claimed = zero();
+             BigDecimal due = zero();
+@@ -231,7 +237,7 @@ public class RollupService {
+             // as on screen: n/a when the grade in force today has no rate today and no claim that
+             // counts has a figure
+             boolean none = inForce(sheetRates, person.gradeOn(today), today).isEmpty() && !anyFigure;
+-            figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due),
++            figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due, cutTotals.get(person.getId())),
+                     overdue, person.gradeOn(today), person.isRetired()));
+         }
+         return new Snapshot(figures);
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 95e198467..c3b0bcc3c 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -26,8 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * the sheet's today) decides how a claim's live figures round (see {@link Rounding}), so changing it
+  * records the figures that move too. Its period-numbering-from date (none: off) decides how a claim
+  * settled is numbered: on or after it, within its period (see {@link SheetService#nextClaimNumber}).
+- * Its cap (none: no cap) is the most a person's due-total can be, so changing it records the
+- * figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
++ * Its cap (none: no cap) is the most a person's due-total plus their cut total can be, so changing it,
++ * or the pot that the cuts come from, records the figures that move too. A grade may have its own terms; a grade without uses the sheet's terms. A claim's due-by is fixed
+  * when it is created, so changing any terms moves no claim's due-by. A grade may have grace days (none: no grace): a
+  * claim whose person's grade on its date has grace days on that date is overdue only once its due-by plus them is
+  * before the sheet's today, and its late charge counts its 30-day boundaries from there (see
+@@ -261,9 +261,12 @@ public class SettingService {
+             audit.recordOnCommit(changed(sheetId, user, ENTRY_DATE, entryDate == null ? "" : entryDate.toString()));
+         }
+         if (changePot) {
++            // the pot moves the cuts, and so the due-totals held to the cap
++            RollupService.Snapshot before = rollup.snapshot(sheetId);
+             sheet.setPot(pot == null ? null : pot.setScale(2));
+             sheet = sheetStore.saveAndFlush(sheet);
+             audit.recordOnCommit(changed(sheetId, user, POT, text(sheet.getPot())));
++            rollup.recordChanges(sheetId, user, before);
+         }
+         if (changeParent) {
+             RollupService.Snapshot before = rollup.snapshot(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 219676d24..0473791c6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -331,15 +331,25 @@ public class Sheet {
+         return name == null ? null : BigDecimal.valueOf(ROUNDING_MODES.indexOf(name) + 1).setScale(2);
+     }
+ 
+-    /** The cap in force on the sheet's today: the most a person's due-total can be; null for no cap. */
++    /**
++     * The cap in force on the sheet's today: the most a person's due-total plus their cut total can
++     * be; null for no cap.
++     */
+     public BigDecimal getCap() {
+         return inForce(CAP, today).map(DatedSetting::getValue).orElse(null);
+     }
+ 
+-    /** A person's due-total held to the cap in force on the sheet's today (n/a stays n/a). */
+-    public BigDecimal capped(BigDecimal dueTotal) {
++    /**
++     * A person's due-total held to the cap in force on the sheet's today less their cut total (not
++     * below 0.00; n/a stays n/a).
++     */
++    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
+         BigDecimal cap = getCap();
+-        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
++        if (dueTotal == null || cap == null) {
++            return dueTotal;
++        }
++        BigDecimal room = cap.subtract(cutTotal == null ? BigDecimal.ZERO : cutTotal).max(BigDecimal.ZERO.setScale(2));
++        return dueTotal.min(room);
+     }
+ 
+     /** The proof threshold in force on the sheet's today; null for none. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 04b024ad6..9ee5110e2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -137,10 +137,15 @@ public class SheetService {
+         return sheets.findById(id).map(s -> s.clerkLimitFor(grade)).orElse(null);
+     }
+ 
+-    /** A person's due-total held to the sheet's cap in force on its today (none: as it is; n/a stays n/a). */
++    /**
++     * A person's due-total held to the sheet's cap in force on its today less their cut total as the
++     * pools stand now (none: as it is; n/a stays n/a).
++     */
+     @Transactional(readOnly = true)
+-    public BigDecimal capped(String id, BigDecimal dueTotal) {
+-        return sheets.findById(id).map(s -> s.capped(dueTotal)).orElse(dueTotal);
++    public BigDecimal capped(String id, long personId, BigDecimal dueTotal) {
++        return sheets.findById(id)
++                .map(s -> s.capped(dueTotal, s.getCap() == null ? null : pools.getObject().cutTotalsNow(id).get(personId)))
++                .orElse(dueTotal);
+     }
+ 
+     /** Refuse (423) any change to an archived sheet: it stays visible and may not be changed. */
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 7c15c4c54..2100ad4c1 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -156,7 +156,7 @@ public class StatementService {
+             }
+         }
+         // as on screen: n/a when the grade has no rate today and no claim that counts has a figure
+-        BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, total) : null;
++        BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, person.getId(), total) : null;
+         return new Tally(dueTotal, counted);
+     }
+ 
+@@ -211,7 +211,7 @@ public class StatementService {
+         }
+         // as on screen: n/a when the grade then has no rate then and no claim that counted has a figure
+         boolean none = !anyFigure && RateChain.inForce(ratesThen, person.gradeOn(day, day), day).isEmpty();
+-        return new Tally(none ? null : then.capped(total), counted);
++        return new Tally(none ? null : then.capped(total, null), counted);
+     }
+ 
+     /**
