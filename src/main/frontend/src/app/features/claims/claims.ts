@@ -19,6 +19,10 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened the claim; null for a DRAFT. That user cannot settle it. */
   openedBy: string | null;
+  /** Whether the person's last statement bound the claim: it then shows the due it bound it to. */
+  stated: boolean;
+  /** The due the last statement bound the claim to, two decimals; null when unbound, or bound with none (n/a). */
+  statedDue: string | null;
 }
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
@@ -29,9 +33,19 @@ export function counts(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
-/** The due fixed when the claim was settled, else its amount times its grade's rate on its date, or n/a with no rate. */
+/**
+ * The due fixed when the claim was settled, else the one its person's last statement bound it to, else its amount
+ * times its grade's rate on its date, or n/a with no rate.
+ */
 export function claimDue(claim: Claim, rates: Rate[], grade: string): string {
-  return claim.settledDue ?? dueOf(claim.amount, rateOn(rates, grade, claim.date));
+  if (claim.settledDue !== null) return claim.settledDue;
+  if (claim.stated) return claim.statedDue ?? 'n/a';
+  return dueOf(claim.amount, rateOn(rates, grade, claim.date));
+}
+
+/** Whether the claim's due is fixed, by settling or by a statement, rather than worked out from the rates. */
+export function dueFixed(claim: Claim): boolean {
+  return claim.settledDue !== null || claim.statedDue !== null;
 }
 
 type ClaimAction = 'open' | 'settle' | 'void';
@@ -84,7 +98,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -98,6 +112,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-due">{{ due(c) }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+              <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td>
                 <button
                   type="button"

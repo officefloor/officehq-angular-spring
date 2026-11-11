@@ -29,17 +29,19 @@ public class ClaimController {
 
     /**
      * A claim as shown: the amount with two decimals, the date as yyyy-mm-dd, and the due fixed when it was
-     * settled (null when it has none, so its due is worked out from the current rate), and who opened it.
+     * settled (null when it has none, so its due is worked out from the current rate), and who opened it;
+     * whether the person's last statement bound it, and the due it bound it to (null: none, so n/a).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
-            Long number, String settledDue, String openedBy) {
+            Long number, String settledDue, String openedBy, boolean stated, String statedDue) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.isStated(),
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString());
         }
     }
 

@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, claimDue, counts, sumAmounts } from '../claims/claims';
+import { Claim, Claims, claimDue, counts, dueFixed, sumAmounts } from '../claims/claims';
 import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
 
 interface Person {
@@ -11,6 +11,12 @@ interface Person {
   grade: string;
   /** Raised on each save; the editor sends back the one it loaded. */
   version: number;
+  /** How many statements the person has had. */
+  statementCount: number;
+  /** The due-total recorded by the last statement; null with none. */
+  statedTotal: string | null;
+  /** The sheet's today when the last statement was taken (yyyy-mm-dd); null with none. */
+  statementDate: string | null;
 }
 
 // The people on the active sheet, in the order they were added, each with their claims and what
@@ -56,6 +62,7 @@ interface Person {
         <thead>
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -66,6 +73,9 @@ interface Person {
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
+              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td>
                 <button
                   type="button"
@@ -75,6 +85,19 @@ interface Person {
                 >
                   Edit
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-statement"
+                  [attr.aria-label]="'Take a statement of ' + p.name"
+                  (click)="statement(p)"
+                >
+                  Statement
+                </button>
+                @if (rowError(); as e) {
+                  @if (e.id === p.id) {
+                    <p role="alert" data-testid="person-error">{{ e.message }}</p>
+                  }
+                }
               </td>
               <td
                 app-claims
@@ -125,6 +148,8 @@ export class People {
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
   protected readonly error = signal<string | null>(null);
+  /** The error of the last action on a person's row that was refused, and the person it belongs to. */
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   private reads = 0;
 
   constructor() {
@@ -162,11 +187,11 @@ export class People {
 
   /**
    * The sum of the person's OPEN and SETTLED claims' dues, each already rounded, skipping the n/a ones; n/a when
-   * their grade has no rate in force today, unless a settled claim keeps a fixed due.
+   * their grade has no rate in force today, unless a claim keeps a due fixed by settling or a statement.
    */
   protected dueTotalOf(person: Person): string {
     const counted = this.claimsOf(person.id).filter(counts);
-    if (this.rateOf(person.grade) === undefined && !counted.some((c) => c.settledDue !== null)) return 'n/a';
+    if (this.rateOf(person.grade) === undefined && !counted.some(dueFixed)) return 'n/a';
     return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade)));
   }
 
@@ -194,7 +219,25 @@ export class People {
     void this.read(sheet);
   }
 
+  /** Take a statement of the person, then re-read so their claims show the dues it bound them to. */
+  protected async statement(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, null, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `A statement of ${person.name} could not be taken.` });
+    }
+  }
+
   protected edit(person: Person): void {
+    this.rowError.set(null);
     this.editing.set(person.id);
     this.editingVersion = person.version;
     this.name.set(person.name);
