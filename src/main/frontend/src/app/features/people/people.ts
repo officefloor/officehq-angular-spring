@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, dueFixed, gradeOn, isOpen, overdue, sumAmounts } from '../claims/claims';
+import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, statusOn, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, capped, excessOver, rateOn, sumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
@@ -53,6 +53,18 @@ function heldOn(holds: PersonHold[], date: string): boolean {
  */
 function live(claim: Claim, holds: PersonHold[], today: string | null): boolean {
   return counts(claim, today) && !(isOpen(claim) && !bound(claim) && heldOn(holds, claim.date));
+}
+
+/**
+ * Whether the claim counts in a period's due-total: by the status it had at the end of the period's last day, an OPEN,
+ * PENDING or SETTLED one, but one open then and dated within a hold of its person not unless a statement binds it, and
+ * one deferred on the sheet's today not at all.
+ */
+function liveAtEnd(claim: Claim, holds: PersonHold[], today: string | null, end: string): boolean {
+  const status = statusOn(claim, end);
+  if (status === null || deferred(claim, today)) return false;
+  const open = status === 'OPEN' || status === 'PENDING';
+  return (open || status === 'SETTLED') && !(open && !bound(claim) && heldOn(holds, claim.date));
 }
 
 /** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */
@@ -370,8 +382,8 @@ export class People {
   /** The sheet's periods in date order. */
   protected readonly periods = signal<Period[]>([]);
   /**
-   * Each person's live due-total for each period, by person id and then period name: the dues of their OPEN, PENDING
-   * and SETTLED claims dated in it, skipping the n/a ones; a period they have none in is missing.
+   * Each person's live due-total for each period, by person id and then period name: the dues as shown now of their
+   * claims dated in it that were OPEN, PENDING or SETTLED at the end of its last day, skipping the n/a ones; a period they have none in is missing.
    */
   private readonly livePersonPeriodDues = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
@@ -379,7 +391,7 @@ export class People {
     for (const c of this.claims()) {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (!period || person === undefined || !live(c, person.holds, this.session.today())) continue;
+      if (!period || person === undefined || !liveAtEnd(c, person.holds, this.session.today(), period.to)) continue;
       const theirs = dues.get(person.id) ?? new Map<string, string[]>();
       const list = theirs.get(period.name) ?? [];
       list.push(claimDue(c, this.rates(), person.grades, this.session));

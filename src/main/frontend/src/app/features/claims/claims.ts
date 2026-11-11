@@ -81,6 +81,17 @@ export function deferred(claim: Claim, today: string | null): boolean {
   return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
 }
 
+/**
+ * The status the claim had at the end of the date, as its status log records it: its last line logged on or before
+ * the date; null when it has lines but none by then (it was added later). With no log at all, its status now.
+ */
+export function statusOn(claim: Claim, date: string): ClaimStatus | null {
+  if (claim.log.length === 0) return claim.status;
+  let found: ClaimStatus | null = null;
+  for (const line of claim.log) if (line.date <= date) found = line.status;
+  return found;
+}
+
 /** Whether a claim is handled as open: OPEN or PENDING. It goes overdue, bears the late charge, and a hold takes it out. */
 export function isOpen(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'PENDING';

@@ -12,7 +12,10 @@ import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimLog;
+import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -42,14 +45,16 @@ public class RollupService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
+    private final ClaimLogRepository logs;
     private final RateRepository rates;
     private final SheetRepository sheets;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
-            SheetRepository sheets, Audit audit) {
+    public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
+            RateRepository rates, SheetRepository sheets, Audit audit) {
         this.people = people;
         this.claims = claims;
+        this.logs = logs;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
@@ -111,8 +116,9 @@ public class RollupService {
 
     /**
      * Each person's due-total of the dates from and to, both inclusive, by person id for every person on the sheet, as
-     * the screen shows a person's for a period: the dues of their OPEN and SETTLED claims dated in them, skipping those
-     * with no due and the OPEN ones a hold of theirs leaves out; 0.00 with none.
+     * the screen shows a person's for a period: the dues as shown now of their claims dated in them that were OPEN,
+     * PENDING or SETTLED at the end of the to-date by their status log, skipping those with no due and the open ones a
+     * hold of theirs leaves out; 0.00 with none.
      */
     public Map<Long, BigDecimal> dueTotalsBetween(String sheetId, LocalDate from, LocalDate to) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
@@ -124,9 +130,14 @@ public class RollupService {
             byId.put(person.getId(), person);
             totals.put(person.getId(), zero());
         }
+        Map<Long, List<ClaimLog>> logOf = new LinkedHashMap<>();
+        for (ClaimLog line : logs.findBySheetIdOrderByIdAsc(sheetId)) {
+            logOf.computeIfAbsent(line.getClaimId(), id -> new ArrayList<>()).add(line);
+        }
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !person.counts(claim, today) || claim.getDate().isBefore(from)
+            ClaimStatus status = statusOn(claim, logOf.getOrDefault(claim.getId(), List.of()), to);
+            if (person == null || !person.countsAsOf(claim, status, today) || claim.getDate().isBefore(from)
                     || claim.getDate().isAfter(to)) {
                 continue;
             }
@@ -180,6 +191,23 @@ public class RollupService {
         return sheet == null ? figure
                 : figure.map(f -> sheet.withLateCharge(f,
                         claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDueBy(), claim.getDate()));
+    }
+
+    /**
+     * The status the claim had at the end of the date by its log (oldest first): its last line logged on or before the
+     * date; null when it has lines but none by then. With no log at all, its status now.
+     */
+    private static ClaimStatus statusOn(Claim claim, List<ClaimLog> log, LocalDate date) {
+        if (log.isEmpty()) {
+            return claim.getStatus();
+        }
+        ClaimStatus found = null;
+        for (ClaimLog line : log) {
+            if (!line.getDate().isAfter(date)) {
+                found = line.getStatus();
+            }
+        }
+        return found;
     }
 
     /** As on the screen: an OPEN or PENDING claim whose due-by is before the sheet's today. */

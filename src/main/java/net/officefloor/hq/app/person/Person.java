@@ -163,6 +163,16 @@ public class Person {
                 && !claim.isDeferredOn(today);
     }
 
+    /**
+     * Whether the claim counts in a period's due-total, given the status it had at the end of the period's last day
+     * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and dated within a hold not
+     * unless a statement binds it, and an OPEN one deferred on the sheet's today not at all.
+     */
+    public boolean countsAsOf(Claim claim, ClaimStatus status, LocalDate today) {
+        return status != null && status.counts() && !(status.isOpen() && !claim.isBound() && heldOn(claim.getDate()))
+                && !claim.isDeferredOn(today);
+    }
+
     /** Refused when the person is retired and the date is after their retirement date. */
     public void requireClaimable(LocalDate date) {
         if (retiredFrom != null && date.isAfter(retiredFrom)) {
