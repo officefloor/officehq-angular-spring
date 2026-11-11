@@ -1,8 +1,10 @@
 package net.officefloor.hq.app;
 
 import java.io.IOException;
+import net.officefloor.hq.app.role.ViewerInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.resource.PathResourceResolver;
@@ -15,6 +17,18 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
  */
 @Configuration
 public class SpaConfig implements WebMvcConfigurer {
+
+    private final ViewerInterceptor viewer;
+
+    public SpaConfig(ViewerInterceptor viewer) {
+        this.viewer = viewer;
+    }
+
+    /** A viewer may change nothing on a sheet. */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(viewer).addPathPatterns("/api/sheets/**");
+    }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {

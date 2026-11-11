@@ -30,11 +30,11 @@ interface SettingsView {
 
 interface RoleView {
   user: string;
-  /** clerk or steward; a user name not listed is a clerk. */
+  /** clerk, steward or viewer; a user name not listed is a clerk. */
   role: string;
 }
 
-const ROLES = ['clerk', 'steward'];
+const ROLES = ['clerk', 'steward', 'viewer'];
 const GRADES = ['A', 'B', 'C'];
 /** The actions the permission matrix decides. */
 const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
@@ -231,7 +231,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="roleUser()"
           (input)="roleUser.set(value($event)); roleError.set(null)"
         />
-        <label for="role-form-role">Role (clerk or steward)</label>
+        <label for="role-form-role">Role (clerk, steward or viewer)</label>
         <input
           id="role-form-role"
           data-testid="role-form-role"
@@ -554,7 +554,7 @@ export class Settings {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.roleError.set('A role is clerk or steward.');
+      this.roleError.set('A role is clerk, steward or viewer.');
       return;
     }
     this.savingRole = true;

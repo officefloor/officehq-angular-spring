@@ -28,9 +28,9 @@ public class RoleController {
         }
     }
 
-    /** A user name and its role: clerk or steward. */
+    /** A user name and its role: clerk, steward or viewer. */
     public record RoleRequest(@NotBlank @Size(max = 100) String user,
-            @NotNull @Pattern(regexp = "\\s*(clerk|steward)\\s*") String role) {
+            @NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer)\\s*") String role) {
     }
 
     private final RoleService service;

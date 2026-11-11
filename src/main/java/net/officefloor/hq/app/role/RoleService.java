@@ -31,6 +31,11 @@ public class RoleService {
         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
     }
 
+    /** Whether the user is a viewer on the sheet, who may change nothing. */
+    public boolean isViewer(String sheetId, String user) {
+        return roleOf(sheetId, user) == Role.VIEWER;
+    }
+
     /** Whether the user's role may take the action (open, settle, void, reassign, close, reopen) on the sheet. */
     public boolean may(String sheetId, String user, String action) {
         return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId))
