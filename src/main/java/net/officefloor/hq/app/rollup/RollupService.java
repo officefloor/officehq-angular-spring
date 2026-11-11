@@ -91,7 +91,7 @@ public class RollupService {
                 Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
                 if (claimDue.isPresent()) {
                     due = due.add(claimDue.get());
-                    if (isOverdue(claim, today)) {
+                    if (isOverdue(sheet, person, claim, today)) {
                         overdue = overdue.add(claimDue.get());
                     }
                     // A due under a grade the person had on an earlier date counts too.
@@ -198,7 +198,8 @@ public class RollupService {
                                 ? claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN)
                                 : sheet.rateStep(claim.getAmount(), pct, claim.getRoundingDate()));
         return sheet == null || claim.isCorrection() ? figure
-                : figure.map(f -> sheet.floored(sheet.withLateCharge(f, claim.getStatus().isOpen(), claim.getDueBy(),
+                : figure.map(f -> sheet.floored(sheet.withLateCharge(f, claim.getStatus().isOpen(),
+                        sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()),
                         claim.getDate()), claim.getDate()));
     }
 
@@ -219,10 +220,13 @@ public class RollupService {
         return found;
     }
 
-    /** As on the screen: an OPEN or PENDING claim whose due-by is before the sheet's today. */
-    private static boolean isOverdue(Claim claim, LocalDate today) {
+    /**
+     * As on the screen: an OPEN or PENDING claim whose due-by, plus the grace days its person's grade has on its date,
+     * is before the sheet's today.
+     */
+    private static boolean isOverdue(Sheet sheet, Person person, Claim claim, LocalDate today) {
         return claim.getStatus().isOpen() && today != null && claim.getDueBy() != null
-                && claim.getDueBy().isBefore(today);
+                && sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()).isBefore(today);
     }
 
     private static Optional<Rate> rateOn(List<Rate> sheetRates, String grade, LocalDate date) {

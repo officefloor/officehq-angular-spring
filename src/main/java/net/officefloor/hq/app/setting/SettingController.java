@@ -36,7 +36,7 @@ public class SettingController {
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
      * separated, null when blank (the standing rule).
      * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
-     * late-pct, cap, proof-threshold, note-threshold), from-date first to last.
+     * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, note-threshold), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
@@ -92,6 +92,14 @@ public class SettingController {
 
         int termsValue() {
             return Integer.parseInt(terms.trim());
+        }
+    }
+
+    /** Grace days of 0 or more whole days, blank or missing meaning none, from the date (missing: the sheet's today). */
+    public record GradeGraceRequest(@Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String grace, LocalDate from) {
+
+        Integer graceValue() {
+            return grace == null || grace.isBlank() ? null : Integer.valueOf(grace.trim());
         }
     }
 
@@ -211,6 +219,14 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TermsRequest request) {
         return view(service.setGradeTerms(sheetId.trim(), user.trim(), grade, request.termsValue(), request.from()));
+    }
+
+    @PutMapping("/grace/{grade}")
+    public SettingsView setGradeGrace(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GradeGraceRequest request) {
+        return view(service.setGradeGrace(sheetId.trim(), user.trim(), grade, request.graceValue(), request.from()));
     }
 
     @PutMapping("/late-pct")

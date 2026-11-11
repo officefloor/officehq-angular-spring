@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, its late percent, its cap and its proof threshold, each
+ * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap and its proof threshold, each
  * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days and its
  * permission matrix, not dated.
  */
@@ -87,6 +87,16 @@ public class SettingService {
     @Transactional
     public Sheet setGradeTerms(String sheetId, String user, String grade, int terms, LocalDate from) {
         return record(sheetId, user, Sheet.gradeTermsKey(grade), String.valueOf(terms), from, false);
+    }
+
+    /**
+     * Set a grade's grace days from the date (null: the sheet's today); null means none. A claim whose person's grade on
+     * its date has grace days then goes overdue, and counts its late charge, from its due-by plus them. Every save is
+     * recorded, then the figures it moved.
+     */
+    @Transactional
+    public Sheet setGradeGrace(String sheetId, String user, String grade, Integer days, LocalDate from) {
+        return record(sheetId, user, Sheet.gradeGraceKey(grade), days == null ? null : days.toString(), from, true);
     }
 
     /**

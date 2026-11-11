@@ -228,7 +228,7 @@ public class ClaimService {
         // is at or below the clerk limit; one above it goes to PENDING. A due of n/a is within any limit.
         if (status == ClaimStatus.SETTLED && roles.roleOf(sheetId, user) == Role.CLERK) {
             BigDecimal limit = settings.get(sheetId).getClerkLimit();
-            BigDecimal due = liveDue(sheetId, claim, figureOf(sheetId, person, claim));
+            BigDecimal due = liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
             if (limit != null && due != null && due.compareTo(limit) > 0) {
                 status = ClaimStatus.PENDING;
             }
@@ -391,7 +391,7 @@ public class ClaimService {
         BigDecimal figure = dueOf(sheetId, person, claim);
         Sheet sheet = settings.get(sheetId);
         claim.setSettledDue(claim.isCorrection() ? figure
-                : sheet.floored(sheet.withLateCharge(figure, true, claim.getDueBy(), claim.getDate()), claim.getDate()));
+                : sheet.floored(sheet.withLateCharge(figure, true, overdueBy(sheet, person, claim), claim.getDate()), claim.getDate()));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_RESETTLED", user, person, saved) + numberOf(saved.getNumber())
@@ -539,7 +539,7 @@ public class ClaimService {
         if (threshold == null || claim.getProofs() > 0) {
             return;
         }
-        BigDecimal due = liveDue(sheetId, claim, figureOf(sheetId, person, claim));
+        BigDecimal due = liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ClaimProofException(claim.getId(), "its due " + due.toPlainString()
                     + " is above the proof threshold " + threshold.toPlainString() + " and it has no proof");
@@ -555,7 +555,7 @@ public class ClaimService {
         if (threshold == null || !noteOf(claim.getNote()).isEmpty()) {
             return;
         }
-        BigDecimal due = liveDue(sheetId, claim, figureOf(sheetId, person, claim));
+        BigDecimal due = liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ClaimNoteException(claim.getId(), "its due " + due.toPlainString()
                     + " is above the note threshold " + threshold.toPlainString() + " and its note is empty");
@@ -606,7 +606,7 @@ public class ClaimService {
         BigDecimal figure = figureOf(sheetId, person, claim);
         Sheet sheet = settings.get(sheetId);
         BigDecimal settledDue = figure == null || claim.isCorrection() ? figure
-                : sheet.floored(figure.add(sheet.lateCharge(figure, claim.getDueBy(), claim.getDate())), claim.getDate());
+                : sheet.floored(figure.add(sheet.lateCharge(figure, overdueBy(sheet, person, claim), claim.getDate())), claim.getDate());
         claim.setSettledDue(settledDue);
         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
     }
@@ -622,7 +622,7 @@ public class ClaimService {
      */
     private String shownDue(String sheetId, Person person, Claim claim) {
         BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
-                : liveDue(sheetId, claim, figureOf(sheetId, person, claim));
+                : liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
         return due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_EVEN).toPlainString();
     }
 
@@ -670,13 +670,18 @@ public class ClaimService {
      * charge of an OPEN or PENDING claim overdue on the sheet's today added on top (no late charge on a claim deferred
      * on the sheet's today; a correction has neither floor nor late charge); null (n/a) stays null.
      */
-    private BigDecimal liveDue(String sheetId, Claim claim, BigDecimal figure) {
+    private BigDecimal liveDue(String sheetId, Person person, Claim claim, BigDecimal figure) {
         Sheet sheet = settings.get(sheetId);
         if (claim.isCorrection()) {
             return figure;
         }
         return sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen()
-                && !claim.isDeferredOn(sheet.getToday()), claim.getDueBy(), claim.getDate()), claim.getDate());
+                && !claim.isDeferredOn(sheet.getToday()), overdueBy(sheet, person, claim), claim.getDate()), claim.getDate());
+    }
+
+    /** The day the claim goes overdue after: its due-by plus the grace days its person's grade has on its date. */
+    private static LocalDate overdueBy(Sheet sheet, Person person, Claim claim) {
+        return sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate());
     }
 
     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */

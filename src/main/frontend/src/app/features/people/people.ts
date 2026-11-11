@@ -751,7 +751,7 @@ export class People {
   /** The person's claims that count in the live totals and are overdue. */
   protected overdueOf(person: Person): Claim[] {
     return this.claimsOf(person.id).filter(
-      (c) => live(c, person, this.session.today()) && overdue(c, this.session.today()),
+      (c) => live(c, person, this.session.today()) && overdue(c, person.grades, this.session),
     );
   }
 

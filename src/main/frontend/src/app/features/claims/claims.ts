@@ -148,16 +148,27 @@ export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], ses
   const due = dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date), roundingOf(claim, session));
   const figure = bound(claim) ? (claim.statedDue ?? 'n/a') : due;
   if (figure === 'n/a' || isCorrection(claim)) return figure;
-  return floored(sumDues([figure, lateCharge(claim, figure, session)]), session.settingOn('floor', claim.date));
+  return floored(sumDues([figure, lateCharge(claim, figure, grades, session)]), session.settingOn('floor', claim.date));
 }
 
 /**
- * For every full 30 days an OPEN claim is past its due-by on the sheet's today, the late percent in force on that
- * boundary (the due-by plus 30, 60, 90 ... days) of the figure, each rounded like the claim's due, added up; 0.00 when
- * it is not overdue, and on a correction.
+ * The day the claim goes overdue after, and its late charge counts from: its due-by plus the grace days of its person's
+ * grade on its date in force on that date, else its due-by. The due-by shown stays as it is.
  */
-export function lateCharge(claim: Claim, figure: string, session: Session): string {
-  const by = claim.dueBy;
+export function overdueBy(claim: Claim, grades: PersonGrade[], session: Session): string {
+  if (claim.dueBy === '') return claim.dueBy;
+  const grade = gradeOn(grades, claim.date);
+  const grace = grade === undefined ? null : session.settingOn('grace-' + grade, claim.date);
+  return grace === null || grace === '' ? claim.dueBy : plusDays(claim.dueBy, Number(grace));
+}
+
+/**
+ * For every full 30 days an OPEN claim is past its due-by (plus its grace) on the sheet's today, the late percent in
+ * force on that boundary (the due-by plus its grace plus 30, 60, 90 ... days) of the figure, each rounded like the
+ * claim's due, added up; 0.00 when it is not overdue, and on a correction.
+ */
+export function lateCharge(claim: Claim, figure: string, grades: PersonGrade[], session: Session): string {
+  const by = overdueBy(claim, grades, session);
   const today = session.today();
   if (!isOpen(claim) || isCorrection(claim) || by === '' || today === null) return '0.00';
   if (deferred(claim, today)) return '0.00';
@@ -180,9 +191,10 @@ export function dueFixed(claim: Claim): boolean {
   return claim.settledDue !== null || (bound(claim) && claim.statedDue !== null);
 }
 
-/** Whether the claim is OPEN or PENDING, not deferred, and its due-by is before the sheet's today. */
-export function overdue(claim: Claim, today: string | null): boolean {
-  return isOpen(claim) && today !== null && claim.dueBy < today && !deferred(claim, today);
+/** Whether the claim is OPEN or PENDING, not deferred, and its due-by plus its grace is before the sheet's today. */
+export function overdue(claim: Claim, grades: PersonGrade[], session: Session): boolean {
+  const today = session.today();
+  return isOpen(claim) && today !== null && overdueBy(claim, grades, session) < today && !deferred(claim, today);
 }
 
 type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
@@ -496,9 +508,9 @@ export class Claims implements OnInit {
     return claimDue(claim, this.rates(), this.grades(), this.session);
   }
 
-  /** Whether the claim is OPEN and was due by a day before the sheet's today. */
+  /** Whether the claim is OPEN and was due by (plus its grace) a day before the sheet's today. */
   protected overdue(claim: Claim): boolean {
-    return overdue(claim, this.session.today());
+    return overdue(claim, this.grades(), this.session);
   }
 
   /** Whether the claim is deferred on the sheet's today. */

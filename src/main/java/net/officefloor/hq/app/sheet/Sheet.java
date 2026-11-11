@@ -38,6 +38,8 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    /** The prefix of a grade's grace days key (grace-A, grace-B, grace-C). */
+    public static final String GRACE = "grace";
 
     /** The actions the permission matrix decides, each with the roles that may take it when its entry is blank. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of("open", "clerk,steward", "settle",
@@ -123,6 +125,11 @@ public class Sheet {
         return TERMS + "-" + grade;
     }
 
+    /** The key of a grade's grace days. */
+    public static String gradeGraceKey(String grade) {
+        return GRACE + "-" + grade;
+    }
+
     /**
      * Record a dated setting's value from the date (null: no limit or cap), replacing the value already recorded from
      * that date; the other values recorded are kept.
@@ -200,6 +207,20 @@ public class Sheet {
     /** The days after its date a claim dated on the date of a person of the grade is due by. */
     public int termsFor(String grade, LocalDate date) {
         return gradeTermsOn(grade, date).orElseGet(() -> termsOn(date));
+    }
+
+    /** The grade's grace days in force on the date; empty when it has none then. */
+    public Optional<Integer> gradeGraceOn(String grade, LocalDate date) {
+        return grade == null ? Optional.empty() : valueOn(gradeGraceKey(grade), date).map(Integer::parseInt);
+    }
+
+    /**
+     * The day a claim dated on the date, due by the due-by, of a person of the grade (the one in force on the claim's
+     * date) counts as due by for going overdue and for its late charge: the due-by plus the grade's grace days in force
+     * on the claim's date, else the due-by.
+     */
+    public LocalDate overdueBy(LocalDate dueBy, String grade, LocalDate date) {
+        return dueBy == null ? null : dueBy.plusDays(gradeGraceOn(grade, date).orElse(0));
     }
 
     /** The percent of its figure an overdue claim gains for each 30-day boundary past its due-by falling on the date. */
