@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -41,7 +42,7 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException(sheetId);
         }
@@ -49,8 +50,11 @@ public class PersonService {
         if (people.existsBySheetIdAndNameKey(sheetId, Person.key(name))) {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
-        Person saved = save(new Person(sheetId, name, grade));
-        audit.recordOnCommit(record("PERSON_ADDED", user, saved, grade));
+        Person person = new Person(sheetId, name, grade);
+        person.setTerms(terms);
+        Person saved = save(person);
+        audit.recordOnCommit(record("PERSON_ADDED", user, saved, grade)
+                + (terms != null ? " terms=" + terms : ""));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -58,10 +62,11 @@ public class PersonService {
     @Transactional
     /**
      * Save the person. The grade is recorded from the from-date (null: the sheet's today), keeping the grades
-     * already recorded; a save leaving the grade as it is in force today, with no from-date, records none.
+     * already recorded; a save leaving the grade as it is in force today, with no from-date, records none. The
+     * terms (null: none) replace the person's own.
      */
     public Person update(String sheetId, String user, Long id, Long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
@@ -72,12 +77,15 @@ public class PersonService {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
         LocalDate today = sheetService.today(sheetId);
+        Integer termsBefore = person.getTerms();
         person.setName(name);
+        person.setTerms(terms);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
         Person saved = save(person);
-        audit.recordOnCommit(record("PERSON_EDITED", user, saved, saved.gradeOn(today)));
+        audit.recordOnCommit(record("PERSON_EDITED", user, saved, saved.gradeOn(today))
+                + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

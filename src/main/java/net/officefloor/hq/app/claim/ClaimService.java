@@ -90,8 +90,8 @@ public class ClaimService {
         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note));
         claim.setCorrects(corrects);
         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
-        // Due by its date plus the terms of its person's grade on that date, fixed from now on.
-        claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated), dated)));
+        // Due by its date plus its person's terms on that date, fixed from now on.
+        claim.setDueBy(dated.plusDays(termsFor(sheetId, person, dated)));
         claim.setListed(sheets.nextListed(sheetId));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
@@ -373,8 +373,7 @@ public class ClaimService {
         Claim kept = claims.saveAndFlush(claim);
         Claim part = new Claim(sheetId, kept.getPersonId(), amount, kept.getDate(), kept.getNote());
         part.setRoundingDate(kept.getRoundingDate());
-        part.setDueBy(kept.getDate().plusDays(
-                settings.termsFor(sheetId, person.gradeOn(kept.getDate()), kept.getDate())));
+        part.setDueBy(kept.getDate().plusDays(termsFor(sheetId, person, kept.getDate())));
         part.setListed(sheets.nextListed(sheetId));
         part.setStatus(ClaimStatus.OPEN);
         String number = nextNumber(sheetId, kept.getDate());
@@ -540,6 +539,12 @@ public class ClaimService {
             return sheets.nextSequenceNumber(sheetId, periods.nameOn(sheetId, date).orElse("X"));
         }
         return String.valueOf(sheets.nextClaimNumber(sheetId));
+    }
+
+    /** The terms of the person on the date: their own, else their grade's on that date, else the sheet's then. */
+    private int termsFor(String sheetId, Person person, LocalDate date) {
+        return person.getTerms() != null ? person.getTerms()
+                : settings.termsFor(sheetId, person.gradeOn(date), date);
     }
 
     private LocalDate dateOr(String sheetId, LocalDate date) {

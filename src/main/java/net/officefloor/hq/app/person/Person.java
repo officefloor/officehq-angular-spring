@@ -44,6 +44,10 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonGrade> grades = new ArrayList<>();
 
+    /** The person's own terms in whole days, ahead of their grade's and the sheet's; null when they have none. */
+    @Column(name = "terms")
+    private Integer terms;
+
     /** The date the person is retired from; null while not retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -118,6 +122,14 @@ public class Person {
             }
         }
         grades.add(new PersonGrade(grade, fromDate));
+    }
+
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public LocalDate getRetiredFrom() {

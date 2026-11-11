@@ -40,13 +40,14 @@ public class PersonController {
 
     /**
      * A person as shown, with their grade in force on the sheet's today and every grade with its from-date, with how many statements they have had and the due-total and date of the last one. */
-    public record PersonView(Long id, String name, String grade, long version, int statementCount,
+    public record PersonView(Long id, String name, String grade, Integer terms, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<GradeView> grades, List<HoldView> holds, boolean watched) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
                 boolean watched) {
-            return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getVersion(),
+            return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getTerms(),
+                    person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds,
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
@@ -59,7 +60,13 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
+            @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms,
             Long version) {
+
+        /** The person's own terms in whole days; null when blank. */
+        Integer termsValue() {
+            return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+        }
     }
 
     /** The date to retire from; null for the sheet's today. */
@@ -111,7 +118,8 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
-        return view(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()), user.trim());
+        return view(service.add(sheetId.trim(), user.trim(), request.name(), request.grade(),
+                request.termsValue()), user.trim());
     }
 
     /** Saves the person; with a version, only when it is still the version stored. */
@@ -121,7 +129,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
         return view(service.update(sheetId.trim(), user.trim(), id, request.version(), request.name(),
-                request.grade(), request.gradeFrom()), user.trim());
+                request.grade(), request.gradeFrom(), request.termsValue()), user.trim());
     }
 
     /** Take a statement of the person: record their due-total and bind their counting claims to their dues. */

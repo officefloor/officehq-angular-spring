@@ -15,6 +15,8 @@ interface Person {
   grade: string;
   /** Every grade of the person, each from its from-date; the first one given from the beginning of time. */
   grades: PersonGrade[];
+  /** The person's own terms in whole days; null when they have none. */
+  terms: number | null;
   /** Raised on each save; the editor sends back the one it loaded. */
   version: number;
   /** How many statements the person has had. */
@@ -118,6 +120,14 @@ function csvField(value: string): string {
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set(null)"
         />
+        <label for="person-form-terms">Terms in days (blank: none)</label>
+        <input
+          id="person-form-terms"
+          data-testid="person-form-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -179,7 +189,7 @@ function csvField(value: string): string {
       <table>
         <thead>
           <tr>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
             }
@@ -195,6 +205,7 @@ function csvField(value: string): string {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               @for (per of periods(); track per.id) {
@@ -454,6 +465,8 @@ export class People {
   protected readonly grade = signal('A');
   /** The date the form's grade applies from; blank for the sheet's today. */
   protected readonly gradeFrom = signal('');
+  /** The person's own terms in whole days; blank for none. */
+  protected readonly terms = signal('');
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded. */
@@ -860,7 +873,14 @@ export class People {
     this.name.set(person.name);
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set('');
+    this.terms.set(person.terms === null ? '' : String(person.terms));
     this.error.set(null);
+  }
+
+  /** Show why the form was refused; a refused save closes the editor, so the form adds a person again. */
+  private refuse(message: string): void {
+    if (this.editing() !== null) this.reset();
+    this.error.set(message);
   }
 
   protected reset(): void {
@@ -868,6 +888,7 @@ export class People {
     this.name.set('');
     this.grade.set('A');
     this.gradeFrom.set('');
+    this.terms.set('');
     this.error.set(null);
   }
 
@@ -882,10 +903,15 @@ export class People {
       name: this.name(),
       grade: this.grade(),
       gradeFrom: this.gradeFrom() || null,
+      terms: this.terms().trim() || null,
       version: editing === null ? null : this.editingVersion,
     };
     if (!body.name.trim()) {
       this.error.set('Type a name for the person.');
+      return;
+    }
+    if (body.terms !== null && !/^\d{1,5}$/.test(body.terms)) {
+      this.refuse('Terms are a whole number of days, or blank for none.');
       return;
     }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people`;
@@ -912,9 +938,9 @@ export class People {
         this.error.set('Someone else saved this person in the meantime. The form now shows their values.');
         await this.reloadEditor(sheet, editing);
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set('Another person on the sheet already has that name.');
+        this.refuse('Another person on the sheet already has that name.');
       } else {
-        this.error.set(editing === null ? 'The person could not be added.' : 'The person could not be saved.');
+        this.refuse(editing === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
     } finally {
       this.submitting = false;
@@ -1023,6 +1049,7 @@ export class People {
       this.editingVersion = person.version;
       this.name.set(person.name);
       this.grade.set(this.gradeOf(person));
+      this.terms.set(person.terms === null ? '' : String(person.terms));
     }
   }
 

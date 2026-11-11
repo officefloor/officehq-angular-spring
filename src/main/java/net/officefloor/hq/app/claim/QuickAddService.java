@@ -29,7 +29,7 @@ public class QuickAddService {
     @Transactional
     public Claim add(String sheetId, String user, String name, BigDecimal amount) {
         Person person = people.findBySheetIdAndNameKey(sheetId, Person.key(name))
-                .orElseGet(() -> persons.add(sheetId, user, name, NEW_PERSON_GRADE));
+                .orElseGet(() -> persons.add(sheetId, user, name, NEW_PERSON_GRADE, null));
         return claims.add(sheetId, user, person.getId(), amount, null, "", null);
     }
 }

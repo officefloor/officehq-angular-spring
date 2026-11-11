@@ -63,7 +63,7 @@ public class Claim {
     @Column(name = "corrects")
     private String corrects;
 
-    /** The day the claim is due by: fixed when it is added, from the terms of its person's grade on its date. */
+    /** The day the claim is due by: fixed when it is added, from its person's own terms, else their grade's, else the sheet's, on its date. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
