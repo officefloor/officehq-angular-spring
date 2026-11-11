@@ -36,6 +36,14 @@ public class RateController {
             LocalDate from, LocalDate to) {
     }
 
+    public record WithdrawRateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull @Pattern(regexp = GradeService.CODE) String grade, LocalDate from) {
+    }
+
+    /** What a withdrawal left: the version that applies again, or none when the rate is gone. */
+    public record WithdrawRateResponse(RateResponse rate) {
+    }
+
     public record ImportRatesRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull @Size(max = 100000) String text) {
     }
@@ -95,6 +103,12 @@ public class RateController {
     public RateResponse set(@Valid @RequestBody SetRateRequest req) {
         return response(service.set(req.sheet().trim(), req.user().trim(), req.grade(), req.from(), req.to(),
                 new BigDecimal(req.pct()).setScale(2, RoundingMode.UNNECESSARY)), 0);
+    }
+
+    @PostMapping("/withdraw")
+    public WithdrawRateResponse withdraw(@Valid @RequestBody WithdrawRateRequest req) {
+        return new WithdrawRateResponse(service.withdraw(req.sheet().trim(), req.user().trim(), req.grade(), req.from())
+                .map(rate -> response(rate, 0)).orElse(null));
     }
 
     @PostMapping("/import")

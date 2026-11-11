@@ -40,6 +40,9 @@ public class RateVersion {
     @Column(name = "version", nullable = false)
     private int version;
 
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     protected RateVersion() {
     }
 
@@ -51,6 +54,15 @@ public class RateVersion {
         this.toDate = rate.getToDate();
         this.pct = rate.getPct();
         this.version = rate.getVersion();
+        this.forwardAfter = rate.getForwardAfter();
+    }
+
+    /** Put this version back as the rate in force. */
+    public void restoreTo(Rate rate) {
+        rate.setPct(pct);
+        rate.setToDate(toDate);
+        rate.setVersion(version);
+        rate.setForwardAfter(forwardAfter);
     }
 
     public Long getId() {

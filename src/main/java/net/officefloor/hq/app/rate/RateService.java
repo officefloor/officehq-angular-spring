@@ -87,4 +87,35 @@ public class RateService {
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
+
+    /**
+     * Withdraw the newest version of the grade's rate from a from-date (or its undated one when null):
+     * the version before it applies again; with none the rate is gone. Only a steward may; a rate the
+     * sheet does not have is refused. Returns the version that applies again, if any.
+     */
+    @Transactional
+    public Optional<Rate> withdraw(String sheetId, String user, String grade, LocalDate fromDate) {
+        roles.refuseViewer(sheetId, user);
+        roles.refuseUnlessSteward(sheetId, user);
+        sheets.load(sheetId, user);
+        Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, fromDate)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "There is no such rate to withdraw."));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Optional<RateVersion> older = versions.findNewest(sheetId, grade, fromDate);
+        rateLog.saveAndFlush(RateLog.withdrawal(rate, sheets.today(sheetId)));
+        Optional<Rate> restored;
+        if (older.isPresent()) {
+            older.get().restoreTo(rate);
+            versions.delete(older.get());
+            restored = Optional.of(rates.saveAndFlush(rate));
+        } else {
+            rates.delete(rate);
+            rates.flush();
+            restored = Optional.empty();
+        }
+        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user + " grade=" + grade
+                + (fromDate != null ? " from=" + fromDate : ""));
+        rollup.recordChanges(sheetId, user, before);
+        return restored;
+    }
 }

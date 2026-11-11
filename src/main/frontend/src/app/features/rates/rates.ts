@@ -366,6 +366,7 @@ export function dueText(c: number | null): string {
             <th scope="col">To</th>
             <th scope="col">Rate (%)</th>
             <th scope="col">Versions</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -376,6 +377,16 @@ export function dueText(c: number | null): string {
               <td data-testid="rate-to">{{ r.to ?? 'open' }}</td>
               <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.version ?? 1 }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="rate-withdraw"
+                  [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' rate from ' + (r.from ?? 'always')"
+                  (click)="withdraw(r)"
+                >
+                  Withdraw
+                </button>
+              </td>
             </tr>
           }
         </tbody>
@@ -581,6 +592,34 @@ export class Rates {
       this.toInput.set('');
     } catch {
       this.error.set('Could not set this rate.');
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Withdraw the rate's newest version: the one before it applies again, or with none the rate is gone. */
+  protected async withdraw(rate: Rate): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    this.submitting = true;
+    try {
+      const res = await firstValueFrom(
+        this.http.post<{ rate: Rate | null }>('/api/rates/withdraw', {
+          sheet,
+          user: this.session.user(),
+          grade: rate.grade,
+          from: rate.from ?? null,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.rates.update((list) => [
+        ...list.filter((r) => (r.level ?? 0) !== 0 || r.grade !== rate.grade || r.from !== rate.from),
+        ...(res.rate ? [res.rate] : []),
+      ]);
+    } catch (e) {
+      const reason = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? e.error.message : '';
+      this.error.set(reason || 'Could not withdraw this rate.');
     } finally {
       this.submitting = false;
     }

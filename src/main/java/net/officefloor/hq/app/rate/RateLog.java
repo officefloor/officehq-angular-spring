@@ -12,7 +12,7 @@ import java.time.LocalDate;
 /**
  * One rate as it was set: the grade, its from-date and to-date, the percent, and the sheet's today
  * when it was set (none: from the beginning of time). Kept so the rates can be rebuilt as they stood
- * at the end of a day.
+ * at the end of a day. A withdrawal is logged too: the version before the newest applies again.
  */
 @Entity
 @Table(name = "rate_log")
@@ -43,6 +43,10 @@ public class RateLog {
     @Column(name = "made_on")
     private LocalDate madeOn;
 
+    /** Whether this records the withdrawal of the newest version of the grade's rate from the from-date. */
+    @Column(name = "withdrawn", nullable = false)
+    private boolean withdrawn;
+
     protected RateLog() {
     }
 
@@ -54,6 +58,17 @@ public class RateLog {
         this.pct = rate.getPct();
         this.forwardAfter = rate.getForwardAfter();
         this.madeOn = madeOn;
+    }
+
+    /** The withdrawal of the rate's newest version, made on the sheet's today. */
+    public static RateLog withdrawal(Rate rate, LocalDate madeOn) {
+        RateLog log = new RateLog(rate, madeOn);
+        log.withdrawn = true;
+        return log;
+    }
+
+    public boolean isWithdrawn() {
+        return withdrawn;
     }
 
     public Long getId() {
