@@ -1,0 +1,175 @@
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 0593193d9..2aa4294f0 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -20,6 +20,8 @@ export interface PlanView {
+   end: string;
+   /** How many claims the plan has made so far. */
+   generated: number;
++  /** The first five plan dates after the sheet's today, up to the end, comma and space separated. */
++  nextDates: string;
+ }
+ 
+ // The active sheet's plans, in the order they were added, re-read whenever a sheet is loaded.
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 26417183f..6e14f1ee4 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -19,7 +19,8 @@ const WHOLE = /^\d{1,6}$/;
+           {{ pl.amount }} from {{ pl.start }}
+           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
+           to {{ pl.end }};
+-          made <span data-testid="plan-generated">{{ pl.generated }}</span>
++          made <span data-testid="plan-generated">{{ pl.generated }}</span>;
++          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
+         </li>
+       }
+     </ul>
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 111cbecd0..71e5fb316 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -188,7 +188,7 @@ export function trimmedSumDues(dues: string[]): string {
+           id="rate-preview-grade"
+           data-testid="rate-preview-grade"
+           [value]="previewGrade()"
+-          (change)="previewGrade.set(value($event)); previewError.set(null)"
++          (change)="previewGrade.set(value($event)); previewResult.set(null); previewError.set(null)"
+         >
+           @for (g of grades(); track g) {
+             <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+@@ -200,7 +200,7 @@ export function trimmedSumDues(dues: string[]): string {
+           data-testid="rate-preview-pct"
+           inputmode="decimal"
+           [value]="previewPct()"
+-          (input)="previewPct.set(value($event)); previewError.set(null)"
++          (input)="previewPct.set(value($event)); previewResult.set(null); previewError.set(null)"
+         />
+         <button type="submit" data-testid="rate-preview">Preview</button>
+         @if (previewResult(); as result) {
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 785d89950..8779583e6 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.time.YearMonth;
++import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.List;
+ 
+@@ -81,6 +82,29 @@ public class Plan {
+         return dates;
+     }
+ 
++    /** The first so many plan dates after the given day, up to the end. */
++    public List<LocalDate> datesAfter(LocalDate after, int limit) {
++        List<LocalDate> dates = new ArrayList<>();
++        if (day != null) {
++            for (YearMonth month = YearMonth.from(start); dates.size() < limit && !month.atDay(1).isAfter(end);
++                    month = month.plusMonths(1)) {
++                LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
++                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
++                    dates.add(d);
++                }
++            }
++            return dates;
++        }
++        LocalDate d = start;
++        if (!after.isBefore(start)) {
++            d = start.plusDays((ChronoUnit.DAYS.between(start, after) / every + 1) * every);
++        }
++        for (; dates.size() < limit && !d.isAfter(end); d = d.plusDays(every)) {
++            dates.add(d);
++        }
++        return dates;
++    }
++
+     public Long getId() {
+         return id;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 631f14157..961ee58f9 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -10,6 +10,7 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
++import java.util.stream.Collectors;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -29,15 +30,17 @@ public class PlanController {
+ 
+     /**
+      * A plan as shown: its amount with two decimals, its dates as yyyy-mm-dd, its interval in days or its day of the
+-     * month (the other null), and how many claims it has made.
++     * month (the other null), how many claims it has made, and its first five dates after the sheet's today up to its
++     * end, comma and space separated.
+      */
+     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
+-            LocalDate end, long generated) {
++            LocalDate end, long generated, String nextDates) {
+ 
+-        static PlanView of(Plan plan, long generated) {
++        static PlanView of(Plan plan, long generated, List<LocalDate> nextDates) {
+             return new PlanView(plan.getId(), plan.getPersonId(),
+                     plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
+-                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated);
++                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
++                    nextDates.stream().map(LocalDate::toString).collect(Collectors.joining(", ")));
+         }
+     }
+ 
+@@ -84,8 +87,10 @@ public class PlanController {
+     public List<PlanView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         Map<Long, Long> generated = service.generatedCounts(sheetId.trim());
++        Map<Long, List<LocalDate>> next = service.nextDates(sheetId.trim());
+         return service.list(sheetId.trim()).stream()
+-                .map(plan -> PlanView.of(plan, generated.getOrDefault(plan.getId(), 0L)))
++                .map(plan -> PlanView.of(plan, generated.getOrDefault(plan.getId(), 0L),
++                        next.getOrDefault(plan.getId(), List.of())))
+                 .toList();
+     }
+ 
+@@ -95,8 +100,9 @@ public class PlanController {
+             @PathVariable Long personId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid PlanRequest request) {
+-        return PlanView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.start(),
+-                request.everyValue(), request.dayValue(), request.end()), 0);
++        Plan plan = service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.start(),
++                request.everyValue(), request.dayValue(), request.end());
++        return PlanView.of(plan, 0, service.nextDates(sheetId.trim(), plan));
+     }
+ 
+     /** Make the claims of every plan date due and not yet made. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 6f4cfffbd..b0ee0b216 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -60,6 +60,21 @@ public class PlanService {
+                 .collect(Collectors.groupingBy(PlanDate::getPlanId, Collectors.counting()));
+     }
+ 
++    /** The plan's first five dates after the sheet's today, up to its end. */
++    public List<LocalDate> nextDates(String sheetId, Plan plan) {
++        return plan.datesAfter(sheets.today(sheetId), 5);
++    }
++
++    /** The first five dates after the sheet's today of each of the sheet's plans, by plan id. */
++    public Map<Long, List<LocalDate>> nextDates(String sheetId) {
++        List<Plan> all = list(sheetId);
++        if (all.isEmpty()) {
++            return Map.of();
++        }
++        LocalDate today = sheets.today(sheetId);
++        return all.stream().collect(Collectors.toMap(Plan::getId, plan -> plan.datesAfter(today, 5)));
++    }
++
+     @Transactional
+     public Plan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start, Integer every,
+             Integer day, LocalDate end) {
