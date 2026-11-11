@@ -90,7 +90,10 @@ public class RollupService {
             BigDecimal overdue = zero();
             boolean anyDue = today != null && rateOn(sheetRates, person.gradeOn(today), today).isPresent();
             for (Claim claim : theirs) {
-                claimed = claimed.add(claim.getAmount());
+                // A correction leaves claimed alone; only its due counts.
+                if (claim.getCorrects() == null) {
+                    claimed = claimed.add(claim.getAmount());
+                }
                 if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
                     anyDue = true;
                 }

@@ -1256,10 +1256,10 @@ export class People {
     return this.claimsByPerson().get(personId) ?? [];
   }
 
-  /** The sum of the person's OPEN, PENDING and SETTLED claims' amounts, with two decimals; open ones dated within a hold, or any once their retirement date is reached, not unless a statement binds them. */
+  /** The sum of the person's OPEN, PENDING and SETTLED claims' amounts, with two decimals, leaving out corrections; open ones dated within a hold, or any once their retirement date is reached, not unless a statement binds them. */
   protected claimedBy(personId: number): string {
     const person = this.people().find((p) => p.id === personId) ?? { holds: [], retiredFrom: null };
-    return sumAmounts(this.claimsOf(personId).filter((c) => live(c, person, this.session.today())).map((c) => c.amount));
+    return sumAmounts(this.claimsOf(personId).filter((c) => c.corrects === null && live(c, person, this.session.today())).map((c) => c.amount));
   }
 
   /** The person's grade in force on the sheet's today. */
