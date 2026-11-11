@@ -203,7 +203,7 @@ function csvField(value: string): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
             }
@@ -232,6 +232,8 @@ function csvField(value: string): string {
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
+              <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
+              <td data-testid="person-open-total">{{ openTotalOf(p) }}</td>
               @for (per of periods(); track per.id) {
                 <td [attr.data-testid]="'person-period-' + per.name + '-due-total'">{{ periodDueTotalOf(p, per) }}</td>
               }
@@ -436,6 +438,8 @@ function csvField(value: string): string {
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
+      <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
     </section>
@@ -506,6 +510,10 @@ export class People {
   );
   /** Everyone's due-total added up, skipping the n/a ones and, with three or more, the highest and lowest. */
   protected readonly dueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.dueTotalOf(p))));
+  /** Everyone's settled-total added up, not trimmed. */
+  protected readonly settledTotal = computed(() => sumDues(this.people().map((p) => this.settledTotalOf(p))));
+  /** Everyone's open-total added up, not trimmed. */
+  protected readonly openTotal = computed(() => sumDues(this.people().map((p) => this.openTotalOf(p))));
   /** How many of everyone's counted claims are overdue. */
   protected readonly overdueCount = computed(() =>
     this.people().reduce((total, p) => total + this.overdueOf(p).length, 0),
@@ -702,6 +710,29 @@ export class People {
     const anyDated = today !== null && counted.some((c, i) => dues[i] !== 'n/a' && c.date <= today);
     if (this.rateOf(this.gradeOf(person)) === undefined && !counted.some(dueFixed) && !anyDated) return 'n/a';
     return sumDues(dues);
+  }
+
+  /**
+   * The dues of the person's SETTLED claims that count in the live totals, at their frozen figures, skipping the n/a
+   * ones: with {@link openTotalOf} it adds up to the due-total before the cap.
+   */
+  protected settledTotalOf(person: Person): string {
+    return this.liveDuesOf(person, (c) => c.status === 'SETTLED');
+  }
+
+  /** The dues of the person's OPEN and PENDING claims that count in the live totals, skipping the n/a ones. */
+  protected openTotalOf(person: Person): string {
+    return this.liveDuesOf(person, isOpen);
+  }
+
+  /** The sum of the dues of the person's claims that count in the live totals and pass the test. */
+  private liveDuesOf(person: Person, test: (c: Claim) => boolean): string {
+    const today = this.session.today();
+    return sumDues(
+      this.claimsOf(person.id)
+        .filter((c) => test(c) && live(c, person, today))
+        .map((c) => claimDue(c, this.rates(), person.grades, this.session)),
+    );
   }
 
   /**
