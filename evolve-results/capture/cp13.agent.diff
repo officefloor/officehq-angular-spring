@@ -1,0 +1,164 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 0121da1ba..71fd0a4bc 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,4 +1,4 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+@@ -17,6 +17,8 @@ export interface Claim {
+   number: number | null;
+   /** The due fixed when the claim was settled, two decimals; null when it has none and its due is live. */
+   settledDue: string | null;
++  /** The user who opened the claim; null for a DRAFT. That user cannot settle it. */
++  openedBy: string | null;
+ }
+ 
+ /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
+@@ -82,7 +84,7 @@ export function sumAmounts(amounts: string[]): string {
+         <thead>
+           <tr>
+             <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
+-            <th scope="col">Status</th>
++            <th scope="col">Status</th><th scope="col">Opened by</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+@@ -95,6 +97,7 @@ export function sumAmounts(amounts: string[]): string {
+               <td data-testid="claim-note">{{ c.note }}</td>
+               <td data-testid="claim-due">{{ due(c) }}</td>
+               <td data-testid="claim-status">{{ c.status }}</td>
++              <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
+               <td>
+                 <button
+                   type="button"
+@@ -198,8 +201,12 @@ export class Claims {
+     try {
+       const saved = await firstValueFrom(this.http.post<Claim>(url, null, this.session.headers()));
+       if (this.session.sheet() === sheet) this.saved.emit(saved);
+-    } catch {
+-      this.actionError.set({ id: claim.id, message: `This claim's status does not let it be ${pastOf[action]}.` });
++    } catch (e) {
++      const message =
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'Whoever opened this claim cannot also settle it: another user must settle it.'
++          : `This claim's status does not let it be ${pastOf[action]}.`;
++      this.actionError.set({ id: claim.id, message });
+     }
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c225ab18a..7589ce64f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -47,6 +47,10 @@ public class Claim {
+     @Column(name = "settled_due", precision = 14, scale = 2)
+     private BigDecimal settledDue;
+ 
++    /** The user who opened the claim; null for a DRAFT. */
++    @Column(name = "opened_by")
++    private String openedBy;
++
+     protected Claim() {
+     }
+ 
+@@ -117,4 +121,12 @@ public class Claim {
+     public void setSettledDue(BigDecimal settledDue) {
+         this.settledDue = settledDue;
+     }
++
++    public String getOpenedBy() {
++        return openedBy;
++    }
++
++    public void setOpenedBy(String openedBy) {
++        this.openedBy = openedBy;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index beb600b6c..9fddffb1c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -29,16 +29,17 @@ public class ClaimController {
+ 
+     /**
+      * A claim as shown: the amount with two decimals, the date as yyyy-mm-dd, and the due fixed when it was
+-     * settled (null when it has none, so its due is worked out from the current rate).
++     * settled (null when it has none, so its due is worked out from the current rate), and who opened it.
+      */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+-            Long number, String settledDue) {
++            Long number, String settledDue, String openedBy) {
+ 
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(),
+                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+-                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
++                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
++                    claim.getOpenedBy());
+         }
+     }
+ 
+@@ -93,7 +94,7 @@ public class ClaimController {
+         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
+     }
+ 
+-    /** Settle an OPEN claim. */
++    /** Settle an OPEN claim; refused to the user who opened it. */
+     @PostMapping("/claims/{id}/settle")
+     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long id,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 5efdb18a6..bb529a98f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -68,6 +68,10 @@ public class ClaimService {
+         if (!claim.getStatus().canMoveTo(status)) {
+             throw new ClaimStatusException(id, claim.getStatus(), status);
+         }
++        // Four eyes: whoever opened a claim cannot also settle it.
++        if (status == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
++            throw new ClaimSettledByOpenerException(id, user);
++        }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+         claim.setStatus(status);
+@@ -86,6 +90,7 @@ public class ClaimService {
+         if (status == ClaimStatus.OPEN) {
+             number = sheets.nextClaimNumber(sheetId);
+             claim.setNumber(number);
++            claim.setOpenedBy(user);
+         } else if (status == ClaimStatus.VOID) {
+             claim.setNumber(null);
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java
+new file mode 100644
+index 000000000..ec5393313
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimSettledByOpenerException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A claim's settling by the same user who opened it: another user must settle it. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class ClaimSettledByOpenerException extends RuntimeException {
++
++    public ClaimSettledByOpenerException(Long id, String user) {
++        super("Claim " + id + " was opened by " + user + ", who cannot also settle it");
++    }
++}
+diff --git a/src/main/resources/db/migration/V11__claim_opened_by.sql b/src/main/resources/db/migration/V11__claim_opened_by.sql
+new file mode 100644
+index 000000000..ac4bf0e2e
+--- /dev/null
++++ b/src/main/resources/db/migration/V11__claim_opened_by.sql
+@@ -0,0 +1,3 @@
++-- Who opened a claim: the signed-in user's name, set when it is opened; null for a DRAFT. That user may not
++-- settle the claim (four eyes).
++ALTER TABLE claim ADD COLUMN opened_by VARCHAR(100);
