@@ -116,7 +116,8 @@ import { FigurePipe } from '../../core/figure';
 // frozen figures, corrections included) and their open-total (the figures of their OPEN and PENDING
 // claims that count); together they make the sum of their figures before the cap. The sheet's
 // settled-total and open-total add up everyone's, untrimmed.
-// Each person shows their score: their settled-total divided by 100, minus 5 for every overdue claim
+// Each person shows their score: their settled figures (those of their SETTLED claims that count and
+// correct nothing; corrections are left out) divided by 100, minus 5 for every overdue claim
 // of theirs that counts, rounded half to even to a whole number. While both score thresholds are set,
 // each person shows a band: HIGH at or above the high one, MID at or above the mid one, else LOW.
 interface Person {
@@ -1882,12 +1883,19 @@ export class People {
   }
 
   /**
-   * The person's score: their settled-total divided by 100, minus 5 for every overdue claim of theirs
-   * that counts, rounded half to even to a whole number.
+   * The person's score: their settled figures (those of their SETTLED claims that count and correct
+   * nothing) divided by 100, minus 5 for every overdue claim of theirs that counts, rounded half to
+   * even to a whole number.
    */
   protected scoreOf(p: Person): number {
+    const today = this.session.today();
+    let settled = 0;
+    for (const c of this.claimsOf(p.id)) {
+      if (isOpen(c) || !countsFor(p, c, today) || (c.corrects ?? '').trim() !== '') continue;
+      settled += chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0;
+    }
     // in ten-thousandths of a point: settled cents are hundredths of money, and money / 100 is points
-    const units = this.settledOpenOf(p).settled - 50000 * this.overdueOf(p).count;
+    const units = settled - 50000 * this.overdueOf(p).count;
     const whole = Math.floor(units / 10000);
     const rest = units - whole * 10000;
     const score = rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;

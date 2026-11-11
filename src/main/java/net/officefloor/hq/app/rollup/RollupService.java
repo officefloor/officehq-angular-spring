@@ -223,8 +223,8 @@ public class RollupService {
     }
 
     /**
-     * Each person's score as the screen shows it, in list order: their settled-total (the figures of
-     * their SETTLED claims that count) divided by 100, minus 5 for every overdue claim of theirs that counts,
+     * Each person's score as the screen shows it, in list order: their settled figures (the figures of
+     * their SETTLED claims that count and correct nothing) divided by 100, minus 5 for every overdue claim of theirs that counts,
      * rounded half to even to a whole number.
      */
     public List<Score> scores(String sheetId) {
@@ -243,7 +243,8 @@ public class RollupService {
                 if (overdue(sheet, person, claim)) {
                     overdueCount++;
                 }
-                if (!claim.getStatus().isOpen()) {
+                if (!claim.getStatus().isOpen() && (claim.getCorrects() == null || claim.getCorrects().isBlank())) {
+                    // a correction is left out of the score
                     BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
                     if (figure != null) {
                         settled = settled.add(figure);
