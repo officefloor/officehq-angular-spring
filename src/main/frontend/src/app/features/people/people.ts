@@ -41,6 +41,8 @@ interface Person {
   patronIds: number[];
   /** Whether the signed-in user watches the person. */
   watched: boolean;
+  /** The other names the person goes by, sorted as names are compared. */
+  aliases: string[];
 }
 
 /** A hold of a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
@@ -241,6 +243,7 @@ function csvField(value: string): string {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
@@ -322,6 +325,22 @@ function csvField(value: string): string {
                   (click)="retire(p)"
                 >
                   Retire
+                </button>
+                <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias of {{ p.name }}</label>
+                <input
+                  [id]="'person-alias-input-' + p.id"
+                  type="text"
+                  data-testid="person-alias-input"
+                  [value]="aliasInputs()[p.id] ?? ''"
+                  (input)="setAliasInput(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-alias-add"
+                  [attr.aria-label]="'Add an alias of ' + p.name"
+                  (click)="addAlias(p)"
+                >
+                  Add alias
                 </button>
                 <ul class="holds">
                   @for (h of p.holds; track $index) {
@@ -523,6 +542,8 @@ export class People {
   );
   /** The date typed to retire each person from, by id; blank retires from the sheet's today. */
   protected readonly retireDates = signal<Record<number, string>>({});
+  /** The alias typed on each person's row, by person id. */
+  protected readonly aliasInputs = signal<Record<number, string>>({});
   /** The date typed beside each person's statement button, by person id: blank takes the statement now. */
   protected readonly statementAsOfs = signal<Record<number, string>>({});
   /** The from-date typed for each person's next hold, by person id. */
@@ -706,6 +727,7 @@ export class People {
         this.periods.set([]);
         this.tags.set([]);
         this.retireDates.set({});
+        this.aliasInputs.set({});
         this.statementAsOfs.set({});
         this.holdFroms.set({});
         this.holdTos.set({});
@@ -755,6 +777,11 @@ export class People {
 
   protected setStatementAsOf(id: number, date: string): void {
     this.statementAsOfs.update((dates) => ({ ...dates, [id]: date }));
+  }
+
+  protected setAliasInput(id: number, alias: string): void {
+    this.aliasInputs.update((aliases) => ({ ...aliases, [id]: alias }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
   }
 
   protected setRetireDate(id: number, date: string): void {
@@ -1123,6 +1150,29 @@ export class People {
       await this.read(sheet);
     } catch {
       if (this.session.sheet() === sheet) this.bulkReassignError.set('The selected claims could not be reassigned.');
+    }
+  }
+
+  /** Give the person the typed alias: not blank, and not a name or alias already on the sheet. */
+  protected async addAlias(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const alias = (this.aliasInputs()[person.id] ?? '').trim();
+    if (!alias) {
+      this.rowError.set({ id: person.id, message: 'Type an alias to add.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/aliases`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { alias }, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        this.aliasInputs.update((aliases) => ({ ...aliases, [person.id]: '' }));
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `${alias} is already a name or alias on the sheet.` });
     }
   }
 

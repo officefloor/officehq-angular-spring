@@ -2,7 +2,6 @@ package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
 import net.officefloor.hq.app.person.Person;
-import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,19 +15,17 @@ public class QuickAddService {
 
     static final String NEW_PERSON_GRADE = "A";
 
-    private final PersonRepository people;
     private final PersonService persons;
     private final ClaimService claims;
 
-    public QuickAddService(PersonRepository people, PersonService persons, ClaimService claims) {
-        this.people = people;
+    public QuickAddService(PersonService persons, ClaimService claims) {
         this.persons = persons;
         this.claims = claims;
     }
 
     @Transactional
     public Claim add(String sheetId, String user, String name, BigDecimal amount) {
-        Person person = people.findBySheetIdAndNameKey(sheetId, Person.key(name))
+        Person person = persons.findByNameOrAlias(sheetId, name)
                 .orElseGet(() -> persons.add(sheetId, user, name, NEW_PERSON_GRADE, null));
         return claims.add(sheetId, user, person.getId(), amount, null, "", null);
     }

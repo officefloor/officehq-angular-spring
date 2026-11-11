@@ -323,7 +323,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
               <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
               <td data-testid="claim-tags">{{ tagsShown(c) }}</td>
-              <td data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</td>
+              <td data-testid="claim-deferred">{{ deferralRunning(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
               <td data-testid="claim-proofs">{{ c.proofs }}</td>
               <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
@@ -627,6 +627,12 @@ export class Claims implements OnInit {
   /** Whether the claim is deferred on the sheet's today. */
   protected deferred(claim: Claim): boolean {
     return deferred(claim, this.session.today());
+  }
+
+  /** Whether the claim's deferral has not yet ended on the sheet's today, whatever its status now. */
+  protected deferralRunning(claim: Claim): boolean {
+    const today = this.session.today();
+    return claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
   }
 
   /** The name of the period the claim's due-by falls in, or blank when none. */

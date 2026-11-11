@@ -2,10 +2,12 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Map;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -22,13 +24,15 @@ public class PersonService {
 
     private final PersonRepository people;
     private final PersonPatronRepository patrons;
+    private final PersonAliasRepository aliases;
     private final SheetRepository sheets;
     private final Audit audit;
     private final RollupService rollup;
     private final SheetService sheetService;
 
-    public PersonService(PersonRepository people, PersonPatronRepository patrons, SheetRepository sheets,
-            Audit audit, RollupService rollup, SheetService sheetService) {
+    public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonAliasRepository aliases,
+            SheetRepository sheets, Audit audit, RollupService rollup, SheetService sheetService) {
+        this.aliases = aliases;
         this.sheetService = sheetService;
         this.people = people;
         this.patrons = patrons;
@@ -53,7 +57,8 @@ public class PersonService {
             throw new SheetNotFoundException(sheetId);
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        if (people.existsBySheetIdAndNameKey(sheetId, Person.key(name))) {
+        if (people.existsBySheetIdAndNameKey(sheetId, Person.key(name))
+                || aliases.existsBySheetIdAndAliasKey(sheetId, Person.key(name))) {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
         String contactKey = Person.contactKey(contact);
@@ -86,7 +91,8 @@ public class PersonService {
         if (version != null && version != person.getVersion()) {
             throw new PersonVersionConflictException(sheetId, id);
         }
-        if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.key(name), id)) {
+        if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.key(name), id)
+                || aliases.existsBySheetIdAndAliasKey(sheetId, Person.key(name))) {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
         String contactKey = Person.contactKey(contact);
@@ -180,6 +186,54 @@ public class PersonService {
                 + " name=" + person.getName() + " patron=" + patron.getName());
         return person;
     }
+
+    /** The person on the sheet with the name or the alias, as names are compared. */
+    public Optional<Person> findByNameOrAlias(String sheetId, String name) {
+        String key = Person.key(name);
+        return people.findBySheetIdAndNameKey(sheetId, key)
+                .or(() -> aliases.findBySheetIdAndAliasKey(sheetId, key)
+                        .flatMap(a -> people.findByIdAndSheetId(a.getPersonId(), sheetId)));
+    }
+
+    /** Each person's aliases, by person id, sorted as names are compared. */
+    public Map<Long, List<String>> aliases(String sheetId) {
+        Map<Long, List<String>> byPerson = new HashMap<>();
+        aliases.findBySheetId(sheetId).stream().sorted(ALIAS_ORDER)
+                .forEach(a -> byPerson.computeIfAbsent(a.getPersonId(), id -> new ArrayList<>()).add(a.getAlias()));
+        return byPerson;
+    }
+
+    /** The person's aliases, sorted as names are compared. */
+    public List<String> aliasesOf(Long personId) {
+        return aliases.findByPersonId(personId).stream().sorted(ALIAS_ORDER).map(PersonAlias::getAlias).toList();
+    }
+
+    /** Give the person an alias: not blank, and not equal to any name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, Long id, String alias) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
+        if (alias == null || alias.isBlank()) {
+            throw new AliasRefusedException("An alias cannot be blank");
+        }
+        String key = Person.key(alias);
+        if (people.existsBySheetIdAndNameKey(sheetId, key) || aliases.existsBySheetIdAndAliasKey(sheetId, key)) {
+            throw new AliasRefusedException("The name " + alias.trim() + " is already in use on the sheet");
+        }
+        PersonAlias saved;
+        try {
+            saved = aliases.saveAndFlush(new PersonAlias(sheetId, person.getId(), alias));
+        } catch (DataIntegrityViolationException e) {
+            // Another user took the alias at the same moment: the unique index refused it.
+            throw new AliasRefusedException("The name " + alias.trim() + " is already in use on the sheet");
+        }
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " alias=" + saved.getAlias());
+        return person;
+    }
+
+    private static final Comparator<PersonAlias> ALIAS_ORDER =
+            Comparator.comparing(PersonAlias::getAliasKey).thenComparing(PersonAlias::getAlias);
 
     private static String record(String event, String user, Person person, String grade) {
         return event + " sheet=" + person.getSheetId() + " by=" + user

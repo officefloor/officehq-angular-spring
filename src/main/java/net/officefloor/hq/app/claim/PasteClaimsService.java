@@ -7,7 +7,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.person.Person;
-import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,11 +31,11 @@ public class PasteClaimsService {
     private record Line(Long personId, BigDecimal amount, LocalDate date, String note, String ref) {
     }
 
-    private final PersonRepository people;
+    private final PersonService persons;
     private final ClaimService claims;
 
-    public PasteClaimsService(PersonRepository people, ClaimService claims) {
-        this.people = people;
+    public PasteClaimsService(PersonService persons, ClaimService claims) {
+        this.persons = persons;
         this.claims = claims;
     }
 
@@ -64,7 +64,7 @@ public class PasteClaimsService {
         if (fields.length < 3) {
             throw new PasteClaimsException(number, "expected name,amount,date,note");
         }
-        Person person = people.findBySheetIdAndNameKey(sheetId, Person.key(fields[0]))
+        Person person = persons.findByNameOrAlias(sheetId, fields[0])
                 .orElseThrow(() -> new PasteClaimsException(number, "no one named " + fields[0].trim()));
         if (!fields[1].matches(AMOUNT)) {
             throw new PasteClaimsException(number, "the amount is not one with at most two decimals");

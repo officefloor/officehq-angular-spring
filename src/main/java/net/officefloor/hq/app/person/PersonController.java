@@ -43,17 +43,17 @@ public class PersonController {
      * A person as shown, with their grade in force on the sheet's today and every grade with its from-date, with how many statements they have had and the due-total and date of the last one. */
     public record PersonView(Long id, String name, String grade, Integer terms, String contact, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
-            List<Long> patronIds, List<GradeView> grades, List<HoldView> holds, boolean watched) {
+            List<Long> patronIds, List<GradeView> grades, List<HoldView> holds, boolean watched, List<String> aliases) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
-                boolean watched) {
+                boolean watched, List<String> aliases) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getTerms(),
                     person.getContact(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds,
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
-                    watched);
+                    watched, aliases);
         }
     }
 
@@ -94,6 +94,10 @@ public class PersonController {
     public record PatronRequest(@NotNull Long patronId) {
     }
 
+    /** Another name for the person. */
+    public record AliasRequest(@Size(max = 200) String alias) {
+    }
+
     /** Whether the signed-in user is to watch the person. */
     public record WatchRequest(@NotNull Boolean on) {
     }
@@ -119,12 +123,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, StatementSummary> summaries = statements.summaries(sheetId.trim());
         Map<Long, List<Long>> patronIds = service.patronIds(sheetId.trim());
+        Map<Long, List<String>> aliases = service.aliases(sheetId.trim());
         Set<Long> watched = watches.watchedBy(sheetId.trim(), user.trim());
         List<Person> people = service.list(sheetId.trim());
         LocalDate today = people.isEmpty() ? null : sheets.today(sheetId.trim());
         return people.stream()
                 .map(p -> PersonView.of(p, today, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
-                        patronIds.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))
+                        patronIds.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
+                        aliases.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -203,6 +209,15 @@ public class PersonController {
         return view(service.addPatron(sheetId.trim(), user.trim(), id, request.patronId()), user.trim());
     }
 
+    /** Give the person another name the sheet knows them by. */
+    @PostMapping("/{id}/aliases")
+    public PersonView addAlias(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AliasRequest request) {
+        return view(service.addAlias(sheetId.trim(), user.trim(), id, request.alias()), user.trim());
+    }
+
     /** Start or stop watching the person as the signed-in user. */
     @PutMapping("/{id}/watch")
     public PersonView watch(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -214,6 +229,7 @@ public class PersonController {
 
     private PersonView view(Person person, String user) {
         return PersonView.of(person, sheets.today(person.getSheetId()), statements.summary(person.getSheetId(), person.getId()),
-                service.patronIdsOf(person.getId()), watches.watches(person.getId(), user));
+                service.patronIdsOf(person.getId()), watches.watches(person.getId(), user),
+                service.aliasesOf(person.getId()));
     }
 }
