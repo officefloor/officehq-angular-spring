@@ -114,6 +114,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject the person's PENDING claims as a steward may; null for none. */
+    @Column(name = "approver")
+    private String approver;
+
     /** Bumped on every save; an edit must carry the version it was made from. */
     @Version
     @Column(name = "version", nullable = false)
@@ -345,7 +349,14 @@ public class Person {
         return flaggedOn(date) ? flagReason : null;
     }
 
-    /** The holds recorded, by from-date. */
+    public String getApprover() {
+        return approver;
+    }
+
+    public void setApprover(String approver) {
+        this.approver = approver;
+    }
+
     /** The person's aliases, sorted as names are compared: without regard to case. */
     public List<String> getAliases() {
         return aliases.stream().sorted(Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT))

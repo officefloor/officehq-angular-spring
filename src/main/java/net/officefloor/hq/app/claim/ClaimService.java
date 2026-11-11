@@ -45,7 +45,7 @@ import org.springframework.web.server.ResponseStatusException;
  * and before the to-date of one of their past retirements. A clerk settles a claim
  * only when its figure is at or below the sheet's clerk limit (a claim with no figure is within any
  * limit); a clerk settling one above it makes it PENDING instead. A steward settles any claim, and
- * approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
+ * (as may the person's approver) approves a PENDING claim (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN);
  * the user who opened a claim cannot approve it. The user who last edited a claim (through its form or
  * its row's amount) can neither settle nor approve it, as its opener cannot. A PENDING claim is bound by a statement
  * like any other claim that counts: while a statement binds it, it shows the bound figure. An overdue claim's due gains a late charge on its
@@ -415,12 +415,12 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who last edited a claim cannot " + (review ? "approve" : "settle") + " it.");
         }
-        if (review && !isSteward(sheetId, user)) {
+        Person person = person(sheetId, claim.getPersonId());
+        if (review && !isSteward(sheetId, user) && !user.equals(person.getApprover())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only a steward can approve or reject a PENDING claim.");
+                    "Only a steward or the person's approver can approve or reject a PENDING claim.");
         }
         String voidedWith = next == ClaimStatus.VOID ? voidReasons.refuseUnlessListed(sheetId, voidReason) : null;
-        Person person = person(sheetId, claim.getPersonId());
         if (next == ClaimStatus.OPEN && !review && flaggedAgainst(sheetId, user, person)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "This person is flagged: only a steward can open their claims.");

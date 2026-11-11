@@ -104,6 +104,10 @@ public class PersonController {
             @NotNull LocalDate until) {
     }
 
+    public record SetApproverRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull @Size(max = 100) String approver) {
+    }
+
     public record AddPatronRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long patronId) {
     }
@@ -139,7 +143,7 @@ public class PersonController {
     public record PersonResponse(long id, String name, List<GradeResponse> grades, long version, boolean retired,
             LocalDate retiredFrom, boolean held, List<HoldResponse> holds, Integer terms, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementResponse> retirements, List<String> tags,
-            List<SnapshotResponse> snapshots, String flag) {
+            List<SnapshotResponse> snapshots, String flag, String approver) {
     }
 
     public static PersonResponse response(Person person, boolean clashing, LocalDate today) {
@@ -153,7 +157,7 @@ public class PersonController {
                 person.getTags(),
                 person.getSnapshots().stream().map(n -> new SnapshotResponse(n.getDay(), n.getDueTotal() == null ? "n/a"
                         : n.getDueTotal().setScale(2, RoundingMode.HALF_UP).toPlainString())).toList(),
-                person.flagShownOn(today));
+                person.flagShownOn(today), person.getApprover());
     }
 
     /** The person, with whether they clash on the sheet's tree. */
@@ -277,6 +281,12 @@ public class PersonController {
     public PersonResponse flag(@Valid @RequestBody FlagPersonRequest req) {
         return response(req.sheet().trim(), service.flag(req.sheet().trim(), req.user().trim(), req.id(),
                 req.reason() == null ? null : req.reason().trim(), req.until()));
+    }
+
+    @PostMapping("/approver")
+    public PersonResponse setApprover(@Valid @RequestBody SetApproverRequest req) {
+        return response(req.sheet().trim(), service.setApprover(req.sheet().trim(), req.user().trim(), req.id(),
+                req.approver().trim()));
     }
 
     @PostMapping("/patrons/list")

@@ -436,6 +436,22 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * Give the person an approver (a blank name: none), who may approve or reject their PENDING
+     * claims as a steward may; refused (403) for a viewer.
+     */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long id, String approver) {
+        roles.refuseViewer(sheetId, user);
+        Person person = people.lockByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        person.setApprover(approver.isEmpty() ? null : approver);
+        Person saved = save(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " user=" + approver);
+        return saved;
+    }
+
     @Transactional(readOnly = true)
     public List<Patron> patrons(String sheetId) {
         return patrons.findBySheetIdOrderByIdAsc(sheetId);

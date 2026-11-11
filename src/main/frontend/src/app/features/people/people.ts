@@ -149,6 +149,8 @@ interface Person {
   snapshots: SnapshotLine[];
   /** The reason of the person's flag while it is in force on the sheet's today, or null. */
   flag: string | null;
+  /** The user who may approve or reject the person's PENDING claims as a steward may, or null. */
+  approver: string | null;
 }
 
 /** One of a person's snapshot lines: the day being left and their due-total then ('n/a' when none). */
@@ -753,6 +755,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                   }
                 </ul>
                 <span>Flag: <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span></span>
+                <span>Approver: <span data-testid="person-approver">{{ p.approver ?? '' }}</span></span>
                 <ul aria-label="Snapshots">
                   @for (n of p.snapshots; track $index) {
                     <li data-testid="person-snapshot-line">{{ n.day }} {{ n.dueTotal }}</li>
@@ -993,6 +996,22 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                 >
                   Flag
                 </button>
+                <label [for]="'person-approver-input-' + p.id">Approver</label>
+                <input
+                  type="text"
+                  [id]="'person-approver-input-' + p.id"
+                  data-testid="person-approver-input"
+                  [value]="approverInputs().get(p.id) ?? ''"
+                  (input)="setApproverInput(p.id, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  data-testid="person-approver-save"
+                  [attr.aria-label]="'Set the approver of ' + p.name"
+                  (click)="saveApprover(p)"
+                >
+                  Set approver
+                </button>
                 <label [for]="'person-hold-from-' + p.id">Hold from</label>
                 <input
                   type="date"
@@ -1114,6 +1133,8 @@ export class People {
   /** The flag reason and until-date typed on each person's row, by person id. */
   protected readonly flagReasons = signal<ReadonlyMap<number, string>>(new Map());
   protected readonly flagUntils = signal<ReadonlyMap<number, string>>(new Map());
+  /** The approver typed on each person's row, by person id. */
+  protected readonly approverInputs = signal<ReadonlyMap<number, string>>(new Map());
   /** The alias typed on each person's row, by person id. */
   protected readonly aliasInputs = signal<ReadonlyMap<number, string>>(new Map());
   /** The hold from- and to-dates typed on each person's row, by person id. */
@@ -1555,6 +1576,7 @@ export class People {
       this.holdFroms.set(new Map());
       this.flagReasons.set(new Map());
       this.flagUntils.set(new Map());
+      this.approverInputs.set(new Map());
       this.aliasInputs.set(new Map());
       this.statementAsOfs.set(new Map());
       this.holdTos.set(new Map());
@@ -2127,6 +2149,29 @@ export class People {
             : 'Could not flag ' + p.name + '.',
         ),
       );
+    }
+  }
+
+  protected setApproverInput(id: number, approver: string): void {
+    this.approverInputs.update((m) => new Map(m).set(id, approver));
+    this.clearRowError(id);
+  }
+
+  /** Give the person the approver typed on their row (blank: none). */
+  protected async saveApprover(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const approver = (this.approverInputs().get(p.id) ?? '').trim();
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Person>('/api/people/approver', { sheet, user: this.session.user(), id: p.id, approver }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.people.update((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      if (this.editingId() === saved.id && this.editingVersion === p.version) this.editingVersion = saved.version;
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.rowErrors.update((m) => new Map(m).set(p.id, 'Could not set the approver of ' + p.name + '.'));
     }
   }
 
