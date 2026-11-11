@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index f9cb31289..6c71e65e7 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -166,8 +166,8 @@ export function overdueBy(claim: Claim, grades: PersonGrade[], session: Session)
+ 
+ /**
+  * For every full 30 days an OPEN claim is past its due-by (plus its grace) on the sheet's today, the late percent in
+- * force on that boundary (the due-by plus its grace plus 30, 60, 90 ... days) of the figure, each rounded like the
+- * claim's due, added up; 0.00 when it is not overdue, and on a correction.
++ * force on that boundary (the due-by plus its grace plus 30, 60, 90 ... days) of the figure plus the charges of the
++ * boundaries before it (compounding), each rounded like the claim's due, added up; 0.00 when it is not overdue, and on a correction.
+  */
+ export function lateCharge(claim: Claim, figure: string, grades: PersonGrade[], session: Session): string {
+   const by = overdueBy(claim, grades, session);
+@@ -178,7 +178,7 @@ export function lateCharge(claim: Claim, figure: string, grades: PersonGrade[],
+   const charges: string[] = [];
+   for (let boundary = 1; boundary <= Math.floor(days / 30); boundary++) {
+     const pct = session.settingOn('late-pct', plusDays(by, 30 * boundary));
+-    if (pct !== null) charges.push(percentOf(figure, pct, 1, roundingOf(claim, session)));
++    if (pct !== null) charges.push(percentOf(sumDues([figure, ...charges]), pct, 1, roundingOf(claim, session)));
+   }
+   return sumDues(charges);
+ }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 648792dce..dd77c160f 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -152,7 +152,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+             (input)="setFrom('grace-' + g, value($event))"
+           />
+         }
+-        <label for="setting-late-pct">Late percent (of an overdue claim's due, every full 30 days)</label>
++        <label for="setting-late-pct">Late percent (of an overdue claim's due, compounding every full 30 days)</label>
+         <input
+           id="setting-late-pct"
+           data-testid="setting-late-pct"
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index ea1b04332..14a3d825c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -324,7 +324,8 @@ public class Sheet {
+     /**
+      * The late charge on a figure of an OPEN claim dated {@code date}: for every full 30 days the sheet's today is past
+      * the claim's due-by, the late percent in force on that boundary (the due-by plus 30, 60, 90 ... days) of the
+-     * figure, each rounded as the claim's date has it, added up; zero when not overdue, null (n/a) when the figure is.
++     * figure plus the charges of the boundaries before it (compounding), each rounded as the claim's date has it,
++     * added up; zero when not overdue, null (n/a) when the figure is.
+      */
+     public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
+         return lateCharge(figure, dueBy, date, today);
+@@ -339,7 +340,7 @@ public class Sheet {
+         long periods = overdueDays <= 0 ? 0 : overdueDays / 30;
+         BigDecimal charge = BigDecimal.ZERO.setScale(2);
+         for (long boundary = 1; boundary <= periods; boundary++) {
+-            charge = charge.add(figure.multiply(latePctOn(dueBy.plusDays(30 * boundary))).movePointLeft(2)
++            charge = charge.add(figure.add(charge).multiply(latePctOn(dueBy.plusDays(30 * boundary))).movePointLeft(2)
+                     .setScale(2, rounding(date, asOf)));
+         }
+         return charge;
