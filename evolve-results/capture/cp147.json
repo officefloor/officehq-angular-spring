@@ -1,0 +1,64 @@
+{
+  "checkpoint": 147,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp147_snapshot-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their snapshot lines: one per SNAPSHOT written for them, oldest first, as\n<the day being left> <due-total>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their snapshot lines: one per SNAPSHOT written for them, oldest first, as\n<the day being left> <due-total>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "09ac0bf9df2dd8042aad95a75b9a0d073040c395",
+  "reset_sha": "",
+  "preagent_sha": "3739fa8787c1d5a55958d0dcea36eeb6c3144ca8",
+  "prev_sha": "3739fa8787c1d5a55958d0dcea36eeb6c3144ca8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6474014000000001,
+    "input_tokens": 38,
+    "output_tokens": 8236,
+    "cache_read_tokens": 718927,
+    "cache_creation_tokens": 42343,
+    "num_turns": 20,
+    "duration_ms": 321049,
+    "duration_api_ms": 78895,
+    "model": "claude-opus-5-5",
+    "session_id": "ed1587e7-0ccf-4855-9f61-dc58c2726f29",
+    "stop_reason": "success",
+    "result_text": "Each person row now shows its snapshot lines, and all 4 tests in `bin/e2e` pass.\n\nWhen the sheet's today changes, the app already wrote a `SNAPSHOT` audit line for each person. It now also saves a matching line in the database for that person: the day being left and their due-total, for example `2026-03-10 1.00` or `2026-03-12 n/a`. Lines are listed oldest first.\n\n- **Stored data:** a new migration, `V82__person_snapshot.sql`, adds a `person_snapshot` table, read and written through `PersonSnapshot` and `PersonSnapshotRepository`.\n- **Server:** `SheetService.setToday` saves a line for each person in the same loop that writes the audit line, so the two always agree. The audit format hasn't changed. The person API now returns a `snapshotLines` list for each person.\n- **Front end:** the people table has a new \"Snapshots\" column with one `person-snapshot-line` per line.\n\nThe new table has no foreign keys to `person` or `sheet`. I left them out so that existing person deletes, merges and the sheet \"as of\" restore can't hit constraint errors. The cost is that if a person is deleted, their snapshot lines stay in the table. If a person is transferred to another sheet, their old lines stay with the first sheet and don't go with them.\n\nI kept the test run's output in `.run/e2e.log`, because `/tmp` wasn't writable.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6474014000000001,
+        "num_turns": 20,
+        "duration_ms": 321049,
+        "duration_api_ms": 78895,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp147.agent.jsonl",
+  "agent_diff_file": "cp147.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
