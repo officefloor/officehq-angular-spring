@@ -1,0 +1,64 @@
+{
+  "checkpoint": 215,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp215_sheet-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet id entry and a button compare this sheet with another: one line per grade of this sheet,\n<grade> <this sheet's summary due-total for the grade> <the other sheet's>, 0.00 for a grade the\nother sheet has no one on; a sheet that does not exist gives no lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d63839abbc5b5f213df668f3812169aa1da929e9",
+  "reset_sha": "",
+  "preagent_sha": "9671b02ce4f1da2e0ecd4d13d57c8c90d53b056e",
+  "prev_sha": "9671b02ce4f1da2e0ecd4d13d57c8c90d53b056e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.61374,
+    "input_tokens": 6,
+    "output_tokens": 618,
+    "cache_read_tokens": 109182,
+    "cache_creation_tokens": 2505,
+    "num_turns": 2,
+    "duration_ms": 7563,
+    "duration_api_ms": 62859,
+    "model": "claude-opus-5-5",
+    "session_id": "10c05f4b-c083-4af6-85ad-2cb46875a8e9",
+    "stop_reason": "success",
+    "result_text": "You can now compare this sheet with another, and `bin/e2e` passes all 4 tests.\n\nEnter a sheet id in the new box beside the snapshot comparison and press **Compare sheets**. You get one line per grade of this sheet: the grade, this sheet's summary due-total for it, then the other sheet's, e.g. `A 2.00 1.00`. A grade nobody is on in the other sheet shows `0.00`, and a sheet that has never been loaded gives no lines. People who are retired aren't counted on either side, just as in the summary.\n\nHow it's built:\n- **Server:** a new read-only endpoint, `POST /api/rollup/compare/list`, in `rollup/RollupController.java`. It reports whether the other sheet exists and, if it does, its due-totals per grade. Those totals come from the per-grade figures the server already worked out, so no stored data or schema changed. A new method in `rollup/RollupService.java` returns nothing when the sheet doesn't exist.\n- **Front end:** the form and the code that builds the lines are in `features/people/people.ts`. This sheet's figures come from the same per-grade totals the summary table shows.\n\nTwo things that might matter:\n- Each sheet is valued on its own \"today\", so if the two sheets have different dates the totals are for different days.\n- An empty sheet id gives no lines, and so does a failed request \u2014 no error is shown in either case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.61374,
+        "num_turns": 2,
+        "duration_ms": 7563,
+        "duration_api_ms": 62859,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp215.agent.jsonl",
+  "agent_diff_file": "cp215.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
