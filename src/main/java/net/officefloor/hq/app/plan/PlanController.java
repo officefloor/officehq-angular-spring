@@ -10,6 +10,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,15 +30,17 @@ public class PlanController {
 
     /**
      * A plan as shown: its amount with two decimals, its dates as yyyy-mm-dd, its interval in days or its day of the
-     * month (the other null), and how many claims it has made.
+     * month (the other null), how many claims it has made, and its first five dates after the sheet's today up to its
+     * end, comma and space separated.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated) {
+            LocalDate end, long generated, String nextDates) {
 
-        static PlanView of(Plan plan, long generated) {
+        static PlanView of(Plan plan, long generated, List<LocalDate> nextDates) {
             return new PlanView(plan.getId(), plan.getPersonId(),
                     plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated);
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
+                    nextDates.stream().map(LocalDate::toString).collect(Collectors.joining(", ")));
         }
     }
 
@@ -84,8 +87,10 @@ public class PlanController {
     public List<PlanView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, Long> generated = service.generatedCounts(sheetId.trim());
+        Map<Long, List<LocalDate>> next = service.nextDates(sheetId.trim());
         return service.list(sheetId.trim()).stream()
-                .map(plan -> PlanView.of(plan, generated.getOrDefault(plan.getId(), 0L)))
+                .map(plan -> PlanView.of(plan, generated.getOrDefault(plan.getId(), 0L),
+                        next.getOrDefault(plan.getId(), List.of())))
                 .toList();
     }
 
@@ -95,8 +100,9 @@ public class PlanController {
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PlanRequest request) {
-        return PlanView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.start(),
-                request.everyValue(), request.dayValue(), request.end()), 0);
+        Plan plan = service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.start(),
+                request.everyValue(), request.dayValue(), request.end());
+        return PlanView.of(plan, 0, service.nextDates(sheetId.trim(), plan));
     }
 
     /** Make the claims of every plan date due and not yet made. */

@@ -19,7 +19,8 @@ const WHOLE = /^\d{1,6}$/;
           {{ pl.amount }} from {{ pl.start }}
           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
           to {{ pl.end }};
-          made <span data-testid="plan-generated">{{ pl.generated }}</span>
+          made <span data-testid="plan-generated">{{ pl.generated }}</span>;
+          next <span data-testid="plan-next-dates">{{ pl.nextDates }}</span>
         </li>
       }
     </ul>

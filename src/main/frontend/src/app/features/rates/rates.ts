@@ -188,7 +188,7 @@ export function trimmedSumDues(dues: string[]): string {
           id="rate-preview-grade"
           data-testid="rate-preview-grade"
           [value]="previewGrade()"
-          (change)="previewGrade.set(value($event)); previewError.set(null)"
+          (change)="previewGrade.set(value($event)); previewResult.set(null); previewError.set(null)"
         >
           @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
@@ -200,7 +200,7 @@ export function trimmedSumDues(dues: string[]): string {
           data-testid="rate-preview-pct"
           inputmode="decimal"
           [value]="previewPct()"
-          (input)="previewPct.set(value($event)); previewError.set(null)"
+          (input)="previewPct.set(value($event)); previewResult.set(null); previewError.set(null)"
         />
         <button type="submit" data-testid="rate-preview">Preview</button>
         @if (previewResult(); as result) {

@@ -60,6 +60,21 @@ public class PlanService {
                 .collect(Collectors.groupingBy(PlanDate::getPlanId, Collectors.counting()));
     }
 
+    /** The plan's first five dates after the sheet's today, up to its end. */
+    public List<LocalDate> nextDates(String sheetId, Plan plan) {
+        return plan.datesAfter(sheets.today(sheetId), 5);
+    }
+
+    /** The first five dates after the sheet's today of each of the sheet's plans, by plan id. */
+    public Map<Long, List<LocalDate>> nextDates(String sheetId) {
+        List<Plan> all = list(sheetId);
+        if (all.isEmpty()) {
+            return Map.of();
+        }
+        LocalDate today = sheets.today(sheetId);
+        return all.stream().collect(Collectors.toMap(Plan::getId, plan -> plan.datesAfter(today, 5)));
+    }
+
     @Transactional
     public Plan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start, Integer every,
             Integer day, LocalDate end) {

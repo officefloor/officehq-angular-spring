@@ -20,6 +20,8 @@ export interface PlanView {
   end: string;
   /** How many claims the plan has made so far. */
   generated: number;
+  /** The first five plan dates after the sheet's today, up to the end, comma and space separated. */
+  nextDates: string;
 }
 
 // The active sheet's plans, in the order they were added, re-read whenever a sheet is loaded.
