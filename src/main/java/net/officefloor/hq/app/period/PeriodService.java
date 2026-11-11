@@ -122,7 +122,7 @@ public class PeriodService {
         return date -> Sheet.fiscalYearOf(date, startMonth);
     }
 
-    /** Close a period, fixing every person's due-total for it, and so its own, as they are now; refused when it is already closed or the user's role may not close; a soft-closed period's figures are fixed afresh. */
+    /** Close a period, fixing every person's due-total and carried figure for it, and so its own, as they are now; refused when it is already closed or the user's role may not close; a soft-closed period's figures are fixed afresh. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
         // Lock the sheet so no claim in the period changes while its total is fixed.
@@ -141,7 +141,7 @@ public class PeriodService {
     }
 
     /**
-     * Soft-close a period, fixing every person's due-total for it, and so its own, as they are now, while claims due by
+     * Soft-close a period, fixing every person's due-total and carried figure for it, and so its own, as they are now, while claims due by
      * a date in it can still change; refused when it is closed or soft-closed already or the user's role may not close.
      */
     @Transactional
@@ -157,7 +157,8 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new PeriodClosedException(name);
         }
-        period.softClose(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()));
+        period.softClose(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()),
+                rollup.carriedInto(sheetId, list(sheetId), period));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString());
@@ -184,7 +185,8 @@ public class PeriodService {
     }
 
     private Period closeNow(String sheetId, String user, Period period, boolean auto) {
-        period.close(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()));
+        period.close(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()),
+                rollup.carriedInto(sheetId, list(sheetId), period));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString() + (auto ? " auto=yes" : ""));
@@ -192,7 +194,7 @@ public class PeriodService {
     }
 
     /**
-     * Reopen a closed or soft-closed period, making its due-total live again; refused unless the user's role may reopen
+     * Reopen a closed or soft-closed period, making its due-total and carried figures live again; refused unless the user's role may reopen
      * and it is closed or soft-closed.
      */
     @Transactional

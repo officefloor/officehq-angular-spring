@@ -149,7 +149,8 @@ public class MergeService {
 
         // A closed period's fixed figures follow the claims.
         for (Period period : periods.findBySheetIdOrderByFromDateAscIdAsc(sheetId)) {
-            if (period.getPersonTotals().containsKey(from.getId())) {
+            if (period.getPersonTotals().containsKey(from.getId())
+                    || period.getPersonCarried().containsKey(from.getId())) {
                 period.mergePersonTotal(from.getId(), into.getId());
                 periods.save(period);
             }

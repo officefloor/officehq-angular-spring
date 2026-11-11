@@ -13,12 +13,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
+import jakarta.persistence.EntityManager;
 import net.officefloor.hq.app.asof.AsOfContext;
+import net.officefloor.hq.app.asof.SheetSnapshotService;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonAlias;
 import net.officefloor.hq.app.person.PersonAliasRepository;
@@ -60,10 +63,12 @@ public class RollupService {
     private final SheetRepository sheets;
     private final PersonAliasRepository aliases;
     private final Audit audit;
+    private final SheetSnapshotService snapshots;
+    private final EntityManager entities;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
             RateRepository rates, RateLogRepository rateLogs, RateVersionRepository rateVersions, SheetRepository sheets,
-            PersonAliasRepository aliases, Audit audit) {
+            PersonAliasRepository aliases, Audit audit, SheetSnapshotService snapshots, EntityManager entities) {
         this.people = people;
         this.claims = claims;
         this.logs = logs;
@@ -73,6 +78,8 @@ public class RollupService {
         this.sheets = sheets;
         this.aliases = aliases;
         this.audit = audit;
+        this.snapshots = snapshots;
+        this.entities = entities;
     }
 
     /** The sheet's figures now; empty when the sheet does not exist. */
@@ -144,7 +151,7 @@ public class RollupService {
         int count = 0;
         BigDecimal due = zero();
         BigDecimal overdue = zero();
-        for (String id : descendants(sheetId)) {
+        for (String id : descendantsAsOf(sheetId)) {
             Snapshot figures = snapshot(id);
             count += figures.people().size();
             due = due.add(new BigDecimal(figures.dueTotal()));
@@ -154,8 +161,9 @@ public class RollupService {
     }
 
     /**
-     * The figures of the sheet and its descendants as the store holds them now, each sheet's people, due-total and
-     * overdue-total as that sheet shows them, added up.
+     * The figures of the sheet and its descendants, each sheet's people, due-total and overdue-total as that sheet
+     * shows them, added up. While the request shows the sheet as of a date, every sheet of the tree is as it stood at
+     * the end of that date, with the date as its today.
      */
     public Consolidated consolidatedFigures(String sheetId) {
         Snapshot own = snapshot(sheetId);
@@ -203,6 +211,25 @@ public class RollupService {
             }
         }
         return lines;
+    }
+
+    /**
+     * The ids of the sheet's descendants, as {@link #descendants(String)}. While the request shows the sheet as of a
+     * date, each is first put back as it stood at the end of that date, with the date as its today, for the request's
+     * transaction alone (which the as-of view rolls back).
+     */
+    private List<String> descendantsAsOf(String sheetId) {
+        List<String> ids = descendants(sheetId);
+        LocalDate asOf = AsOfContext.current();
+        if (asOf != null && !ids.isEmpty()) {
+            entities.flush();
+            for (String id : ids) {
+                snapshots.restore(id, asOf);
+            }
+            // The sheets read to find them are stale now: read them afresh.
+            entities.clear();
+        }
+        return ids;
     }
 
     /** The sheet's topmost ancestor (the sheet itself with no parent); a parent loop stops where it comes back. */
@@ -308,6 +335,45 @@ public class RollupService {
             ClaimStatus status = statusOn(claim, logOf.getOrDefault(claim.getId(), List.of()), to);
             if (person == null || !person.countsAsOf(claim, status, today) || claim.getDueBy().isBefore(from)
                     || claim.getDueBy().isAfter(to)) {
+                continue;
+            }
+            dueOf(sheet, sheetRates, person, claim).ifPresent(due -> totals.merge(person.getId(), due, BigDecimal::add));
+        }
+        totals.replaceAll((id, total) -> total.setScale(2, RoundingMode.HALF_EVEN));
+        return totals;
+    }
+
+    /**
+     * Each person's carried figure for the period, by person id for every person on the sheet, as the screen shows it
+     * while the period is open: the dues as shown now of their claims due by a date in one of the periods that ends
+     * before it starts that were OPEN or PENDING at the end of its to-date by their status log and count then, skipping
+     * those with no due; 0.00 with none.
+     */
+    public Map<Long, BigDecimal> carriedInto(String sheetId, List<Period> periods, Period period) {
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        List<List<Rate>> sheetRates = rateChain(sheetId);
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            byId.put(person.getId(), person);
+            totals.put(person.getId(), zero());
+        }
+        Map<Long, List<ClaimLog>> logOf = new LinkedHashMap<>();
+        for (ClaimLog line : logs.findBySheetIdOrderByIdAsc(sheetId)) {
+            logOf.computeIfAbsent(line.getClaimId(), id -> new ArrayList<>()).add(line);
+        }
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || claim.getDueBy() == null) {
+                continue;
+            }
+            Optional<Period> from = periods.stream().filter(p -> p.contains(claim.getDueBy())).findFirst();
+            if (from.isEmpty() || !from.get().getToDate().isBefore(period.getFromDate())) {
+                continue;
+            }
+            ClaimStatus status = statusOn(claim, logOf.getOrDefault(claim.getId(), List.of()), period.getToDate());
+            if (status == null || !status.isOpen() || !person.countsAsOf(claim, status, today)) {
                 continue;
             }
             dueOf(sheet, sheetRates, person, claim).ifPresent(due -> totals.merge(person.getId(), due, BigDecimal::add));

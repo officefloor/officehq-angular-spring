@@ -21,7 +21,10 @@ public class ConsolidatedController {
         this.rollups = rollups;
     }
 
-    /** The people, due-total and overdue-total of the sheet's descendants added up, the sheet itself left out. */
+    /**
+     * The people, due-total and overdue-total of the sheet's descendants added up, the sheet itself left out; in an
+     * as-of view, each descendant as it stood at the end of that date.
+     */
     @GetMapping("/api/sheets/{sheetId}/descendants/figures")
     public RollupService.Consolidated descendants(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
@@ -29,8 +32,8 @@ public class ConsolidatedController {
     }
 
     /**
-     * The people, due-total and overdue-total of the sheet and its descendants added up, as the store holds them now:
-     * an as-of view of the sheet leaves them live.
+     * The people, due-total and overdue-total of the sheet and its descendants added up; in an as-of view, every sheet
+     * of the tree as it stood at the end of that date.
      */
     @GetMapping("/api/sheets/{sheetId}/consolidated/figures")
     public RollupService.Consolidated consolidated(@PathVariable @NotBlank @Size(max = 100) String sheetId,

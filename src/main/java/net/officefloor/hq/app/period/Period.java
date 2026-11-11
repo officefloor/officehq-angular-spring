@@ -59,6 +59,13 @@ public class Period {
     @Column(name = "total", precision = 14, scale = 2)
     private Map<Long, BigDecimal> personTotals = new HashMap<>();
 
+    /** Each person's carried figure for the period, by person id, fixed when it was closed; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_carried", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "carried", precision = 14, scale = 2)
+    private Map<Long, BigDecimal> personCarried = new HashMap<>();
+
     protected Period() {
     }
 
@@ -114,22 +121,28 @@ public class Period {
         return Map.copyOf(personTotals);
     }
 
-    /** Close the period, fixing each person's due-total for it and its own, their sum. */
-    public void close(Map<Long, BigDecimal> totals) {
+    public Map<Long, BigDecimal> getPersonCarried() {
+        return Map.copyOf(personCarried);
+    }
+
+    /** Close the period, fixing each person's due-total and carried figure for it and its own due-total, their sum. */
+    public void close(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
         this.closed = true;
         this.softClosed = false;
-        fix(totals);
+        fix(totals, carried);
     }
 
     /** Soft-close the period, fixing its figures as a close does while its claims can still change. */
-    public void softClose(Map<Long, BigDecimal> totals) {
+    public void softClose(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
         this.softClosed = true;
-        fix(totals);
+        fix(totals, carried);
     }
 
-    private void fix(Map<Long, BigDecimal> totals) {
+    private void fix(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
         this.personTotals.clear();
         this.personTotals.putAll(totals);
+        this.personCarried.clear();
+        this.personCarried.putAll(carried);
         this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
@@ -139,6 +152,10 @@ public class Period {
         if (from != null) {
             personTotals.merge(intoId, from, BigDecimal::add);
         }
+        BigDecimal carried = personCarried.remove(fromId);
+        if (carried != null) {
+            personCarried.merge(intoId, carried, BigDecimal::add);
+        }
     }
 
     /** Reopen the period: its due-total is live again. */
@@ -147,6 +164,7 @@ public class Period {
         this.softClosed = false;
         this.closedTotal = null;
         this.personTotals.clear();
+        this.personCarried.clear();
     }
 
     /** Whether the date falls in the period, both ends inclusive. */

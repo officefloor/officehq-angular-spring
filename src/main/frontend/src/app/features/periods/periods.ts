@@ -19,6 +19,8 @@ export interface Period {
   closedTotal: string | null;
   /** Each person's due-total for the period by person id, fixed when it was closed or soft-closed; empty while it is open. */
   personTotals: Record<number, string>;
+  /** Each person's carried figure fixed when it was closed or soft-closed, by person id; empty while it is open. */
+  personCarried: Record<number, string>;
   /** The fiscal year (FYyyyy) the from-date falls in, by the sheet's fiscal year start month. */
   fy: string;
   /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */

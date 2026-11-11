@@ -962,19 +962,17 @@ export class People {
   });
   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
   private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
-  /** While the sheet is shown as of a date, the sheet's and its descendants' figures as the store holds them now. */
-  private readonly liveConsolidated = signal<DescendantFigures | null>(null);
   /** The sheet's people and its descendants' added up. */
   protected readonly consolidatedPeople = computed(
-    () => this.liveConsolidated()?.people ?? this.people().length + this.descendantFigures().people,
+    () => this.people().length + this.descendantFigures().people,
   );
   /** The sheet's due-total as shown and its descendants' added up. */
   protected readonly consolidatedDueTotal = computed(() =>
-    this.liveConsolidated()?.dueTotal ?? sumDues([this.dueTotal(), this.descendantFigures().dueTotal]),
+    sumDues([this.dueTotal(), this.descendantFigures().dueTotal]),
   );
   /** The sheet's overdue-total as shown and its descendants' added up. */
   protected readonly consolidatedOverdueTotal = computed(() =>
-    this.liveConsolidated()?.overdueTotal ?? sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
+    sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
   );
   /** The person's tags, sorted; none when they have none. */
   protected personTagsOf(person: Person): string[] {
@@ -1168,7 +1166,6 @@ export class People {
         this.periods.set([]);
         this.tags.set([]);
         this.descendantFigures.set(NO_DESCENDANTS);
-        this.liveConsolidated.set(null);
         this.retireDates.set({});
         this.inlineGrades.set({});
         this.aliasInputs.set({});
@@ -1418,8 +1415,12 @@ export class People {
     return this.livePersonPeriodDues().get(person.id)?.get(period.name) ?? '0.00';
   }
 
-  /** The person's carried figure for the period: the dues of their counting claims of earlier periods still open at its end. */
+  /**
+   * The person's carried figure for the period: once it is closed or soft-closed, the figure fixed then (0.00 for a
+   * person added since); while it is open, the dues of their counting claims of earlier periods still open at its end.
+   */
   protected carriedOf(person: Person, period: Period): string {
+    if (period.closed || period.softClosed) return period.personCarried?.[person.id] ?? '0.00';
     return this.personPeriodCarried().get(person.id)?.get(period.name) ?? '0.00';
   }
 
@@ -2315,18 +2316,14 @@ export class People {
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const asOf = this.session.asOf() !== null;
-    const [list, claims, rates, periods, tags, descendants, live] = await Promise.all([
+    const [list, claims, rates, periods, tags, descendants] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
       firstValueFrom(this.http.get<Claim[]>(`${url}/claims`, this.session.headers())),
       firstValueFrom(this.http.get<Rate[]>(`${url}/rates`, this.session.headers())),
       firstValueFrom(this.http.get<Period[]>(`${url}/periods`, this.session.headers())),
       firstValueFrom(this.http.get<string[]>(`${url}/claims/tags`, this.session.headers())),
       firstValueFrom(this.http.get<DescendantFigures>(`${url}/descendants/figures`, this.session.headers())),
-      asOf
-        ? firstValueFrom(this.http.get<DescendantFigures>(`${url}/consolidated/figures`, this.session.headers()))
-        : Promise.resolve(null),
-    ]).catch(() => [null, null, null, null, null, null, null]);
+    ]).catch(() => [null, null, null, null, null, null]);
     // A later read wins over a slower earlier one.
     if (list && claims && rates && periods && tags && descendants && read === this.reads && this.session.sheet() === sheet) {
       this.people.set(list);
@@ -2335,7 +2332,6 @@ export class People {
       this.periods.set(periods);
       this.tags.set(tags);
       this.descendantFigures.set(descendants);
-      this.liveConsolidated.set(live);
     }
   }
 }
