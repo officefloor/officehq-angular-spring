@@ -1,0 +1,127 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 723c99482..9bd9f4404 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
++import { Component, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
+@@ -267,7 +267,7 @@ function csvField(value: string): string {
+             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th><th scope="col">Active</th>
+             <th scope="col">Overdue</th><th scope="col">Overdue total</th>
+             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
+-            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Watched</th>
++            <th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Excess</th><th scope="col">Cut total</th><th scope="col">Watched</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
+           </tr>
+         </thead>
+@@ -312,6 +312,7 @@ function csvField(value: string): string {
+               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
+               <td data-testid="person-backing">{{ backingOf(p) }}</td>
+               <td data-testid="person-excess">{{ excessOf(p) }}</td>
++              <td data-testid="person-cut-total">{{ cutTotalOf(p) }}</td>
+               <td data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</td>
+               <td>
+                 <button
+@@ -592,6 +593,7 @@ function csvField(value: string): string {
+       <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
++      <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <table>
+           <caption>Due total by tag</caption>
+@@ -664,6 +666,10 @@ export class People {
+     }
+     return by;
+   });
++  /** The pools, whose cuts each person's cut total adds up. */
++  private readonly pools = viewChild(Pools);
++  /** The sheet's cut total: everyone's cut totals added up. */
++  protected readonly cutTotal = computed(() => this.pools()?.cutTotal() ?? '0.00');
+   protected readonly claimedTotal = computed(() => sumAmounts(this.people().map((p) => this.claimedBy(p.id))));
+   /** The sheet's rates, by grade and then from-date. */
+   protected readonly rates = signal<Rate[]>([]);
+@@ -1043,6 +1049,11 @@ export class People {
+     return this.livePersonPeriodDues().get(person.id)?.get(period.name) ?? '0.00';
+   }
+ 
++  /** The person's cuts across every pool they are a member of, added up; a pool that shows no cuts adds nothing. */
++  protected cutTotalOf(person: Person): string {
++    return this.pools()?.cutTotals().get(person.id) ?? '0.00';
++  }
++
+   /** How far the sum of the person's dues is above the sheet's cap; 0.00 when it is not. */
+   protected excessOf(person: Person): string {
+     return excessOver(this.uncappedDueTotalOf(person), this.session.cap());
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index e82ce409a..f66cb4341 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -143,7 +143,7 @@ export class Pools {
+   private readonly session = inject(Session);
+ 
+   /** The people on the sheet, in the order they were added. */
+-  readonly people = input.required<PoolPerson[]>();
++  readonly people = input<PoolPerson[]>([]);
+ 
+   protected readonly pools = signal<PoolView[]>([]);
+   protected readonly name = signal('');
+@@ -154,11 +154,11 @@ export class Pools {
+   protected readonly memberErrors = signal<Record<number, string>>({});
+ 
+   /**
+-   * Each pool with its members' names and its total share: a retired member's share counts as 0.00. A balanced pool
+-   * with a pot shows each member's cut of it; an unbalanced pool, or one with no pot, shows none (blank). A pool that
+-   * is a member of none has the sheet's pot; one that is a member of another has its cut there as its pot.
++   * Each pool's total share (a retired member's counting as 0.00), whether it is balanced, and, in a balanced pool
++   * with a pot, each member's cut (in cents, in member order); null cuts for an unbalanced pool or one with no pot. A
++   * pool that is a member of none has the sheet's pot; one that is a member of another has its cut there as its pot.
+    */
+-  protected readonly shown = computed(() => {
++  private readonly figures = computed(() => {
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     const poolsById = new Map(this.pools().map((p) => [p.id, p]));
+     const potText = this.session.pot();
+@@ -193,8 +193,37 @@ export class Pools {
+       figures.set(pool.id, result);
+       return result;
+     };
++    for (const pool of this.pools()) figuresOf(pool, 0);
++    return figures;
++  });
++
++  /**
++   * Each person's cut total (two decimals), by person id for every person on the sheet: their cuts in every pool they
++   * are a member of, added up; a pool that shows no cuts adds nothing.
++   */
++  readonly cutTotals = computed(() => {
++    const totals = new Map<number, number>(this.people().map((p) => [p.id, 0]));
++    const figures = this.figures();
++    for (const pool of this.pools()) {
++      const poolCuts = figures.get(pool.id)?.cuts;
++      if (!poolCuts) continue;
++      pool.members.forEach((m, i) => {
++        if (m.personId !== null && totals.has(m.personId)) totals.set(m.personId, totals.get(m.personId)! + poolCuts[i]);
++      });
++    }
++    return new Map([...totals].map(([id, total]) => [id, fromCents(total)]));
++  });
++
++  /** The sheet's cut total (two decimals): everyone's cut totals added up. */
++  readonly cutTotal = computed(() => fromCents([...this.cutTotals().values()].reduce((sum, t) => sum + cents(t), 0)));
++
++  /** Each pool with its members' names, its total share, whether it is balanced and each member's cut (blank: none). */
++  protected readonly shown = computed(() => {
++    const byId = new Map(this.people().map((p) => [p.id, p]));
++    const poolsById = new Map(this.pools().map((p) => [p.id, p]));
++    const figures = this.figures();
+     return this.pools().map((pool) => {
+-      const f = figuresOf(pool, 0);
++      const f = figures.get(pool.id)!;
+       return {
+         id: pool.id,
+         name: pool.name,
