@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
+import { AuditViewer } from '../audit-viewer/audit-viewer';
 import { Holidays } from '../holidays/holidays';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
@@ -8,7 +9,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [Holidays, People, Settings, VoidReasonsList],
+  imports: [AuditViewer, Holidays, People, Settings, VoidReasonsList],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -61,6 +62,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
         <app-holidays />
         <app-void-reasons />
         <app-people />
+        <app-audit-viewer />
       }
     } @else {
       <form (submit)="signIn($event)">

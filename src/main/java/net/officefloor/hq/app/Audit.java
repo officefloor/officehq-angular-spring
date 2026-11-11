@@ -6,6 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,6 +35,9 @@ public class Audit {
     private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT");
 
     private static final Pattern SHEET_BY = Pattern.compile("^(\\S+) sheet=(\\S+) by=(\\S+)");
+
+    /** A name a record is about: the value of its {@code name=} or {@code person=} field, up to the next field. */
+    private static final Pattern ABOUT = Pattern.compile(" (?:name|person)=(.*?)(?= [\\w-]+=|$)");
 
     private final Path file;
     private final ObjectProvider<DelegationService> delegations;
@@ -84,6 +90,40 @@ public class Audit {
                 record(entry);
             }
         });
+    }
+
+    /**
+     * The sheet's records exactly as the file holds them, newest first. With a name (not blank), only the records
+     * about that person: those carrying {@code name=} or {@code person=} that name, compared as names are compared
+     * (case and surrounding spaces ignored).
+     */
+    public synchronized List<String> lines(String sheetId, String name) {
+        String who = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        List<String> all;
+        try {
+            all = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        List<String> lines = new ArrayList<>();
+        for (int i = all.size() - 1; i >= 0; i--) {
+            String line = all.get(i);
+            Matcher m = SHEET_BY.matcher(line);
+            if (m.find() && m.group(2).equals(sheetId) && (who.isEmpty() || isAbout(line, who))) {
+                lines.add(line);
+            }
+        }
+        return lines;
+    }
+
+    private static boolean isAbout(String line, String who) {
+        Matcher m = ABOUT.matcher(line);
+        while (m.find()) {
+            if (m.group(1).trim().toLowerCase(Locale.ROOT).equals(who)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Truncate the audit file. */
