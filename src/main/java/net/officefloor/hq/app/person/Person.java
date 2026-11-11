@@ -145,6 +145,11 @@ public class Person {
         this.retiredFrom = retiredFrom;
     }
 
+    /** Whether the person's retirement date is reached on the date: it is on or after it. */
+    public boolean retiredOn(LocalDate date) {
+        return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
+    }
+
     /** Whether the person has any hold. */
     public boolean isHeld() {
         return !holds.isEmpty();
@@ -167,22 +172,25 @@ public class Person {
 
     /**
      * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one dated
-     * within a hold not unless a statement binds it, and an OPEN one deferred on the sheet's today not at all.
+     * within a hold, or once the person's retirement date is reached on the sheet's today, not unless a statement binds
+     * it, and an OPEN one deferred on the sheet's today not at all.
      */
     public boolean counts(Claim claim, LocalDate today) {
         ClaimStatus status = claim.getStatus();
-        return status.counts() && !(status.isOpen() && !claim.isBound() && heldOn(claim.getDate()))
+        return status.counts()
+                && !(status.isOpen() && !claim.isBound() && (heldOn(claim.getDate()) || retiredOn(today)))
                 && !claim.isDeferredOn(today);
     }
 
     /**
      * Whether the claim counts in a period's due-total, given the status it had at the end of the period's last day
      * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and still open now and dated
-     * within a hold not unless a statement binds it, and an OPEN one deferred on the sheet's today not at all.
+     * within a hold, or once the person's retirement date is reached on the sheet's today, not unless a statement binds
+     * it, and an OPEN one deferred on the sheet's today not at all.
      */
     public boolean countsAsOf(Claim claim, ClaimStatus status, LocalDate today) {
         return status != null && status.counts() && !(status.isOpen() && claim.getStatus().isOpen()
-                && !claim.isBound() && heldOn(claim.getDate())) && !claim.isDeferredOn(today);
+                && !claim.isBound() && (heldOn(claim.getDate()) || retiredOn(today))) && !claim.isDeferredOn(today);
     }
 
     /** Refused when the person is retired and the date is after their retirement date. */

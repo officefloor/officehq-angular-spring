@@ -93,12 +93,14 @@ public class PersonService {
     /** Retire the person from the date, or from the sheet's today when none is given. */
     @Transactional
     public Person retire(String sheetId, String user, Long id, LocalDate from) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
         person.setRetiredFrom(from != null ? from : sheetService.today(sheetId));
         Person saved = save(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
                 + " name=" + saved.getName() + " from=" + saved.getRetiredFrom());
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
