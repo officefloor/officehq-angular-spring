@@ -25,6 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
  * person's grade is dated: the first applies from the beginning of time, and each edit records the
  * grade from its from-date (the sheet's today when none is given), keeping those already recorded;
  * an edit leaving the grade in force on the sheet's today as it is, with no from-date, records none.
+ * A retired grade cannot be chosen: not for a new person, nor by an edit that records a grade (people
+ * already on it keep it).
  * A
  * name is unique on the sheet, compared without regard to case (names arrive trimmed). A person can
  * be retired from a date (the sheet's today when none is given); they count as retired at once. A
@@ -115,6 +117,7 @@ public class PersonService {
         if (contact != null && people.existsBySheetIdAndContact(sheetId, contact)) {
             throw contactInUse();
         }
+        refuseRetiredGrade(sheetId, grade);
         LocalDate today = sheets.today(sheetId);
         Person person = new Person(sheetId, name, grade, today);
         if (termsFrom != null) {
@@ -177,6 +180,10 @@ public class PersonService {
             throw contactInUse();
         }
         LocalDate today = sheets.today(sheetId);
+        boolean gradeChosen = gradeFrom != null || !grade.equals(person.gradeOn(today));
+        if (gradeChosen) {
+            refuseRetiredGrade(sheetId, grade);
+        }
         boolean termsChanged = termsFrom != null || !Objects.equals(terms, person.termsOn(today));
         String contactBefore = person.getContact();
         person.setName(name);
@@ -189,7 +196,7 @@ public class PersonService {
         if (tags != null) {
             person.setTags(tags);
         }
-        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+        if (gradeChosen) {
             person.setGradeFrom(gradeFrom != null ? gradeFrom : today, grade, today);
         }
         Person saved = save(person);
@@ -513,6 +520,13 @@ public class PersonService {
         }
         audit.recordOnCommit((on ? "PERSON_WATCHED" : "PERSON_UNWATCHED") + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName());
+    }
+
+    /** A retired grade cannot be chosen for a new person or in an edit (409). */
+    private void refuseRetiredGrade(String sheetId, String grade) {
+        if (sheets.isRetiredGrade(sheetId, grade)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The grade " + grade + " is retired.");
+        }
     }
 
     private static ResponseStatusException patronTaken() {

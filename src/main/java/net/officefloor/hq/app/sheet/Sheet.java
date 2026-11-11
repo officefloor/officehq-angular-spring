@@ -152,6 +152,10 @@ public class Sheet {
     @Column(name = "default_grade")
     private String defaultGrade;
 
+    /** The grades retired, comma separated in A, B, C order; null for none. Not dated. */
+    @Column(name = "retired_grades")
+    private String retiredGrades;
+
     /** The due-total above which a person is alerted; null for off. Not dated. */
     @Column(name = "alert_threshold")
     private BigDecimal alertThreshold;
@@ -255,6 +259,7 @@ public class Sheet {
         then.maxOpen = maxOpen;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
+        then.retiredGrades = retiredGrades;
         then.pot = pot;
         then.alertThreshold = alertThreshold;
         then.fiscalStartMonth = fiscalStartMonth;
@@ -579,9 +584,28 @@ public class Sheet {
         return defaultGrade;
     }
 
-    /** The grade a new person takes when none is given: the default grade, else A. */
+    /** The grade a new person takes when none is given: the default grade unless it is retired, else A. */
     public String defaultGradeOrA() {
-        return defaultGrade == null ? "A" : defaultGrade;
+        return defaultGrade == null || isRetiredGrade(defaultGrade) ? "A" : defaultGrade;
+    }
+
+    /** The grades retired, in A, B, C order; empty for none. */
+    public List<String> retiredGradeList() {
+        return retiredGrades == null ? List.of() : List.of(retiredGrades.split(","));
+    }
+
+    public boolean isRetiredGrade(String grade) {
+        return retiredGradeList().contains(grade);
+    }
+
+    /** Retire the grade (already retired, nothing changes). */
+    public void retireGrade(String grade) {
+        if (!isRetiredGrade(grade)) {
+            List<String> all = new ArrayList<>(retiredGradeList());
+            all.add(grade);
+            all.sort(Comparator.naturalOrder());
+            retiredGrades = String.join(",", all);
+        }
     }
 
     public void setDefaultGrade(String defaultGrade) {

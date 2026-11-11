@@ -110,6 +110,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::defaultGradeOrA).orElse("A");
     }
 
+    /** Whether the grade is retired on the sheet: it cannot be chosen for a new person or in an edit. */
+    @Transactional(readOnly = true)
+    public boolean isRetiredGrade(String id, String grade) {
+        return sheets.findById(id).map(s -> s.isRetiredGrade(grade)).orElse(false);
+    }
+
     /** The default date of a new claim on the sheet: its entry date when set, else its today. */
     @Transactional(readOnly = true)
     public LocalDate entryDate(String id) {

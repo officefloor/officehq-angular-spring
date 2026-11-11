@@ -7,6 +7,7 @@ import { AuditView } from '../audit/audit-view';
 import { Activity } from '../audit/activity';
 import { TreeSearch } from '../search/tree-search';
 import { Holidays } from '../holidays/holidays';
+import { Grades } from '../grades/grades';
 import { DatedDue, Period, Periods, classicPeriodDueTotal, periodDueTotal, periodOn, personPeriodCarried, personPeriodDueTotal } from '../periods/periods';
 import { DatedGrade, DatedValue, Lateness, Rate, Rates, chargedDueCents, dueCents, dueText, graceOn, gradeOn, pctOn, valueOn } from '../rates/rates';
 import { Roles } from '../roles/roles';
@@ -287,7 +288,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
 
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, AuditView, Activity, Header, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons],
+  imports: [FigurePipe, AuditView, Activity, Header, Dashboard, Holidays, Grades, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -311,6 +312,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       [overdueCount]="treeOverdueCount()"
     />
     <app-rates [(rates)]="rates" />
+    <app-grades />
     <app-roles />
     <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(roundings)]="roundings" [(caps)]="caps" [(pot)]="pot" />
     <app-periods [(periods)]="periods" [dues]="dues()" />
@@ -3134,7 +3136,8 @@ export class People {
         await this.showCurrent(sheet, id);
         this.error.set('Someone else has saved this person since you opened it; the form now shows their values.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.refuse('That name or contact is already in use on this sheet.');
+        const reason = typeof e.error?.message === 'string' ? e.error.message : '';
+        this.refuse(reason || 'That name or contact is already in use on this sheet.');
       } else {
         this.refuse(id === null ? 'Could not add this person.' : 'Could not save this person.');
       }
