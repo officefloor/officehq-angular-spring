@@ -193,6 +193,11 @@ public class SettingController {
         return response(service.get(req.sheet().trim(), req.user().trim()));
     }
 
+    @PostMapping("/policy")
+    public List<String> policy(@Valid @RequestBody GetSettingsRequest req) {
+        return service.policyLines(req.sheet().trim(), req.user().trim());
+    }
+
     @PostMapping("/set")
     public SettingsResponse set(@Valid @RequestBody SetSettingsRequest req) {
         String policy = req.policyDate() == null ? "" : req.policyDate().trim();

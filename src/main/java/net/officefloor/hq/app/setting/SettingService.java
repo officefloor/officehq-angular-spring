@@ -3,13 +3,19 @@ package net.officefloor.hq.app.setting;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.LoggedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -103,9 +109,11 @@ public class SettingService {
     private final Audit audit;
     private final RoleService roles;
     private final RateChain rateChain;
+    private final ClaimRepository claims;
 
     public SettingService(SheetService sheets, SheetRepository sheetStore, RollupService rollup, Audit audit,
-            RoleService roles, RateChain rateChain) {
+            RoleService roles, RateChain rateChain, ClaimRepository claims) {
+        this.claims = claims;
         this.rateChain = rateChain;
         this.roles = roles;
         this.sheets = sheets;
@@ -117,6 +125,35 @@ public class SettingService {
     @Transactional
     public Sheet get(String sheetId, String user) {
         return sheets.load(sheetId, user);
+    }
+
+    /**
+     * The policy versions, oldest first, one line each: {@code <version> <from or start> <key>=<value>
+     * <count>}, the value blank for none, the count the sheet's claims (not deleted) whose policy
+     * version (the one in force on the claim's date) it is.
+     */
+    @Transactional
+    public List<String> policyLines(String sheetId, String user) {
+        Sheet sheet = sheets.load(sheetId, user);
+        List<LoggedSetting> log = sheet.getPolicyLog();
+        int[] counts = new int[log.size() + 1];
+        for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (c.getStatus() != ClaimStatus.DELETED && c.getDate() != null) counts[sheet.policyVersionOn(c.getDate())]++;
+        }
+        List<String> lines = new ArrayList<>();
+        for (int i = 0; i < log.size(); i++) {
+            LoggedSetting s = log.get(i);
+            lines.add((i + 1) + " " + (s.getFromDate() == null ? "start" : s.getFromDate().toString()) + " "
+                    + s.getKey() + "=" + policyValue(s) + " " + counts[i + 1]);
+        }
+        return lines;
+    }
+
+    private static String policyValue(LoggedSetting s) {
+        if (s.getValue() == null) return "";
+        if (s.getKey().equals(ROUNDING)) return Sheet.roundingName(s.getValue());
+        if (s.getKey().equals(TERMS)) return String.valueOf(s.getValue().intValue());
+        return text(s.getValue());
     }
 
     /**

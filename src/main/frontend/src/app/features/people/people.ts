@@ -16,6 +16,7 @@ import { Header } from '../header/header';
 import { Dashboard } from '../dashboard/dashboard';
 import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../void-reasons/void-reasons';
+import { PolicyViewer } from '../policy/policy-viewer';
 import { Templates } from '../templates/templates';
 import { Notes } from '../notes/notes';
 import { Pool, Pools } from '../pools/pools';
@@ -297,7 +298,7 @@ const PERSON_COUNTED_STATUSES = ['OPEN', 'SETTLED'] as const;
 
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, AuditView, Activity, Header, Dashboard, Holidays, Grades, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons],
+  imports: [FigurePipe, AuditView, Activity, Header, Dashboard, Holidays, Grades, PersonClaims, PersonPlans, Periods, Rates, Roles, Pools, Crews, Settings, Summary, ClassicSummary, Templates, Notes, TreeSearch, VoidReasons, PolicyViewer],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -330,6 +331,7 @@ const PERSON_COUNTED_STATUSES = ['OPEN', 'SETTLED'] as const;
     <app-periods [(periods)]="periods" [dues]="dues()" [claimDueBys]="claimDueBys()" />
     <app-holidays />
     <app-void-reasons />
+    <app-policy-viewer />
     <app-templates />
     <app-notes />
     <app-pools [people]="people()" [pot]="pot()" [crews]="crews()" [periods]="periods()" [(pools)]="pools" />

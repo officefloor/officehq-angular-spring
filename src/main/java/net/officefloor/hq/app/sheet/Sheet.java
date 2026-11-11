@@ -314,6 +314,11 @@ public class Sheet {
         return settingLog.stream().filter(s -> POLICY_KEYS.contains(s.getKey())).map(LoggedSetting::getFromDate).toList();
     }
 
+    /** The values recorded for the policy settings, in the order made: one per policy version. */
+    public List<LoggedSetting> getPolicyLog() {
+        return settingLog.stream().filter(s -> POLICY_KEYS.contains(s.getKey())).toList();
+    }
+
     /** The current policy version: how many have been made; 0 for none. */
     public int getPolicyVersion() {
         return getPolicyVersions().size();
