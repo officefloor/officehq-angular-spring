@@ -1,0 +1,97 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9db482dd7..8175908eb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, statusOn, sumAmounts } from '../claims/claims';
+ import { Period, Periods, periodOn } from '../periods/periods';
+-import { Rate, Rates, capped, excessOver, rateOn, sumDues } from '../rates/rates';
++import { Rate, Rates, capped, excessOver, rateOn, sumDues, trimmedSumDues } from '../rates/rates';
+ import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
+ import { Header } from '../header/header';
+ 
+@@ -421,14 +421,14 @@ export class People {
+         this.periods().map((per) => [per.name, sumDues(this.people().map((p) => this.periodDueTotalOf(p, per)))]),
+       ),
+   );
+-  /** Everyone's due-total added up, skipping the n/a ones. */
+-  protected readonly dueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
++  /** Everyone's due-total added up, skipping the n/a ones and, with three or more, the highest and lowest. */
++  protected readonly dueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.dueTotalOf(p))));
+   /** How many of everyone's counted claims are overdue. */
+   protected readonly overdueCount = computed(() =>
+     this.people().reduce((total, p) => total + this.overdueOf(p).length, 0),
+   );
+-  /** Everyone's overdue-total added up. */
+-  protected readonly overdueTotal = computed(() => sumDues(this.people().map((p) => this.overdueTotalOf(p))));
++  /** Everyone's overdue-total added up, with three or more leaving out the highest and lowest. */
++  protected readonly overdueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.overdueTotalOf(p))));
+   /** Per grade: the people not retired on it today, as the list shows their grade, and their due-totals added up. */
+   protected readonly gradeSummary = computed<GradeSummary[]>(() =>
+     this.grades.map((grade) => {
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index af2d18ba5..93e9a4918 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -86,6 +86,14 @@ export function sumDues(dues: string[]): string {
+   return decimalOf(dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n));
+ }
+ 
++/** As {@link sumDues}, but leaving out the single highest and lowest figure when there are three or more. */
++export function trimmedSumDues(dues: string[]): string {
++  const figures = dues.filter((d) => d !== 'n/a').map(hundredths);
++  if (figures.length < 3) return sumDues(dues);
++  const sorted = [...figures].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
++  return decimalOf(sorted.slice(1, -1).reduce((total, d) => total + d, 0n));
++}
++
+ // The rate in force on the sheet's today for each grade, every rate with its from-date, and the form
+ // that sets a grade's rate from a date.
+ @Component({
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 42d029ba9..6720ea0c4 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -73,8 +73,8 @@ public class RollupService {
+         }
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = zero();
+-        BigDecimal dueTotal = zero();
+-        BigDecimal overdueTotal = zero();
++        List<BigDecimal> dues = new ArrayList<>();
++        List<BigDecimal> overdues = new ArrayList<>();
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             List<Claim> theirs = counted.getOrDefault(person.getId(), List.of()).stream()
+                     .filter(claim -> person.counts(claim, today))
+@@ -101,17 +101,27 @@ public class RollupService {
+                 }
+             }
+             claimedTotal = claimedTotal.add(claimed);
+-            overdueTotal = overdueTotal.add(overdue);
++            overdues.add(overdue);
+             if (anyDue && sheet != null) {
+                 due = sheet.capped(due);
+             }
+             if (anyDue) {
+-                dueTotal = dueTotal.add(due);
++                dues.add(due);
+             }
+             figures.put(person.getId(), new Figures(person.getName(), shown(claimed), anyDue ? shown(due) : "n/a",
+                     shown(overdue)));
+         }
+-        return new Snapshot(figures, shown(claimedTotal), shown(dueTotal), shown(overdueTotal));
++        return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
++    }
++
++    /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
++    private static BigDecimal trimmedSum(List<BigDecimal> figures) {
++        List<BigDecimal> kept = new ArrayList<>(figures);
++        if (kept.size() >= 3) {
++            kept.sort(null);
++            kept = kept.subList(1, kept.size() - 1);
++        }
++        return kept.stream().reduce(zero(), BigDecimal::add);
+     }
+ 
+     /**
