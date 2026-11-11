@@ -327,6 +327,7 @@ function csvField(value: string): string {
             <th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shows('terms')) { <th scope="col">Terms</th> }@if (columns.shows('contact')) { <th scope="col">Contact</th> }<th scope="col">Tags</th>@if (columns.shows('aliases')) { <th scope="col">Aliases</th> }<th scope="col">From sheet</th><th scope="col">Clashing</th>@if (columns.shows('claimed')) { <th scope="col">Claimed</th> }@if (columns.shows('due-total')) { <th scope="col">Due</th> }<th scope="col">Settled</th><th scope="col">Open</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
+              <th scope="col">Carried into {{ per.name }}</th>
             }
             @if (columns.shows('statement-count')) { <th scope="col">Statements</th> }@if (columns.shows('stated-total')) { <th scope="col">Last stated</th> }@if (columns.shows('statement-date')) { <th scope="col">Stated on</th> }
             @if (columns.shows('retired')) { <th scope="col">Retired</th> }<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th>@if (columns.shows('hold')) { <th scope="col">On hold</th> }<th scope="col">Active</th>
@@ -372,6 +373,7 @@ function csvField(value: string): string {
               <td data-testid="person-open-total">{{ openTotalOf(p) | fig }}</td>
               @for (per of periods(); track per.id) {
                 <td [attr.data-testid]="'person-period-' + per.name + '-due-total'">{{ periodDueTotalOf(p, per) | fig }}</td>
+                <td [attr.data-testid]="'person-period-' + per.name + '-carried'">{{ carriedOf(p, per) | fig }}</td>
               }
               @if (columns.shows('statement-count')) {
                 <td data-testid="person-statement-count">{{ p.statementCount | fig }}</td>
@@ -892,6 +894,34 @@ export class People {
       [...dues].map(([id, theirs]) => [id, new Map([...theirs].map(([name, list]) => [name, sumDues(list)]))]),
     );
   });
+  /**
+   * Each person's carried figure for each period, by person id and then period name: the dues as shown now of their
+   * counting claims due by a date in a period ending before it starts that were OPEN or PENDING at the end of its last
+   * day, skipping the n/a ones; a period with nothing carried is missing.
+   */
+  private readonly personPeriodCarried = computed(() => {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const today = this.session.today();
+    const carried = new Map<number, Map<string, string[]>>();
+    for (const c of this.claims()) {
+      const from = periodOn(this.periods(), c.dueBy);
+      const person = byId.get(c.personId);
+      if (!from || person === undefined) continue;
+      for (const period of this.periods()) {
+        if (from.to >= period.from || !liveAtEnd(c, person, today, period.to)) continue;
+        const status = statusOn(c, period.to);
+        if (status !== 'OPEN' && status !== 'PENDING') continue;
+        const theirs = carried.get(person.id) ?? new Map<string, string[]>();
+        const list = theirs.get(period.name) ?? [];
+        list.push(claimDue(c, this.rates(), person.grades, this.session));
+        theirs.set(period.name, list);
+        carried.set(person.id, theirs);
+      }
+    }
+    return new Map(
+      [...carried].map(([id, theirs]) => [id, new Map([...theirs].map(([name, list]) => [name, sumDues(list)]))]),
+    );
+  });
   /** Each period's due-total by name: the sum of everyone's due-total for it. */
   protected readonly periodDueTotals = computed(
     () =>
@@ -1386,6 +1416,11 @@ export class People {
   protected periodDueTotalOf(person: Person, period: Period): string {
     if (period.closed || period.softClosed) return period.personTotals?.[person.id] ?? '0.00';
     return this.livePersonPeriodDues().get(person.id)?.get(period.name) ?? '0.00';
+  }
+
+  /** The person's carried figure for the period: the dues of their counting claims of earlier periods still open at its end. */
+  protected carriedOf(person: Person, period: Period): string {
+    return this.personPeriodCarried().get(person.id)?.get(period.name) ?? '0.00';
   }
 
   /** The person's cuts across every pool they are a member of, added up; a pool that shows no cuts adds nothing. */
