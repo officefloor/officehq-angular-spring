@@ -965,6 +965,38 @@ public class ClaimService {
     }
 
     /**
+     * Set the due-by of a DRAFT, OPEN or PENDING claim directly. It stays as set: a holiday added
+     * later does not move it; its overdue, late charge, grace and period follow it. Refused (403) for
+     * anyone but a steward, (409) for any other claim and (423) when due, or to be due, inside a
+     * closed period.
+     */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, long id, LocalDate dueBy) {
+        roles.refuseViewer(sheetId, user);
+        if (!isSteward(sheetId, user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward can set a claim's due-by.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() != ClaimStatus.DRAFT && claim.getStatus() != ClaimStatus.OPEN
+                && claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot have its due-by set.");
+        }
+        LocalDate old = claim.getDueBy();
+        periods.refuseIfClosed(sheetId, old);
+        periods.refuseIfClosed(sheetId, dueBy);
+        Person person = person(sheetId, claim.getPersonId());
+        claim.overrideDueBy(dueBy);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_DUE_BY_SET", sheetId, user, person, saved)
+                + " old=" + old + " new=" + dueBy);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date and,
      * unless a DRAFT (which has no number), takes the next number in the sequence it is numbered in
      * (its old number is never used again), is unbound from any statement (live again until its new person's next statement), and

@@ -614,6 +614,15 @@ export function money(c: number): string {
             (input)="setRedate(c.id, $any($event.target).value)"
           />
           <button type="button" data-testid="claim-redate" (click)="redate(c)">Re-date</button>
+          <label [for]="'claim-due-by-new-' + c.id">Set due-by to</label>
+          <input
+            [id]="'claim-due-by-new-' + c.id"
+            type="date"
+            data-testid="claim-due-by-new"
+            [value]="dueBys().get(c.id) ?? ''"
+            (input)="setDueByDate(c.id, $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-set-due-by" (click)="setDueBy(c)">Set due-by</button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -784,6 +793,8 @@ export class PersonClaims {
   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The new date typed for each claim, by claim id. */
   protected readonly redates = signal<ReadonlyMap<number, string>>(new Map());
+  /** The due-by typed for each claim, by claim id. */
+  protected readonly dueBys = signal<ReadonlyMap<number, string>>(new Map());
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<ReadonlyMap<number, string>>(new Map());
   /** The amount typed to part-settle each claim, by claim id. */
@@ -1149,6 +1160,42 @@ export class PersonClaims {
               : status === 409
                 ? `A ${c.status} claim cannot be re-dated.`
                 : 'Could not re-date this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
+  }
+
+  protected setDueByDate(id: number, date: string): void {
+    this.dueBys.update((m) => new Map(m).set(id, date));
+    this.clearActionError(id);
+  }
+
+  /** Set a DRAFT, OPEN or PENDING claim's due-by to the date typed; the server refuses anyone but a
+   *  steward, any other claim, and a due-by, old or new, inside a closed period. */
+  protected async setDueBy(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const dueBy = (this.dueBys().get(c.id) ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueBy)) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter the date to set this claim\'s due-by to.'));
+      return;
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/due-by', { sheet, user: this.session.user(), id: c.id, dueBy }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 423
+          ? CLOSED
+          : status === 403
+            ? 'Only a steward can set a claim\'s due-by.'
+            : status === 409
+              ? `A ${c.status} claim cannot have its due-by set.`
+              : 'Could not set this claim\'s due-by.';
       this.actionErrors.update((m) => new Map(m).set(c.id, err));
     }
   }

@@ -104,6 +104,10 @@ public class ClaimController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate date) {
     }
 
+    public record SetDueByRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate dueBy) {
+    }
+
     public record DeferClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate until) {
     }
@@ -346,6 +350,11 @@ public class ClaimController {
     @PostMapping("/redate")
     public ClaimResponse redate(@Valid @RequestBody RedateClaimRequest req) {
         return response(service.redate(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
+    }
+
+    @PostMapping("/due-by")
+    public ClaimResponse setDueBy(@Valid @RequestBody SetDueByRequest req) {
+        return response(service.setDueBy(req.sheet().trim(), req.user().trim(), req.id(), req.dueBy()));
     }
 
     @PostMapping("/proof")

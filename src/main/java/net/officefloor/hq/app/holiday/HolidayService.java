@@ -73,7 +73,7 @@ public class HolidayService {
         Set<LocalDate> off = offDays(sheetId);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (claim.getStatus() != ClaimStatus.SETTLED && claim.getStatus() != ClaimStatus.VOID
-                    && !claim.getDueBy().isBefore(day)) {
+                    && !claim.isDueBySet() && !claim.getDueBy().isBefore(day)) {
                 claim.setDueBy(businessDaysAfter(off, claim.getDate(), claim.getTerms()));
             }
         }
