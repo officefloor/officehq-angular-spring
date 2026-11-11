@@ -3,7 +3,9 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -52,10 +54,12 @@ public class ClaimService {
     private final ClaimLogRepository logs;
     private final WatchService watches;
     private final HolidayService holidays;
+    private final SheetTagRepository tags;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
-            ClaimLogRepository logs, WatchService watches, HolidayService holidays) {
+            ClaimLogRepository logs, WatchService watches, HolidayService holidays, SheetTagRepository tags) {
+        this.tags = tags;
         this.holidays = holidays;
         this.logs = logs;
         this.watches = watches;
@@ -72,6 +76,11 @@ public class ClaimService {
 
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+    }
+
+    /** Every tag ever used on the sheet, sorted. */
+    public List<String> tags(String sheetId) {
+        return tags.findBySheetIdOrderByTagAsc(sheetId).stream().map(SheetTag::getTag).toList();
     }
 
     /** The status logs of the sheet's claims by claim id, each oldest first. */
@@ -91,10 +100,19 @@ public class ClaimService {
         return add(sheetId, user, personId, amount, date, note, corrects, null);
     }
 
-    /** Adds a claim with an external reference (blank: none), refused when the reference is already used on the sheet. */
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref) {
+        return add(sheetId, user, personId, amount, date, note, corrects, ref, null);
+    }
+
+    /**
+     * Adds a claim with an external reference (blank: none), refused when the reference is already used on the sheet,
+     * and comma separated tags (blank: none).
+     */
+    @Transactional
+    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref, String tagText) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
@@ -116,11 +134,13 @@ public class ClaimService {
             throw new ClaimRefException(reference);
         }
         claim.setRef(reference);
+        claim.setTags(tagged(sheetId, tagText));
         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved)
-                + (saved.getRef() == null ? "" : " ref=" + saved.getRef()));
+                + (saved.getRef() == null ? "" : " ref=" + saved.getRef())
+                + (saved.getTags() == null ? "" : " tags=" + saved.getTags()));
         if (saved.isLateEntry()) {
             audit.recordOnCommit(record("LATE_ENTRY", user, person, saved));
         }
@@ -130,7 +150,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, Long id, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tagText) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
@@ -154,6 +174,7 @@ public class ClaimService {
             throw new ClaimRefException(reference);
         }
         claim.setRef(reference);
+        claim.setTags(tagged(sheetId, tagText));
         claim.setAmount(amount);
         claim.setCorrects(corrects);
         claim.setDate(dated);
@@ -496,6 +517,7 @@ public class ClaimService {
         part.setNumber(number);
         part.setOpenedBy(user);
         part.setSplitFrom(kept.getNumber());
+        part.setTags(kept.getTags());
         Claim saved = claims.saveAndFlush(part);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_SPLIT", user, person, kept) + numberOf(kept.getNumber())
@@ -747,6 +769,24 @@ public class ClaimService {
     }
 
     /** The reference with surrounding spaces removed; null for a blank one (no reference). */
+    /**
+     * The tags of comma separated text, each trimmed and lower-cased, without repeats, sorted and joined by commas
+     * (null when there are none), each noted as used on the sheet.
+     */
+    private String tagged(String sheetId, String text) {
+        if (text == null) {
+            return null;
+        }
+        List<String> list = Arrays.stream(text.split(",")).map(t -> t.trim().toLowerCase(Locale.ROOT))
+                .filter(t -> !t.isEmpty()).distinct().sorted().toList();
+        for (String tag : list) {
+            if (!tags.existsBySheetIdAndTag(sheetId, tag)) {
+                tags.save(new SheetTag(sheetId, tag));
+            }
+        }
+        return list.isEmpty() ? null : String.join(",", list);
+    }
+
     private static String refOf(String ref) {
         return ref == null || ref.isBlank() ? null : ref.trim();
     }

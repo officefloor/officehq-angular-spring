@@ -48,6 +48,8 @@ export interface Claim {
   remindedOn: string | null;
   /** The claim's external reference, unique on the sheet regardless of case; null when it has none. */
   ref: string | null;
+  /** The claim's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; null when it has none. */
+  tags: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
@@ -70,6 +72,11 @@ export function byListed(a: Claim, b: Claim): number {
  * SETTLED one within 7 days of its settlement.
  */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+
+/** The claim's tags, sorted; none when it has none. */
+export function tagsOf(claim: Claim): string[] {
+  return claim.tags === null ? [] : claim.tags.split(',');
+}
 
 /** Whether a claim is a correction (a negative amount): its due has no floor and no late charge. */
 export function isCorrection(claim: Claim): boolean {
@@ -250,6 +257,13 @@ export function sumAmounts(amounts: string[]): string {
         [value]="ref()"
         (input)="ref.set(value($event)); error.set(null)"
       />
+      <label [for]="fieldId('tags')">Tags (comma separated)</label>
+      <input
+        [id]="fieldId('tags')"
+        data-testid="claim-form-tags"
+        [value]="tags()"
+        (input)="tags.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -263,7 +277,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -292,6 +306,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-period">{{ periodOf(c) }}</td>
               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
               <td data-testid="claim-ref">{{ c.ref ?? '' }}</td>
+              <td data-testid="claim-tags">{{ tagsShown(c) }}</td>
               <td data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
               <td data-testid="claim-proofs">{{ c.proofs }}</td>
@@ -481,6 +496,8 @@ export class Claims implements OnInit {
   protected readonly corrects = signal('');
   /** The claim's external reference: blank for none. */
   protected readonly ref = signal('');
+  /** The claim's tags, comma separated: blank for none. */
+  protected readonly tags = signal('');
   /** The id of the claim whose editor is open, or null when the form adds a claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -535,6 +552,11 @@ export class Claims implements OnInit {
   }
 
   /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
+  /** The claim's tags as shown: sorted, comma and space separated. */
+  protected tagsShown(claim: Claim): string {
+    return tagsOf(claim).join(', ');
+  }
+
   protected due(claim: Claim): string {
     return claimDue(claim, this.rates(), this.grades(), this.session);
   }
@@ -593,7 +615,7 @@ export class Claims implements OnInit {
       return;
     }
     const was = this.editing();
-    const form = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
+    const form = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref(), tags: this.tags() };
     this.fill(claim);
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/lock`;
     const locking = firstValueFrom(this.http.post<Claim>(url, null, this.session.headers())).then(
@@ -610,6 +632,7 @@ export class Claims implements OnInit {
           this.note.set(form.note);
           this.corrects.set(form.corrects);
           this.ref.set(form.ref);
+          this.tags.set(form.tags);
         }
         this.actionError.set({ id: claim.id, message: this.editRefusal(claim, e) ?? 'This claim could not be opened for editing.' });
         return false;
@@ -646,6 +669,7 @@ export class Claims implements OnInit {
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
     this.ref.set(claim.ref ?? '');
+    this.tags.set(tagsOf(claim).join(', '));
     this.error.set(null);
   }
 
@@ -676,6 +700,7 @@ export class Claims implements OnInit {
     this.note.set('');
     this.corrects.set('');
     this.ref.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -827,7 +852,7 @@ export class Claims implements OnInit {
       this.actionError.set({ id: claim.id, message: refused });
       return;
     }
-    const body = { amount, date: claim.date, note: claim.note, corrects: claim.corrects, ref: claim.ref };
+    const body = { amount, date: claim.date, note: claim.note, corrects: claim.corrects, ref: claim.ref, tags: claim.tags };
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}`;
     try {
       const saved = await firstValueFrom(this.http.put<Claim>(url, body, this.session.headers()));
@@ -995,12 +1020,17 @@ export class Claims implements OnInit {
       this.error.set('Type a reference of at most 255 characters.');
       return;
     }
+    const tags = this.tags().trim();
+    if (tags.length > 1000) {
+      this.error.set('Type tags of at most 1000 characters in all.');
+      return;
+    }
     const date = this.date().trim();
     if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       this.error.set('Pick a date for the claim, or leave it blank for today.');
       return;
     }
-    const body = { amount, date: date || null, note: this.note(), corrects: corrects || null, ref: ref || null };
+    const body = { amount, date: date || null, note: this.note(), corrects: corrects || null, ref: ref || null, tags: tags || null };
     const editing = this.editing();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
     this.submitting = true;

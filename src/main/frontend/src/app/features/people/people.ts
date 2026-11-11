@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts } from '../claims/claims';
+import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, capped, excessOver, rateOn, sumDues, trimmedSumDues } from '../rates/rates';
 import { GradeSummary, PeriodSummary, StatusSummary, Summary } from '../summary/summary';
@@ -442,6 +442,22 @@ function csvField(value: string): string {
       <p>Open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      @if (tagTotals().length > 0) {
+        <table>
+          <caption>Due total by tag</caption>
+          <thead>
+            <tr><th scope="col">Tag</th><th scope="col">Due total</th></tr>
+          </thead>
+          <tbody>
+            @for (t of tagTotals(); track t.tag) {
+              <tr>
+                <th scope="row">{{ t.tag }}</th>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
     </section>
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
   `,
@@ -520,6 +536,18 @@ export class People {
   );
   /** Everyone's overdue-total added up, with three or more leaving out the highest and lowest. */
   protected readonly overdueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.overdueTotalOf(p))));
+  /** Every tag ever used on the sheet, sorted. */
+  protected readonly tags = signal<string[]>([]);
+  /**
+   * Per tag ever used on the sheet: the dues of the claims that count in the live totals and carry it, skipping the
+   * n/a ones (a claim with two tags counts in both).
+   */
+  protected readonly tagTotals = computed(() =>
+    this.tags().map((tag) => ({
+      tag,
+      dueTotal: sumDues(this.people().map((p) => this.liveDuesOf(p, (c) => tagsOf(c).includes(tag)))),
+    })),
+  );
   /** Per grade: the people not retired on it today, as the list shows their grade, and their due-totals added up. */
   protected readonly gradeSummary = computed<GradeSummary[]>(() =>
     this.grades.map((grade) => {
@@ -602,6 +630,7 @@ export class People {
         this.claims.set([]);
         this.rates.set([]);
         this.periods.set([]);
+        this.tags.set([]);
         this.retireDates.set({});
         this.statementAsOfs.set({});
         this.holdFroms.set({});
@@ -1306,18 +1335,20 @@ export class People {
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [list, claims, rates, periods] = await Promise.all([
+    const [list, claims, rates, periods, tags] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
       firstValueFrom(this.http.get<Claim[]>(`${url}/claims`, this.session.headers())),
       firstValueFrom(this.http.get<Rate[]>(`${url}/rates`, this.session.headers())),
       firstValueFrom(this.http.get<Period[]>(`${url}/periods`, this.session.headers())),
-    ]).catch(() => [null, null, null, null]);
+      firstValueFrom(this.http.get<string[]>(`${url}/claims/tags`, this.session.headers())),
+    ]).catch(() => [null, null, null, null, null]);
     // A later read wins over a slower earlier one.
-    if (list && claims && rates && periods && read === this.reads && this.session.sheet() === sheet) {
+    if (list && claims && rates && periods && tags && read === this.reads && this.session.sheet() === sheet) {
       this.people.set(list);
       this.claims.set(claims);
       this.rates.set(rates);
       this.periods.set(periods);
+      this.tags.set(tags);
     }
   }
 }

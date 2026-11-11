@@ -37,12 +37,13 @@ public class ClaimController {
      * its status log, oldest first; and the date it is deferred until (null when never deferred); and how many proofs
      * it has; and the number of the claim it was split off (null unless it was); and the user whose open editor locks
      * it (null when not locked); and the last day it was reminded (null when never); and its external reference (null
-     * when it has none).
+     * when it has none); and its tags, sorted and comma separated (null when it has none).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
-            int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref) {
+            int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
+            String tags) {
 
         static ClaimView of(Claim claim, List<ClaimLog> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -54,7 +55,8 @@ public class ClaimController {
                     claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy(),
                     log.stream().map(ClaimLogView::of).toList(), claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
-                    claim.isLateEntry(), claim.getRemindedOn(), claim.getRef());
+                    claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
+                    claim.getTags());
         }
     }
 
@@ -68,14 +70,16 @@ public class ClaimController {
 
     /**
      * An amount with up to two decimals, negative only for a correction; a missing date takes the sheet's today; the
-     * number of the claim a correction corrects, blank for any other claim; an external reference, blank for none.
+     * number of the claim a correction corrects, blank for any other claim; an external reference, blank for none;
+     * comma separated tags, blank for none.
      */
     public record ClaimRequest(
             @NotNull @Pattern(regexp = "\\s*-?\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             LocalDate date,
             @Size(max = 1000) String note,
             @Size(max = 255) String corrects,
-            @Size(max = 255) String ref) {
+            @Size(max = 255) String ref,
+            @Size(max = 1000) String tags) {
 
         BigDecimal amountValue() {
             return new BigDecimal(amount.trim()).setScale(2, RoundingMode.UNNECESSARY);
@@ -130,6 +134,13 @@ public class ClaimController {
                 .toList();
     }
 
+    /** Every tag ever used on the sheet, sorted. */
+    @GetMapping("/claims/tags")
+    public List<String> tags(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.tags(sheetId.trim());
+    }
+
     @PostMapping("/people/{personId}/claims")
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -137,7 +148,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return view(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
-                request.note(), request.correctsValue(), request.ref()));
+                request.note(), request.correctsValue(), request.ref(), request.tags()));
     }
 
     /** Add a DRAFT claim per pasted line, in order; refused as a whole when any line would be. */
@@ -155,7 +166,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
         return view(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
-                request.note(), request.correctsValue(), request.ref()));
+                request.note(), request.correctsValue(), request.ref(), request.tags()));
     }
 
     /** Open the claim's editor, locking it against other users' edits; refused for a claim that cannot be edited. */
