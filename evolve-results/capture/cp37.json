@@ -1,0 +1,64 @@
+{
+  "checkpoint": 37,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp37_reassign-claim",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can move a DRAFT, OPEN or PENDING claim to another person on the sheet (a refusal shows an\nerror on the claim). The claim keeps its number and date, loses any figure a statement bound it to\n(it is live again until its new person's next statement), every total follows, and CLAIM_REASSIGNED\nis written, naming the claim like every claim line (with the new person) and ending from=<old name>\nto=<new name>. A settled or voided claim cannot move. The moved claim is listed as its new person's\nnewest claim (first under them), whatever its date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can move a DRAFT, OPEN or PENDING claim to another person on the sheet (a refusal shows an\nerror on the claim). The claim keeps its number and date, loses any figure a statement bound it to\n(it is live again until its new person's next statement), every total follows, and CLAIM_REASSIGNED\nis written, naming the claim like every claim line (with the new person) and ending from=<old name>\nto=<new name>. A settled or voided claim cannot move. The moved claim is listed as its new person's\nnewest claim (first under them), whatever its date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ecb2c1ff0f135a0f15bd110e6ac2403028119893",
+  "reset_sha": "",
+  "preagent_sha": "9bb8c74d41e6c5ad365062d4cac8b879da3c367a",
+  "prev_sha": "9bb8c74d41e6c5ad365062d4cac8b879da3c367a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1944166,
+    "input_tokens": 40,
+    "output_tokens": 13305,
+    "cache_read_tokens": 1170103,
+    "cache_creation_tokens": 86767,
+    "num_turns": 23,
+    "duration_ms": 248823,
+    "duration_api_ms": 129871,
+    "model": "claude-opus-5-5",
+    "session_id": "06cf846a-3942-4abb-a971-8fd3c5a003d5",
+    "stop_reason": "success",
+    "result_text": "A steward can now move a claim to another person, and all 4 acceptance tests pass under `bin/e2e`.\n\n**How it behaves**\n- Only a steward can reassign. Anyone else gets an error on the claim's row (`claim-error`), and nothing is stored or written to the audit file.\n- Only DRAFT, OPEN or PENDING claims can move; a SETTLED or VOID claim is refused with an error. I also refuse a few cases the request didn't mention, to match how claims are already guarded:\n  - moving a claim to the person who already has it;\n  - a claim dated in a closed period;\n  - a new person retired before the claim's date.\n- The claim keeps its id, number and date. It loses any figure a statement had bound it to, so its due is worked out live from the new person's rate until their next statement.\n- Every total follows. The audit file gets `CLAIM_REASSIGNED \u2026 person=<new> amount=\u2026 date=\u2026 [number=\u2026] from=<old> to=<new>`, then the usual `ROLLUP`/`TOTALS` lines when figures moved.\n\n**Listing the moved claim first**\nClaims used to be listed by id, which would leave an older claim low in its new person's list. So I added a list position to each claim:\n- **Database:** migration `V28__claim_listed.sql` adds a `listed` column to claims and a `last_listed` counter to the sheet. Existing claims get their id as their position.\n- **Ordering:** adding or reassigning a claim gives it the sheet's next position. The claim list and bulk-open now sort by that position.\n\n**Where the code is**\n- **Server:**\n  - `ClaimService.reassign`, behind the new endpoint `POST /api/sheets/{sheet}/claims/{id}/reassign` with body `{ personId }`.\n  - Two new exceptions: a 403 for a non-steward and a 409 for a claim that can't move.\n  - The sheet's position counter is in `SheetService.nextListed`.\n- **Front end:** each claim row has a \"Reassign to\" dropdown (`claim-reassign-to`) listing the other people on the sheet, and a Reassign button (`claim-reassign`). `people.ts` passes the people list in and sorts claims by position.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1944166,
+        "num_turns": 23,
+        "duration_ms": 248823,
+        "duration_api_ms": 129871,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp37.agent.jsonl",
+  "agent_diff_file": "cp37.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
