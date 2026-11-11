@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 
 interface SheetView {
   id: string;
+  today: string;
 }
 
 // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
@@ -14,11 +15,14 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheet = signal<string | null>(null);
+  /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it. */
+  readonly today = signal<string | null>(null);
   private loads = 0;
 
   signIn(name: string): void {
     this.user.set(name);
     this.sheet.set(null);
+    this.today.set(null);
   }
 
   /** Load a sheet by id; an id never used before starts an empty sheet. */
@@ -30,6 +34,25 @@ export class Session {
       }),
     );
     // A later load wins over a slower earlier one.
-    if (load === this.loads) this.sheet.set(loaded.id);
+    if (load === this.loads) this.show(loaded);
+  }
+
+  /** Change the active sheet's today. */
+  async setToday(today: string): Promise<void> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SheetView>(
+        `/api/sheets/${encodeURIComponent(id)}/today`,
+        { today },
+        { headers: { 'X-User': this.user() ?? '' } },
+      ),
+    );
+    if (this.sheet() === saved.id) this.show(saved);
+  }
+
+  private show(view: SheetView): void {
+    this.sheet.set(view.id);
+    this.today.set(view.today);
   }
 }
