@@ -2,14 +2,17 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, claimDue, counts, dueFixed, overdue, sumAmounts } from '../claims/claims';
+import { Claim, Claims, PersonGrade, claimDue, counts, dueFixed, gradeOn, overdue, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
 
 interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the person was read. */
   grade: string;
+  /** Every grade of the person, each from its from-date; the first one given from the beginning of time. */
+  grades: PersonGrade[];
   /** Raised on each save; the editor sends back the one it loaded. */
   version: number;
   /** How many statements the person has had. */
@@ -63,6 +66,14 @@ function live(claim: Claim, held: boolean): boolean {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
+        <label for="person-form-grade-from">Grade from (blank: today)</label>
+        <input
+          id="person-form-grade-from"
+          data-testid="person-form-grade-from"
+          type="date"
+          [value]="gradeFrom()"
+          (input)="gradeFrom.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -119,7 +130,7 @@ function live(claim: Claim, held: boolean): boolean {
           @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
@@ -209,7 +220,7 @@ function live(claim: Claim, held: boolean): boolean {
                 [personId]="p.id"
                 [personName]="p.name"
                 [claims]="claimsOf(p.id)"
-                [grade]="p.grade"
+                [grades]="p.grades"
                 [rates]="rates()"
                 [periods]="periods()"
                 [retiredFrom]="p.retiredFrom"
@@ -262,9 +273,8 @@ export class People {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
       if (!period || person === undefined || !live(c, person.held)) continue;
-      const grade = person.grade;
       const list = dues.get(period.name) ?? [];
-      list.push(claimDue(c, this.rates(), grade, this.session));
+      list.push(claimDue(c, this.rates(), person.grades, this.session));
       dues.set(period.name, list);
     }
     return new Map([...dues].map(([name, list]) => [name, sumDues(list)]));
@@ -279,6 +289,8 @@ export class People {
   protected readonly overdueTotal = computed(() => sumDues(this.people().map((p) => this.overdueTotalOf(p))));
   protected readonly name = signal('');
   protected readonly grade = signal('A');
+  /** The date the form's grade applies from; blank for the sheet's today. */
+  protected readonly gradeFrom = signal('');
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded. */
@@ -344,6 +356,12 @@ export class People {
     return sumAmounts(this.claimsOf(personId).filter((c) => live(c, held)).map((c) => c.amount));
   }
 
+  /** The person's grade in force on the sheet's today. */
+  protected gradeOf(person: Person): string {
+    const today = this.session.today();
+    return (today === null ? undefined : gradeOn(person.grades, today)) ?? person.grade;
+  }
+
   /** The grade's rate in force on the sheet's today, or undefined when none is. */
   protected rateOf(grade: string): string | undefined {
     const today = this.session.today();
@@ -352,12 +370,17 @@ export class People {
 
   /**
    * The sum of the person's OPEN and SETTLED claims' dues, each already rounded, skipping the n/a ones; n/a when
-   * their grade has no rate in force today, unless a claim keeps a due fixed by settling or a statement.
+   * their grade in force today has no rate in force today, unless a claim keeps a due fixed by settling or a statement
+   * or has a due and is dated on or before today.
    */
   protected dueTotalOf(person: Person): string {
     const counted = this.claimsOf(person.id).filter((c) => live(c, person.held));
-    if (this.rateOf(person.grade) === undefined && !counted.some(dueFixed)) return 'n/a';
-    return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade, this.session)));
+    const dues = counted.map((c) => claimDue(c, this.rates(), person.grades, this.session));
+    const today = this.session.today();
+    // A due under a grade the person had on an earlier date counts too.
+    const anyDated = today !== null && counted.some((c, i) => dues[i] !== 'n/a' && c.date <= today);
+    if (this.rateOf(this.gradeOf(person)) === undefined && !counted.some(dueFixed) && !anyDated) return 'n/a';
+    return sumDues(dues);
   }
 
   /** The person's claims that count in the live totals and are overdue. */
@@ -369,7 +392,7 @@ export class People {
 
   /** The sum of the dues of the person's overdue claims, skipping the n/a ones. */
   protected overdueTotalOf(person: Person): string {
-    return sumDues(this.overdueOf(person).map((c) => claimDue(c, this.rates(), person.grade, this.session)));
+    return sumDues(this.overdueOf(person).map((c) => claimDue(c, this.rates(), person.grades, this.session)));
   }
 
   /** The names of the person's patrons, sorted, comma and space separated. */
@@ -524,7 +547,8 @@ export class People {
     this.editing.set(person.id);
     this.editingVersion = person.version;
     this.name.set(person.name);
-    this.grade.set(person.grade);
+    this.grade.set(this.gradeOf(person));
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -532,6 +556,7 @@ export class People {
     this.editing.set(null);
     this.name.set('');
     this.grade.set('A');
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -542,7 +567,12 @@ export class People {
     const sheet = this.session.sheet();
     if (!sheet) return;
     const editing = this.editing();
-    const body = { name: this.name(), grade: this.grade(), version: editing === null ? null : this.editingVersion };
+    const body = {
+      name: this.name(),
+      grade: this.grade(),
+      gradeFrom: this.gradeFrom() || null,
+      version: editing === null ? null : this.editingVersion,
+    };
     if (!body.name.trim()) {
       this.error.set('Type a name for the person.');
       return;
@@ -626,7 +656,7 @@ export class People {
     if (person && this.editing() === id && this.session.sheet() === sheet) {
       this.editingVersion = person.version;
       this.name.set(person.name);
-      this.grade.set(person.grade);
+      this.grade.set(this.gradeOf(person));
     }
   }
 

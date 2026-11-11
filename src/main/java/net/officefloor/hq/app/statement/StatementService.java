@@ -73,8 +73,9 @@ public class StatementService {
         Sheet sheet = sheets.get(sheetId);
         LocalDate today = sheet.getToday();
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
-        // As on the screen: n/a when the grade has no rate today, unless a counting claim has a fixed due.
-        boolean anyDue = rates.rateOn(sheetId, person.getGrade(), today).isPresent();
+        // As on the screen: n/a when the grade in force today has no rate today, unless a counting claim has a fixed due
+        // or a due on or before today.
+        boolean anyDue = rates.rateOn(sheetId, person.gradeOn(today), today).isPresent();
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int counted = 0;
         for (Claim claim : theirs) {
@@ -92,6 +93,10 @@ public class StatementService {
                     : sheet.withLateCharge(figure, claim.getStatus() == ClaimStatus.OPEN, claim.getDate());
             if (due != null) {
                 total = total.add(due);
+                // A due under a grade the person had on an earlier date counts too.
+                if (!claim.getDate().isAfter(today)) {
+                    anyDue = true;
+                }
             }
             claim.setStated(true, figure);
         }
@@ -115,7 +120,7 @@ public class StatementService {
         if (claim.isStated()) {
             return Optional.ofNullable(claim.getStatedDue());
         }
-        return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
+        return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .map(sheets.get(sheetId)::floored);

@@ -34,16 +34,33 @@ export function counts(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
+/** One of a person's grades, from its from-date (yyyy-mm-dd); null from the beginning of time. */
+export interface PersonGrade {
+  grade: string;
+  from: string | null;
+}
+
+/** The person's grade in force on the date: the one with the latest from-date on or before it. */
+export function gradeOn(grades: PersonGrade[], date: string): string | undefined {
+  let found: PersonGrade | undefined;
+  for (const g of grades) {
+    if (g.from !== null && g.from > date) continue;
+    if (found === undefined || (found.from ?? '') <= (g.from ?? '')) found = g;
+  }
+  return found?.grade;
+}
+
 /**
  * The due fixed when the claim was settled, else its figure (the one its person's last statement bound it to, else
- * its amount times its grade's rate on its date raised to the sheet's floor, or n/a with no rate) with its late
+ * its amount times the rate of its person's grade on its date, both in force on its date, raised to the sheet's floor, or n/a with no rate) with its late
  * charge added on top.
  */
-export function claimDue(claim: Claim, rates: Rate[], grade: string, session: Session): string {
+export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], session: Session): string {
   if (claim.settledDue !== null) return claim.settledDue;
+  const grade = gradeOn(grades, claim.date);
   const figure = claim.stated
     ? (claim.statedDue ?? 'n/a')
-    : floored(dueOf(claim.amount, rateOn(rates, grade, claim.date)), session.floor());
+    : floored(dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date)), session.floor());
   return figure === 'n/a' ? figure : sumDues([figure, lateCharge(claim, figure, session)]);
 }
 
@@ -189,9 +206,9 @@ export class Claims {
   readonly personName = input.required<string>();
   /** The person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** The person's grade. */
-  readonly grade = input.required<string>();
-  /** The sheet's rates: a claim's due uses its grade's rate in force on the claim's date. */
+  /** The person's grades, each from its from-date. */
+  readonly grades = input.required<PersonGrade[]>();
+  /** The sheet's rates: a claim's due uses the rate in force on the claim's date of the grade in force then. */
   readonly rates = input.required<Rate[]>();
   /** The sheet's periods: a claim belongs to the one whose dates contain its date. */
   readonly periods = input.required<Period[]>();
@@ -222,7 +239,7 @@ export class Claims {
 
   /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
   protected due(claim: Claim): string {
-    return claimDue(claim, this.rates(), this.grade(), this.session);
+    return claimDue(claim, this.rates(), this.grades(), this.session);
   }
 
   /** The claim's date plus the sheet's terms. */

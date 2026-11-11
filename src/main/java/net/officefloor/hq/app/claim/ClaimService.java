@@ -155,7 +155,7 @@ public class ClaimService {
      * null (n/a) with no rate.
      */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
-        return settings.get(sheetId).floored(rates.rateOn(sheetId, person.getGrade(), claim.getDate())
+        return settings.get(sheetId).floored(rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .orElse(null));

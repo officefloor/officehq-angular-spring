@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.statement.StatementSummary;
 import org.springframework.http.HttpStatus;
@@ -28,21 +29,28 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PersonController {
 
-    /** A person as shown, with how many statements they have had and the due-total and date of the last one. */
+    /** One of a person's grades, from its from-date (null: from the beginning of time). */
+    public record GradeView(String grade, LocalDate from) {
+    }
+
+    /**
+     * A person as shown, with their grade in force on the sheet's today and every grade with its from-date, with how many statements they have had and the due-total and date of the last one. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
-            List<Long> patronIds) {
+            List<Long> patronIds, List<GradeView> grades) {
 
-        static PersonView of(Person person, StatementSummary statements, List<Long> patronIds) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+        static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds) {
+            return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
-                    person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds);
+                    person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds,
+                    person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList());
         }
     }
 
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate gradeFrom,
             Long version) {
     }
 
@@ -56,10 +64,12 @@ public class PersonController {
 
     private final PersonService service;
     private final StatementService statements;
+    private final SheetService sheets;
 
-    public PersonController(PersonService service, StatementService statements) {
+    public PersonController(PersonService service, StatementService statements, SheetService sheets) {
         this.service = service;
         this.statements = statements;
+        this.sheets = sheets;
     }
 
     /** The sheet's people in the order they were added. */
@@ -68,8 +78,10 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, StatementSummary> summaries = statements.summaries(sheetId.trim());
         Map<Long, List<Long>> patronIds = service.patronIds(sheetId.trim());
-        return service.list(sheetId.trim()).stream()
-                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
+        List<Person> people = service.list(sheetId.trim());
+        LocalDate today = people.isEmpty() ? null : sheets.today(sheetId.trim());
+        return people.stream()
+                .map(p -> PersonView.of(p, today, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         patronIds.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
@@ -89,7 +101,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
         return view(service.update(sheetId.trim(), user.trim(), id, request.version(), request.name(),
-                request.grade()));
+                request.grade(), request.gradeFrom()));
     }
 
     /** Take a statement of the person: record their due-total and bind their counting claims to their dues. */
@@ -127,7 +139,7 @@ public class PersonController {
     }
 
     private PersonView view(Person person) {
-        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()),
+        return PersonView.of(person, sheets.today(person.getSheetId()), statements.summary(person.getSheetId(), person.getId()),
                 service.patronIdsOf(person.getId()));
     }
 }

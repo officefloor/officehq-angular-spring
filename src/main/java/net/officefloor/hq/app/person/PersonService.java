@@ -50,13 +50,18 @@ public class PersonService {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
         Person saved = save(new Person(sheetId, name, grade));
-        audit.recordOnCommit(record("PERSON_ADDED", user, saved));
+        audit.recordOnCommit(record("PERSON_ADDED", user, saved, grade));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
     @Transactional
-    public Person update(String sheetId, String user, Long id, Long version, String name, String grade) {
+    /**
+     * Save the person. The grade is recorded from the from-date (null: the sheet's today), keeping the grades
+     * already recorded; a save leaving the grade as it is in force today, with no from-date, records none.
+     */
+    public Person update(String sheetId, String user, Long id, Long version, String name, String grade,
+            LocalDate gradeFrom) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
@@ -66,10 +71,13 @@ public class PersonService {
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.key(name), id)) {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
+        LocalDate today = sheetService.today(sheetId);
         person.setName(name);
-        person.setGrade(grade);
+        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        }
         Person saved = save(person);
-        audit.recordOnCommit(record("PERSON_EDITED", user, saved));
+        audit.recordOnCommit(record("PERSON_EDITED", user, saved, saved.gradeOn(today)));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -138,9 +146,9 @@ public class PersonService {
         return person;
     }
 
-    private static String record(String event, String user, Person person) {
+    private static String record(String event, String user, Person person, String grade) {
         return event + " sheet=" + person.getSheetId() + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.getGrade();
+                + " name=" + person.getName() + " grade=" + grade;
     }
 
     private Person save(Person person) {

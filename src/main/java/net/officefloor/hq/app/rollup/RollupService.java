@@ -73,7 +73,7 @@ public class RollupService {
                     .toList();
             BigDecimal claimed = zero();
             BigDecimal due = zero();
-            boolean anyDue = today != null && rateOn(sheetRates, person.getGrade(), today).isPresent();
+            boolean anyDue = today != null && rateOn(sheetRates, person.gradeOn(today), today).isPresent();
             for (Claim claim : theirs) {
                 claimed = claimed.add(claim.getAmount());
                 if (claim.getSettledDue() != null || claim.getStatedDue() != null) {
@@ -82,6 +82,10 @@ public class RollupService {
                 Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
                 if (claimDue.isPresent()) {
                     due = due.add(claimDue.get());
+                    // A due under a grade the person had on an earlier date counts too.
+                    if (today != null && !claim.getDate().isAfter(today)) {
+                        anyDue = true;
+                    }
                 }
             }
             claimedTotal = claimedTotal.add(claimed);
@@ -150,7 +154,7 @@ public class RollupService {
             return Optional.of(claim.getSettledDue());
         }
         Optional<BigDecimal> figure = claim.isStated() ? Optional.ofNullable(claim.getStatedDue())
-                : rateOn(sheetRates, person.getGrade(), claim.getDate())
+                : rateOn(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                         .map(Rate::getPct)
                         .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2)
                                 .setScale(2, RoundingMode.HALF_EVEN))
