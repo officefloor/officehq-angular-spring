@@ -592,6 +592,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       <p>Open in total <strong data-testid="rollup-open-total">{{ money(settledOpenTotals().open) | figure }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueTotals().count }}</strong></p>
       <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ money(overdueTotals().cents) | figure }}</strong></p>
+      <p>Due aged 0 to 30 days <strong data-testid="rollup-aged-0-30">{{ money(agedTotals()[0]) | figure }}</strong></p>
+      <p>Due aged 31 to 60 days <strong data-testid="rollup-aged-31-60">{{ money(agedTotals()[1]) | figure }}</strong></p>
+      <p>Due aged 61 or more days <strong data-testid="rollup-aged-61">{{ money(agedTotals()[2]) | figure }}</strong></p>
       <p>Cut in total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) | figure }}</strong></p>
       @if (tagTotals().length > 0) {
         <table aria-label="Due by tag">
@@ -1308,6 +1311,13 @@ export class People {
     const me = this.me();
     return me ? { dueTotal: dueText(this.dueOf(me)), overdueTotal: money(this.overdueOf(me).cents) } : null;
   });
+  /** The sheet's OPEN and PENDING claims that count, in whole cents by age: the people's buckets added up, untrimmed. */
+  protected readonly agedTotals = computed(() =>
+    this.people().map((p) => this.agedOf(p)).reduce<[number, number, number]>(
+      (sum, a) => [sum[0] + a[0], sum[1] + a[1], sum[2] + a[2]],
+      [0, 0, 0],
+    ),
+  );
   /** The sheet's overdue claims that count: how many, and the sum of people's figures in whole cents, trimmed. */
   protected readonly overdueTotals = computed(() => {
     const each = this.people().map((p) => this.overdueOf(p));
