@@ -1,0 +1,275 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index a25fde429..52eea32f8 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
+ 
+ interface SheetView {
+   id: string;
++  today: string;
+ }
+ 
+ // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
+@@ -14,11 +15,14 @@ export class Session {
+ 
+   readonly user = signal<string | null>(null);
+   readonly sheet = signal<string | null>(null);
++  /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it. */
++  readonly today = signal<string | null>(null);
+   private loads = 0;
+ 
+   signIn(name: string): void {
+     this.user.set(name);
+     this.sheet.set(null);
++    this.today.set(null);
+   }
+ 
+   /** Load a sheet by id; an id never used before starts an empty sheet. */
+@@ -30,6 +34,25 @@ export class Session {
+       }),
+     );
+     // A later load wins over a slower earlier one.
+-    if (load === this.loads) this.sheet.set(loaded.id);
++    if (load === this.loads) this.show(loaded);
++  }
++
++  /** Change the active sheet's today. */
++  async setToday(today: string): Promise<void> {
++    const id = this.sheet();
++    if (!id) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(
++      this.http.put<SheetView>(
++        `/api/sheets/${encodeURIComponent(id)}/today`,
++        { today },
++        { headers: { 'X-User': this.user() ?? '' } },
++      ),
++    );
++    if (this.sheet() === saved.id) this.show(saved);
++  }
++
++  private show(view: SheetView): void {
++    this.sheet.set(view.id);
++    this.today.set(view.today);
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index a1394bb22..453e111cb 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -22,6 +22,18 @@ import { Session } from '../../core/session';
+       </form>
+       @if (session.sheet(); as sheet) {
+         <p>Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></p>
++        <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
++        <form (submit)="saveToday($event)">
++          <label for="sheet-today-input">Change today</label>
++          <input
++            id="sheet-today-input"
++            type="date"
++            data-testid="sheet-today-input"
++            [value]="todayInput()"
++            (input)="todayInput.set(value($event)); sheetError.set(null)"
++          />
++          <button type="submit" data-testid="sheet-today-save">Set today</button>
++        </form>
+       }
+     } @else {
+       <form (submit)="signIn($event)">
+@@ -46,6 +58,7 @@ export class Home {
+   protected readonly sheetId = signal('');
+   protected readonly signinError = signal<string | null>(null);
+   protected readonly sheetError = signal<string | null>(null);
++  protected readonly todayInput = signal('');
+ 
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement).value;
+@@ -76,4 +89,19 @@ export class Home {
+       this.sheetError.set(`Sheet ${id} could not be loaded.`);
+     }
+   }
++
++  protected async saveToday(event: Event): Promise<void> {
++    event.preventDefault();
++    const today = this.todayInput().trim();
++    this.sheetError.set(null);
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
++      this.sheetError.set('Pick a date for today.');
++      return;
++    }
++    try {
++      await this.session.setToday(today);
++    } catch {
++      this.sheetError.set(`Today could not be set to ${today}.`);
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index e881ecf71..702afd7c8 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.time.LocalDate;
+ 
+ /** A sheet: everything else in the app is kept per sheet. */
+ @Entity
+@@ -16,12 +17,17 @@ public class Sheet {
+     @Column(name = "created_by", nullable = false)
+     private String createdBy;
+ 
++    /** The sheet's own today: every date-dependent decision and default date uses it. */
++    @Column(name = "today", nullable = false)
++    private LocalDate today;
++
+     protected Sheet() {
+     }
+ 
+-    public Sheet(String id, String createdBy) {
++    public Sheet(String id, String createdBy, LocalDate today) {
+         this.id = id;
+         this.createdBy = createdBy;
++        this.today = today;
+     }
+ 
+     public String getId() {
+@@ -31,4 +37,12 @@ public class Sheet {
+     public String getCreatedBy() {
+         return createdBy;
+     }
++
++    public LocalDate getToday() {
++        return today;
++    }
++
++    public void setToday(LocalDate today) {
++        this.today = today;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 49c624281..830d12ef9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -1,10 +1,15 @@
+ package net.officefloor.hq.app.sheet;
+ 
++import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+@@ -15,7 +20,14 @@ import org.springframework.web.bind.annotation.RestController;
+ @Validated
+ public class SheetController {
+ 
+-    public record SheetView(String id) {
++    public record SheetView(String id, LocalDate today) {
++
++        static SheetView of(Sheet sheet) {
++            return new SheetView(sheet.getId(), sheet.getToday());
++        }
++    }
++
++    public record TodayRequest(@NotNull LocalDate today) {
+     }
+ 
+     private final SheetService service;
+@@ -28,6 +40,14 @@ public class SheetController {
+     @PostMapping("/{id}/load")
+     public SheetView load(@PathVariable @NotBlank @Size(max = 100) String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return new SheetView(service.load(id.trim(), user.trim()).getId());
++        return SheetView.of(service.load(id.trim(), user.trim()));
++    }
++
++    /** Change the sheet's today. */
++    @PutMapping("/{id}/today")
++    public SheetView setToday(@PathVariable @NotBlank @Size(max = 100) String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid TodayRequest request) {
++        return SheetView.of(service.setToday(id.trim(), request.today()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetNotFoundException.java b/src/main/java/net/officefloor/hq/app/sheet/SheetNotFoundException.java
+new file mode 100644
+index 000000000..ed22417f0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetNotFoundException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.sheet;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A sheet id that was never loaded. */
++@ResponseStatus(HttpStatus.NOT_FOUND)
++public class SheetNotFoundException extends RuntimeException {
++
++    public SheetNotFoundException(String id) {
++        super("Sheet " + id + " not found");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 780c7bd3b..d9418c4a4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -1,9 +1,15 @@
+ package net.officefloor.hq.app.sheet;
+ 
++import java.time.LocalDate;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Loads a sheet by id, starting an empty one the first time the id is used. */
++/**
++ * Loads a sheet by id, starting an empty one the first time the id is used, and keeps the sheet's
++ * today. The real clock is read only once, to give a new sheet its starting today; everything else
++ * dated uses {@link #today(String)}.
++ */
+ @Service
+ public class SheetService {
+ 
+@@ -17,9 +23,21 @@ public class SheetService {
+         return sheets.findById(id).orElseGet(() -> start(id, user));
+     }
+ 
++    /** The sheet's today: use it for every date-dependent decision and default date. */
++    public LocalDate today(String id) {
++        return sheets.findById(id).map(Sheet::getToday).orElseThrow(() -> new SheetNotFoundException(id));
++    }
++
++    @Transactional
++    public Sheet setToday(String id, LocalDate today) {
++        Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
++        sheet.setToday(today);
++        return sheets.saveAndFlush(sheet);
++    }
++
+     private Sheet start(String id, String user) {
+         try {
+-            return sheets.saveAndFlush(new Sheet(id, user));
++            return sheets.saveAndFlush(new Sheet(id, user, LocalDate.now()));
+         } catch (DataIntegrityViolationException e) {
+             // Another user started the same sheet at the same moment: it exists now.
+             return sheets.findById(id).orElseThrow(() -> e);
+diff --git a/src/main/resources/db/migration/V2__sheet_today.sql b/src/main/resources/db/migration/V2__sheet_today.sql
+new file mode 100644
+index 000000000..346a3a3d4
+--- /dev/null
++++ b/src/main/resources/db/migration/V2__sheet_today.sql
+@@ -0,0 +1,5 @@
++-- Each sheet keeps its own "today": every date-dependent decision and default date uses it, never
++-- the real clock. A sheet starts with the real date of the day it was created.
++ALTER TABLE sheet ADD COLUMN today DATE;
++UPDATE sheet SET today = CURRENT_DATE WHERE today IS NULL;
++ALTER TABLE sheet ALTER COLUMN today SET NOT NULL;
