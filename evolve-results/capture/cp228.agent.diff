@@ -1,0 +1,27 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/RolloverService.java b/src/main/java/net/officefloor/hq/app/period/RolloverService.java
+index 8e4ff9786..28a754341 100644
+--- a/src/main/java/net/officefloor/hq/app/period/RolloverService.java
++++ b/src/main/java/net/officefloor/hq/app/period/RolloverService.java
+@@ -26,7 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * figure at the end of the old year's last period (the due of their claims that count, belonging to
+  * a period of the old year, OPEN or PENDING at that period's end) is added to their opening balance
+  * for the new year's first period, one OPENING_SET record each (none for a figure of 0.00); then one
+- * ROLLOVER record. Refused (403) to anyone but a steward and (400) for a year with no periods.
++ * ROLLOVER record; then every period of the old year still open is soft-closed, in start-date order,
++ * one PERIOD_SOFT_CLOSED record each. Refused (403) to anyone but a steward and (400) for a year with no periods.
+  * Rolling over again a year whose last rollover still stands sets no opening balances a second time.
+  * The last rollover is kept so the steward who made it can undo it on the same sheet-today.
+  */
+@@ -105,6 +106,12 @@ public class RolloverService {
+                 });
+         lastRollovers.saveAndFlush(record);
+         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=" + oldYear + " periods=" + made.size());
++        // every period of the old year still open is then soft-closed, in start-date order
++        for (Period period : old) {
++            if (!period.isClosed() && !period.isSoftClosed()) {
++                sheets.softClosePeriod(sheetId, user, period);
++            }
++        }
+         return made;
+     }
+ 
