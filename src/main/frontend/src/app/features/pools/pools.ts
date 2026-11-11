@@ -86,18 +86,23 @@ function cutOf(pot: number, share: number, shares: number): number {
 /**
  * Each member's cut of the pot (in cents), in member order: the pot times their share divided by the shares of the
  * members with a cut added up, rounded half to even; a member without a cut (retired, or on hold on the sheet's today)
- * gets 0, their share spread over the others. The remainder, the pot minus the cuts added up, goes to the member with a cut with the largest share (the
- * earliest added on a tie), so the cuts total exactly the pot; with no member left with a cut, each is 0.
+ * gets 0, their share spread over the others. The remainder, the pot minus the cuts added up, goes to the member with the smallest non-zero cut (the
+ * latest added on a tie), or with no non-zero cut to the last member with a cut and a share, so the cuts total exactly the pot; with no member left with a cut, each is 0.
  */
 function cuts(pot: number, members: { share: number; excluded: boolean }[]): number[] {
   const shares = members.reduce((sum, m) => sum + (m.excluded ? 0 : m.share), 0);
   if (shares === 0) return members.map(() => 0);
   const out = members.map((m) => (m.excluded ? 0 : cutOf(pot, m.share, shares)));
-  let largest = -1;
-  members.forEach((m, i) => {
-    if (!m.excluded && (largest < 0 || m.share > members[largest].share)) largest = i;
+  let smallest = -1;
+  out.forEach((c, i) => {
+    if (c !== 0 && (smallest < 0 || c <= out[smallest])) smallest = i;
   });
-  if (largest >= 0) out[largest] += pot - out.reduce((sum, c) => sum + c, 0);
+  if (smallest < 0) {
+    members.forEach((m, i) => {
+      if (!m.excluded && m.share > 0) smallest = i;
+    });
+  }
+  if (smallest >= 0) out[smallest] += pot - out.reduce((sum, c) => sum + c, 0);
   return out;
 }
 
