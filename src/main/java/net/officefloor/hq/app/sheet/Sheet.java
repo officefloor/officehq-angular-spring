@@ -124,6 +124,14 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The score at or above which a person is MID; null for none. Not dated. */
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    /** The score at or above which a person is HIGH; null for none. Not dated. */
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** The days a claim may wait in REVIEW past the day it went there before it is late; null for none. Not dated. */
     @Column(name = "review_sla")
     private Integer reviewSla;
@@ -232,6 +240,8 @@ public class Sheet {
         then.entryDate = entryDate;
         then.graceDays = graceDays;
         then.escalateAfter = escalateAfter;
+        then.scoreMid = scoreMid;
+        then.scoreHigh = scoreHigh;
         then.reviewSla = reviewSla;
         then.proofKinds = proofKinds;
         then.defaultGrade = defaultGrade;
@@ -494,6 +504,24 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    /** The score at or above which a person is MID; null for none. Not dated. */
+    public Integer getScoreMid() {
+        return scoreMid;
+    }
+
+    public void setScoreMid(Integer scoreMid) {
+        this.scoreMid = scoreMid;
+    }
+
+    /** The score at or above which a person is HIGH; null for none. Not dated. */
+    public Integer getScoreHigh() {
+        return scoreHigh;
+    }
+
+    public void setScoreHigh(Integer scoreHigh) {
+        this.scoreHigh = scoreHigh;
     }
 
     /** The review SLA in days; null for none. Not dated. */

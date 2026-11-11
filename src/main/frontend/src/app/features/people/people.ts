@@ -117,7 +117,8 @@ import { FigurePipe } from '../../core/figure';
 // claims that count); together they make the sum of their figures before the cap. The sheet's
 // settled-total and open-total add up everyone's, untrimmed.
 // Each person shows their score: their settled-total divided by 100, minus 5 for every overdue claim
-// of theirs that counts, rounded half to even to a whole number.
+// of theirs that counts, rounded half to even to a whole number. While both score thresholds are set,
+// each person shows a band: HIGH at or above the high one, MID at or above the mid one, else LOW.
 interface Person {
   id: number;
   name: string;
@@ -713,6 +714,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
             <th scope="col">Aged 61+</th>
             <th scope="col">Overdue</th>
             <th scope="col">Score</th>
+            <th scope="col">Band</th>
             <th scope="col">Active</th>
             <th scope="col">Statements</th>
             <th scope="col">Retired</th>
@@ -772,6 +774,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                 }
               </td>
               <td data-testid="person-score">{{ scoreOf(p) }}</td>
+              <td data-testid="person-band">{{ bandOf(p) }}</td>
               <td data-testid="person-active">{{ isActive(p) ? 'yes' : 'no' }}</td>
               <td>
                 @if (shown('statement-count')) {
@@ -1889,6 +1892,15 @@ export class People {
     const rest = units - whole * 10000;
     const score = rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole;
     return score === 0 ? 0 : score;
+  }
+
+  /** The person's band by their score: HIGH, MID or LOW; blank while either threshold is blank. */
+  protected bandOf(p: Person): string {
+    const mid = this.session.scoreMid();
+    const high = this.session.scoreHigh();
+    if (mid === '' || high === '') return '';
+    const score = this.scoreOf(p);
+    return score >= Number(high) ? 'HIGH' : score >= Number(mid) ? 'MID' : 'LOW';
   }
 
   protected statementOf(personId: number): StatementSummary | undefined {

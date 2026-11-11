@@ -84,6 +84,8 @@ public class SettingService {
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
     public static final String ALERT_THRESHOLD = "alert-threshold";
     public static final String ESCALATE_AFTER = "escalate-after";
+    public static final String SCORE_MID = "score-mid";
+    public static final String SCORE_HIGH = "score-high";
     public static final String REVIEW_SLA = "review-sla";
     public static final String PROOF_KINDS = "proof-kinds";
     public static final String DEFAULT_GRADE = "default-grade";
@@ -153,7 +155,8 @@ public class SettingService {
             boolean changePot, BigDecimal pot, boolean changeParent, String parent,
             Integer fiscalStartMonth, boolean changeAlert, BigDecimal alertThreshold, Dated<String> rounding,
             boolean changeEscalate, Integer escalateAfter, boolean changeReviewSla, Integer reviewSla,
-            boolean changeProofKinds, String proofKinds, boolean changeDefaultGrade, String defaultGrade) {
+            boolean changeProofKinds, String proofKinds, boolean changeDefaultGrade, String defaultGrade,
+            boolean changeScoreMid, Integer scoreMid, boolean changeScoreHigh, Integer scoreHigh) {
         roles.refuseViewer(sheetId, user);
         Sheet sheet = sheets.load(sheetId, user);
         if (changeParent && parent != null) {
@@ -295,6 +298,16 @@ public class SettingService {
             sheet.setDefaultGrade(defaultGrade);
             sheet = sheetStore.saveAndFlush(sheet);
             audit.recordOnCommit(changed(sheetId, user, DEFAULT_GRADE, defaultGrade == null ? "" : defaultGrade));
+        }
+        if (changeScoreMid) {
+            sheet.setScoreMid(scoreMid);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, SCORE_MID, scoreMid == null ? "" : scoreMid.toString()));
+        }
+        if (changeScoreHigh) {
+            sheet.setScoreHigh(scoreHigh);
+            sheet = sheetStore.saveAndFlush(sheet);
+            audit.recordOnCommit(changed(sheetId, user, SCORE_HIGH, scoreHigh == null ? "" : scoreHigh.toString()));
         }
         return sheet;
     }

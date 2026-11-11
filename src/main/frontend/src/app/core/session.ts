@@ -44,6 +44,10 @@ export class Session {
   readonly parent = signal('');
   /** The sheet's review SLA in whole days, blank for none. Set from the sheet's settings as they are read and saved. */
   readonly reviewSla = signal('');
+  /** The sheet's mid score threshold, a whole number, blank for none. Set from the sheet's settings as they are read and saved. */
+  readonly scoreMid = signal('');
+  /** The sheet's high score threshold, a whole number, blank for none. Set from the sheet's settings as they are read and saved. */
+  readonly scoreHigh = signal('');
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
   /** What this screen sorts the people list by: off (added) when the screen opens, and left as it is by loading a sheet. */
@@ -164,6 +168,8 @@ export class Session {
     if (res.id !== this.sheet()) {
       this.parent.set('');
       this.reviewSla.set('');
+      this.scoreMid.set('');
+      this.scoreHigh.set('');
     }
     this.sheet.set(res.id);
     this.today.set(res.today);
