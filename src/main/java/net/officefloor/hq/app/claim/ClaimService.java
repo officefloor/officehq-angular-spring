@@ -68,6 +68,10 @@ public class ClaimService {
         if (!claim.getStatus().canMoveTo(status)) {
             throw new ClaimStatusException(id, claim.getStatus(), status);
         }
+        // Four eyes: whoever opened a claim cannot also settle it.
+        if (status == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ClaimSettledByOpenerException(id, user);
+        }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
         claim.setStatus(status);
@@ -86,6 +90,7 @@ public class ClaimService {
         if (status == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
             claim.setNumber(number);
+            claim.setOpenedBy(user);
         } else if (status == ClaimStatus.VOID) {
             claim.setNumber(null);
         }

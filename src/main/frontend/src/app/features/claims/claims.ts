@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -17,6 +17,8 @@ export interface Claim {
   number: number | null;
   /** The due fixed when the claim was settled, two decimals; null when it has none and its due is live. */
   settledDue: string | null;
+  /** The user who opened the claim; null for a DRAFT. That user cannot settle it. */
+  openedBy: string | null;
 }
 
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
@@ -82,7 +84,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
-            <th scope="col">Status</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -95,6 +97,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
+              <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td>
                 <button
                   type="button"
@@ -198,8 +201,12 @@ export class Claims {
     try {
       const saved = await firstValueFrom(this.http.post<Claim>(url, null, this.session.headers()));
       if (this.session.sheet() === sheet) this.saved.emit(saved);
-    } catch {
-      this.actionError.set({ id: claim.id, message: `This claim's status does not let it be ${pastOf[action]}.` });
+    } catch (e) {
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Whoever opened this claim cannot also settle it: another user must settle it.'
+          : `This claim's status does not let it be ${pastOf[action]}.`;
+      this.actionError.set({ id: claim.id, message });
     }
   }
 
