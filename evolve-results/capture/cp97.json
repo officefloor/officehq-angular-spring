@@ -1,0 +1,64 @@
+{
+  "checkpoint": 97,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp97_monthly-totals",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a due-total per calendar month: for every month (yyyy-mm) that any claim on the sheet is\ndated in, the due of the claims dated in that month that count.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "83bf2c5e5b40e6c0f3fe674ad9eb54e0f1e1281f",
+  "reset_sha": "",
+  "preagent_sha": "5418637638c50eb1f05f44cc9120ec75d2be0d49",
+  "prev_sha": "5418637638c50eb1f05f44cc9120ec75d2be0d49",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5372282,
+    "input_tokens": 6,
+    "output_tokens": 572,
+    "cache_read_tokens": 109395,
+    "cache_creation_tokens": 1917,
+    "num_turns": 2,
+    "duration_ms": 7588,
+    "duration_api_ms": 40714,
+    "model": "claude-opus-5-5",
+    "session_id": "08892a9e-bbc6-4699-9358-13284803030e",
+    "stop_reason": "success",
+    "result_text": "The sheet now shows a due total for each calendar month, and all 4 acceptance tests pass in `bin/e2e`.\n\n**What it shows:** a \"Due total by month\" table, placed under the existing \"Due total by tag\" table.\n- **Which months:** every month (yyyy-mm) that any claim on the sheet is dated in, oldest first. That includes months whose claims are only DRAFT or VOID, which show `0.00`.\n- **What it adds up:** the due of each claim dated in that month that counts toward the sheet's other totals. Claims whose due shows as n/a are skipped.\n- **Test hook:** each figure carries the `data-testid` `month-<yyyy-mm>-due-total`.\n\n**Where the change is:** only `src/main/frontend/src/app/features/people/people.ts`, as a new `monthTotals` value plus the table. The screen already works out the other sheet totals in this component, so I followed the existing per-tag totals. Nothing changed in the server, the database or the audit file, because the test doesn't expect any new audit records.\n\n**Behaviour to know:** month totals are a plain sum. Unlike the headline due total, they don't leave out the highest and lowest person and aren't held down to the sheet's cap. So the months won't always add up to the headline due total.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5372282,
+        "num_turns": 2,
+        "duration_ms": 7588,
+        "duration_api_ms": 40714,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp97.agent.jsonl",
+  "agent_diff_file": "cp97.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

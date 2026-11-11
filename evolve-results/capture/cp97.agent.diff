@@ -1,0 +1,44 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index eb79764c7..b1444a624 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -480,6 +480,22 @@ function csvField(value: string): string {
+           </tbody>
+         </table>
+       }
++      @if (monthTotals().length > 0) {
++        <table>
++          <caption>Due total by month</caption>
++          <thead>
++            <tr><th scope="col">Month</th><th scope="col">Due total</th></tr>
++          </thead>
++          <tbody>
++            @for (m of monthTotals(); track m.month) {
++              <tr>
++                <th scope="row">{{ m.month }}</th>
++                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
+     </section>
+     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+   `,
+@@ -570,6 +586,16 @@ export class People {
+       dueTotal: sumDues(this.people().map((p) => this.liveDuesOf(p, (c) => tagsOf(c).includes(tag)))),
+     })),
+   );
++  /**
++   * Per calendar month (yyyy-mm) any of the sheet's claims is dated in, oldest first: the dues of the claims dated in it
++   * that count in the live totals, skipping the n/a ones.
++   */
++  protected readonly monthTotals = computed(() =>
++    [...new Set(this.claims().map((c) => c.date.slice(0, 7)))].sort().map((month) => ({
++      month,
++      dueTotal: sumDues(this.people().map((p) => this.liveDuesOf(p, (c) => c.date.startsWith(month)))),
++    })),
++  );
+   /** Per grade: the people not retired on it today, as the list shows their grade, and their due-totals added up. */
+   protected readonly gradeSummary = computed<GradeSummary[]>(() =>
+     this.grades.map((grade) => {
