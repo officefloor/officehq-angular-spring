@@ -153,6 +153,17 @@ public class SettingService {
     }
 
     /**
+     * Set the review threshold from the date (null: the sheet's today): a claim dated from then whose due is above it
+     * goes to REVIEW when opened instead of OPEN; a null threshold means none. Every save is recorded, even of the
+     * same value.
+     */
+    @Transactional
+    public Sheet setReviewThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        return record(sheetId, user, Sheet.REVIEW_THRESHOLD, threshold == null ? null : threshold.toPlainString(),
+                from, false);
+    }
+
+    /**
      * Set the rounding mode (half-up or half-even) from the date (null: the sheet's today); null means none (a claim
      * dated then rounds by the policy date). A claim whose date has a mode in force rounds every live figure by it.
      * Every save is recorded, then the figures it moved.

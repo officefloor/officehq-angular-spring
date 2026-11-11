@@ -235,6 +235,14 @@ public class ClaimController {
         return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
     }
 
+    /** Review a REVIEW claim to OPEN: a steward only. */
+    @PostMapping("/claims/{id}/review")
+    public ClaimView review(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.review(sheetId.trim(), user.trim(), id));
+    }
+
     /** Open the selected claims in list order; each one that cannot be opened is left as it is. */
     @PostMapping("/claims/bulk-open")
     public BulkOpenService.Result bulkOpen(@PathVariable @NotBlank @Size(max = 100) String sheetId,

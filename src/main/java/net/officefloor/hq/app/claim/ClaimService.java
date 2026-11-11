@@ -372,7 +372,7 @@ public class ClaimService {
             case OPEN -> "open";
             case SETTLED -> "settle";
             case VOID -> "void";
-            case DRAFT, PENDING, DELETED -> throw new ClaimStatusException(id, claim.getStatus(), status);
+            case DRAFT, PENDING, DELETED, REVIEW -> throw new ClaimStatusException(id, claim.getStatus(), status);
         };
         if (!roles.may(sheetId, user, action)) {
             throw new ClaimActionForbiddenException(id, user, action);
@@ -401,6 +401,10 @@ public class ClaimService {
         if (status == ClaimStatus.OPEN) {
             requireNote(sheetId, person, claim);
             requireUnderCap(sheetId, claim);
+            // A claim whose due is above the review threshold on its date waits for a steward's review instead.
+            if (needsReview(sheetId, person, claim)) {
+                status = ClaimStatus.REVIEW;
+            }
         }
         // A clerk settles only a claim whose due (the one its statement bound it to, else worked out from the rate)
         // is at or below the clerk limit; one above it goes to PENDING. A due of n/a is within any limit.
@@ -429,10 +433,15 @@ public class ClaimService {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         }
+        // Sent to REVIEW, it records who opened it but takes no number until it is reviewed.
+        if (status == ClaimStatus.REVIEW) {
+            claim.setOpenedBy(user);
+        }
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         String event = switch (status) {
             case OPEN -> "CLAIM_OPENED";
+            case REVIEW -> "CLAIM_REVIEW";
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
@@ -550,6 +559,37 @@ public class ClaimService {
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_APPROVED", user, person, saved) + numberOf(saved.getNumber()) + due);
         watches.notifyWatchers(sheetId, user, person, saved.getNumber());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * A steward reviews a REVIEW claim: it becomes OPEN, taking its number then; it keeps whoever opened it. Refused
+     * for any other status, a claim due by a date in a closed period, one over its period's cap, or a user not a
+     * steward.
+     */
+    @Transactional
+    public Claim review(String sheetId, String user, Long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ClaimStatusException(id, claim.getStatus(), ClaimStatus.OPEN);
+        }
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimActionForbiddenException(id, user, "review");
+        }
+        periods.requireOpen(sheetId, claim.getDueBy());
+        requireUnderCap(sheetId, claim);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setStatus(ClaimStatus.OPEN);
+        String number = nextNumber(sheetId, claim.getDueBy());
+        claim.setNumber(number);
+        Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
+        audit.recordOnCommit(record("CLAIM_REVIEWED", user, person, saved));
+        audit.recordOnCommit(record("CLAIM_OPENED", user, person, saved) + numberOf(number));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -857,6 +897,16 @@ public class ClaimService {
         if (held >= period.getCap()) {
             throw new ClaimCapException(claim.getId(), period.getName(), period.getCap());
         }
+    }
+
+    /** Whether the claim's due is above the review threshold in force on its date; a due of n/a is within any. */
+    private boolean needsReview(String sheetId, Person person, Claim claim) {
+        BigDecimal threshold = settings.get(sheetId).reviewThresholdOn(claim.getDate());
+        if (threshold == null) {
+            return false;
+        }
+        BigDecimal due = liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
+        return due != null && due.compareTo(threshold) > 0;
     }
 
     private void requireNote(String sheetId, Person person, Claim claim) {

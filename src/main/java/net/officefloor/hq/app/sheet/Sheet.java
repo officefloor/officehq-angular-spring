@@ -38,6 +38,7 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String REVIEW_THRESHOLD = "review-threshold";
     /** The rounding mode: half-up or half-even; none (null) leaves the policy date to decide. */
     public static final String ROUNDING = "rounding";
     public static final List<String> ROUNDING_MODES = List.of("half-up", "half-even");
@@ -252,6 +253,14 @@ public class Sheet {
      */
     public BigDecimal noteThresholdOn(LocalDate date) {
         return decimalOn(NOTE_THRESHOLD, date).orElse(null);
+    }
+
+    /**
+     * The due above which a claim dated on the date goes to REVIEW when opened instead of OPEN; null when there is no
+     * threshold then.
+     */
+    public BigDecimal reviewThresholdOn(LocalDate date) {
+        return decimalOn(REVIEW_THRESHOLD, date).orElse(null);
     }
 
     /** The days after its date a claim dated on the date of a grade without its own terms then is due by. */

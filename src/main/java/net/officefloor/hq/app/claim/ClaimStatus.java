@@ -5,17 +5,19 @@ package net.officefloor.hq.app.claim;
  * clerk limit sends it to PENDING instead, which a steward approves (SETTLED) or rejects (back to OPEN). A DRAFT, OPEN
  * or PENDING claim may be VOID; a steward may also void a SETTLED one shortly after its settlement (see ClaimService).
  * A DRAFT claim may be DELETED, and restored to DRAFT on the sheet's today it was deleted (see ClaimService).
+ * A DRAFT claim whose due is above the sheet's review threshold goes to REVIEW when opened instead of OPEN: it counts
+ * nowhere until a steward reviews it to OPEN, and may be VOID.
  */
 public enum ClaimStatus {
-    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
+    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED, REVIEW;
 
     /** Whether a claim in this status may move to the next one by opening, settling or voiding it. */
     public boolean canMoveTo(ClaimStatus next) {
         return switch (next) {
             case OPEN -> this == DRAFT;
             case SETTLED, PENDING -> this == OPEN;
-            case VOID -> this == DRAFT || isOpen();
-            case DRAFT, DELETED -> false;
+            case VOID -> this == DRAFT || this == REVIEW || isOpen();
+            case DRAFT, DELETED, REVIEW -> false;
         };
     }
 

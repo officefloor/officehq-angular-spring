@@ -970,7 +970,7 @@ export class People {
   protected readonly classicDueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
   /** Per status: how many of the sheet's claims have it. */
   protected readonly statusSummary = computed<StatusSummary[]>(() =>
-    ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({
+    ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'].map((status) => ({
       status,
       count: this.claims().filter((c) => c.status === status).length,
     })),

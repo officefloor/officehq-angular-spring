@@ -32,15 +32,15 @@ public class SettingController {
      * when there is none; the floor with two decimals; the terms in whole days; each grade's own terms in whole days,
      * by grade (a grade without its own is left out); the late percent with two decimals; the policy date as
      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
-     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the fiscal year start month (1 to 12); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the alert threshold with two decimals, null when off; the parent sheet's id, null when there is none;
+     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the fiscal year start month (1 to 12); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the review threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the alert threshold with two decimals, null when off; the parent sheet's id, null when there is none;
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
      * separated, null when blank (the standing rule).
      * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
-     * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold, rounding), from-date first to last.
+     * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold, review-threshold, rounding), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
-            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String pot, String alertThreshold, String parent, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
+            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
@@ -52,7 +52,7 @@ public class SettingController {
             return new SettingsView(shown(sheet.getClerkLimit()), shown(sheet.floorOn(today)), sheet.termsOn(today),
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
                     sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), sheet.getFiscalStartMonth(), shown(sheet.proofThresholdOn(today)),
-                    shown(sheet.noteThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), permissions,
+                    shown(sheet.noteThresholdOn(today)), shown(sheet.reviewThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), permissions,
                     dated);
         }
 
@@ -149,6 +149,19 @@ public class SettingController {
         BigDecimal noteThresholdValue() {
             return noteThreshold == null || noteThreshold.isBlank() ? null
                     : new BigDecimal(noteThreshold.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /**
+     * A review threshold of 0.00 or more with up to two decimals, blank or missing meaning none, from the date
+     * (missing: the sheet's today).
+     */
+    public record ReviewThresholdRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String reviewThreshold,
+            LocalDate from) {
+
+        BigDecimal reviewThresholdValue() {
+            return reviewThreshold == null || reviewThreshold.isBlank() ? null
+                    : new BigDecimal(reviewThreshold.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
     }
 
@@ -365,6 +378,14 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid NoteThresholdRequest request) {
         return view(service.setNoteThreshold(sheetId.trim(), user.trim(), request.noteThresholdValue(),
+                request.from()));
+    }
+
+    @PutMapping("/review-threshold")
+    public SettingsView setReviewThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ReviewThresholdRequest request) {
+        return view(service.setReviewThreshold(sheetId.trim(), user.trim(), request.reviewThresholdValue(),
                 request.from()));
     }
 
