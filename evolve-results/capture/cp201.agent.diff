@@ -1,0 +1,253 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index cf44cae3b..65cca65e8 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -7,6 +7,8 @@ import { FigurePipe } from '../../core/figure';
+ // and the sheet's due- and overdue-totals (as the people list's totals show them). Then the same
+ // figures consolidated over the sheet and all its descendants (the sheets naming it as parent, and
+ // theirs): each sheet's as that sheet shows it, added up; a sheet with no children shows its own.
++// With them, per grade the due-totals of the people on it (retired left out) and per status the
++// count of claims in it, each over the whole tree.
+ // Last, the signed-in user's own figures: the due- and overdue-totals of the person on the sheet
+ // with the user's name (by name or alias); blank when there is no such person. And their crew total:
+ // the due-totals of the crews that person leads, added up; blank when they lead none.
+@@ -34,6 +36,14 @@ import { FigurePipe } from '../../core/figure';
+         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
+         <dt>Overdue, with sub-sheets</dt>
+         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
++        @for (g of consolidatedGrades(); track g.grade) {
++          <dt>Grade {{ g.grade }} due, with sub-sheets</dt>
++          <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</dd>
++        }
++        @for (s of consolidatedStatuses(); track s.status) {
++          <dt>{{ s.status }}, with sub-sheets</dt>
++          <dd [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</dd>
++        }
+       </dl>
+       <dl aria-label="My figures">
+         <dt>My due</dt>
+@@ -54,6 +64,8 @@ export class Header {
+   readonly consolidatedPeopleCount = input.required<number>();
+   readonly consolidatedDueTotal = input.required<string>();
+   readonly consolidatedOverdueTotal = input.required<string>();
++  readonly consolidatedGrades = input.required<{ grade: string; dueTotal: string }[]>();
++  readonly consolidatedStatuses = input.required<StatusSummary[]>();
+   readonly myDueTotal = input.required<string>();
+   readonly myOverdueTotal = input.required<string>();
+   readonly myCrewDueTotal = input.required<string>();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0310f4739..43f6d3c5b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -170,11 +170,28 @@ interface Descendants {
+   peopleCount: number;
+   dueTotal: string;
+   overdueTotal: string;
++  /** Per grade, the due-totals of the people on it (retired left out); a grade with none is absent. */
++  gradeDueTotals: Record<string, string>;
++  /** Per status, how many claims are in it; a status with none is absent. */
++  statusCounts: Record<string, number>;
+   /** The sheet's own figures as the store holds them (as of the as-of date, when one is set). */
+-  own: { peopleCount: number; dueTotal: string; overdueTotal: string } | null;
++  own: {
++    peopleCount: number;
++    dueTotal: string;
++    overdueTotal: string;
++    gradeDueTotals: Record<string, string>;
++    statusCounts: Record<string, number>;
++  } | null;
+ }
+ 
+-const NO_DESCENDANTS: Descendants = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', own: null };
++const NO_DESCENDANTS: Descendants = {
++  peopleCount: 0,
++  dueTotal: '0.00',
++  overdueTotal: '0.00',
++  gradeDueTotals: {},
++  statusCounts: {},
++  own: null,
++};
+ 
+ interface DatedHold {
+   from: string;
+@@ -255,6 +272,8 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+       [consolidatedPeopleCount]="consolidated().peopleCount"
+       [consolidatedDueTotal]="consolidated().dueTotal"
+       [consolidatedOverdueTotal]="consolidated().overdueTotal"
++      [consolidatedGrades]="consolidated().grades"
++      [consolidatedStatuses]="consolidated().statuses"
+       [myDueTotal]="myFigures()?.dueTotal ?? ''"
+       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
+       [myCrewDueTotal]="myCrewDueTotal()"
+@@ -1326,13 +1345,34 @@ export class People {
+    */
+   protected readonly consolidated = computed(() => {
+     const d = this.descendants();
+-    const own = this.session.asOf() && d.own
+-      ? { peopleCount: d.own.peopleCount, due: cents(d.own.dueTotal), overdue: cents(d.own.overdueTotal) }
+-      : { peopleCount: this.people().length, due: cents(this.dueTotal()), overdue: this.overdueTotals().cents };
++    const asOfOwn = this.session.asOf() ? d.own : null;
++    const own = asOfOwn
++      ? {
++          peopleCount: asOfOwn.peopleCount,
++          due: cents(asOfOwn.dueTotal),
++          overdue: cents(asOfOwn.overdueTotal),
++          grade: (g: string) => cents(asOfOwn.gradeDueTotals[g] ?? '0.00'),
++          status: (s: string) => asOfOwn.statusCounts[s] ?? 0,
++        }
++      : {
++          peopleCount: this.people().length,
++          due: cents(this.dueTotal()),
++          overdue: this.overdueTotals().cents,
++          grade: (g: string) => cents(this.gradeSummary().find((x) => x.grade === g)?.dueTotal ?? '0.00'),
++          status: (s: string) => this.statusCount(s),
++        };
+     return {
+       peopleCount: own.peopleCount + d.peopleCount,
+       dueTotal: money(own.due + cents(d.dueTotal)),
+       overdueTotal: money(own.overdue + cents(d.overdueTotal)),
++      grades: GRADES.map((grade) => ({
++        grade,
++        dueTotal: money(own.grade(grade) + cents(d.gradeDueTotals[grade] ?? '0.00')),
++      })),
++      statuses: SUMMARY_STATUSES.map((status) => ({
++        status,
++        count: own.status(status) + (d.statusCounts[status] ?? 0),
++      })),
+     };
+   });
+   /** The person on the sheet with the user's name, by name or alias (compared without regard to case). */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index fb82827c7..525589b3f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.util.LinkedHashMap;
++import java.util.Map;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestMapping;
+@@ -19,10 +21,12 @@ public class RollupController {
+     }
+ 
+     /** The sheet's own figures as the store holds them (as of the date the request is answered as of), as consolidated figures count them. */
+-    public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal) {
++    public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
++            Map<String, Integer> statusCounts) {
+     }
+ 
+-    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal, OwnFigures own) {
++    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal,
++            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, OwnFigures own) {
+     }
+ 
+     private final RollupService service;
+@@ -38,8 +42,15 @@ public class RollupController {
+         RollupService.Consolidated figures = service.descendants(sheet);
+         RollupService.Snapshot own = service.snapshot(sheet);
+         return new DescendantsResponse(figures.peopleCount(), money(figures.dueTotal()),
+-                money(figures.overdueTotal()),
+-                new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal())));
++                money(figures.overdueTotal()), money(figures.gradeDueTotals()), figures.statusCounts(),
++                new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal()),
++                        money(own.gradeDueTotals()), service.statusCounts(sheet)));
++    }
++
++    private static Map<String, String> money(Map<String, BigDecimal> amounts) {
++        Map<String, String> out = new LinkedHashMap<>();
++        amounts.forEach((key, amount) -> out.put(key, money(amount)));
++        return out;
+     }
+ 
+     private static String money(BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index eaca46ea2..57dd59be2 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -48,13 +48,29 @@ import org.springframework.stereotype.Service;
+ @Service
+ public class RollupService {
+ 
+-    /** A person's figures: claimed, due-total (null for n/a) and overdue-total. */
+-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
++    /**
++     * A person's figures: claimed, due-total (null for n/a) and overdue-total; with their grade on the
++     * sheet's today and whether they are retired.
++     */
++    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, String grade,
++            boolean retired) {
+     }
+ 
+     /** The sheet's figures: each person's by id, in the order they were added. */
+     public record Snapshot(Map<Long, Figures> people) {
+ 
++        /** Per grade (on the sheet's today), the due-totals of the people not retired on it added up (n/a is no figure). */
++        public Map<String, BigDecimal> gradeDueTotals() {
++            Map<String, BigDecimal> totals = new LinkedHashMap<>();
++            for (Figures figures : people.values()) {
++                if (!figures.retired() && figures.grade() != null) {
++                    totals.merge(figures.grade(),
++                            figures.dueTotal() == null ? zero() : figures.dueTotal(), BigDecimal::add);
++                }
++            }
++            return totals;
++        }
++
+         public BigDecimal claimedTotal() {
+             return people.values().stream().map(Figures::claimed).reduce(zero(), BigDecimal::add);
+         }
+@@ -80,8 +96,12 @@ public class RollupService {
+         }
+     }
+ 
+-    /** Figures added up over sheets: their people (retired included), due-totals and overdue-totals. */
+-    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
++    /**
++     * Figures added up over sheets: their people (retired included), due-totals and overdue-totals;
++     * per grade the due-totals of the people on it (retired left out), and per status the count of claims in it.
++     */
++    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
++            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {
+     }
+ 
+     private final PersonRepository people;
+@@ -140,7 +160,7 @@ public class RollupService {
+             // counts has a figure
+             boolean none = inForce(sheetRates, person.gradeOn(today), today).isEmpty() && !anyFigure;
+             figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due),
+-                    overdue));
++                    overdue, person.gradeOn(today), person.isRetired()));
+         }
+         return new Snapshot(figures);
+     }
+@@ -174,13 +194,26 @@ public class RollupService {
+         int count = 0;
+         BigDecimal due = zero();
+         BigDecimal overdue = zero();
++        Map<String, BigDecimal> grades = new LinkedHashMap<>();
++        Map<String, Integer> statuses = new LinkedHashMap<>();
+         for (String id : tree) {
+             Snapshot figures = snapshot(id);
+             count += figures.people().size();
+             due = due.add(figures.dueTotal());
+             overdue = overdue.add(figures.overdueTotal());
++            figures.gradeDueTotals().forEach((grade, total) -> grades.merge(grade, total, BigDecimal::add));
++            statusCounts(id).forEach((status, n) -> statuses.merge(status, n, Integer::sum));
++        }
++        return new Consolidated(count, due, overdue, grades, statuses);
++    }
++
++    /** Per status, how many of the sheet's claims as the store holds them are in it (retired people's included). */
++    public Map<String, Integer> statusCounts(String sheetId) {
++        Map<String, Integer> counts = new LinkedHashMap<>();
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            counts.merge(claim.getStatus().name(), 1, Integer::sum);
+         }
+-        return new Consolidated(count, due, overdue);
++        return counts;
+     }
+ 
+     /**

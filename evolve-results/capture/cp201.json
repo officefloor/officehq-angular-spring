@@ -1,0 +1,64 @@
+{
+  "checkpoint": 201,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp201_consolidated-grades",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c73460fb95986298fc856b1deb6b49d6973ce6da",
+  "reset_sha": "",
+  "preagent_sha": "848a54acf37bfcb284a76ed8f692a2f503ce7722",
+  "prev_sha": "848a54acf37bfcb284a76ed8f692a2f503ce7722",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6075152,
+    "input_tokens": 26,
+    "output_tokens": 8242,
+    "cache_read_tokens": 454936,
+    "cache_creation_tokens": 43948,
+    "num_turns": 14,
+    "duration_ms": 254476,
+    "duration_api_ms": 72671,
+    "model": "claude-opus-5-5",
+    "session_id": "33396857-7e6f-4653-8565-66c2aaf9e7b2",
+    "stop_reason": "success",
+    "result_text": "The consolidated figures now show, for each grade, the due-totals of non-retired people added up over the whole sheet tree, and for each status, the number of claims in it over the tree. `bin/e2e` passes all 4 tests in the spec.\n\n**How it works:**\n- **Server (`RollupService` / `RollupController`):**\n  - Each person's figures now carry their grade on the sheet's today and whether they're retired.\n  - A sheet's per-grade due-totals leave out retired people and count an n/a due-total as 0.00.\n  - Claims are counted by status for each sheet.\n  - The descendants endpoint adds these up over all the sub-sheets. It also returns the sheet's own values, the same way it already did for the existing totals.\n- **Front end (`people.ts`, `header.ts`):**\n  - The screen adds the sheet's own figures to the sub-sheets' totals. These come from the figures the Summary panel already uses, or from the server's own values when you view the sheet as of a past date.\n  - The header shows them under the new `consolidated-grade-<A|B|C>-due-total` and `consolidated-status-<STATUS>-count` test ids.\n  - Every grade and status is shown even when its figure is zero.\n\nA grade total is the people's due-totals added up as they are. Unlike the sheet's main due-total, it doesn't drop the highest and lowest figure when there are three or more people. This matches how the Summary panel already adds up each grade's due-total.\n\nNo stored data or schema changes were needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6075152,
+        "num_turns": 14,
+        "duration_ms": 254476,
+        "duration_api_ms": 72671,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp201.agent.jsonl",
+  "agent_diff_file": "cp201.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
