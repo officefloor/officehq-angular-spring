@@ -5,6 +5,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,9 +41,12 @@ public class PersonService {
     }
 
     @Transactional
-    public Person update(String sheetId, String user, Long id, String name, String grade) {
+    public Person update(String sheetId, String user, Long id, Long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
+        if (version != null && version != person.getVersion()) {
+            throw new PersonVersionConflictException(sheetId, id);
+        }
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.key(name), id)) {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
@@ -64,6 +68,9 @@ public class PersonService {
         } catch (DataIntegrityViolationException e) {
             // Another user took the name at the same moment: the unique index refused it.
             throw new PersonNameTakenException(person.getSheetId(), person.getName());
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // Another user saved the person at the same moment.
+            throw new PersonVersionConflictException(person.getSheetId(), person.getId());
         }
     }
 }

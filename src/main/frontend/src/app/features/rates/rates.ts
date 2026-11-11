@@ -133,6 +133,8 @@ export class Rates {
   protected readonly pct = signal('');
   protected readonly from = signal('');
   protected readonly error = signal<string | null>(null);
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
@@ -146,6 +148,7 @@ export class Rates {
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -160,6 +163,7 @@ export class Rates {
       return;
     }
     const grade = this.grade();
+    this.submitting = true;
     try {
       const saved = await firstValueFrom(
         this.http.put<Rate>(
@@ -179,6 +183,8 @@ export class Rates {
           ? 'Another user set this rate at the same moment; try again.'
           : 'The rate could not be set.',
       );
+    } finally {
+      this.submitting = false;
     }
   }
 }

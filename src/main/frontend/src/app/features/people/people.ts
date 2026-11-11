@@ -9,6 +9,8 @@ interface Person {
   id: number;
   name: string;
   grade: string;
+  /** Raised on each save; the editor sends back the one it loaded. */
+  version: number;
 }
 
 // The people on the active sheet, in the order they were added, each with their claims and what
@@ -118,6 +120,10 @@ export class People {
   protected readonly grade = signal('A');
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
+  /** The version of the person the editor loaded. */
+  private editingVersion = 0;
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
   protected readonly error = signal<string | null>(null);
   private reads = 0;
 
@@ -190,6 +196,7 @@ export class People {
 
   protected edit(person: Person): void {
     this.editing.set(person.id);
+    this.editingVersion = person.version;
     this.name.set(person.name);
     this.grade.set(person.grade);
     this.error.set(null);
@@ -204,16 +211,18 @@ export class People {
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    const body = { name: this.name(), grade: this.grade() };
+    const editing = this.editing();
+    const body = { name: this.name(), grade: this.grade(), version: editing === null ? null : this.editingVersion };
     if (!body.name.trim()) {
       this.error.set('Type a name for the person.');
       return;
     }
-    const editing = this.editing();
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people`;
+    this.submitting = true;
     try {
       if (editing === null) {
         const added = await firstValueFrom(this.http.post<Person>(url, body, this.session.headers()));
@@ -232,11 +241,27 @@ export class People {
         void this.read(sheet);
       }
     } catch (e) {
-      if (e instanceof HttpErrorResponse && e.status === 409) {
+      if (e instanceof HttpErrorResponse && e.status === 412 && editing !== null) {
+        this.error.set('Someone else saved this person in the meantime. The form now shows their values.');
+        await this.reloadEditor(sheet, editing);
+      } else if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set('Another person on the sheet already has that name.');
       } else {
         this.error.set(editing === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Re-read the sheet and show the stored values of the person in the open editor. */
+  private async reloadEditor(sheet: string, id: number): Promise<void> {
+    await this.read(sheet);
+    const person = this.people().find((p) => p.id === id);
+    if (person && this.editing() === id && this.session.sheet() === sheet) {
+      this.editingVersion = person.version;
+      this.name.set(person.name);
+      this.grade.set(person.grade);
     }
   }
 

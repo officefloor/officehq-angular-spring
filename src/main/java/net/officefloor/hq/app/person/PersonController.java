@@ -24,16 +24,17 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PersonController {
 
-    public record PersonView(Long id, String name, String grade) {
+    public record PersonView(Long id, String name, String grade, long version) {
 
         static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }
 
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            Long version) {
     }
 
     private final PersonService service;
@@ -57,11 +58,13 @@ public class PersonController {
         return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
     }
 
+    /** Saves the person; with a version, only when it is still the version stored. */
     @PutMapping("/{id}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.update(sheetId.trim(), user.trim(), id, request.name(), request.grade()));
+        return PersonView.of(service.update(sheetId.trim(), user.trim(), id, request.version(), request.name(),
+                request.grade()));
     }
 }

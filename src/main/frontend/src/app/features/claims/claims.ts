@@ -154,6 +154,8 @@ export class Claims {
   /** The id of the claim whose editor is open, or null when the form adds a claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
+  private submitting = false;
   /** The error of the last status change refused, and the claim it belongs to. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
   protected readonly actions: { action: ClaimAction; label: string }[] = [
@@ -212,6 +214,7 @@ export class Claims {
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.submitting) return;
     this.error.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
@@ -228,6 +231,7 @@ export class Claims {
     const body = { amount, date: date || null, note: this.note() };
     const editing = this.editing();
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+    this.submitting = true;
     try {
       const saved = await firstValueFrom(
         editing === null
@@ -240,6 +244,8 @@ export class Claims {
       }
     } catch {
       this.error.set(editing === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } finally {
+      this.submitting = false;
     }
   }
 }
