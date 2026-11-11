@@ -1,0 +1,64 @@
+{
+  "checkpoint": 146,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp146_over-threshold-alert",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has an alert threshold (settings, two decimals, blank means off, not dated;\nSETTING_CHANGED key=alert-threshold value=<amount>). After a change's rollup lines, for each person\nwhose due-total went from at or below the threshold (or no due-total) to above it, one line ALERT\nname=<name> due-total=<due-total> is written, in list order. A person already above it writes no\nfurther ALERT until their due-total has been at or below the threshold and crosses it again. An\nALERT line, like ROLLUP and TOTALS, never ends with for=.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has an alert threshold (settings, two decimals, blank means off, not dated;\nSETTING_CHANGED key=alert-threshold value=<amount>). After a change's rollup lines, for each person\nwhose due-total went from at or below the threshold (or no due-total) to above it, one line ALERT\nname=<name> due-total=<due-total> is written, in list order. A person already above it writes no\nfurther ALERT until their due-total has been at or below the threshold and crosses it again. An\nALERT line, like ROLLUP and TOTALS, never ends with for=.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "40c3de9c836f99114f08be957761b3b72e763105",
+  "reset_sha": "",
+  "preagent_sha": "728c2bc808a7ad3ffe761683c78a7d8aeb4b5999",
+  "prev_sha": "728c2bc808a7ad3ffe761683c78a7d8aeb4b5999",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9050598,
+    "input_tokens": 36,
+    "output_tokens": 9556,
+    "cache_read_tokens": 897859,
+    "cache_creation_tokens": 66778,
+    "num_turns": 19,
+    "duration_ms": 326883,
+    "duration_api_ms": 92471,
+    "model": "claude-opus-5-5",
+    "session_id": "22fefb4a-12c0-4963-afac-824b4caac047",
+    "stop_reason": "success",
+    "result_text": "The sheet now has an alert threshold, and ALERT lines are written when someone's due-total crosses it. All 4 tests in `bin/e2e` pass.\n\n**How it works**\n- **Setting:** there's a new \"Alert threshold\" field on the settings form. It takes up to two decimals, blank means off, and it isn't dated. A bad value like `x` shows `settings-error` and changes nothing. Saving writes `SETTING_CHANGED \u2026 key=alert-threshold value=<amount>`, with nothing after `value=` when blank. The threshold is stored on the sheet and copied when a sheet is cloned.\n- **ALERT lines:** after a change's ROLLUP and TOTALS lines, the app compares each person's due-total before and after the change. If it went from at or below the threshold (or no due-total, or n/a) to above it, it writes `ALERT \u2026 name=<name> due-total=<due-total>`, in list order. Someone who stays above it gets no further ALERT until they drop to or below the threshold and cross it again. ALERT lines never end with `for=`; the audit code already treated ALERT as a figures-only record.\n\n**Two behaviours you might not assume**\n- **Changing the threshold writes no ALERT by itself.** It doesn't move anyone's figures. So if someone is already above a newly set or lowered threshold, the next figure change that keeps them above it won't alert either; they have to come down to it and cross it again. This matches the request's wording, but no test covers it.\n- **Cloning a sheet** writes ROLLUP and TOTALS lines for everyone, so I also had it write an ALERT for each person on the new sheet who starts above the threshold. The request didn't mention cloning and no test covers it.\n\n**Files changed**\n- **Database:** new migration `V81__sheet_alert_threshold.sql`.\n- **Server:** `Sheet.java` (new field), `SettingService.java` and `SettingController.java` (new `PUT \u2026/settings/alert-threshold`), and `RollupService.java` (the alert check).\n- **Front end:** `features/settings/settings.ts`, with the input `setting-alert-threshold` and the current value shown in `setting-alert-threshold-current`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9050598,
+        "num_turns": 19,
+        "duration_ms": 326883,
+        "duration_api_ms": 92471,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp146.agent.jsonl",
+  "agent_diff_file": "cp146.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
