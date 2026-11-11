@@ -227,6 +227,23 @@ function csvField(value: string): string {
           <p role="alert" data-testid="paste-error">{{ message }}</p>
         }
       </form>
+      <form aria-label="Import people" (submit)="importPeople($event)">
+        <label for="import-people">Import people, one per line: name,grade,terms,contact (terms and contact may be left out)</label>
+        <textarea
+          id="import-people"
+          data-testid="import-people"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-submit">Import people</button>
+        @if (importAdded() !== null) {
+          Added <strong data-testid="import-added">{{ importAdded() }}</strong>
+        }
+        @if (importError(); as message) {
+          <p role="alert" data-testid="import-error">{{ message }}</p>
+        }
+      </form>
       <p>
         <input
           id="show-retired"
@@ -772,6 +789,11 @@ export class People {
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteError = signal<string | null>(null);
   private pasting = false;
+  /** The import box: its lines, how many its last import added (null while it runs and before the first), its error. */
+  protected readonly importText = signal('');
+  protected readonly importAdded = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  private importing = false;
   /** The error of the last action on a person's row that was refused, and the person it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** The patron chosen on each person's row, by person id, as the chosen person's id; blank with none chosen. */
@@ -849,6 +871,9 @@ export class People {
         this.pasteText.set('');
         this.pasteAdded.set(null);
         this.pasteError.set(null);
+        this.importText.set('');
+        this.importAdded.set(null);
+        this.importError.set(null);
         if (sheet) void this.read(sheet);
       });
     });
@@ -1638,6 +1663,44 @@ export class People {
       this.pasteError.set('The pasted claims could not be added; none were.' + detail);
     } finally {
       this.pasting = false;
+    }
+  }
+
+  /**
+   * Add a person per pasted line of name,grade,terms,contact, in order, each as the person form would.
+   * Refused as a whole when any line would be.
+   */
+  protected async importPeople(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importing) return;
+    this.importError.set(null);
+    this.importAdded.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of name,grade,terms,contact.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ added: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/import`,
+          { text },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.importText.set('');
+      await this.read(sheet);
+      this.importAdded.set(result.added);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+      this.importError.set('The people could not be imported; none were.' + detail);
+    } finally {
+      this.importing = false;
     }
   }
 

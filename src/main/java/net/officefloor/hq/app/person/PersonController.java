@@ -113,6 +113,14 @@ public class PersonController {
     public record WatchRequest(@NotNull Boolean on) {
     }
 
+    /** Lines of name,grade,terms,contact to add as people. */
+    public record ImportRequest(@NotNull @Size(max = 1000000) String text) {
+    }
+
+    /** How many people an import added. */
+    public record ImportResult(int added) {
+    }
+
     private final PersonService service;
     private final StatementService statements;
     private final SheetService sheets;
@@ -120,9 +128,12 @@ public class PersonController {
     private final BulkGradeService bulkGrade;
     private final MergeService merges;
     private final TransferService transfers;
+    private final ImportPeopleService imports;
 
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
-            WatchService watches, BulkGradeService bulkGrade, MergeService merges, TransferService transfers) {
+            WatchService watches, BulkGradeService bulkGrade, MergeService merges, TransferService transfers,
+            ImportPeopleService imports) {
+        this.imports = imports;
         this.transfers = transfers;
         this.service = service;
         this.merges = merges;
@@ -157,6 +168,14 @@ public class PersonController {
             @RequestBody @Valid PersonRequest request) {
         return view(service.add(sheetId.trim(), user.trim(), request.name(), request.grade(),
                 request.termsValue(), request.contact()), user.trim());
+    }
+
+    /** Add a person per pasted line, in order, each as the person form would; refused as a whole when any line is. */
+    @PostMapping("/import")
+    public ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ImportRequest request) {
+        return new ImportResult(imports.importPeople(sheetId.trim(), user.trim(), request.text()));
     }
 
     /** Saves the person; with a version, only when it is still the version stored. */
