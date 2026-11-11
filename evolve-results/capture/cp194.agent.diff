@@ -1,0 +1,284 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 994676b6b..00b903053 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -490,6 +490,14 @@ export function money(c: number): string {
+           <button type="button" data-testid="claim-comment-add" (click)="comment(c)">Add comment</button>
+           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
+           <button type="button" data-testid="claim-review" (click)="act(c, 'review')">Review</button>
++          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
++          <input
++            [id]="'claim-settle-date-' + c.id"
++            type="date"
++            data-testid="claim-settle-date"
++            [value]="settleDates().get(c.id) ?? ''"
++            (input)="setSettleDate(c.id, $any($event.target).value)"
++          />
+           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
+           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')">Re-settle</button>
+           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">Approve</button>
+@@ -692,6 +700,8 @@ export class PersonClaims {
+   protected readonly proofKinds = ['receipt', 'photo'] as const;
+   /** The proof kind chosen for each claim's next proof, by claim id; none chosen: a receipt. */
+   protected readonly proofKindsChosen = signal<ReadonlyMap<number, string>>(new Map());
++  /** The date typed to settle each claim as of, by claim id; blank for the sheet's today. */
++  protected readonly settleDates = signal<ReadonlyMap<number, string>>(new Map());
+   /** The date typed to defer each claim until, by claim id. */
+   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
+   /** The new date typed for each claim, by claim id. */
+@@ -920,6 +930,11 @@ export class PersonClaims {
+     this.clearActionError(id);
+   }
+ 
++  protected setSettleDate(id: number, date: string): void {
++    this.settleDates.update((m) => new Map(m).set(id, date));
++    this.clearActionError(id);
++  }
++
+   protected setDeferDate(id: number, date: string): void {
+     this.deferDates.update((m) => new Map(m).set(id, date));
+     this.clearActionError(id);
+@@ -1405,17 +1420,24 @@ export class PersonClaims {
+       this.actionErrors.update((m) => new Map(m).set(c.id, 'Choose a reason to void this claim.'));
+       return;
+     }
++    const on = action === 'settle' ? (this.settleDates().get(c.id) ?? '').trim() : '';
++    if (on !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(on)) {
++      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter a date to settle this claim as of.'));
++      return;
++    }
+     const body = {
+       sheet,
+       user: this.session.user(),
+       id: c.id,
+       ...(action === 'reject' ? { reason } : action === 'void' && voidReason ? { reason: voidReason } : {}),
++      ...(on !== '' ? { on } : {}),
+     };
+     try {
+       const claim = await firstValueFrom(this.http.post<Claim>(`/api/claims/${action}`, body));
+       if (this.session.sheet() !== sheet) return;
+       if (action === 'reject') this.setReason(c.id, '');
+       if (action === 'void') this.setVoidReason(c.id, '');
++      if (action === 'settle') this.setSettleDate(c.id, '');
+       this.saved.emit(claim);
+     } catch (e) {
+       if (this.session.sheet() !== sheet) return;
+@@ -1438,6 +1460,8 @@ export class PersonClaims {
+               : action === 'settle' && c.editedBy === this.session.user()
+                 ? 'The user who last edited a claim cannot settle it.'
+                 : `Your role may not ${action} a claim on this sheet.`
++          : on !== '' && on > (this.session.today() ?? on)
++            ? 'A claim cannot be settled as of a date after the sheet\'s today.'
+           : e instanceof HttpErrorResponse && e.status === 423
+             ? CLOSED
+             : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
+@@ -1448,6 +1472,8 @@ export class PersonClaims {
+               ? `This claim is due above the proof threshold and cannot be ${PAST[action]} without a proof (of each kind the sheet needs).`
+             : action === 'settle' && deferred(c, this.session.today())
+               ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
++            : on !== '' && e instanceof HttpErrorResponse && e.status === 409 && c.status === 'OPEN'
++              ? `This claim was not on the sheet on ${on}.`
+               : action === 'void' && c.status === 'SETTLED'
+                 ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
+               : action === 'restore' && c.status === 'DELETED'
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimAsOf.java b/src/main/java/net/officefloor/hq/app/claim/ClaimAsOf.java
+new file mode 100644
+index 000000000..e9ba9bd8a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimAsOf.java
+@@ -0,0 +1,92 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.EntityManager;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.AsOfFilter;
++import net.officefloor.hq.app.sheet.SheetHistory;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.support.TransactionTemplate;
++import org.springframework.web.context.request.RequestAttributes;
++import org.springframework.web.context.request.RequestContextHolder;
++import org.springframework.web.server.ResponseStatusException;
++
++/**
++ * A claim's due as it stood at the end of a day: worked out as the as-of view works it out (see
++ * {@link AsOfFilter}), from the sheet restored as it stood then, its today the date, in a transaction
++ * that is then rolled back.
++ */
++@Service
++public class ClaimAsOf {
++
++    private final ClaimRepository claims;
++    private final PersonRepository people;
++    private final ClaimService service;
++    private final SheetService sheets;
++    private final SheetHistory history;
++    private final EntityManager entities;
++    private final TransactionTemplate readOnly;
++    private final TransactionTemplate rolledBack;
++
++    public ClaimAsOf(ClaimRepository claims, PersonRepository people, ClaimService service, SheetService sheets,
++            SheetHistory history, EntityManager entities, PlatformTransactionManager transactions) {
++        this.claims = claims;
++        this.people = people;
++        this.service = service;
++        this.sheets = sheets;
++        this.history = history;
++        this.entities = entities;
++        this.readOnly = new TransactionTemplate(transactions);
++        this.readOnly.setReadOnly(true);
++        this.rolledBack = new TransactionTemplate(transactions);
++    }
++
++    /**
++     * The claim's due at the end of {@code day} (null when it had none). Refused (409) for a day after
++     * the sheet's today, and for a claim that was not on the sheet then.
++     */
++    public BigDecimal due(String sheetId, long id, LocalDate day) {
++        LocalDate today = readOnly.execute(status -> sheets.today(sheetId));
++        if (day.isAfter(today)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A claim cannot be settled as of a date after the sheet's today.");
++        }
++        RequestAttributes request = RequestContextHolder.getRequestAttributes();
++        Object was = request == null ? null : request.getAttribute(AsOfFilter.AS_OF, RequestAttributes.SCOPE_REQUEST);
++        if (request != null) {
++            // the sheet's ancestors are read as of the day too, as the as-of view reads them
++            request.setAttribute(AsOfFilter.AS_OF, day, RequestAttributes.SCOPE_REQUEST);
++        }
++        try {
++            return rolledBack.execute(status -> {
++                status.setRollbackOnly();
++                history.restore(sheetId, day);
++                // the rows were put back behind the persistence context's back: read them afresh
++                entities.clear();
++                Claim claim = claims.findByIdAndSheetId(id, sheetId)
++                        .filter(c -> c.getStatus() != ClaimStatus.DELETED)
++                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
++                                "This claim was not on the sheet on " + day + "."));
++                Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
++                                "This claim was not on the sheet on " + day + "."));
++                BigDecimal due = service.charged(sheetId, person, claim);
++                entities.clear();
++                return due;
++            });
++        } finally {
++            if (request != null) {
++                if (was == null) {
++                    request.removeAttribute(AsOfFilter.AS_OF, RequestAttributes.SCOPE_REQUEST);
++                } else {
++                    request.setAttribute(AsOfFilter.AS_OF, was, RequestAttributes.SCOPE_REQUEST);
++                }
++            }
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 832763f15..e55306206 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -67,6 +67,11 @@ public class ClaimController {
+             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
+     }
+ 
++    /** {@code on}: the date the claim is settled as of; none for the sheet's today. */
++    public record SettleClaimRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate on) {
++    }
++
+     public record VoidClaimRequest(@NotBlank @Size(max = 100) String sheet,
+             @NotBlank @Size(max = 100) String user, @NotNull Long id, @Size(max = 200) String reason) {
+     }
+@@ -214,10 +219,12 @@ public class ClaimController {
+ 
+     private final ClaimService service;
+     private final ClaimPasteService pasteService;
++    private final ClaimAsOf asOf;
+ 
+-    public ClaimController(ClaimService service, ClaimPasteService pasteService) {
++    public ClaimController(ClaimService service, ClaimPasteService pasteService, ClaimAsOf asOf) {
+         this.service = service;
+         this.pasteService = pasteService;
++        this.asOf = asOf;
+     }
+ 
+     @PostMapping("/list")
+@@ -271,8 +278,13 @@ public class ClaimController {
+     }
+ 
+     @PostMapping("/settle")
+-    public ClaimResponse settle(@Valid @RequestBody ClaimStatusRequest req) {
+-        return changeStatus(req, ClaimStatus.SETTLED);
++    public ClaimResponse settle(@Valid @RequestBody SettleClaimRequest req) {
++        String sheet = req.sheet().trim();
++        if (req.on() == null) {
++            return response(service.changeStatus(sheet, req.user().trim(), req.id(), ClaimStatus.SETTLED));
++        }
++        BigDecimal due = asOf.due(sheet, req.id(), req.on());
++        return response(service.settleAsOf(sheet, req.user().trim(), req.id(), req.on(), due));
+     }
+ 
+     @PostMapping("/approve")
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index bdffcf0cb..4cac62530 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -350,13 +350,30 @@ public class ClaimService {
+         return changeStatus(sheetId, user, id, ClaimStatus.OPEN, reason, true, null, false);
+     }
+ 
++    /**
++     * Settle a claim as of a date on or before the sheet's today, as
++     * {@link #changeStatus(String, String, long, ClaimStatus)} does, its due fixed at {@code due}: the
++     * claim's due as it stood at the end of that date (see {@link ClaimAsOf}). CLAIM_SETTLED gains the
++     * date as {@code on=}.
++     */
++    @Transactional
++    public Claim settleAsOf(String sheetId, String user, long id, LocalDate on, BigDecimal due) {
++        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, false, null, false, on, due);
++    }
++
++    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
++            boolean review, String voidReason, boolean judged) {
++        return changeStatus(sheetId, user, id, next, reason, review, voidReason, judged, null, null);
++    }
++
+     /**
+      * Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING
+      * claim, {@code judged} when the four-eyes and proof rules were already judged on the claim it was
+-     * split off (see {@link #partSettle}).
++     * split off (see {@link #partSettle}); {@code on} when settling as of that date, at the due
++     * {@code asOfDue} it had then.
+      */
+     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
+-            boolean review, String voidReason, boolean judged) {
++            boolean review, String voidReason, boolean judged, LocalDate on, BigDecimal asOfDue) {
+         roles.refuseViewer(sheetId, user);
+         if (!review) {
+             roles.refuseUnlessPermitted(sheetId, user, switch (next) {
+@@ -421,7 +438,8 @@ public class ClaimService {
+         }
+         // settling fixes the figure with its late charge as it stands on the sheet's today (a
+         // PENDING claim keeps any figure a statement bound)
+-        BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
++        BigDecimal settling = next != ClaimStatus.SETTLED ? null
++                : on != null ? asOfDue : charged(sheetId, person, claim);
+         if (next == ClaimStatus.SETTLED && !judged && needsProof(sheetId, person, claim, settling)) {
+             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                     "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
+@@ -458,7 +476,8 @@ public class ClaimService {
+                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : "")
+                 + (reason != null ? " reason=" + reason : "")
+                 + (reversing ? " reversed=" + dueText(saved.getSettledDue()) : "")
+-                + (voidedWith != null ? " reason=" + voidedWith : ""));
++                + (voidedWith != null ? " reason=" + voidedWith : "")
++                + (next == ClaimStatus.SETTLED && on != null ? " on=" + on : ""));
+         if (next == ClaimStatus.SETTLED) {
+             notifyWatchers(sheetId, user, person, saved);
+         }
