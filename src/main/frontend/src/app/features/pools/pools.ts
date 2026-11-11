@@ -101,6 +101,11 @@ function cuts(pot: number, members: { share: number; excluded: boolean }[]): num
   return out;
 }
 
+/** A CSV field, quoted when it holds a comma, a quote or a line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
 // The sheet's pools: each with its members (people and other pools) and their shares, its total share (a member
 // whose dates leave out the sheet's today counting as 0.00) and whether it is balanced (the total is exactly 100.00); in a balanced pool that has a
 // pot, each member's cut of it. A pool that is a member of none has the sheet's pot; a pool that is a member of
@@ -123,6 +128,7 @@ function cuts(pot: number, members: { share: number; excluded: boolean }[]): num
           <p role="alert" data-testid="pool-form-error">{{ message }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
       @for (p of shown(); track p.id) {
         <div [attr.data-testid]="'pool-row-' + p.name">
           <h3>{{ p.name }}</h3>
@@ -309,6 +315,23 @@ export class Pools {
 
   private adding = false;
   private reads = 0;
+
+  /**
+   * Download the pools as a CSV file, pools in the order added and each pool's members in the order added: the pool's
+   * name, the member's name (a pool as pool:<name>), their share and their cut as shown (empty when none).
+   */
+  protected exportCsv(): void {
+    const lines = [['pool', 'member', 'share', 'cut']].concat(
+      this.shown().flatMap((p) => p.members.map((m) => [p.name, m.name, m.share, m.cut])),
+    );
+    const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `pools-${this.session.sheet() ?? 'sheet'}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
+  }
 
   constructor() {
     effect(() => {
