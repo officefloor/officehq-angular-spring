@@ -85,11 +85,12 @@ public class StatementService {
             if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
                 anyDue = true;
             }
-            // The statement binds the figure under the claim's due; its late charge keeps following the sheet's today.
+            // The statement binds the rate figure under the claim's due; its late charge keeps following the sheet's
+            // today, and the floor is applied last.
             BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
-            BigDecimal due = claim.getSettledDue() != null ? figure
-                    : sheet.withLateCharge(figure, claim.getStatus().isOpen() && !claim.isCorrection(),
-                            claim.getDueBy(), claim.getDate());
+            BigDecimal due = claim.getSettledDue() != null || claim.isCorrection() ? figure
+                    : sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen(), claim.getDueBy(),
+                            claim.getDate()), claim.getDate());
             if (due != null) {
                 total = total.add(due);
                 // A due under a grade the person had on an earlier date counts too.
@@ -110,7 +111,7 @@ public class StatementService {
 
     /**
      * The figure under the claim's due: the due fixed when it was settled, else the one its last statement bound it
-     * to, else its amount times its grade's rate on its date raised to the sheet's floor (unless a correction); empty when it has none (n/a).
+     * to, else its amount times its grade's rate on its date (no floor); empty when it has none (n/a).
      */
     private Optional<BigDecimal> figureOf(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
@@ -121,7 +122,6 @@ public class StatementService {
         }
         return rates.rateOn(sheetId, person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> sheets.get(sheetId).rateStep(claim.getAmount(), pct, claim.getRoundingDate()))
-                .map(due -> claim.isCorrection() ? due : sheets.get(sheetId).floored(due, claim.getDate()));
+                .map(pct -> sheets.get(sheetId).rateStep(claim.getAmount(), pct, claim.getRoundingDate()));
     }
 }
