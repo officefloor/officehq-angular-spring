@@ -96,9 +96,13 @@ public class ClaimService {
         // Due by its date plus its person's terms on that date, fixed from now on.
         claim.setDueBy(dated.plusDays(termsFor(sheetId, person, dated)));
         claim.setListed(sheets.nextListed(sheetId));
+        claim.setLateEntry(periods.softClosedOn(sheetId, dated));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
+        if (saved.isLateEntry()) {
+            audit.recordOnCommit(record("LATE_ENTRY", user, person, saved));
+        }
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }

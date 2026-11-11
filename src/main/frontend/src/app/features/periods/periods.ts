@@ -12,9 +12,11 @@ export interface Period {
   to: string;
   /** Whether the period is closed: no claim dated in it can change. */
   closed: boolean;
-  /** The due-total fixed when the period was closed; null while it is open. */
+  /** Whether the period is soft-closed: its figures are fixed, yet claims dated in it can still change. */
+  softClosed: boolean;
+  /** The due-total fixed when the period was closed or soft-closed; null while it is open. */
   closedTotal: string | null;
-  /** Each person's due-total for the period by person id, fixed when it was closed; empty while it is open. */
+  /** Each person's due-total for the period by person id, fixed when it was closed or soft-closed; empty while it is open. */
   personTotals: Record<number, string>;
 }
 
@@ -95,7 +97,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.name) ?? '0.00' }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button
                   type="button"
@@ -104,6 +106,14 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
                   (click)="close(p)"
                 >
                   Close
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-soft-close"
+                  [attr.aria-label]="'Soft-close period ' + p.name"
+                  (click)="softClose(p)"
+                >
+                  Soft-close
                 </button>
                 <button
                   type="button"
@@ -171,7 +181,25 @@ export class Periods {
     }
   }
 
-  /** Reopen a closed period, making its due-total live again; the store refuses a non-steward or an open period. */
+  /** Soft-close a period, fixing its figures while its claims can still change; the store refuses one closed or soft-closed. */
+  protected async softClose(period: Period): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(period.name)}/soft-close`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Period>(url, null, this.session.headers()));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? `Your role may not close the period ${period.name}.`
+          : `The period ${period.name} could not be soft-closed: it is already closed or soft-closed.`;
+      this.rowError.set({ id: period.id, message });
+    }
+  }
+
+  /** Reopen a closed or soft-closed period, making its due-total live again; the store refuses a non-steward or an open period. */
   protected async reopen(period: Period): Promise<void> {
     this.rowError.set(null);
     const sheet = this.session.sheet();
@@ -184,7 +212,7 @@ export class Periods {
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? `Only a steward can reopen the period ${period.name}.`
-          : `The period ${period.name} could not be reopened: it is not closed.`;
+          : `The period ${period.name} could not be reopened: it is not closed or soft-closed.`;
       this.rowError.set({ id: period.id, message });
     }
   }

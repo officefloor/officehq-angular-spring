@@ -593,11 +593,11 @@ export class People {
   }
 
   /**
-   * The person's due-total for the period: once it is closed, the figure fixed then (0.00 for a person added since);
+   * The person's due-total for the period: once it is closed or soft-closed, the figure fixed then (0.00 for a person added since);
    * while it is open, the dues of their counting claims dated in it.
    */
   protected periodDueTotalOf(person: Person, period: Period): string {
-    if (period.closed) return period.personTotals?.[person.id] ?? '0.00';
+    if (period.closed || period.softClosed) return period.personTotals?.[person.id] ?? '0.00';
     return this.livePersonPeriodDues().get(person.id)?.get(period.name) ?? '0.00';
   }
 

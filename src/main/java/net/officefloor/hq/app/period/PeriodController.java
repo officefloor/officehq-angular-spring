@@ -32,14 +32,15 @@ public class PeriodController {
      * A period as shown, its dates as yyyy-mm-dd; once closed, the due-total fixed then (null while open) and each
      * person's due-total for it fixed then, by person id (empty while open).
      */
-    public record PeriodView(Long id, String name, String from, String to, boolean closed, String closedTotal,
+    public record PeriodView(Long id, String name, String from, String to, boolean closed, boolean softClosed,
+            String closedTotal,
             Map<Long, String> personTotals) {
 
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate().toString(),
-                    period.getToDate().toString(), period.isClosed(),
+                    period.getToDate().toString(), period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(), personTotals);
         }
     }
@@ -100,6 +101,14 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) String name,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return PeriodView.of(service.close(sheetId.trim(), user.trim(), name.trim()));
+    }
+
+    /** Soft-close a period, fixing its figures while its claims can still change; refused when closed or soft-closed. */
+    @PostMapping("/{name}/soft-close")
+    public PeriodView softClose(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @NotBlank @Size(max = 100) String name,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.softClose(sheetId.trim(), user.trim(), name.trim()));
     }
 
     /** Reopen a closed period, making its due-total live again; refused for a non-steward or a period not closed. */
