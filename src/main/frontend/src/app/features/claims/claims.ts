@@ -38,6 +38,8 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has: one above the proof threshold on its date cannot be settled or approved with none. */
   proofs: number;
+  /** The number of the claim this one was split off; null unless it was split off another. */
+  splitFrom: string | null;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
@@ -233,7 +235,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Log</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -264,6 +266,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
               <td data-testid="claim-proofs">{{ c.proofs }}</td>
+              <td data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</td>
               <td>
                 <ol class="claim-log">
                   @for (line of c.log; track $index) {
@@ -300,6 +303,23 @@ export function sumAmounts(amounts: string[]): string {
                   (click)="addProof(c)"
                 >
                   Add proof
+                </button>
+                <label class="visually-hidden" [for]="'claim-split-amount-' + c.id">Amount to split off</label>
+                <input
+                  [id]="'claim-split-amount-' + c.id"
+                  data-testid="claim-split-amount"
+                  inputmode="decimal"
+                  placeholder="Amount to split off"
+                  [value]="splitAmounts()[c.id] ?? ''"
+                  (input)="setSplitAmount(c.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-split"
+                  [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date"
+                  (click)="split(c)"
+                >
+                  Split
                 </button>
                 <label class="visually-hidden" [for]="'claim-defer-date-' + c.id">Defer until</label>
                 <input
@@ -410,6 +430,8 @@ export class Claims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   /** The date (yyyy-mm-dd) picked to defer each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The amount typed to split off each OPEN claim, by claim id. */
+  protected readonly splitAmounts = signal<Record<number, string>>({});
 
   protected fieldId(field: string): string {
     return `claim-form-${field}-${this.personId()}`;
@@ -537,6 +559,45 @@ export class Claims {
           : closed
             ? `This claim is dated in the closed period ${closed.name}: a proof cannot be added to it.`
             : 'A proof could not be added to this claim.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  protected setSplitAmount(id: number, amount: string): void {
+    this.splitAmounts.update((all) => ({ ...all, [id]: amount }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /**
+   * Split the amount typed for it off an OPEN claim into a new OPEN claim; the store refuses a claim not OPEN or
+   * deferred, an amount not above 0.00 and below the claim's, a closed period, and a role that may not open a claim.
+   */
+  protected async split(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.splitAmounts()[claim.id] ?? '').trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+      this.actionError.set({ id: claim.id, message: 'Type the amount to split off, with at most two decimals.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/split`;
+    try {
+      const added = await firstValueFrom(this.http.post<Claim>(url, { amount }, this.session.headers()));
+      this.setSplitAmount(claim.id, '');
+      if (this.session.sheet() === sheet) this.saved.emit(added);
+    } catch (e) {
+      const closed = this.closedOn(claim.date);
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role may not open a claim, so it may not split one.'
+          : claim.status !== 'OPEN'
+            ? `This claim is ${claim.status}: only an OPEN claim can be split.`
+            : this.deferred(claim)
+              ? `This claim is deferred until ${claim.deferredUntil}: it cannot be split.`
+              : closed
+                ? `This claim is dated in the closed period ${closed.name}: it cannot be split.`
+                : `The amount split off must be more than 0.00 and less than ${claim.amount}.`;
       this.actionError.set({ id: claim.id, message });
     }
   }

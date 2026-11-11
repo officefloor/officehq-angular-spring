@@ -333,6 +333,56 @@ public class ClaimService {
     }
 
     /**
+     * Split an amount (more than 0.00 and less than its own) off an OPEN claim not deferred. The claim keeps the rest
+     * and loses any figure a statement bound it to; a new OPEN claim of the same person with the amount split off, the
+     * same date and note, the next number, opened by the user, due by its date plus the terms in force on that date,
+     * names the claim's number as the one it was split from. Refused for any other status, a closed period, or a user
+     * whose role may not open a claim.
+     */
+    @Transactional
+    public Claim split(String sheetId, String user, Long id, BigDecimal amount) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (!roles.may(sheetId, user, "open")) {
+            throw new ClaimActionForbiddenException(id, user, "open");
+        }
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ClaimSplitException(id, "it is " + claim.getStatus() + ", only an OPEN claim can be split");
+        }
+        if (claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ClaimSplitException(id, "it is deferred until " + claim.getDeferredUntil());
+        }
+        if (amount.signum() <= 0 || amount.compareTo(claim.getAmount()) >= 0) {
+            throw new ClaimSplitException(id, "the amount split off must be more than 0.00 and less than "
+                    + claim.getAmount().toPlainString());
+        }
+        periods.requireOpen(sheetId, claim.getDate());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setAmount(claim.getAmount().subtract(amount));
+        claim.setStated(false, null);
+        Claim kept = claims.saveAndFlush(claim);
+        Claim part = new Claim(sheetId, kept.getPersonId(), amount, kept.getDate(), kept.getNote());
+        part.setRoundingDate(kept.getRoundingDate());
+        part.setDueBy(kept.getDate().plusDays(
+                settings.termsFor(sheetId, person.gradeOn(kept.getDate()), kept.getDate())));
+        part.setListed(sheets.nextListed(sheetId));
+        part.setStatus(ClaimStatus.OPEN);
+        String number = nextNumber(sheetId, kept.getDate());
+        part.setNumber(number);
+        part.setOpenedBy(user);
+        part.setSplitFrom(kept.getNumber());
+        Claim saved = claims.saveAndFlush(part);
+        log(sheetId, user, person, saved);
+        audit.recordOnCommit(record("CLAIM_SPLIT", user, person, kept) + numberOf(kept.getNumber())
+                + " into=" + number);
+        audit.recordOnCommit(record("CLAIM_OPENED", user, person, saved) + numberOf(number));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Add a proof to a claim, raising its proofs count by one. Refused for a SETTLED or VOID claim, or a closed period.
      */
     @Transactional

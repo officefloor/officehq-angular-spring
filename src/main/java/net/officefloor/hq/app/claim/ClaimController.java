@@ -35,12 +35,12 @@ public class ClaimController {
      * the claim it corrects (null unless it is a correction); and the date that decides how its live figures round (its
      * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first); and
      * its status log, oldest first; and the date it is deferred until (null when never deferred); and how many proofs
-     * it has.
+     * it has; and the number of the claim it was split off (null unless it was).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
-            int proofs) {
+            int proofs, String splitFrom) {
 
         static ClaimView of(Claim claim, List<ClaimLog> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -51,7 +51,7 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy(),
                     log.stream().map(ClaimLogView::of).toList(), claim.getDeferredUntil(),
-                    claim.getProofs());
+                    claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -241,6 +241,24 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid DeferRequest request) {
         return view(service.defer(sheetId.trim(), user.trim(), id, request.until()));
+    }
+
+    /** The amount split off a claim: more than 0.00 and less than the claim's amount. */
+    public record SplitRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount) {
+
+        BigDecimal amountValue() {
+            return new BigDecimal(amount.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /** Split an amount off an OPEN claim into a new OPEN claim of the same person: the new claim. */
+    @PostMapping("/claims/{id}/split")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ClaimView split(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid SplitRequest request) {
+        return view(service.split(sheetId.trim(), user.trim(), id, request.amountValue()));
     }
 
     /** Add a proof to a claim, raising its proofs count by one; refused for a SETTLED or VOID claim. */

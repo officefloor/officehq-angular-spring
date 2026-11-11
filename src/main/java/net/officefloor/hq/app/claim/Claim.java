@@ -83,6 +83,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The number of the claim this one was split off; null unless it was split off another. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     protected Claim() {
     }
 
@@ -254,5 +258,13 @@ public class Claim {
     /** Adds one proof to the claim. */
     public void addProof() {
         proofs++;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    public void setSplitFrom(String splitFrom) {
+        this.splitFrom = splitFrom;
     }
 }
