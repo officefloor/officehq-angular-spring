@@ -18,13 +18,16 @@ export interface Plan {
   generated: number;
   /** The first five plan dates after the sheet's today and on or before the end, comma separated. */
   nextDates: string;
+  /** Whether the plan is paused now: its dates from the pause until a resume are skipped. */
+  paused: boolean;
 }
 
 // A person's plans and the form on their row that adds one: an amount, a start date, either every N
 // days (a whole number, at least 1) or monthly on a day of the month (1 to 31), and an end date not
 // before the start. The sheet's generate button
 // (on the people screen) makes each plan's DRAFT claims; each plan shows how many it has made,
-// and its next five dates after the sheet's today.
+// and its next five dates after the sheet's today. A plan can be paused and resumed from its row;
+// the dates while it is paused are skipped, not postponed.
 @Component({
   selector: 'app-person-plans',
   imports: [FigurePipe],
@@ -36,6 +39,7 @@ export interface Plan {
           <th scope="col">Day of month</th>
           <th scope="col">End</th><th scope="col">Made</th>
           <th scope="col">Next dates</th>
+          <th scope="col">Paused</th><th scope="col">Pause or resume</th>
         </tr>
       </thead>
       <tbody>
@@ -48,6 +52,14 @@ export interface Plan {
             <td data-testid="plan-end">{{ pl.end }}</td>
             <td data-testid="plan-generated">{{ pl.generated }}</td>
             <td data-testid="plan-next-dates">{{ pl.nextDates }}</td>
+            <td data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</td>
+            <td>
+              <button type="button" data-testid="plan-pause" (click)="pauseOrResume(pl, true)">Pause</button>
+              <button type="button" data-testid="plan-resume" (click)="pauseOrResume(pl, false)">Resume</button>
+              @if (rowError()?.planId === pl.id) {
+                <p role="alert" data-testid="plan-error">{{ rowError()?.message }}</p>
+              }
+            </td>
           </tr>
         }
       </tbody>
@@ -108,6 +120,8 @@ export class PersonPlans {
   readonly personName = input.required<string>();
   readonly plans = input.required<Plan[]>();
   readonly added = output<Plan>();
+  /** A plan paused or resumed, to replace where it is. */
+  readonly changed = output<Plan>();
 
   protected readonly amountInput = signal('');
   protected readonly startInput = signal('');
@@ -115,6 +129,8 @@ export class PersonPlans {
   protected readonly dayInput = signal('');
   protected readonly endInput = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The error of the last pause or resume refused, on the plan's row. */
+  protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
 
@@ -128,13 +144,48 @@ export class PersonPlans {
       this.dayInput.set('');
       this.endInput.set('');
       this.error.set(null);
+      this.rowError.set(null);
     });
+  }
+
+  protected async pauseOrResume(plan: Plan, pause: boolean): Promise<void> {
+    if (this.submitting) return;
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    this.submitting = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Plan>(pause ? '/api/plans/pause' : '/api/plans/resume', {
+          sheet,
+          user: this.session.user(),
+          planId: plan.id,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.changed.emit(saved);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.rowError.set({
+        planId: plan.id,
+        message:
+          e instanceof HttpErrorResponse && e.status === 403
+            ? 'Your role may not pause or resume plans.'
+            : e instanceof HttpErrorResponse && e.status === 409
+              ? pause
+                ? 'This plan is already paused.'
+                : 'This plan is not paused.'
+              : 'Could not change this plan.',
+      });
+    } finally {
+      this.submitting = false;
+    }
   }
 
   protected async add(event: Event): Promise<void> {
     event.preventDefault();
     if (this.submitting) return;
     this.error.set(null);
+    this.rowError.set(null);
     const amount = this.amountInput().trim();
     const start = this.startInput().trim();
     const every = this.everyInput().trim();

@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Listing and adding the people's plans, and generating the claims they make. */
+/** Listing, adding, pausing and resuming the people's plans, and generating the claims they make. */
 @RestController
 @RequestMapping("/api/plans")
 public class PlanController {
@@ -37,8 +37,12 @@ public class PlanController {
     public record GenerateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
     }
 
+    public record PlanActionRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull Long planId) {
+    }
+
     public record PlanResponse(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, String nextDates) {
+            LocalDate end, int generated, String nextDates, boolean paused) {
     }
 
     /** What a generate did: how many claims were made, those claims in order, and the plans after it. */
@@ -52,7 +56,8 @@ public class PlanController {
         return new PlanResponse(plan.getId(), plan.getPersonId(),
                 plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
                 plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(),
-                String.join(", ", plan.datesAfter(today, NEXT_DATES).stream().map(LocalDate::toString).toList()));
+                String.join(", ", plan.datesAfter(today, NEXT_DATES).stream().map(LocalDate::toString).toList()),
+                plan.isPaused());
     }
 
     private static Integer number(String digits) {
@@ -79,6 +84,20 @@ public class PlanController {
         String sheet = req.sheet().trim();
         Plan plan = service.add(sheet, req.user().trim(), req.personId(), ClaimController.amount(req.amount()),
                 req.start(), number(req.every()), number(req.day()), req.end());
+        return response(plan, sheets.today(sheet));
+    }
+
+    @PostMapping("/pause")
+    public PlanResponse pause(@Valid @RequestBody PlanActionRequest req) {
+        String sheet = req.sheet().trim();
+        Plan plan = service.pause(sheet, req.user().trim(), req.planId());
+        return response(plan, sheets.today(sheet));
+    }
+
+    @PostMapping("/resume")
+    public PlanResponse resume(@Valid @RequestBody PlanActionRequest req) {
+        String sheet = req.sheet().trim();
+        Plan plan = service.resume(sheet, req.user().trim(), req.planId());
         return response(plan, sheets.today(sheet));
     }
 

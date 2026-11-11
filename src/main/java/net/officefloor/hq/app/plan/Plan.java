@@ -23,7 +23,8 @@ import java.util.Set;
  * A person's plan: an amount, a start date, every so many days or a day of the month, and an end date.
  * Its plan dates are the start, then every that many days, up to the end; or, monthly, that day in
  * every month from the start's month (a day beyond the month's length on its last day), dates before
- * the start left out. It keeps each date it has made a claim for.
+ * the start left out. It keeps each date it has made a claim for, and each time it was paused: a plan
+ * date on or after a pause's day and before its resume's day is skipped, not postponed.
  */
 @Entity
 @Table(name = "plan")
@@ -58,6 +59,10 @@ public class Plan {
     @CollectionTable(name = "plan_date", joinColumns = @JoinColumn(name = "plan_id"))
     @Column(name = "claim_date", nullable = false)
     private Set<LocalDate> made = new HashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+    private List<PlanPause> pauses = new ArrayList<>();
 
     protected Plan() {
     }
@@ -103,6 +108,34 @@ public class Plan {
         return day;
     }
 
+    /** Whether the plan is paused now: its last pause has not been resumed. */
+    public boolean isPaused() {
+        return !pauses.isEmpty() && pauses.get(pauses.size() - 1).isOpen();
+    }
+
+    /** Pause the plan from the given day; false when it is already paused. */
+    public boolean pause(LocalDate on) {
+        if (isPaused()) {
+            return false;
+        }
+        pauses.add(new PlanPause(on));
+        return true;
+    }
+
+    /** Resume the plan on the given day; false when it is not paused. */
+    public boolean resume(LocalDate on) {
+        if (!isPaused()) {
+            return false;
+        }
+        pauses.get(pauses.size() - 1).resume(on);
+        return true;
+    }
+
+    /** Whether a plan date is skipped by a pause. */
+    public boolean skips(LocalDate date) {
+        return pauses.stream().anyMatch(p -> p.skips(date));
+    }
+
     /** The plan's dates from its start up to and including the last, in order. */
     public List<LocalDate> datesUpTo(LocalDate last) {
         List<LocalDate> dates = new ArrayList<>();
@@ -121,7 +154,10 @@ public class Plan {
         return dates;
     }
 
-    /** The plan's first dates after the given day, up to and including its end: at most count, in order. */
+    /**
+     * The plan's first dates after the given day, up to and including its end, those a pause skips
+     * left out: at most count, in order.
+     */
     public List<LocalDate> datesAfter(LocalDate after, int count) {
         List<LocalDate> dates = new ArrayList<>();
         if (day == null) {
@@ -131,14 +167,16 @@ public class Plan {
                 d = start.plusDays(steps * every);
             }
             for (; dates.size() < count && !d.isAfter(end); d = d.plusDays(every)) {
-                dates.add(d);
+                if (!skips(d)) {
+                    dates.add(d);
+                }
             }
             return dates;
         }
         YearMonth month = YearMonth.from(after.isAfter(start) ? after : start);
         for (; dates.size() < count && !month.atDay(1).isAfter(end); month = month.plusMonths(1)) {
             LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
-            if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
+            if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end) && !skips(d)) {
                 dates.add(d);
             }
         }

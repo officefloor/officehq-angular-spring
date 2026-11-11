@@ -898,6 +898,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                   [personName]="p.name"
                   [plans]="plansOf(p.id)"
                   (added)="planAdded($event)"
+                  (changed)="planChanged($event)"
                 />
               </td>
               <td>
@@ -2395,6 +2396,10 @@ export class People {
 
   protected planAdded(plan: Plan): void {
     this.plans.update((list) => [...list, plan]);
+  }
+
+  protected planChanged(plan: Plan): void {
+    this.plans.update((list) => list.map((pl) => (pl.id === plan.id ? plan : pl)));
   }
 
   /** Make the DRAFT claims the sheet's plans are due: the server adds them in order, and the

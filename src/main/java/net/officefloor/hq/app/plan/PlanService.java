@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -25,7 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
  * last day when it is shorter, dates before the start left out) up to the
  * end and the sheet's today that the plan has made no claim for yet, adds a DRAFT claim with the
  * plan's amount, dated that day with an empty note, by the claim form's rules: a date the form
- * refuses is skipped, and tried again on the next generate.
+ * refuses is skipped, and tried again on the next generate. A plan can be paused and resumed; a plan
+ * date on or after the day it was paused and before the day it was resumed is skipped for good.
  */
 @Service
 public class PlanService {
@@ -85,13 +87,46 @@ public class PlanService {
         return saved;
     }
 
+    /** Pause the plan from the sheet's today; pausing a paused plan is refused (409). */
+    @Transactional
+    public Plan pause(String sheetId, String user, long planId) {
+        return pauseOrResume(sheetId, user, planId, true);
+    }
+
+    /** Resume the plan on the sheet's today; resuming a plan that is not paused is refused (409). */
+    @Transactional
+    public Plan resume(String sheetId, String user, long planId) {
+        return pauseOrResume(sheetId, user, planId, false);
+    }
+
+    private Plan pauseOrResume(String sheetId, String user, long planId, boolean pause) {
+        roles.refuseViewer(sheetId, user);
+        sheets.load(sheetId, user);
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan on this sheet."));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet."));
+        LocalDate today = sheets.today(sheetId);
+        if (!(pause ? plan.pause(today) : plan.resume(today))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    pause ? "This plan is already paused." : "This plan is not paused.");
+        }
+        Plan saved = plans.saveAndFlush(plan);
+        audit.recordOnCommit((pause ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " start=" + saved.getStart());
+        return saved;
+    }
+
     /** Make the claims the sheet's plans are due to have made by its today: the claims made, in order. */
     @Transactional
     public List<Claim> generate(String sheetId, String user) {
-        // a viewer is refused only when there is a claim to make (ClaimService.add refuses them):
-        // with none due, generating makes nothing and changes nothing, so it answers 0
+        // the claim form refuses every claim a viewer would make, so for a viewer each plan date is
+        // one the form refuses: skipped and tried again on the next generate; it makes nothing, answering 0
         sheets.refuseIfArchived(sheetId);
         sheets.load(sheetId, user);
+        if (Role.VIEWER.equals(roles.roleOf(sheetId, user))) {
+            return List.of();
+        }
         // hold the sheet so two generates at once cannot both make the same plan date's claim
         sheetRows.findLockedById(sheetId);
         LocalDate today = sheets.today(sheetId);
@@ -102,7 +137,7 @@ public class PlanService {
             }
             LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
             for (LocalDate day : plan.datesUpTo(last)) {
-                if (plan.hasMade(day) || !claims.takesDate(sheetId, plan.getPersonId(), day)) {
+                if (plan.hasMade(day) || plan.skips(day) || !claims.takesDate(sheetId, plan.getPersonId(), day)) {
                     continue;
                 }
                 made.add(claims.add(sheetId, user, plan.getPersonId(),
