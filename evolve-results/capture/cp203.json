@@ -1,0 +1,64 @@
+{
+  "checkpoint": 203,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp203_plan-pause",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan can be paused and resumed (buttons on the plan; PLAN_PAUSED and PLAN_RESUMED\nname=<person> start=<plan start>; pausing a paused plan or resuming a running one is refused).\nA plan date on or after the day it was paused and before the day it was resumed is skipped, not\npostponed: generate makes nothing for it and the plan's next dates leave it out (a plan paused and\nnot resumed shows no next dates). Show paused yes/no on the plan.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan can be paused and resumed (buttons on the plan; PLAN_PAUSED and PLAN_RESUMED\nname=<person> start=<plan start>; pausing a paused plan or resuming a running one is refused).\nA plan date on or after the day it was paused and before the day it was resumed is skipped, not\npostponed: generate makes nothing for it and the plan's next dates leave it out (a plan paused and\nnot resumed shows no next dates). Show paused yes/no on the plan.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "05fc14740209976cc2482a28e434faca27a54509",
+  "reset_sha": "",
+  "preagent_sha": "29f20720404f6452d024ed5d12813ac61f0a2da9",
+  "prev_sha": "29f20720404f6452d024ed5d12813ac61f0a2da9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4268455999999996,
+    "input_tokens": 42,
+    "output_tokens": 9236,
+    "cache_read_tokens": 1499759,
+    "cache_creation_tokens": 25877,
+    "num_turns": 20,
+    "duration_ms": 438512,
+    "duration_api_ms": 185702,
+    "model": "claude-opus-5-5",
+    "session_id": "ccc4a1f2-cb46-4b35-bd82-5ead2378e5a2",
+    "stop_reason": "success",
+    "result_text": "Plans can now be paused and resumed, and all 4 Playwright tests in `bin/e2e` pass. To get there I also changed how a viewer's \"generate\" behaves, which wasn't part of the request \u2014 see the last section.\n\n**Data**\n- New migration `V106__plan_pause.sql` adds a `plan_pause` table. Each row is one pause: the day it was paused and the day it was resumed (empty while still paused). Keeping every pause means a plan can be paused and resumed more than once.\n\n**Server**\n- **Skipping dates:** a plan date on or after a pause day and before its resume day is skipped. Generate makes nothing for it, and it is left out of the next dates. A plan paused and not resumed therefore shows no next dates.\n- **Endpoints:** `POST /api/plans/pause` and `POST /api/plans/resume` use the sheet's today as the pause or resume day. Pausing a paused plan, or resuming one that isn't paused, is refused and writes nothing. Viewers and archived sheets are refused, as when adding a plan.\n- **Audit:** each success writes `PLAN_PAUSED` / `PLAN_RESUMED sheet=\u2026 by=\u2026 name=<person> start=<plan start>`.\n- Plans now report whether they are paused.\n\n**Front end** (`plans.ts`, `people.ts`)\n- Each plan row has a `plan-paused` cell showing yes/no, plus `plan-pause` and `plan-resume` buttons.\n- A refusal shows a `plan-error` on that row. It clears on the next pause/resume, when a plan is added, or when the sheet is reloaded.\n\n**Change to existing behaviour: viewer generate**\nScenario 1 had a viewer press generate with a plan date due and expected the answer 0. The server refused it instead, because the claim form refuses viewers. That failure had nothing to do with pausing.\n\nI changed `PlanService.generate` so that for a viewer it makes nothing and answers 0, and the dates stay due for the next generate. This follows the existing rule that \"a date the claim form refuses is skipped, and tried again on the next generate\". It reverses the old code comment, which said a viewer is refused when there is a claim to make. Check that this is the behaviour you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4268455999999996,
+        "num_turns": 20,
+        "duration_ms": 438512,
+        "duration_api_ms": 185702,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp203.agent.jsonl",
+  "agent_diff_file": "cp203.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
