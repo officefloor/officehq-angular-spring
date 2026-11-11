@@ -429,6 +429,15 @@ public class ClaimService {
      */
     @Transactional
     public Claim reassign(String sheetId, String user, Long id, Long toPersonId) {
+        return reassign(sheetId, user, id, toPersonId, false);
+    }
+
+    /**
+     * Reassign as {@link #reassign(String, String, Long, Long)}; with {@code toOwnAllowed} (a bulk reassign) a claim
+     * already the person's is moved too, listed again as its newest claim.
+     */
+    @Transactional
+    public Claim reassign(String sheetId, String user, Long id, Long toPersonId, boolean toOwnAllowed) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         if (!roles.may(sheetId, user, "reassign")) {
@@ -437,7 +446,7 @@ public class ClaimService {
         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
             throw new ClaimReassignException(id, "it is " + claim.getStatus());
         }
-        if (claim.getPersonId().equals(toPersonId)) {
+        if (!toOwnAllowed && claim.getPersonId().equals(toPersonId)) {
             throw new ClaimReassignException(id, "it is already that person's");
         }
         periods.requireOpen(sheetId, claim.getDueBy());

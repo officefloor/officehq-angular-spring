@@ -114,6 +114,10 @@ public class ClaimController {
     public record BulkOpenRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
     }
 
+    /** The ids of the claims selected to move together, and the person they are moved to. */
+    public record BulkReassignRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @NotNull Long personId) {
+    }
+
     /** The ids of the claims selected to settle together. */
     public record BulkSettleRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
     }
@@ -130,9 +134,11 @@ public class ClaimController {
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
     private final PasteClaimsService paste;
+    private final BulkReassignService bulkReassign;
 
     public ClaimController(ClaimService service, BulkOpenService bulkOpen, BulkSettleService bulkSettle,
-            PasteClaimsService paste) {
+            PasteClaimsService paste, BulkReassignService bulkReassign) {
+        this.bulkReassign = bulkReassign;
         this.service = service;
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
@@ -263,6 +269,14 @@ public class ClaimController {
         // One line in the audit file: any run of white space in the reason becomes a single space.
         String reason = request.reason().trim().replaceAll("\\s+", " ");
         return view(service.reject(sheetId.trim(), user.trim(), id, reason));
+    }
+
+    /** Move the selected claims to a person in list order; each one that cannot be moved is left as it is. */
+    @PostMapping("/claims/bulk-reassign")
+    public BulkReassignService.Result bulkReassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkReassignRequest request) {
+        return bulkReassign.reassign(sheetId.trim(), user.trim(), request.ids(), request.personId());
     }
 
     /** The person a claim is moved to. */
