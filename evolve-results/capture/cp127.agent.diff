@@ -1,0 +1,83 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 7d02f5e3c..31442160e 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -2,7 +2,8 @@ import { Component, input } from '@angular/core';
+ import { StatusSummary } from '../summary/summary';
+ 
+ // The sheet's counters, shown at all times: its people (retired included), its claims per status as the summary
+-// counts them, and its due-total and overdue-total as the sheet's totals show them.
++// counts them, and its due-total and overdue-total as the sheet's totals show them;
++// and the signed-in user's own due-total and overdue-total, when a person on the sheet has their name.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -18,6 +19,10 @@ import { StatusSummary } from '../summary/summary';
+         <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
+         <dt>Overdue total</dt>
+         <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++        <dt>My due total</dt>
++        <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
++        <dt>My overdue total</dt>
++        <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+       </dl>
+     </header>
+   `,
+@@ -27,4 +32,6 @@ export class Header {
+   readonly statuses = input.required<StatusSummary[]>();
+   readonly dueTotal = input.required<string>();
+   readonly overdueTotal = input.required<string>();
++  readonly myDueTotal = input.required<string>();
++  readonly myOverdueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 61dcfe8cd..429fc4979 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -73,6 +73,11 @@ interface DescendantFigures {
+   overdueTotal: string;
+ }
+ 
++/** A name as names are compared: trimmed, ignoring case. */
++function nameKey(name: string): string {
++  return name.trim().toLowerCase();
++}
++
+ const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+ 
+ /** What decides which of a person's open claims leave the live totals: their holds and their retirement date. */
+@@ -125,6 +130,8 @@ function csvField(value: string): string {
+       [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()"
+       [overdueTotal]="overdueTotal()"
++      [myDueTotal]="myDueTotal()"
++      [myOverdueTotal]="myOverdueTotal()"
+     />
+     <section aria-labelledby="consolidated-heading">
+       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
+@@ -748,6 +755,25 @@ export class People {
+   );
+   /** Everyone's overdue-total added up, with three or more leaving out the highest and lowest. */
+   protected readonly overdueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.overdueTotalOf(p))));
++  /** The person on the sheet with the signed-in user's name, by name or alias as names are compared; none if no one. */
++  private readonly me = computed(() => {
++    const key = nameKey(this.session.user() ?? '');
++    if (!key) return undefined;
++    const people = this.people();
++    return (
++      people.find((p) => nameKey(p.name) === key) ?? people.find((p) => p.aliases.some((a) => nameKey(a) === key))
++    );
++  });
++  /** The signed-in user's own due-total, as their row shows it; blank when no one on the sheet has their name. */
++  protected readonly myDueTotal = computed(() => {
++    const me = this.me();
++    return me ? this.dueTotalOf(me) : '';
++  });
++  /** The signed-in user's own overdue-total, as their row shows it; blank when no one on the sheet has their name. */
++  protected readonly myOverdueTotal = computed(() => {
++    const me = this.me();
++    return me ? this.overdueTotalOf(me) : '';
++  });
+   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
+   private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+   /** While the sheet is shown as of a date, the sheet's and its descendants' figures as the store holds them now. */
