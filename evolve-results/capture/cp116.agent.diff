@@ -1,0 +1,193 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8795d613e..8b074a25a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -238,7 +238,8 @@ function csvField(value: string): string {
+         ></textarea>
+         <button type="submit" data-testid="import-submit">Import people</button>
+         @if (importAdded() !== null) {
+-          Added <strong data-testid="import-added">{{ importAdded() }}</strong>
++          Added <strong data-testid="import-added">{{ importAdded() }}</strong>,
++          updated <strong data-testid="import-updated">{{ importUpdated() }}</strong>
+         }
+         @if (importError(); as message) {
+           <p role="alert" data-testid="import-error">{{ message }}</p>
+@@ -789,9 +790,13 @@ export class People {
+   protected readonly pasteAdded = signal<number | null>(null);
+   protected readonly pasteError = signal<string | null>(null);
+   private pasting = false;
+-  /** The import box: its lines, how many its last import added (null while it runs and before the first), its error. */
++  /**
++   * The import box: its lines, how many its last import added and updated (null while it runs and before the first),
++   * its error.
++   */
+   protected readonly importText = signal('');
+   protected readonly importAdded = signal<number | null>(null);
++  protected readonly importUpdated = signal<number | null>(null);
+   protected readonly importError = signal<string | null>(null);
+   private importing = false;
+   /** The error of the last action on a person's row that was refused, and the person it belongs to. */
+@@ -873,6 +878,7 @@ export class People {
+         this.pasteError.set(null);
+         this.importText.set('');
+         this.importAdded.set(null);
++        this.importUpdated.set(null);
+         this.importError.set(null);
+         if (sheet) void this.read(sheet);
+       });
+@@ -1667,14 +1673,15 @@ export class People {
+   }
+ 
+   /**
+-   * Add a person per pasted line of name,grade,terms,contact, in order, each as the person form would.
+-   * Refused as a whole when any line would be.
++   * Add or update a person per pasted line of name,grade,terms,contact, in order, each as the person form would: a
++   * line naming a person on the sheet updates them. Refused as a whole when any line would be.
+    */
+   protected async importPeople(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.importing) return;
+     this.importError.set(null);
+     this.importAdded.set(null);
++    this.importUpdated.set(null);
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+     const text = this.importText();
+@@ -1685,7 +1692,7 @@ export class People {
+     this.importing = true;
+     try {
+       const result = await firstValueFrom(
+-        this.http.post<{ added: number }>(
++        this.http.post<{ added: number; updated: number }>(
+           `/api/sheets/${encodeURIComponent(sheet)}/people/import`,
+           { text },
+           this.session.headers(),
+@@ -1695,6 +1702,7 @@ export class People {
+       this.importText.set('');
+       await this.read(sheet);
+       this.importAdded.set(result.added);
++      this.importUpdated.set(result.updated);
+     } catch (e) {
+       if (this.session.sheet() !== sheet) return;
+       const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+diff --git a/src/main/java/net/officefloor/hq/app/person/ImportPeopleService.java b/src/main/java/net/officefloor/hq/app/person/ImportPeopleService.java
+index 4ec5ba5af..5fede1159 100644
+--- a/src/main/java/net/officefloor/hq/app/person/ImportPeopleService.java
++++ b/src/main/java/net/officefloor/hq/app/person/ImportPeopleService.java
+@@ -8,9 +8,12 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+- * Adds a person per pasted line of name,grade,terms,contact, in order, each as the person form would (the terms and
+- * the contact may be absent or blank). Every line is checked first with the person form's rules, and a name or a
+- * contact repeated within the paste is refused too. The whole is one change: if any line is refused, nothing is added.
++ * Adds or updates a person per pasted line of name,grade,terms,contact, in order, each as the person form would (the
++ * terms and the contact may be absent or blank). A line whose name matches a person on the sheet, by name or alias,
++ * updates them: their grade is recorded from the sheet's today, and their terms and contact are set when the line
++ * gives them. Every other line adds a person. Every line is checked first with the person form's rules, and a person
++ * or a contact repeated within the paste is refused too. The whole is one change: if any line is refused, nothing is
++ * imported.
+  */
+ @Service
+ public class ImportPeopleService {
+@@ -22,15 +25,19 @@ public class ImportPeopleService {
+     private record Line(int number, String name, String grade, Integer terms, String contact) {
+     }
+ 
++    /** How many people an import added and how many it updated. */
++    public record Result(int added, int updated) {
++    }
++
+     private final PersonService people;
+ 
+     public ImportPeopleService(PersonService people) {
+         this.people = people;
+     }
+ 
+-    /** How many people were added. */
++    /** How many people were added and how many updated. */
+     @Transactional
+-    public int importPeople(String sheetId, String user, String text) {
++    public Result importPeople(String sheetId, String user, String text) {
+         List<Line> lines = new ArrayList<>();
+         String[] rows = text.split("\\r?\\n");
+         for (int i = 0; i < rows.length; i++) {
+@@ -43,10 +50,14 @@ public class ImportPeopleService {
+         }
+         Set<String> names = new HashSet<>();
+         Set<String> contacts = new HashSet<>();
++        List<Person> matches = new ArrayList<>();
+         for (Line line : lines) {
+             String key = Person.key(line.name());
+-            if (!names.add(key) || people.findByNameOrAlias(sheetId, line.name()).isPresent()
+-                    || people.usedInTree(sheetId, key, null)) {
++            Person match = people.findByNameOrAlias(sheetId, line.name()).orElse(null);
++            matches.add(match);
++            // A person named twice, by their name or an alias, is a repeat as much as a new name given twice.
++            if (!names.add(match != null ? "#" + match.getId() : key)
++                    || match == null && people.usedInTree(sheetId, key, null)) {
+                 throw new ImportPeopleException(line.number(), "the name " + line.name().trim() + " is already in use");
+             }
+             String contactKey = Person.contactKey(line.contact());
+@@ -54,11 +65,23 @@ public class ImportPeopleService {
+                 throw new ImportPeopleException(line.number(), "the contact " + contactKey + " is already in use");
+             }
+         }
+-        // Each person is checked again as the person form's are; a refused one rolls back those added before it.
+-        for (Line line : lines) {
+-            people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact());
++        // Each person is checked again as the person form's are; a refused one rolls back those imported before it.
++        int added = 0;
++        int updated = 0;
++        for (int i = 0; i < lines.size(); i++) {
++            Line line = lines.get(i);
++            Person match = matches.get(i);
++            if (match == null) {
++                people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact());
++                added++;
++            } else {
++                people.update(sheetId, user, match.getId(), null, match.getName(), line.grade(), null,
++                        line.terms() != null ? line.terms() : match.getTerms(),
++                        line.contact().isBlank() ? match.getContact() : line.contact());
++                updated++;
++            }
+         }
+-        return lines.size();
++        return new Result(added, updated);
+     }
+ 
+     private static Line parse(int number, String row) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 6335bcb7e..ca6325e15 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -117,10 +117,6 @@ public class PersonController {
+     public record ImportRequest(@NotNull @Size(max = 1000000) String text) {
+     }
+ 
+-    /** How many people an import added. */
+-    public record ImportResult(int added) {
+-    }
+-
+     private final PersonService service;
+     private final StatementService statements;
+     private final SheetService sheets;
+@@ -170,12 +166,15 @@ public class PersonController {
+                 request.termsValue(), request.contact()), user.trim());
+     }
+ 
+-    /** Add a person per pasted line, in order, each as the person form would; refused as a whole when any line is. */
++    /**
++     * Add or update a person per pasted line, in order, each as the person form would; refused as a whole when any
++     * line is.
++     */
+     @PostMapping("/import")
+-    public ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++    public ImportPeopleService.Result importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid ImportRequest request) {
+-        return new ImportResult(imports.importPeople(sheetId.trim(), user.trim(), request.text()));
++        return imports.importPeople(sheetId.trim(), user.trim(), request.text());
+     }
+ 
+     /** Saves the person; with a version, only when it is still the version stored. */
