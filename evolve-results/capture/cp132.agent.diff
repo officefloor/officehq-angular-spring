@@ -1,0 +1,109 @@
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index d1674ef40..f45f3ff41 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.sheet;
+ 
++import java.util.Collection;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Modifying;
+@@ -11,11 +12,6 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     /** The sheet's children: the sheets naming it as their parent. */
+     List<Sheet> findByParentOrderByIdAsc(String parent);
+ 
+-    /** Moves the sheet's last claim number on by one; the row stays locked until the transaction ends. */
+-    @Modifying
+-    @Query(value = "UPDATE sheet SET last_claim_number = last_claim_number + 1 WHERE id = :id", nativeQuery = true)
+-    int incrementLastClaimNumber(@Param("id") String id);
+-
+     /** Moves the sheet's last list place on by one; the row stays locked until the transaction ends. */
+     @Modifying
+     @Query(value = "UPDATE sheet SET last_listed = last_listed + 1 WHERE id = :id", nativeQuery = true)
+@@ -45,6 +41,21 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Query(value = "SELECT last_claim_number FROM sheet WHERE id = :id", nativeQuery = true)
+     long lastClaimNumber(@Param("id") String id);
+ 
++    /** The last claim number given on any of the sheets; 0 when none has been given. */
++    @Query(value = "SELECT COALESCE(MAX(last_claim_number), 0) FROM sheet WHERE id IN (:ids)", nativeQuery = true)
++    long maxLastClaimNumber(@Param("ids") Collection<String> ids);
++
++    /** Sets the sheet's last claim number; the row stays locked until the transaction ends. */
++    @Modifying
++    @Query(value = "UPDATE sheet SET last_claim_number = :number WHERE id = :id", nativeQuery = true)
++    int setLastClaimNumber(@Param("id") String id, @Param("number") long number);
++
++    @Query(value = "SELECT parent FROM sheet WHERE id = :id", nativeQuery = true)
++    String parentOf(@Param("id") String id);
++
++    @Query(value = "SELECT id FROM sheet WHERE parent = :id ORDER BY id", nativeQuery = true)
++    List<String> childIdsOf(@Param("id") String id);
++
+     /** Moves a sequence's last number on by one, starting it at 1; the sheet's row must be locked by the caller. */
+     @Modifying
+     @Query(value = "MERGE INTO claim_number_sequence s USING (VALUES (:id, :key)) v (sheet_id, sequence_key)"
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 4a11ade42..e3909949c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -1,6 +1,13 @@
+ package net.officefloor.hq.app.sheet;
+ 
+ import java.time.LocalDate;
++import java.util.ArrayDeque;
++import java.util.Deque;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import java.util.SortedSet;
++import java.util.TreeSet;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.period.PeriodService;
+@@ -105,15 +112,40 @@ public class SheetService {
+     }
+ 
+     /**
+-     * The next claim number on the sheet: 1 for the first, then 2, and so on. The sheet's row is
+-     * locked until the caller's transaction ends, so two claims opened at once get different numbers.
++     * The next claim number on the sheet: the sheets of its tree (its root parent and all the root's descendants)
++     * share one sequence, so it is the number after the last given on any of them. The rows of the tree's sheets are
++     * locked, in id order, until the caller's transaction ends, so two claims opened at once get different numbers.
+      */
+     @Transactional
+     public long nextClaimNumber(String id) {
+-        if (sheets.incrementLastClaimNumber(id) != 1) {
+-            throw new SheetNotFoundException(id);
++        SortedSet<String> tree = treeOf(id);
++        for (String member : tree) {
++            if (sheets.lockById(member) != 1 && member.equals(id)) {
++                throw new SheetNotFoundException(id);
++            }
++        }
++        long next = sheets.maxLastClaimNumber(tree) + 1;
++        sheets.setLastClaimNumber(id, next);
++        return next;
++    }
++
++    /** The ids of the sheets in the sheet's tree: its topmost ancestor and every sheet below it. */
++    private SortedSet<String> treeOf(String id) {
++        Set<String> seen = new HashSet<>();
++        String root = id;
++        seen.add(root);
++        for (String parent = sheets.parentOf(root); parent != null && seen.add(parent); parent = sheets.parentOf(root)) {
++            root = parent;
++        }
++        SortedSet<String> tree = new TreeSet<>();
++        Deque<String> todo = new ArrayDeque<>(List.of(root));
++        while (!todo.isEmpty()) {
++            String next = todo.pop();
++            if (tree.add(next)) {
++                todo.addAll(sheets.childIdsOf(next));
++            }
+         }
+-        return sheets.lastClaimNumber(id);
++        return tree;
+     }
+ 
+     /**

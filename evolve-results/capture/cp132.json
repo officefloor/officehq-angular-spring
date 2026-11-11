@@ -1,0 +1,74 @@
+{
+  "checkpoint": 132,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp132_tree-numbering",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    112,
+    123,
+    128,
+    130
+  ],
+  "replaced_tests": [
+    "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1",
+    "cp123_bulk-retire.spec.ts::bulk retire scenario 1",
+    "cp128_transfer-merges.spec.ts::transfer merges scenario 2",
+    "cp130_period-comparison.spec.ts::period comparison scenario 2"
+  ],
+  "request": {
+    "spec": "The sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "71fc4133b8250d0f262d36b048d0c64a7d2c6e22",
+  "reset_sha": "",
+  "preagent_sha": "1aafd271b870176d889ef283dd000b6e588f277a",
+  "prev_sha": "1aafd271b870176d889ef283dd000b6e588f277a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5648219999999998,
+    "input_tokens": 6,
+    "output_tokens": 673,
+    "cache_read_tokens": 105093,
+    "cache_creation_tokens": 1625,
+    "num_turns": 2,
+    "duration_ms": 8575,
+    "duration_api_ms": 59676,
+    "model": "claude-opus-5-5",
+    "session_id": "3030c376-26fa-4651-aa8f-7d59232a6e58",
+    "stop_reason": "success",
+    "result_text": "All sheets linked by the parent setting now share one claim number sequence, and all 4 tests in `bin/e2e` pass.\n\n**How it works:** when a claim is opened, the server goes up the parent links to the top sheet, then collects every sheet below it. The new claim gets the highest number already given on any of those sheets plus one, and that sheet records it as its last number.\n\n- **Earlier numbers stay as they are.** A sheet that joins a tree carries on from the highest number in the tree, so numbers can skip on that sheet. For example, `-p` gives 1 then 3.\n- **Per-period numbering (`P1-1`, `X-1`) is unchanged and still kept per sheet.**\n- **Two claims opened at the same moment** on different sheets of one tree still get different numbers. The server locks every sheet in the tree, always in the same order, while it hands out the number.\n- **No change to the database or front end was needed.** The existing per-sheet \"last claim number\" column stays as it was.\n\nThe change is in `src/main/java/net/officefloor/hq/app/sheet/SheetService.java` and `src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java`. In the repository I added queries for a sheet's parent, its children and the tree's highest number, plus one that sets a sheet's last number. I removed the old \"add one\" query because nothing else used it.\n\nCopying a sheet and moving a person to another sheet both use the same numbering code, so they now follow the shared sequence too. The tests don't check those two cases separately.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5648219999999998,
+        "num_turns": 2,
+        "duration_ms": 8575,
+        "duration_api_ms": 59676,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp132.agent.jsonl",
+  "agent_diff_file": "cp132.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
