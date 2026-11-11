@@ -83,6 +83,14 @@ public class PersonController {
     public record BulkRetireResponse(int retired, List<PersonResponse> people) {
     }
 
+    public record BulkHoldRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids, LocalDate from, LocalDate to) {
+    }
+
+    /** How many people were held, and each as the store now holds them. */
+    public record BulkHoldResponse(int held, List<PersonResponse> people) {
+    }
+
     public record RetirePersonRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate date) {
     }
@@ -254,6 +262,13 @@ public class PersonController {
         List<PersonResponse> retired = service.bulkRetire(req.sheet().trim(), req.user().trim(), req.ids(),
                 req.date()).stream().map(p -> response(req.sheet().trim(), p)).toList();
         return new BulkRetireResponse(retired.size(), retired);
+    }
+
+    @PostMapping("/bulk-hold")
+    public BulkHoldResponse bulkHold(@Valid @RequestBody BulkHoldRequest req) {
+        List<PersonResponse> held = service.bulkHold(req.sheet().trim(), req.user().trim(), req.ids(), req.from(),
+                req.to()).stream().map(p -> response(req.sheet().trim(), p)).toList();
+        return new BulkHoldResponse(held.size(), held);
     }
 
     @PostMapping("/retire")

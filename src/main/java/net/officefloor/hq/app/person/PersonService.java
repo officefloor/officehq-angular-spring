@@ -329,6 +329,31 @@ public class PersonService {
     }
 
     /**
+     * Put each of the people on hold from a from-date (the sheet's today when none is given) to an
+     * optional to-date, in list order, exactly as holding each from their row would. All or none: a
+     * person not on the sheet, or a to-date before the from-date, refuses the lot. A viewer may hold
+     * no one: each person is refused and none is held.
+     */
+    @Transactional
+    public List<Person> bulkHold(String sheetId, String user, List<Long> ids, LocalDate fromDate, LocalDate toDate) {
+        try {
+            roles.refuseViewer(sheetId, user);
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
+                return List.of();
+            }
+            throw e;
+        }
+        Set<Long> wanted = new HashSet<>(ids);
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> wanted.contains(p.getId())).toList();
+        if (chosen.size() != wanted.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
+        }
+        return chosen.stream().map(p -> hold(sheetId, user, p.getId(), fromDate, toDate)).toList();
+    }
+
+    /**
      * Swap the person with the one above ({@code up}) or below them in the list; the top person
      * cannot move up nor the bottom one down (409).
      */

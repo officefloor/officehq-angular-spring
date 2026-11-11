@@ -634,6 +634,31 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
           <p role="alert" data-testid="person-error">{{ err }}</p>
         }
       </form>
+      <form aria-label="Hold selected people" (submit)="bulkHold($event)">
+        <label for="bulk-hold-from">Hold selected people from</label>
+        <input
+          type="date"
+          id="bulk-hold-from"
+          data-testid="bulk-hold-from"
+          [value]="bulkHoldFrom()"
+          (input)="bulkHoldFrom.set($any($event.target).value); bulkHoldError.set(null)"
+        />
+        <label for="bulk-hold-to">to</label>
+        <input
+          type="date"
+          id="bulk-hold-to"
+          data-testid="bulk-hold-to"
+          [value]="bulkHoldTo()"
+          (input)="bulkHoldTo.set($any($event.target).value); bulkHoldError.set(null)"
+        />
+        <button type="submit" data-testid="bulk-hold">Hold selected</button>
+        @if (bulkHeld() !== null) {
+          <p>Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong></p>
+        }
+        @if (bulkHoldError(); as err) {
+          <p role="alert" data-testid="person-error">{{ err }}</p>
+        }
+      </form>
       <form aria-label="Compare snapshots" (submit)="compareSnapshots($event)">
         <label for="snapshot-from">Compare snapshot of</label>
         <input
@@ -1261,6 +1286,12 @@ export class People {
   protected readonly bulkRetireDate = signal('');
   /** How many people the last bulk retire retired; cleared while the next one runs. */
   protected readonly bulkRetired = signal<number | null>(null);
+  /** The from-date (blank: the sheet's today) and to-date (blank: open-ended) of the bulk hold. */
+  protected readonly bulkHoldFrom = signal('');
+  protected readonly bulkHoldTo = signal('');
+  /** How many people the last bulk hold held; cleared while the next one runs. */
+  protected readonly bulkHeld = signal<number | null>(null);
+  protected readonly bulkHoldError = signal<string | null>(null);
   /** The snapshot comparison's from-date and to-date (blank: now), and its lines once compared. */
   protected readonly snapshotFrom = signal('');
   protected readonly snapshotTo = signal('');
@@ -1729,6 +1760,10 @@ export class People {
       this.bulkRetireDate.set('');
       this.bulkRetired.set(null);
       this.bulkRetireError.set(null);
+      this.bulkHoldFrom.set('');
+      this.bulkHoldTo.set('');
+      this.bulkHeld.set(null);
+      this.bulkHoldError.set(null);
       this.importText.set('');
       this.importAdded.set(null);
       this.importUpdated.set(null);
@@ -2821,6 +2856,7 @@ export class People {
     });
     this.bulkGradeError.set(null);
     this.bulkRetireError.set(null);
+    this.bulkHoldError.set(null);
     this.clearRowError(id);
   }
 
@@ -2896,6 +2932,46 @@ export class People {
     } catch {
       if (this.session.sheet() !== sheet) return;
       this.bulkRetireError.set('Could not retire the selected people.');
+    }
+  }
+
+  /** Hold the selected people from the from-date (the sheet's today when blank) to the to-date, if
+   *  any: the server holds each, in list order, as the row's hold would; all or none. */
+  protected async bulkHold(event: Event): Promise<void> {
+    event.preventDefault();
+    this.bulkHeld.set(null);
+    this.bulkHoldError.set(null);
+    const sheet = this.session.sheet();
+    const from = this.bulkHoldFrom().trim();
+    const to = this.bulkHoldTo().trim();
+    const ids = this.people().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
+    if (ids.length === 0) {
+      this.bulkHoldError.set('Select at least one person.');
+      return;
+    }
+    const isDate = (d: string) => d === '' || /^\d{4}-\d{2}-\d{2}$/.test(d);
+    if (!isDate(from) || !isDate(to)) {
+      this.bulkHoldError.set('Enter dates, or leave the from-date blank for the sheet\'s today.');
+      return;
+    }
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ held: number; people: Person[] }>('/api/people/bulk-hold', {
+          sheet,
+          user: this.session.user(),
+          ids,
+          from: from || null,
+          to: to || null,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      const byId = new Map(done.people.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkHeld.set(done.held);
+    } catch {
+      if (this.session.sheet() !== sheet) return;
+      this.bulkHoldError.set('Could not hold the selected people.');
     }
   }
 
