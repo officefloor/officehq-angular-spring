@@ -784,7 +784,7 @@ export class Settings {
   /** The sheet's floors, dated, shared with whoever works out what is due. */
   readonly floors = model<DatedValue[]>([]);
   /** The floor in force on the sheet's today. */
-  protected readonly floor = computed(() => valueOn(this.floors(), this.session.today(), START_FLOOR));
+  protected readonly floor = computed(() => valueOn(this.floors(), this.session.figureDay(), START_FLOOR));
   /** The sheet's terms in days in force on its today: what a grade without its own terms uses. */
   protected readonly terms = computed(() => this.inForce('terms', START_TERMS));
   protected readonly grades = GRADES;
@@ -805,19 +805,19 @@ export class Settings {
   /** The sheet's late percents, dated, shared with whoever works out an overdue claim's late charge. */
   readonly latePcts = model<DatedValue[]>([]);
   /** The late percent in force on the sheet's today. */
-  protected readonly latePct = computed(() => valueOn(this.latePcts(), this.session.today(), START_LATE_PCT));
+  protected readonly latePct = computed(() => valueOn(this.latePcts(), this.session.figureDay(), START_LATE_PCT));
   /** The sheet's policy date (blank: its today), shared with whoever works out how a claim rounds. */
   readonly policyDate = model('');
   /** The sheet's caps, dated (blank: none), shared with whoever works out a person's due-total. */
   readonly caps = model<DatedValue[]>([]);
   /** The cap in force on the sheet's today; blank for none. */
-  protected readonly cap = computed(() => valueOn(this.caps(), this.session.today(), ''));
+  protected readonly cap = computed(() => valueOn(this.caps(), this.session.figureDay(), ''));
   /** The cap typed; null while its field has not been entered (left as it is). */
   protected readonly capInput = signal<string | null>(null);
   /** The sheet's rounding modes, dated (blank: none), shared with whoever works out how a claim rounds. */
   readonly roundings = model<DatedValue[]>([]);
   /** The rounding mode in force on the sheet's today; blank for none. */
-  protected readonly rounding = computed(() => valueOn(this.roundings(), this.session.today(), ''));
+  protected readonly rounding = computed(() => valueOn(this.roundings(), this.session.figureDay(), ''));
   /** The rounding mode typed; null while its field has not been entered (left as it is). */
   protected readonly roundingInput = signal<string | null>(null);
 
@@ -1250,7 +1250,7 @@ export class Settings {
 
   /** A dated setting's value in force on the sheet's today; `start` before its first from-date. */
   private inForce(key: string, start: string): string {
-    return valueOn(this.datedOf(key), this.session.today(), start);
+    return valueOn(this.datedOf(key), this.session.figureDay(), start);
   }
 
   protected typeGradeTerms(grade: Grade, value: string): void {

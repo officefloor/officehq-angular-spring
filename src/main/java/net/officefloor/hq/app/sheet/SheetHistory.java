@@ -84,6 +84,14 @@ public class SheetHistory {
     }
 
     /**
+     * Put the sheet's today at a preview date over its current records, for the caller's transaction
+     * to read and then roll back; nothing when there is no such sheet.
+     */
+    public void preview(String sheetId, LocalDate date) {
+        jdbc.update("UPDATE sheet SET today = ? WHERE id = ?", date, sheetId);
+    }
+
+    /**
      * Within the caller's transaction, replace the sheet's rows by the last snapshot made on or
      * before {@code asOf} and set its today to {@code asOf}. The caller must roll back.
      */

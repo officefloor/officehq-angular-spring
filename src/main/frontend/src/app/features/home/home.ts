@@ -87,6 +87,22 @@ import { People } from '../people/people';
               <p role="alert" data-testid="asof-error">{{ err }}</p>
             }
           </form>
+          <form aria-label="Preview date" (submit)="setPreview($event)">
+            <p>Preview <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></p>
+            <label for="preview-date">Preview figures on</label>
+            <input
+              id="preview-date"
+              type="date"
+              data-testid="preview-date"
+              [value]="previewInput()"
+              (input)="previewInput.set($any($event.target).value); previewError.set(null)"
+            />
+            <button type="submit" data-testid="preview-set">Set preview</button>
+            <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
+            @if (previewError(); as err) {
+              <p role="alert" data-testid="preview-error">{{ err }}</p>
+            }
+          </form>
           <app-people />
         } @else {
           <p data-testid="sheet-none">No sheet loaded.</p>
@@ -121,6 +137,8 @@ export class Home {
   protected readonly todayInput = signal('');
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal<string | null>(null);
+  protected readonly previewInput = signal('');
+  protected readonly previewError = signal<string | null>(null);
   protected readonly cloneInput = signal('');
   /** The id of the last clone made of the sheet from this screen; blank for none. */
   protected readonly clonedTo = signal('');
@@ -202,6 +220,30 @@ export class Home {
       await this.session.clearAsOf();
     } catch {
       this.asOfError.set('Could not show the sheet as it is now.');
+    }
+  }
+
+  protected async setPreview(event: Event): Promise<void> {
+    event.preventDefault();
+    this.previewError.set(null);
+    const date = this.previewInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.previewError.set('Enter a date to preview the figures on.');
+      return;
+    }
+    try {
+      await this.session.setPreview(date);
+    } catch {
+      this.previewError.set('Could not preview the figures on that date.');
+    }
+  }
+
+  protected async clearPreview(): Promise<void> {
+    this.previewError.set(null);
+    try {
+      await this.session.clearPreview();
+    } catch {
+      this.previewError.set('Could not show the figures on the sheet\'s today.');
     }
   }
 

@@ -39,8 +39,19 @@ public class AsOfFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-As-Of";
 
+    /**
+     * The header carrying the date a user previews the sheet's figures on. A request that only reads
+     * is answered over the sheet's current records as if its today were that date, in a transaction
+     * that is then rolled back (so nothing a change of today does happens); any other request is
+     * served as it is, on the sheet's real today. An as-of date, when sent too, wins.
+     */
+    public static final String PREVIEW_HEADER = "X-Preview";
+
     /** The request attribute holding the date a request is answered as of; absent when it is answered as it is now. */
     public static final String AS_OF = AsOfFilter.class.getName() + ".asOf";
+
+    /** The request attribute holding the date a request's figures are previewed on; absent when there is none. */
+    public static final String PREVIEW = AsOfFilter.class.getName() + ".preview";
 
     private static final String LOAD = "/api/sheets/load";
 
@@ -95,6 +106,25 @@ public class AsOfFilter extends OncePerRequestFilter {
                 return;
             }
         }
+        LocalDate preview = null;
+        String previewHeader = request.getHeader(PREVIEW_HEADER);
+        if (asOf == null && previewHeader != null && !previewHeader.isBlank()) {
+            try {
+                preview = LocalDate.parse(previewHeader.trim());
+            } catch (DateTimeParseException e) {
+                response.sendError(HttpStatus.BAD_REQUEST.value(), "Not a date: " + previewHeader);
+                return;
+            }
+        }
+        if (preview != null && read && sheet != null && !path.equals(LOAD) && !UNDATED.contains(path)) {
+            LocalDate date = preview;
+            body.setAttribute(PREVIEW, date);
+            rolledBack(() -> {
+                history.preview(sheet, date);
+                chain.doFilter(body, response);
+            });
+            return;
+        }
         if (asOf == null) {
             chain.doFilter(body, response);
             if (sheet != null && path.equals(LOAD)) {
@@ -122,12 +152,24 @@ public class AsOfFilter extends OncePerRequestFilter {
         }
         LocalDate date = asOf;
         body.setAttribute(AS_OF, date);
+        rolledBack(() -> {
+            history.restore(sheet, date);
+            chain.doFilter(body, response);
+        });
+    }
+
+    /** What is served in a transaction that is then rolled back. */
+    private interface Served {
+        void serve() throws IOException, ServletException;
+    }
+
+    /** Serve in a transaction that is then rolled back, so nothing it does is kept. */
+    private void rolledBack(Served served) throws IOException, ServletException {
         try {
             rolledBack.executeWithoutResult(status -> {
                 status.setRollbackOnly();
-                history.restore(sheet, date);
                 try {
-                    chain.doFilter(body, response);
+                    served.serve();
                 } catch (IOException | ServletException e) {
                     throw new IllegalStateException(e);
                 }
@@ -151,6 +193,12 @@ public class AsOfFilter extends OncePerRequestFilter {
     public static Optional<LocalDate> current() {
         return RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs
                 && attrs.getRequest().getAttribute(AS_OF) instanceof LocalDate date ? Optional.of(date) : Optional.empty();
+    }
+
+    /** The date the current request's figures are previewed on; empty when there is none. */
+    public static Optional<LocalDate> previewing() {
+        return RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs
+                && attrs.getRequest().getAttribute(PREVIEW) instanceof LocalDate date ? Optional.of(date) : Optional.empty();
     }
 
     /** The request with its body read once, so both this filter and the handler can read it. */

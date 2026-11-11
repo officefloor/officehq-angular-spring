@@ -307,6 +307,13 @@ public class RollupService {
             // the rows were put back behind the persistence context's back: read them afresh
             entities.clear();
         }
+        Optional<LocalDate> preview = AsOfFilter.previewing();
+        if (preview.isPresent()) {
+            // every sheet of the tree is previewed on the date, as the sheet itself is (see AsOfFilter)
+            entities.flush();
+            tree.forEach(id -> history.preview(id, preview.get()));
+            entities.clear();
+        }
         List<TreePerson> treePeople = new ArrayList<>();
         Map<String, BigDecimal> grades = new LinkedHashMap<>();
         Map<String, Integer> statuses = new LinkedHashMap<>();
@@ -523,6 +530,13 @@ public class RollupService {
             own = own.subtract(share.partOf(figure));
         }
         return own;
+    }
+
+    /** The parts a person holds now of others' claims (see {@link #heldParts}); empty when they hold none. */
+    public Optional<BigDecimal> heldPart(String sheetId, long personId) {
+        Sheet sheet = sheet(sheetId);
+        return Optional.ofNullable(heldParts(sheet, rates.current(sheetId), claims.findBySheetIdOrderByIdDesc(sheetId),
+                people.findBySheetIdOrderByPositionAscIdAsc(sheetId)).get(personId));
     }
 
     /**

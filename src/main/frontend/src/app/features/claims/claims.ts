@@ -797,7 +797,7 @@ export class PersonClaims {
     const late: Lateness = {
       latePcts: this.latePcts(),
       graces: this.graces(),
-      today: this.session.today(),
+      today: this.session.figureDay(),
       policyDate: this.policyDate(),
       roundings: this.roundings(),
     };
@@ -810,17 +810,17 @@ export class PersonClaims {
   }
 
   protected overdueOf(c: Claim): boolean {
-    return overdue(c, this.session.today(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
+    return overdue(c, this.session.figureDay(), graceOn(this.graces(), gradeOn(this.grades(), c.date), c.date));
   }
 
   /** Whether the claim shows as late for review (see reviewLate). */
   protected reviewLateOf(c: Claim): boolean {
-    return reviewLate(c, this.session.today(), this.session.reviewSla());
+    return reviewLate(c, this.session.figureDay(), this.session.reviewSla());
   }
 
   /** Whether the claim shows as deferred: its deferral date not yet reached, a voided claim keeping its deferral. */
   protected deferredOf(c: Claim): boolean {
-    const today = this.session.today();
+    const today = this.session.figureDay();
     return c.status === 'VOID' ? c.deferredUntil !== null && today !== null && today < c.deferredUntil : deferred(c, today);
   }
 
@@ -1231,7 +1231,7 @@ export class PersonClaims {
             : status === 400
               ? 'Enter an amount more than 0.00 and less than this claim\'s amount.'
               : status === 409
-                ? deferred(c, this.session.today())
+                ? deferred(c, this.session.figureDay())
                   ? `This claim is deferred until ${c.deferredUntil} and cannot be split before then.`
                   : `A ${c.status} claim cannot be split.`
                 : 'Could not split this claim.';
@@ -1283,7 +1283,7 @@ export class PersonClaims {
               : status === 400
                 ? 'Enter an amount more than 0.00 and less than this claim\'s amount.'
                 : status === 409
-                  ? deferred(c, this.session.today())
+                  ? deferred(c, this.session.figureDay())
                     ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
                     : `A ${c.status} claim cannot be part-settled.`
                   : 'Could not settle part of this claim.';

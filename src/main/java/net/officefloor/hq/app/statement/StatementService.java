@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -154,6 +155,12 @@ public class StatementService {
             } else {
                 claim.bind(false, null);
             }
+        }
+        // the parts they hold of others' claims count towards their due-total, as on screen
+        Optional<BigDecimal> held = rollup.heldPart(sheetId, person.getId());
+        if (held.isPresent()) {
+            total = total.add(held.get());
+            anyFigure = true;
         }
         // as on screen: n/a when the grade has no rate today and no claim that counts has a figure
         BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, person.getId(), total) : null;

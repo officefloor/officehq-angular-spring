@@ -1312,7 +1312,7 @@ export class People {
    *  person's due-total can be. */
   protected readonly caps = signal<DatedValue[]>([]);
   private readonly capCents = computed(() => {
-    const cap = valueOn(this.caps(), this.session.today(), '');
+    const cap = valueOn(this.caps(), this.session.figureDay(), '');
     return cap === '' ? null : cents(cap);
   });
   /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
@@ -1353,7 +1353,7 @@ export class People {
   private readonly lateness = computed<Lateness>(() => ({
     latePcts: this.latePcts(),
     graces: this.graces(),
-    today: this.session.today(),
+    today: this.session.figureDay(),
     policyDate: this.policyDate(),
     roundings: this.roundings(),
   }));
@@ -1361,7 +1361,7 @@ export class People {
    *  the end of a day, for the periods' due-totals. */
   protected readonly dues = computed(() => {
     const out: DatedDue[] = [];
-    const today = this.session.today();
+    const today = this.session.figureDay();
     for (const c of this.claims()) {
       const p = this.peopleById().get(c.personId);
       if (p === undefined) continue;
@@ -1402,7 +1402,7 @@ export class People {
   protected readonly rowErrors = signal<ReadonlyMap<number, string>>(new Map());
   /** Each grade's rate in force on the sheet's today. */
   protected readonly pctOf = computed(() => {
-    const today = this.session.today();
+    const today = this.session.figureDay();
     return new Map<string, string | undefined>(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
   });
   /** The sheet's due-total: people's due-totals added up (skipping n/a), trimmed. */
@@ -1558,7 +1558,7 @@ export class People {
     const totals = new Map<string, number>(this.usedTags().map((t) => [t, 0]));
     for (const c of this.claims()) for (const t of c.tags) if (!totals.has(t)) totals.set(t, 0);
     for (const p of this.people()) for (const t of p.tags) if (!totals.has(t)) totals.set(t, 0);
-    const today = this.session.today();
+    const today = this.session.figureDay();
     for (const p of this.people()) {
       for (const c of this.claimsOf(p.id)) {
         const tags = new Set([...c.tags, ...p.tags]);
@@ -1576,7 +1576,7 @@ export class People {
   protected readonly monthTotals = computed(() => {
     const totals = new Map<string, number>();
     for (const c of this.claims()) totals.set(c.date.slice(0, 7), 0);
-    const today = this.session.today();
+    const today = this.session.figureDay();
     for (const p of this.people()) {
       for (const c of this.claimsOf(p.id)) {
         if (!countsFor(p, c, today)) continue;
@@ -1646,7 +1646,7 @@ export class People {
   });
   /** How many of the sheet's REVIEW claims are late for review on its today. */
   protected readonly reviewLateCount = computed(() =>
-    this.claims().filter((c) => reviewLate(c, this.session.today(), this.session.reviewSla())).length,
+    this.claims().filter((c) => reviewLate(c, this.session.figureDay(), this.session.reviewSla())).length,
   );
   protected readonly voidReasons = inject(VoidReasonList);
   /** Per reason on the sheet's void reasons: how many VOID claims were voided with it. */
@@ -1789,7 +1789,7 @@ export class People {
 
   /** The person's grade in force on the sheet's today. */
   protected gradeToday(p: Person): string {
-    return gradeOn(p.grades, this.session.today());
+    return gradeOn(p.grades, this.session.figureDay());
   }
 
   /** The person's name as the screen shows it: "<name> (<grade in force on the sheet's today>)". */
@@ -1813,7 +1813,7 @@ export class People {
 
   /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does. */
   private countedCents(p: Person | undefined, c: Claim): number {
-    return countsFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
+    return countsFor(p, c, this.session.figureDay()) && !isCorrection(c) ? cents(c.amount) : 0;
   }
 
   /**
@@ -1904,7 +1904,7 @@ export class People {
    */
   private figuresOf(p: Person): number | null {
     const figures = this.claimsOf(p.id)
-      .filter((c) => countsFor(p, c, this.session.today()))
+      .filter((c) => countsFor(p, c, this.session.figureDay()))
       .map((c) => {
         const f = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
         return f === null ? null : ownPart(c, f);
@@ -1922,7 +1922,7 @@ export class People {
    * ones; a person holding none is absent.
    */
   private readonly heldParts = computed(() => {
-    const today = this.session.today();
+    const today = this.session.figureDay();
     const parts = new Map<number, { settled: number; open: number }>();
     for (const c of this.claims()) {
       if ((c.shares ?? []).length === 0) continue;
@@ -1946,7 +1946,7 @@ export class People {
   protected settledOpenOf(p: Person): { settled: number; open: number } {
     const out = { settled: 0, open: 0 };
     for (const c of this.claimsOf(p.id)) {
-      if (!countsFor(p, c, this.session.today())) continue;
+      if (!countsFor(p, c, this.session.figureDay())) continue;
       const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
       const own = figure === null ? 0 : ownPart(c, figure);
       if (isOpen(c)) out.open += own;
@@ -1965,7 +1965,7 @@ export class People {
    * 30 days up to and including the sheet's today.
    */
   protected isActive(p: Person): boolean {
-    const today = this.session.today();
+    const today = this.session.figureDay();
     if (!today) return false;
     const since = plusDays(today, -29);
     return this.claimsOf(p.id).some(
@@ -1978,7 +1978,7 @@ export class People {
    * sheet's today: 0 to 30 days (a claim dated after today included), 31 to 60, and 61 or more.
    */
   protected agedOf(p: Person): [number, number, number] {
-    const today = this.session.today();
+    const today = this.session.figureDay();
     const aged: [number, number, number] = [0, 0, 0];
     if (!today) return aged;
     for (const c of this.claimsOf(p.id)) {
@@ -1992,8 +1992,8 @@ export class People {
 
   /** The person's overdue claims that count: how many, and the sum of their figures in whole cents. */
   protected overdueOf(p: Person): { count: number; cents: number } {
-    const today = this.session.today();
-    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.today())
+    const today = this.session.figureDay();
+    const late = this.claimsOf(p.id).filter((c) => countsFor(p, c, this.session.figureDay())
       && overdue(c, today, graceOn(this.graces(), gradeOn(p.grades, c.date), c.date)));
     return {
       count: late.length,
@@ -2007,7 +2007,7 @@ export class People {
    * even to a whole number.
    */
   protected scoreOf(p: Person): number {
-    const today = this.session.today();
+    const today = this.session.figureDay();
     let settled = 0;
     for (const c of this.claimsOf(p.id)) {
       if (isOpen(c) || !countsFor(p, c, today) || (c.corrects ?? '').trim() !== '') continue;
@@ -2049,7 +2049,7 @@ export class People {
    * share divided by 100, rounded half to even, added up.
    */
   protected backingOf(personId: number): number {
-    const today = this.session.today();
+    const today = this.session.figureDay();
     if (!today) return 0;
     const since = plusDays(today, -89);
     return this.sharesOf(personId).reduce((sum, { patron, share }) => {

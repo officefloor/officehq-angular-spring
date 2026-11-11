@@ -400,12 +400,12 @@ export class Rates {
   );
   /** Each grade's rate in force on the sheet's today. */
   protected readonly current = computed(() => {
-    const today = this.session.today();
+    const today = this.session.figureDay();
     return new Map(GRADES.map((g) => [g, pctOn(this.rates(), g, today)]));
   });
   /** Each month (yyyy-mm) of the sheet's today's calendar year; none without a today. */
   protected readonly calendarMonths = computed(() => {
-    const year = this.session.today()?.slice(0, 4);
+    const year = this.session.figureDay()?.slice(0, 4);
     if (!year) return [];
     return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
   });

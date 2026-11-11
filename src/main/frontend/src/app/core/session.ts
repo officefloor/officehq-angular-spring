@@ -73,6 +73,19 @@ export class Session {
    * the date, and refuses every change. Kept when another sheet is loaded.
    */
   readonly asOf = signal<string | null>(null);
+  /** The preview date each user has set on this screen, kept when another sheet is loaded. */
+  private readonly previews = signal<ReadonlyMap<string, string>>(new Map());
+  /**
+   * The date the signed-in user previews the sheet on (none: its today). Sent with every request
+   * (see previewInterceptor): the store works out every figure as if the sheet's today were that
+   * date, over its current records, while every change still uses the sheet's real today.
+   */
+  readonly preview = computed(() => this.previews().get(this.user() ?? '') ?? null);
+  /**
+   * The day the screen works its figures out on: the preview date when one is set (and the sheet is
+   * not shown as of a date), else the sheet's today. Defaults and checks of changes use `today()`.
+   */
+  readonly figureDay = computed(() => (this.asOf() ? this.today() : (this.preview() ?? this.today())));
   /** Counts sheet loads, so features re-read the store each time a sheet is (re-)loaded. */
   readonly loads = signal(0);
   /** How many API requests are waiting for their answer (see inFlightInterceptor). */
@@ -137,6 +150,26 @@ export class Session {
   /** Show the active sheet as it is now, re-read from the store. */
   async clearAsOf(): Promise<void> {
     this.asOf.set(null);
+    const id = this.sheet();
+    if (id) await this.loadSheet(id);
+  }
+
+  /** Preview the active sheet's figures on a date, re-read from the store. */
+  async setPreview(date: string): Promise<void> {
+    const user = this.user() ?? '';
+    this.previews.update((all) => new Map(all).set(user, date));
+    const id = this.sheet();
+    if (id) await this.loadSheet(id);
+  }
+
+  /** Show the active sheet's figures on its today again, re-read from the store. */
+  async clearPreview(): Promise<void> {
+    const user = this.user() ?? '';
+    this.previews.update((all) => {
+      const next = new Map(all);
+      next.delete(user);
+      return next;
+    });
     const id = this.sheet();
     if (id) await this.loadSheet(id);
   }
