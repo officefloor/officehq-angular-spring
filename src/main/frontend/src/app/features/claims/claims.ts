@@ -32,6 +32,17 @@ export interface Claim {
   listed: number;
   /** The day (yyyy-mm-dd) the claim is due by, fixed when it was added from the terms of its person's grade on its date. */
   dueBy: string;
+  /** Its status log, oldest first: one line per status it has had. */
+  log: ClaimLogLine[];
+}
+
+/** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  /** yyyy-mm-dd */
+  date: string;
+  due: string;
 }
 
 /** Claims as listed: the latest list place first. */
@@ -185,7 +196,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -213,6 +224,13 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
               <td data-testid="claim-period">{{ periodOf(c) }}</td>
               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
+              <td>
+                <ol class="claim-log">
+                  @for (line of c.log; track $index) {
+                    <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due }}</li>
+                  }
+                </ol>
+              </td>
               <td>
                 <button
                   type="button"

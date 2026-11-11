@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -39,9 +41,12 @@ public class ClaimService {
     private final PeriodService periods;
     private final RoleService roles;
     private final SettingService settings;
+    private final ClaimLogRepository logs;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings) {
+            Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
+            ClaimLogRepository logs) {
+        this.logs = logs;
         this.periods = periods;
         this.roles = roles;
         this.settings = settings;
@@ -55,6 +60,17 @@ public class ClaimService {
 
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDescIdDesc(sheetId);
+    }
+
+    /** The status logs of the sheet's claims by claim id, each oldest first. */
+    public Map<Long, List<ClaimLog>> logs(String sheetId) {
+        return logs.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(ClaimLog::getClaimId, Collectors.toList()));
+    }
+
+    /** The claim's status log, oldest first. */
+    public List<ClaimLog> logOf(Claim claim) {
+        return logs.findByClaimIdOrderByIdAsc(claim.getId());
     }
 
     @Transactional
@@ -74,6 +90,7 @@ public class ClaimService {
         claim.setDueBy(dated.plusDays(settings.termsFor(sheetId, person.gradeOn(dated))));
         claim.setListed(sheets.nextListed(sheetId));
         Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
         rollup.recordChanges(sheetId, user, before);
         return saved;
@@ -147,6 +164,7 @@ public class ClaimService {
             claim.setOpenedBy(user);
         }
         Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
         String event = switch (status) {
             case OPEN -> "CLAIM_OPENED";
             case PENDING -> "CLAIM_PENDING";
@@ -175,6 +193,7 @@ public class ClaimService {
         String due = settle(sheetId, person, claim);
         claim.setStatus(ClaimStatus.SETTLED);
         Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_APPROVED", user, person, saved) + numberOf(saved.getNumber()) + due);
         rollup.recordChanges(sheetId, user, before);
         return saved;
@@ -192,6 +211,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
         Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_REJECTED", user, person, saved) + numberOf(saved.getNumber())
                 + " reason=" + reason);
         rollup.recordChanges(sheetId, user, before);
@@ -259,6 +279,22 @@ public class ClaimService {
                 : figure.add(settings.get(sheetId).lateCharge(figure, claim.getDueBy(), claim.getDate()));
         claim.setSettledDue(settledDue);
         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
+    }
+
+    /** Logs the claim's status now: who changed it, the sheet's today, and its due as computed at this moment. */
+    private void log(String sheetId, String user, Person person, Claim claim) {
+        logs.save(new ClaimLog(sheetId, claim.getId(), claim.getStatus(), user, sheets.today(sheetId),
+                shownDue(sheetId, person, claim)));
+    }
+
+    /**
+     * The claim's due as shown: the one fixed when it was settled, else its figure with its late charge on top; two
+     * decimals, or n/a.
+     */
+    private String shownDue(String sheetId, Person person, Claim claim) {
+        BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
+                : withLateCharge(sheetId, claim, figureOf(sheetId, person, claim));
+        return due == null ? "n/a" : due.setScale(2, RoundingMode.HALF_EVEN).toPlainString();
     }
 
     /** The figure under the claim's due: the one its statement binds it to now, else worked out from the rate. */

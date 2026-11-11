@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,20 +33,30 @@ public class ClaimController {
      * settled (null when it has none, so its due is worked out from the current rate), and who opened it;
      * whether the person's last statement bound it, and the due it bound it to (null: none, so n/a); and the number of
      * the claim it corrects (null unless it is a correction); and the date that decides how its live figures round (its
-     * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first).
+     * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first); and
+     * its status log, oldest first.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundingDate, long listed, LocalDate dueBy) {
+            LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log) {
 
-        static ClaimView of(Claim claim) {
+        static ClaimView of(Claim claim, List<ClaimLog> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy());
+                    claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy(),
+                    log.stream().map(ClaimLogView::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log: the status, who changed it, the sheet's today then, and its due then (or n/a). */
+    public record ClaimLogView(ClaimStatus status, String by, LocalDate date, String due) {
+
+        static ClaimLogView of(ClaimLog line) {
+            return new ClaimLogView(line.getStatus(), line.getBy(), line.getDate(), line.getDue());
         }
     }
 
@@ -89,7 +100,10 @@ public class ClaimController {
     @GetMapping("/claims")
     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
+        Map<Long, List<ClaimLog>> logs = service.logs(sheetId.trim());
+        return service.list(sheetId.trim()).stream()
+                .map(claim -> ClaimView.of(claim, logs.getOrDefault(claim.getId(), List.of())))
+                .toList();
     }
 
     @PostMapping("/people/{personId}/claims")
@@ -98,7 +112,7 @@ public class ClaimController {
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
-        return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
+        return view(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
                 request.note(), request.correctsValue()));
     }
 
@@ -108,7 +122,7 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
-        return ClaimView.of(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
+        return view(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
                 request.note(), request.correctsValue()));
     }
 
@@ -117,7 +131,7 @@ public class ClaimController {
     public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
+        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
     }
 
     /** Open the selected claims in list order; each one that cannot be opened is left as it is. */
@@ -133,7 +147,7 @@ public class ClaimController {
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
+        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
     }
 
     /** A steward's reason for rejecting a PENDING claim. */
@@ -145,7 +159,7 @@ public class ClaimController {
     public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.approve(sheetId.trim(), user.trim(), id));
+        return view(service.approve(sheetId.trim(), user.trim(), id));
     }
 
     /** Reject a PENDING claim with a reason, back to OPEN: a steward only. */
@@ -156,7 +170,7 @@ public class ClaimController {
             @RequestBody @Valid RejectRequest request) {
         // One line in the audit file: any run of white space in the reason becomes a single space.
         String reason = request.reason().trim().replaceAll("\\s+", " ");
-        return ClaimView.of(service.reject(sheetId.trim(), user.trim(), id, reason));
+        return view(service.reject(sheetId.trim(), user.trim(), id, reason));
     }
 
     /** The person a claim is moved to. */
@@ -169,7 +183,7 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ReassignRequest request) {
-        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), id, request.personId()));
+        return view(service.reassign(sheetId.trim(), user.trim(), id, request.personId()));
     }
 
     /** Void a DRAFT, OPEN or PENDING claim. */
@@ -177,6 +191,11 @@ public class ClaimController {
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.VOID));
+        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.VOID));
+    }
+
+    /** The claim as shown, with its status log. */
+    ClaimView view(Claim claim) {
+        return ClaimView.of(claim, service.logOf(claim));
     }
 }

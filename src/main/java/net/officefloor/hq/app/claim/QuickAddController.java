@@ -35,9 +35,11 @@ public class QuickAddController {
     }
 
     private final QuickAddService service;
+    private final ClaimService claims;
 
-    public QuickAddController(QuickAddService service) {
+    public QuickAddController(QuickAddService service, ClaimService claims) {
         this.service = service;
+        this.claims = claims;
     }
 
     @PostMapping
@@ -45,6 +47,7 @@ public class QuickAddController {
     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid QuickAddRequest request) {
-        return ClaimView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.amountValue()));
+        Claim claim = service.add(sheetId.trim(), user.trim(), request.name(), request.amountValue());
+        return ClaimView.of(claim, claims.logOf(claim));
     }
 }
