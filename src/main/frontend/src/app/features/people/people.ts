@@ -1160,6 +1160,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                 >
                   Merge
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-merge-undo"
+                  [attr.aria-label]="'Undo the last merge into ' + p.name"
+                  (click)="undoMerge(p)"
+                >
+                  Undo merge
+                </button>
                 <label [for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
                 <input
                   type="text"
@@ -2219,6 +2227,34 @@ export class People {
       next.delete(p.id);
       return next;
     });
+    if (sheet) await this.fetch(sheet);
+  }
+
+  /**
+   * Undo the last merge into the person (the steward who made it, on the same sheet-today): the
+   * merged person is back at the end of the list with the claims that came from them, so the sheet
+   * is re-read.
+   */
+  protected async undoMerge(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheet = this.session.sheet();
+    const fail = (err: string) => this.rowErrors.update((m) => new Map(m).set(p.id, err));
+    try {
+      await firstValueFrom(
+        this.http.post<Person>('/api/people/merge/undo', { sheet, user: this.session.user(), id: p.id }),
+      );
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      fail(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only the steward who made the merge into ' + p.name + ' can undo it.'
+          : e instanceof HttpErrorResponse && e.status === 409
+            ? 'There is no merge into ' + p.name + ' to undo today.'
+            : 'Could not undo the merge into ' + p.name + '.',
+      );
+      return;
+    }
+    if (this.session.sheet() !== sheet) return;
     if (sheet) await this.fetch(sheet);
   }
 

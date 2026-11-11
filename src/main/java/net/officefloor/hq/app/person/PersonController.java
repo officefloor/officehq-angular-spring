@@ -47,6 +47,10 @@ public class PersonController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long intoId) {
     }
 
+    public record MergeUndoRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id) {
+    }
+
     public record ImportPeopleRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull @Size(max = 100000) String text) {
     }
@@ -235,6 +239,12 @@ public class PersonController {
     @PostMapping("/merge")
     public PersonResponse merge(@Valid @RequestBody MergePersonRequest req) {
         return response(req.sheet().trim(), merges.merge(req.sheet().trim(), req.user().trim(), req.id(), req.intoId()));
+    }
+
+    /** Undo the last merge into the person; answers the person put back as the store now holds them. */
+    @PostMapping("/merge/undo")
+    public PersonResponse undoMerge(@Valid @RequestBody MergeUndoRequest req) {
+        return response(req.sheet().trim(), merges.undo(req.sheet().trim(), req.user().trim(), req.id()));
     }
 
     /** Transfer the person to another sheet by id; answers them as the other sheet now holds them. */

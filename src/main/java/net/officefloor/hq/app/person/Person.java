@@ -375,6 +375,11 @@ public class Person {
         aliases.add(alias);
     }
 
+    /** Remove the aliases that equal any of the names (given lower-cased), without regard to case. */
+    public void removeAliases(Set<String> lowerCased) {
+        aliases.removeIf(a -> lowerCased.contains(a.toLowerCase(Locale.ROOT)));
+    }
+
     public List<DatedHold> getHolds() {
         return holds.stream().sorted(Comparator.comparing(DatedHold::getFromDate)
                 .thenComparing(DatedHold::getToDate, Comparator.nullsLast(Comparator.naturalOrder()))).toList();
