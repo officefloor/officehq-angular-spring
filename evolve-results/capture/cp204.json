@@ -1,0 +1,70 @@
+{
+  "checkpoint": 204,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp204_trim-at-consolidation",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    110,
+    201
+  ],
+  "replaced_tests": [
+    "cp110_consolidated-figures.spec.ts::consolidated figures",
+    "cp201_consolidated-grades.spec.ts::consolidated grades"
+  ],
+  "request": {
+    "spec": "The trim rule now applies once over the whole tree: the consolidated due-total and overdue-total\nleave out the single highest and the single lowest person's figure over all people of the tree\nwhen three or more have one, instead of adding up each sheet's trimmed total. The consolidated\npeople count counts each person once across the tree: people whose names or aliases match (as names\nare compared) are one person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe trim rule now applies once over the whole tree: the consolidated due-total and overdue-total\nleave out the single highest and the single lowest person's figure over all people of the tree\nwhen three or more have one, instead of adding up each sheet's trimmed total. The consolidated\npeople count counts each person once across the tree: people whose names or aliases match (as names\nare compared) are one person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c9401181143aa2318f33f4cac360973b65ee8d54",
+  "reset_sha": "",
+  "preagent_sha": "bce3e0f7af74eeebe0458d16412f81709ed8e6f1",
+  "prev_sha": "bce3e0f7af74eeebe0458d16412f81709ed8e6f1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6450408,
+    "input_tokens": 30,
+    "output_tokens": 8827,
+    "cache_read_tokens": 558384,
+    "cache_creation_tokens": 44588,
+    "num_turns": 15,
+    "duration_ms": 358311,
+    "duration_api_ms": 83032,
+    "model": "claude-opus-5-5",
+    "session_id": "cb4ec62a-fd64-4f6c-b877-7c1dfcb88e79",
+    "stop_reason": "success",
+    "result_text": "The consolidated figures now work across the whole tree as the request asks, and all 4 tests in `e2e/specs/acceptance.spec.ts` pass under `bin/e2e`.\n\n**How it behaves now**\n- **Due-total and overdue-total:** every person's figure from the sheet and all its descendants goes into one list. When three or more people have a figure, the single highest and single lowest are left out of that whole list, instead of each sheet being trimmed and then added up. People whose due-total is n/a have no due figure, as before. Matching people are not combined into one figure: each person's row still counts on its own. That's what the test expects (it wants 9.00, not 7.00).\n- **People count:** each person is counted once across the tree. People whose names or aliases match, ignoring case, count as one person, including when they're only linked through someone else.\n- **Per-grade totals and status counts:** unchanged.\n\n**What changed**\n- **Server** (`RollupService`, `RollupController`): the descendants endpoint now also returns each person's names and aliases with their due-total and overdue-total, for the descendants and for the sheet itself (used in the as-of view). All existing response fields are still there; the descendants' own totals and people count now use the new rules too.\n- **Front end** (`people.ts`): the consolidated figures are built from the sheet's people plus the descendants' people. The trim and the de-duplicated count are done once over that combined list.\n- I also updated the description comment at the top of `header.ts` to match. That was the last edit and only touches a comment, so I didn't re-run the tests after it.\n\nThere's no database change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6450408,
+        "num_turns": 15,
+        "duration_ms": 358311,
+        "duration_api_ms": 83032,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp204.agent.jsonl",
+  "agent_diff_file": "cp204.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
