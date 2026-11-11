@@ -1,0 +1,64 @@
+{
+  "checkpoint": 86,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp86_inline-amount",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA DRAFT claim's amount can be changed in the row itself: an amount entry and a save button on\nthe claim, beside the edit button. It follows exactly the claim form's rules (the amount's form,\na claim that cannot be edited, a locked claim, a closed period, the viewer) and writes CLAIM_EDITED\nas the form does; a refusal shows the claim's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "de45d19ee156c79e956311b8cd481700f7dc845a",
+  "reset_sha": "",
+  "preagent_sha": "717475ab06cb5be17c24b625cda19ec3f34efe4a",
+  "prev_sha": "717475ab06cb5be17c24b625cda19ec3f34efe4a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6005132,
+    "input_tokens": 6,
+    "output_tokens": 681,
+    "cache_read_tokens": 110177,
+    "cache_creation_tokens": 2744,
+    "num_turns": 2,
+    "duration_ms": 8228,
+    "duration_api_ms": 58744,
+    "model": "claude-opus-5-5",
+    "session_id": "49604f62-9d75-4c91-80c6-48b0ca1278cd",
+    "stop_reason": "success",
+    "result_text": "Each claim row now has an amount entry and a \"Save amount\" button next to its Edit button, and all 4 Playwright tests pass with `bin/e2e`.\n\n**How it works:** I only changed the front end, in `src/main/frontend/src/app/features/claims/claims.ts`. The inline save uses the same server request the claim form uses to edit a claim. It sends the new amount and keeps the claim's own date, note and correction number. Because of that:\n- The server applies the same rules as the form: only a DRAFT can be changed, and it refuses a claim another user has open in their editor, a claim in a closed period, and the viewer. It refuses a negative amount unless it names the settled claim it corrects.\n- A save that goes through writes `CLAIM_EDITED` in the same form as the form's edits. A refused one writes nothing.\n\n**What the screen does:**\n- **Before sending:** an amount with more than two decimals is refused in the browser with the form's own message. The obvious refusals (a viewer, not a DRAFT, a closed period, locked by another user) are also caught up front.\n- **On refusal:** the reason shows in the claim's error (`claim-error`). The error clears when you type in the entry or take the next action on that row.\n- **On success:** the entry is emptied. If you had that claim's editor open yourself, the editor closes, because saving releases your lock on the claim just as saving the form does.\n\nThe entry and button appear on every claim, not only drafts, and on a non-DRAFT claim saving shows the error. I did this because the test types into the entry on an OPEN claim and expects the refusal message.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6005132,
+        "num_turns": 2,
+        "duration_ms": 8228,
+        "duration_api_ms": 58744,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp86.agent.jsonl",
+  "agent_diff_file": "cp86.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
