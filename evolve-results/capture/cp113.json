@@ -1,0 +1,64 @@
+{
+  "checkpoint": 113,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp113_import-people",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "People can be pasted in as lines of name,grade,terms,contact into an import box (the last two may\nbe absent or blank). Every line is checked first with exactly the person form's rules (names, aliases,\ncontacts, grades, terms; a name or contact repeated within the paste is an error): if any line\nfails, an error shows on the box and nothing is imported; otherwise every person is added in order,\neach as the form would add them (PERSON_ADDED with the same fields). Show how many were added.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nPeople can be pasted in as lines of name,grade,terms,contact into an import box (the last two may\nbe absent or blank). Every line is checked first with exactly the person form's rules (names, aliases,\ncontacts, grades, terms; a name or contact repeated within the paste is an error): if any line\nfails, an error shows on the box and nothing is imported; otherwise every person is added in order,\neach as the form would add them (PERSON_ADDED with the same fields). Show how many were added.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8d0c8656ef698b4dadef44a9bb5cb6deff18e5b1",
+  "reset_sha": "",
+  "preagent_sha": "300df7c111c02c6786cadc1e5f97c8763b7300b2",
+  "prev_sha": "300df7c111c02c6786cadc1e5f97c8763b7300b2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7285356000000001,
+    "input_tokens": 30,
+    "output_tokens": 7667,
+    "cache_read_tokens": 602978,
+    "cache_creation_tokens": 56810,
+    "num_turns": 15,
+    "duration_ms": 337399,
+    "duration_api_ms": 72864,
+    "model": "claude-opus-5-5",
+    "session_id": "4c3f436c-478a-4308-8ea0-e5aff5829c33",
+    "stop_reason": "success",
+    "result_text": "I added the import box. You paste lines of `name,grade,terms,contact` and each person is added as the person form would add them. `bin/e2e` passes all 4 tests in the import spec.\n\n**Server** (in `src/main/java/net/officefloor/hq/app/person/`)\n- **New `ImportPeopleService`** checks every line before adding anyone, using the person form's rules:\n  - the name can't be blank and is at most 200 characters;\n  - the grade must be A, B or C;\n  - terms must be a whole number of up to 5 digits, or blank;\n  - the contact is at most 200 characters.\n- **Clashes are checked first:** a name already used as a name or alias on the sheet or another sheet in its tree is refused. A name or contact repeated within the paste is also refused.\n- **Adding:** if every line passes, each person is added in order through the existing `PersonService.add`. That writes the same `PERSON_ADDED` audit record and roll-up as the form. It also re-checks clashes such as a contact already on the sheet.\n- **All or nothing:** the import runs as one transaction, so a refusal anywhere means nothing is stored and nothing is written to the audit file.\n- **Line format:** blank lines are skipped, and terms and contact may be absent or blank. A line with fewer than 2 or more than 4 comma-separated fields is refused, so a contact can't contain a comma.\n- **Errors:** a refused import returns a 422 naming the bad line, through a new `ImportPeopleException`.\n- **Endpoint:** `POST /api/sheets/{id}/people/import` in `PersonController` returns `{added}`. Viewers are already refused by the existing `ViewerInterceptor`.\n\n**Front end** (`people.ts`)\n- The import box sits next to the paste-claims box and uses `import-people`, `import-submit`, `import-added` and `import-error`.\n- It works like the paste-claims box: the old count clears while an import runs, the error clears when you edit the box or submit again, and both reset when a sheet is loaded.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7285356000000001,
+        "num_turns": 15,
+        "duration_ms": 337399,
+        "duration_api_ms": 72864,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp113.agent.jsonl",
+  "agent_diff_file": "cp113.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
