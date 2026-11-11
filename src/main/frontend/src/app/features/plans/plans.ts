@@ -14,6 +14,8 @@ export interface Plan {
   /** The day of the month of a monthly plan, or null. */
   day: number | null;
   end: string;
+  /** The descendant sheet the plan's claims are made on, or null for this sheet. */
+  target: string | null;
   generated: number;
   /** The first five plan dates after the sheet's today and on or before the end, comma separated. */
   nextDates: string;
@@ -25,7 +27,8 @@ export interface Plan {
 
 // A person's plans and the form on their row that adds one: an amount, a start date, either every N
 // days (a whole number, at least 1) or monthly on a day of the month (1 to 31), and an end date not
-// before the start. The sheet's generate button
+// before the start, and optionally one of the sheet's descendants whose same-named person the claims
+// are made for, on that sheet. The sheet's generate button
 // (on the people screen) makes each plan's DRAFT claims; each plan shows how many it has made,
 // and its next five dates after the sheet's today. A plan can be paused and resumed from its row;
 // the dates while it is paused are skipped, not postponed. Its amount can be changed from its row: the
@@ -39,7 +42,7 @@ export interface Plan {
         <tr>
           <th scope="col">Amount</th><th scope="col">Start</th><th scope="col">Every (days)</th>
           <th scope="col">Day of month</th>
-          <th scope="col">End</th><th scope="col">Made</th>
+          <th scope="col">End</th><th scope="col">Sheet</th><th scope="col">Made</th>
           <th scope="col">Next dates</th>
           <th scope="col">Paused</th><th scope="col">Pause or resume</th>
           <th scope="col">Changes</th>
@@ -63,6 +66,7 @@ export interface Plan {
             <td data-testid="plan-every">{{ pl.every }}</td>
             <td data-testid="plan-day">{{ pl.day }}</td>
             <td data-testid="plan-end">{{ pl.end }}</td>
+            <td data-testid="plan-sheet">{{ pl.target }}</td>
             <td data-testid="plan-generated">{{ pl.generated }}</td>
             <td data-testid="plan-next-dates">{{ pl.nextDates }}</td>
             <td data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</td>
@@ -117,6 +121,13 @@ export interface Plan {
         [value]="dayInput()"
         (input)="dayInput.set($any($event.target).value); error.set(null)"
       />
+      <label [for]="'plan-form-sheet-' + personId()">On sheet (a descendant, optional)</label>
+      <input
+        [id]="'plan-form-sheet-' + personId()"
+        data-testid="plan-form-sheet"
+        [value]="sheetInput()"
+        (input)="sheetInput.set($any($event.target).value); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input
         [id]="'plan-form-end-' + personId()"
@@ -148,6 +159,7 @@ export class PersonPlans {
   protected readonly everyInput = signal('');
   protected readonly dayInput = signal('');
   protected readonly endInput = signal('');
+  protected readonly sheetInput = signal('');
   protected readonly error = signal<string | null>(null);
   /** The error of the last pause or resume refused, on the plan's row. */
   protected readonly rowError = signal<{ planId: number; message: string } | null>(null);
@@ -165,6 +177,7 @@ export class PersonPlans {
       this.everyInput.set('');
       this.dayInput.set('');
       this.endInput.set('');
+      this.sheetInput.set('');
       this.error.set(null);
       this.rowError.set(null);
       this.amountDrafts.set({});
@@ -259,6 +272,7 @@ export class PersonPlans {
     const every = this.everyInput().trim();
     const day = this.dayInput().trim();
     const end = this.endInput().trim();
+    const target = this.sheetInput().trim();
     if (!AMOUNT.test(amount)) {
       this.error.set('Enter an amount of 0.00 or more with up to two decimals.');
       return;
@@ -296,6 +310,7 @@ export class PersonPlans {
           every: every || null,
           day: day || null,
           end,
+          target: target || null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -305,12 +320,15 @@ export class PersonPlans {
       this.everyInput.set('');
       this.dayInput.set('');
       this.endInput.set('');
+      this.sheetInput.set('');
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
       this.error.set(
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Your role may not add plans.'
-          : 'Could not add this plan.',
+          : e instanceof HttpErrorResponse && e.status === 400 && target
+            ? 'Sheet ' + target + ' is not a descendant of this sheet.'
+            : 'Could not add this plan.',
       );
     } finally {
       this.submitting = false;

@@ -4,7 +4,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -12,6 +15,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -28,6 +32,9 @@ import org.springframework.web.server.ResponseStatusException;
  * plan's amount, dated that day with an empty note, by the claim form's rules: a date the form
  * refuses is skipped, and tried again on the next generate. A plan can be paused and resumed; a plan
  * date on or after the day it was paused and before the day it was resumed is skipped for good.
+ * A plan may name one of the sheet's descendants (its children, their children and so on): its
+ * claims are then made on that sheet, up to this sheet's today, for the person there of the same name
+ * (none when there is no such person), by that sheet's rules and written in that sheet's audit.
  */
 @Service
 public class PlanService {
@@ -62,7 +69,7 @@ public class PlanService {
      */
     @Transactional
     public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String targetSheetId) {
         roles.refuseViewer(sheetId, user);
         sheets.load(sheetId, user);
         Person person = people.findByIdAndSheetId(personId, sheetId)
@@ -79,12 +86,30 @@ public class PlanService {
         if (end.isBefore(start)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A plan's end cannot be before its start.");
         }
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end));
+        if (targetSheetId != null && !isDescendant(targetSheetId, sheetId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Sheet " + targetSheetId + " is not a descendant of this sheet.");
+        }
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end, targetSheetId));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName() + " amount="
                 + saved.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString() + " start="
                 + saved.getStart() + (saved.getDay() != null ? " day=" + saved.getDay() : " every=" + saved.getEvery())
-                + " end=" + saved.getEnd());
+                + " end=" + saved.getEnd()
+                + (saved.getTargetSheetId() != null ? " sheet=" + saved.getTargetSheetId() : ""));
         return saved;
+    }
+
+    /** Whether the sheet has the ancestor among its parents, their parents and so on. */
+    private boolean isDescendant(String sheetId, String ancestorId) {
+        Set<String> seen = new HashSet<>();
+        String at = sheetRows.findById(sheetId).map(Sheet::getParentId).orElse(null);
+        while (at != null && seen.add(at)) {
+            if (at.equals(ancestorId)) {
+                return true;
+            }
+            at = sheetRows.findById(at).map(Sheet::getParentId).orElse(null);
+        }
+        return false;
     }
 
     /** Pause the plan from the sheet's today; pausing a paused plan is refused (409). */
@@ -152,15 +177,25 @@ public class PlanService {
         LocalDate today = sheets.today(sheetId);
         List<Claim> made = new ArrayList<>();
         for (Plan plan : plans.findBySheetIdOrderByIdAsc(sheetId)) {
-            if (people.findByIdAndSheetId(plan.getPersonId(), sheetId).isEmpty()) {
+            Optional<Person> person = people.findByIdAndSheetId(plan.getPersonId(), sheetId);
+            if (person.isEmpty()) {
                 continue;
             }
-            LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
-            for (LocalDate day : plan.datesUpTo(last)) {
-                if (plan.hasMade(day) || plan.skips(day) || !claims.takesDate(sheetId, plan.getPersonId(), day)) {
+            String target = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
+            if (!target.equals(sheetId)) {
+                // the person of the same name on the named sheet, whose claim form the claims go through
+                person = people.findBySheetIdAndNameIgnoreCase(target, person.get().getName());
+                if (person.isEmpty() || Role.VIEWER.equals(roles.roleOf(target, user))) {
                     continue;
                 }
-                made.add(claims.add(sheetId, user, plan.getPersonId(),
+            }
+            long personId = person.get().getId();
+            LocalDate last = plan.getEnd().isBefore(today) ? plan.getEnd() : today;
+            for (LocalDate day : plan.datesUpTo(last)) {
+                if (plan.hasMade(day) || plan.skips(day) || !claims.takesDate(target, personId, day)) {
+                    continue;
+                }
+                made.add(claims.add(target, user, personId,
                         plan.getAmount().setScale(2, RoundingMode.UNNECESSARY), day, "", null, null, List.of()));
                 plan.markMade(day);
             }

@@ -27,6 +27,7 @@ import java.util.Set;
  * the start left out. It keeps each date it has made a claim for, and each time it was paused: a plan
  * date on or after a pause's day and before its resume's day is skipped, not postponed. Its amount
  * can be changed; each change is kept, oldest first, and applies to the claims generated after it.
+ * It may name one of its sheet's descendants: its claims are then made on that sheet instead.
  */
 @Entity
 @Table(name = "plan")
@@ -57,6 +58,9 @@ public class Plan {
     @Column(name = "end_date", nullable = false)
     private LocalDate end;
 
+    @Column(name = "target_sheet_id")
+    private String targetSheetId;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "plan_date", joinColumns = @JoinColumn(name = "plan_id"))
     @Column(name = "claim_date", nullable = false)
@@ -75,8 +79,9 @@ public class Plan {
     }
 
     public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String targetSheetId) {
         this.sheetId = sheetId;
+        this.targetSheetId = targetSheetId;
         this.personId = personId;
         this.amount = amount;
         this.start = start;
@@ -91,6 +96,11 @@ public class Plan {
 
     public String getSheetId() {
         return sheetId;
+    }
+
+    /** The descendant sheet the plan's claims are made on, or null for its own sheet. */
+    public String getTargetSheetId() {
+        return targetSheetId;
     }
 
     public Long getPersonId() {

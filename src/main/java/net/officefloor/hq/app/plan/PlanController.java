@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.claim.ClaimController.ClaimResponse;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -25,13 +26,14 @@ public class PlanController {
     }
 
     /**
+     * A plan's target, when given, is one of the sheet's descendants its claims are made on.
      * A plan's amount is one the claim form takes without a correction; every is a whole number of
      * days, or day a day of the month; exactly one of them is given.
      */
     public record AddPlanRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull Long personId, @NotNull @Pattern(regexp = ClaimController.AMOUNT) String amount,
             @NotNull LocalDate start, @Pattern(regexp = "\\d{1,6}") String every,
-            @Pattern(regexp = "\\d{1,6}") String day, @NotNull LocalDate end) {
+            @Pattern(regexp = "\\d{1,6}") String day, @NotNull LocalDate end, @Size(max = 100) String target) {
     }
 
     public record GenerateRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
@@ -48,10 +50,10 @@ public class PlanController {
 
     /** A plan, its amount's changes oldest first, each as {@code <date> amount=<amount>}. */
     public record PlanResponse(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, int generated, String nextDates, boolean paused, List<String> changes) {
+            LocalDate end, String target, int generated, String nextDates, boolean paused, List<String> changes) {
     }
 
-    /** What a generate did: how many claims were made, those claims in order, and the plans after it. */
+    /** What a generate did: how many claims were made, those made on this sheet in order, and the plans after it. */
     public record GenerateResponse(int made, List<ClaimResponse> claims, List<PlanResponse> plans) {
     }
 
@@ -61,7 +63,7 @@ public class PlanController {
     private static PlanResponse response(Plan plan, LocalDate today) {
         return new PlanResponse(plan.getId(), plan.getPersonId(),
                 plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
-                plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getGenerated(),
+                plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getTargetSheetId(), plan.getGenerated(),
                 String.join(", ", plan.datesAfter(today, NEXT_DATES).stream().map(LocalDate::toString).toList()),
                 plan.isPaused(),
                 plan.getChanges().stream().map(c -> c.getChangedOn() + " amount="
@@ -91,7 +93,8 @@ public class PlanController {
     public PlanResponse add(@Valid @RequestBody AddPlanRequest req) {
         String sheet = req.sheet().trim();
         Plan plan = service.add(sheet, req.user().trim(), req.personId(), ClaimController.amount(req.amount()),
-                req.start(), number(req.every()), number(req.day()), req.end());
+                req.start(), number(req.every()), number(req.day()), req.end(),
+                req.target() == null || req.target().isBlank() ? null : req.target().trim());
         return response(plan, sheets.today(sheet));
     }
 
@@ -119,10 +122,12 @@ public class PlanController {
     @PostMapping("/generate")
     public GenerateResponse generate(@Valid @RequestBody GenerateRequest req) {
         String sheet = req.sheet().trim();
-        List<ClaimResponse> made = service.generate(sheet, req.user().trim()).stream()
+        List<Claim> made = service.generate(sheet, req.user().trim());
+        // the claims made on a descendant sheet are counted, but listed on that sheet only
+        List<ClaimResponse> here = made.stream().filter(c -> c.getSheetId().equals(sheet))
                 .map(ClaimController::response).toList();
         LocalDate today = sheets.today(sheet);
-        return new GenerateResponse(made.size(), made,
+        return new GenerateResponse(made.size(), here,
                 service.list(sheet).stream().map(plan -> response(plan, today)).toList());
     }
 }
