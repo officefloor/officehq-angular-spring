@@ -1,0 +1,64 @@
+{
+  "checkpoint": 81,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp81_remind",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN or PENDING claim can be reminded (a button on the claim): REMIND is written, naming the\nclaim like every claim line, and the claim shows the sheet's today as its reminded date. A claim\ncan be reminded once per sheet-today: a second press on the same day, or a press on a claim in any\nother status, is refused with an error on the claim and writes nothing. The reminded date is the\nlast day a reminder was written, or nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN or PENDING claim can be reminded (a button on the claim): REMIND is written, naming the\nclaim like every claim line, and the claim shows the sheet's today as its reminded date. A claim\ncan be reminded once per sheet-today: a second press on the same day, or a press on a claim in any\nother status, is refused with an error on the claim and writes nothing. The reminded date is the\nlast day a reminder was written, or nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f92fa751a4f9e973fc179544f82b8cdfd96f4054",
+  "reset_sha": "",
+  "preagent_sha": "7fc1a9b4457d65da45251f338c823cde88bb7e83",
+  "prev_sha": "7fc1a9b4457d65da45251f338c823cde88bb7e83",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5900576,
+    "input_tokens": 28,
+    "output_tokens": 6644,
+    "cache_read_tokens": 493488,
+    "cache_creation_tokens": 44796,
+    "num_turns": 16,
+    "duration_ms": 325982,
+    "duration_api_ms": 61775,
+    "model": "claude-opus-5-5",
+    "session_id": "bbaca500-4670-4d08-99c7-780a9870e063",
+    "stop_reason": "success",
+    "result_text": "I added the Remind button for claims, and all 4 tests in `bin/e2e` pass.\n\n**How it behaves**\n- Each claim row has a Remind button (`claim-remind`) and a reminded-date column (`claim-reminded`). The column shows the last day a reminder was written, or stays blank.\n- Reminding an OPEN or PENDING claim writes a `REMIND` line to the audit file. It uses the same claim fields as every other claim line, followed by `number=`. The claim's reminded date becomes the sheet's today.\n- Two kinds of press are refused with an error on the claim (`claim-error`) and write nothing: a second press on the same sheet-today, and a press on a claim in any other status. Viewers are refused by the existing rule that blocks changes from viewers.\n\n**What changed**\n- **Stored data:** a new migration, `V51__claim_reminded.sql`, adds a `reminded_on` date column to claims.\n- **Server:**\n  - a `remindedOn` field on `Claim`;\n  - a `ClaimService.remind` method;\n  - a new `ClaimRemindException`, which returns 409 when a reminder is refused;\n  - `POST /api/sheets/{sheetId}/claims/{id}/remind`;\n  - `remindedOn` added to the claim data the screen receives.\n- **Front end:** the button, the column and the error message, all in `features/claims/claims.ts`.\n\nUnlike some other claim actions (for example, adding a proof), Remind can still be used on a claim whose period is closed. The request didn't mention periods, so I left that rule out. Tell me if reminders should be blocked in closed periods too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5900576,
+        "num_turns": 16,
+        "duration_ms": 325982,
+        "duration_api_ms": 61775,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp81.agent.jsonl",
+  "agent_diff_file": "cp81.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
