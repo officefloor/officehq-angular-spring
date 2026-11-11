@@ -1,0 +1,64 @@
+{
+  "checkpoint": 233,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp233_due-by-override",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can set a claim's due-by directly (a date entry and a button on a DRAFT, OPEN or PENDING\nclaim; CLAIM_DUE_BY_SET naming the claim and ending old=<old due-by> new=<new>; anyone else or any\nother status is refused). A due-by set this way stays as set: a holiday added later does not move\nit. Overdue, the late charge, grace and the period the claim belongs to follow the set date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can set a claim's due-by directly (a date entry and a button on a DRAFT, OPEN or PENDING\nclaim; CLAIM_DUE_BY_SET naming the claim and ending old=<old due-by> new=<new>; anyone else or any\nother status is refused). A due-by set this way stays as set: a holiday added later does not move\nit. Overdue, the late charge, grace and the period the claim belongs to follow the set date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6ebc617a650c78a679a26cbfdf7299768c8b6e42",
+  "reset_sha": "",
+  "preagent_sha": "b18eedac72338d202b20d799073ccde32385bc24",
+  "prev_sha": "b18eedac72338d202b20d799073ccde32385bc24",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6713232,
+    "input_tokens": 34,
+    "output_tokens": 7957,
+    "cache_read_tokens": 685836,
+    "cache_creation_tokens": 46860,
+    "num_turns": 17,
+    "duration_ms": 380776,
+    "duration_api_ms": 74889,
+    "model": "claude-opus-5-5",
+    "session_id": "bdb17972-8855-4bdd-a092-ad72800999fb",
+    "stop_reason": "success",
+    "result_text": "A steward can now set a claim's due-by directly, and `bin/e2e` passes all 4 tests in the spec. The only edit after that run was a doc comment.\n\n**How it works**\n- **Who and when:** each claim row has a \"Set due-by to\" date field (`claim-due-by-new`) and a **Set due-by** button (`claim-set-due-by`). It works on DRAFT, OPEN and PENDING claims. Anyone who isn't a steward, or any claim in another status, is refused and the row shows `claim-error`.\n- **Audit:** each change writes `CLAIM_DUE_BY_SET sheet=\u2026 by=\u2026 person=\u2026 amount=\u2026 date=\u2026 old=<old due-by> new=<new>`.\n- **Stays as set:** the claim is marked as having a set due-by, and adding a holiday later no longer moves it. Overdue, the late charge, grace and the claim's period already work from the stored due-by, so they follow the new date without other changes.\n\n**Changes**\n- New migration `V122__claim_due_by_set.sql` adds a `due_by_set` column to `claim`, defaulting to false. Claims copied to another sheet with a transferred person keep the flag.\n- `ClaimService.setDueBy` plus a `POST /api/claims/due-by` endpoint in `ClaimController`.\n- `HolidayService` skips claims whose due-by was set directly.\n- The date field and button are in `features/claims/claims.ts`, following the existing Re-date control.\n\n**Choices the request didn't specify**\n- The action is also refused if either the old or the new due-by falls inside a closed period, the same rule the other claim actions use.\n- A numbered claim keeps its number when its due-by moves, as Re-date does, even if the new date puts it in a different period.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6713232,
+        "num_turns": 17,
+        "duration_ms": 380776,
+        "duration_api_ms": 74889,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp233.agent.jsonl",
+  "agent_diff_file": "cp233.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
