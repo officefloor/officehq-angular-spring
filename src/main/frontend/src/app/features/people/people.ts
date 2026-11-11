@@ -96,6 +96,9 @@ import { FigurePipe } from '../../core/figure';
 // figure) times their share divided by 100, rounded half to even; 0.00 with none.
 // A user can watch a person, and stop watching them, from their row; "Watched" shows whether the
 // signed-in user watches them.
+// The export-row button downloads a person's row as a CSV file: a cell,value header, then one line per
+// cell (name, grade, claimed, due-total, statement count, overdue-total, hold, retired, aliases, score)
+// with the value as the row shows it.
 // The export button downloads everyone, retired people included, in list order, as a CSV file
 // (name, grade in force today, retired-from date or nothing, due-total as shown). It and the
 // export-claims button first wait for the screen's reads to be answered, so an export taken while
@@ -1056,6 +1059,14 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
                   (click)="exportStatement(p)"
                 >
                   Export statement
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-export"
+                  [attr.aria-label]="'Export row for ' + p.name"
+                  (click)="exportPerson(p)"
+                >
+                  Export row
                 </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
                 <input
@@ -3218,6 +3229,27 @@ export class People {
       lines.push([c.number ?? '', c.date, c.amount, figure, c.status].map(csvField).join(','));
     }
     this.download('statement-' + p.id, lines);
+  }
+
+  /** Download the person's row as a CSV file: one line per cell, with the value as the row shows it. */
+  protected async exportPerson(p: Person): Promise<void> {
+    const sheet = this.session.sheet();
+    await this.session.settled();
+    if (this.session.sheet() !== sheet) return;
+    const cells: [string, string][] = [
+      ['person-name', this.shownName(p)],
+      ['person-grade', this.gradeToday(p)],
+      ['person-claimed', this.claimedOf(p.id)],
+      ['person-due-total', dueText(this.dueOf(p))],
+      ['person-statement-count', String(this.statementOf(p.id)?.count ?? 0)],
+      ['person-overdue-total', this.money(this.overdueOf(p).cents)],
+      ['person-hold', p.held ? 'yes' : 'no'],
+      ['person-retired', p.retired ? 'yes' : 'no'],
+      ['person-aliases', p.aliases.join(', ')],
+      ['person-score', String(this.scoreOf(p))],
+    ];
+    const lines = ['cell,value', ...cells.map((c) => c.map(csvField).join(','))];
+    this.download('person-' + p.id, lines);
   }
 
   /** Download CSV lines, each ended by a line feed, as <what>-<sheet>.csv. */
