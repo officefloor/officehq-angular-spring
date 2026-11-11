@@ -23,7 +23,7 @@ public class RollupController {
 
     /** The sheet's own figures as the store holds them (as of the date the request is answered as of), as consolidated figures count them. */
     public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts, List<TreePerson> people) {
+            Map<String, Integer> statusCounts, List<TreePerson> people, int overdueCount) {
     }
 
     /** A person as the consolidated figures take them: their name and aliases, due-total (null for n/a) and overdue-total. */
@@ -32,7 +32,7 @@ public class RollupController {
 
     public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal,
             Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, OwnFigures own,
-            List<TreePerson> people) {
+            List<TreePerson> people, int overdueCount) {
     }
 
     public record CompareRequest(@NotBlank @Size(max = 100) String sheet) {
@@ -57,8 +57,9 @@ public class RollupController {
         return new DescendantsResponse(figures.peopleCount(), money(figures.dueTotal()),
                 money(figures.overdueTotal()), money(figures.gradeDueTotals()), figures.statusCounts(),
                 new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal()),
-                        money(own.gradeDueTotals()), service.statusCounts(sheet), people(service.treePeople(sheet))),
-                people(figures.people()));
+                        money(own.gradeDueTotals()), service.statusCounts(sheet), people(service.treePeople(sheet)),
+                        service.overdueCount(sheet)),
+                people(figures.people()), figures.overdueCount());
     }
 
     // ends in /list: it only reads another sheet's figures

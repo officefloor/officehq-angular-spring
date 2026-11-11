@@ -3,7 +3,7 @@ import { Component, effect, inject, input, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
-// The steward's dashboard: how many of the sheet's claims are PENDING and in REVIEW (as the summary
+// The steward's dashboard: how many of the claims of the sheet and its descendants are PENDING and in REVIEW (as the summary
 // counts them), and how many claims that count are overdue (as the people list's totals count them).
 // Only a steward (in their own right or by a delegation in force) sees the counts; anyone else sees
 // the cells empty. Shown as of a date, it is the role the user had then that decides.

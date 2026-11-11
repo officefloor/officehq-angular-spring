@@ -104,10 +104,12 @@ public class RollupService {
 
     /**
      * Figures added up over sheets: their people (retired included), due-totals and overdue-totals;
-     * per grade the due-totals of the people on it (retired left out), and per status the count of claims in it.
+     * per grade the due-totals of the people on it (retired left out), per status the count of claims in it,
+     * and how many overdue claims that count there are.
      */
     public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
-            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts, List<TreePerson> people) {
+            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts, List<TreePerson> people,
+            int overdueCount) {
     }
 
     /**
@@ -302,15 +304,35 @@ public class RollupService {
         List<TreePerson> treePeople = new ArrayList<>();
         Map<String, BigDecimal> grades = new LinkedHashMap<>();
         Map<String, Integer> statuses = new LinkedHashMap<>();
+        int overdueCount = 0;
         for (String id : tree) {
             treePeople.addAll(treePeople(id));
+            overdueCount += overdueCount(id);
             snapshot(id).gradeDueTotals().forEach((grade, total) -> grades.merge(grade, total, BigDecimal::add));
             statusCounts(id).forEach((status, n) -> statuses.merge(status, n, Integer::sum));
         }
         BigDecimal due = Snapshot.trimmed(
                 treePeople.stream().map(TreePerson::dueTotal).filter(Objects::nonNull).toList());
         BigDecimal overdue = Snapshot.trimmed(treePeople.stream().map(TreePerson::overdueTotal).toList());
-        return new Consolidated(distinctPeople(treePeople), due, overdue, grades, statuses, treePeople);
+        return new Consolidated(distinctPeople(treePeople), due, overdue, grades, statuses, treePeople,
+                overdueCount);
+    }
+
+    /** How many of the sheet's claims that count are overdue on its today, as the people list's totals count them. */
+    public int overdueCount(String sheetId) {
+        Sheet sheet = sheet(sheetId);
+        LocalDate today = sheet.getToday();
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        int count = 0;
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            for (Claim claim : sheetClaims) {
+                if (claim.getPersonId().equals(person.getId()) && person.counts(claim, today)
+                        && overdue(sheet, person, claim)) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 
     /** Per status, how many of the sheet's claims as the store holds them are in it (retired people's included). */

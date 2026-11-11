@@ -199,9 +199,12 @@ interface Descendants {
     gradeDueTotals: Record<string, string>;
     statusCounts: Record<string, number>;
     people: TreePerson[];
+    overdueCount: number;
   } | null;
   /** Every person of the descendants, as the consolidated figures take them. */
   people: TreePerson[];
+  /** How many overdue claims that count the descendants have. */
+  overdueCount: number;
 }
 
 const NO_DESCENDANTS: Descendants = {
@@ -212,6 +215,7 @@ const NO_DESCENDANTS: Descendants = {
   statusCounts: {},
   own: null,
   people: [],
+  overdueCount: 0,
 };
 
 interface DatedHold {
@@ -302,9 +306,9 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       [watchedDueTotal]="watchedDueTotal()"
     />
     <app-dashboard
-      [pendingCount]="statusCount('PENDING')"
-      [reviewCount]="statusCount('REVIEW')"
-      [overdueCount]="overdueTotals().count"
+      [pendingCount]="treeStatusCount('PENDING')"
+      [reviewCount]="treeStatusCount('REVIEW')"
+      [overdueCount]="treeOverdueCount()"
     />
     <app-rates [(rates)]="rates" />
     <app-roles />
@@ -1464,6 +1468,16 @@ export class People {
         count: own.status(status) + (d.statusCounts[status] ?? 0),
       })),
     };
+  });
+  /** How many claims of the sheet and its descendants are in a status, as the consolidated figures count them. */
+  protected treeStatusCount(status: string): number {
+    return this.consolidated().statuses.find((s) => s.status === status)?.count ?? 0;
+  }
+  /** How many overdue claims that count the sheet and its descendants have (the sheet's own as of the date, in an as-of view). */
+  protected readonly treeOverdueCount = computed(() => {
+    const d = this.descendants();
+    const own = this.session.asOf() && d.own ? d.own.overdueCount : this.overdueTotals().count;
+    return own + d.overdueCount;
   });
   /** The person on the sheet with the user's name, by name or alias (compared without regard to case). */
   private readonly me = computed(() => {
