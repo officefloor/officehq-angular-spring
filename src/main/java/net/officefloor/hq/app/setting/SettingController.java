@@ -2,6 +2,7 @@ package net.officefloor.hq.app.setting;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
@@ -22,12 +23,13 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class SettingController {
 
-    /** The settings as shown: the clerk limit with two decimals, null when there is none. */
-    public record SettingsView(String clerkLimit) {
+    /** The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals. */
+    public record SettingsView(String clerkLimit, String floor) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null
-                    : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                    sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         }
     }
 
@@ -37,6 +39,14 @@ public class SettingController {
         BigDecimal clerkLimitValue() {
             return clerkLimit == null || clerkLimit.isBlank() ? null
                     : new BigDecimal(clerkLimit.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /** A floor of 0.00 or more with up to two decimals. */
+    public record FloorRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String floor) {
+
+        BigDecimal floorValue() {
+            return new BigDecimal(floor.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
     }
 
@@ -57,5 +67,12 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid SettingsRequest request) {
         return SettingsView.of(service.setClerkLimit(sheetId.trim(), user.trim(), request.clerkLimitValue()));
+    }
+
+    @PutMapping("/floor")
+    public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid FloorRequest request) {
+        return SettingsView.of(service.setFloor(sheetId.trim(), user.trim(), request.floorValue()));
     }
 }

@@ -6,6 +6,8 @@ import { Session } from '../../core/session';
 interface SettingsView {
   /** The highest due a clerk may settle, two decimals; null when there is no limit. */
   clerkLimit: string | null;
+  /** The least a claim's live due can be, two decimals. */
+  floor: string;
 }
 
 interface RoleView {
@@ -16,7 +18,7 @@ interface RoleView {
 
 const ROLES = ['clerk', 'steward'];
 
-// The sheet's settings (its clerk limit) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (its clerk limit and its floor) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -29,7 +31,15 @@ const ROLES = ['clerk', 'steward'];
           data-testid="setting-clerk-limit"
           inputmode="decimal"
           [value]="clerkLimit()"
-          (input)="clerkLimit.set(value($event)); settingsError.set(null)"
+          (input)="clerkLimit.set(value($event)); clerkLimitEdited = true; settingsError.set(null)"
+        />
+        <label for="setting-floor">Floor (the least a live due can be)</label>
+        <input
+          id="setting-floor"
+          data-testid="setting-floor"
+          inputmode="decimal"
+          [value]="floor()"
+          (input)="floor.set(value($event)); floorEdited = true; settingsError.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
@@ -37,6 +47,7 @@ const ROLES = ['clerk', 'steward'];
         }
       </form>
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ current() ?? '' }}</strong></p>
+      <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -85,11 +96,15 @@ const ROLES = ['clerk', 'steward'];
 })
 export class Settings {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
 
   protected readonly roles = ROLES;
   protected readonly current = signal<string | null>(null);
   protected readonly clerkLimit = signal('');
+  protected readonly floor = signal('');
+  /** Which settings were typed in since the form was last saved or read: a save sends only those. */
+  protected clerkLimitEdited = false;
+  protected floorEdited = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
   protected readonly roleUser = signal('');
@@ -106,6 +121,7 @@ export class Settings {
       this.session.loaded();
       untracked(() => {
         this.current.set(null);
+        this.session.floor.set(null);
         this.roleList.set([]);
         this.settingsError.set(null);
         this.roleError.set(null);
@@ -124,24 +140,34 @@ export class Settings {
     this.settingsError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
+    // Saving with nothing typed saves the clerk limit as it stands.
+    const saveLimit = this.clerkLimitEdited || !this.floorEdited;
+    const saveFloor = this.floorEdited;
     const limit = this.clerkLimit().trim();
-    if (limit !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(limit)) {
+    const floor = this.floor().trim();
+    if (saveLimit && limit !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more with at most two decimals, or leave it blank for no limit.');
       return;
     }
+    if (saveFloor && !/^\d{1,10}(\.\d{1,2})?$/.test(floor)) {
+      this.settingsError.set('Type a floor of 0.00 or more with at most two decimals.');
+      return;
+    }
     this.savingSettings = true;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/settings`;
     try {
-      const saved = await firstValueFrom(
-        this.http.put<SettingsView>(
-          `/api/sheets/${encodeURIComponent(sheet)}/settings`,
-          { clerkLimit: limit === '' ? null : limit },
-          this.session.headers(),
-        ),
-      );
-      if (this.session.sheet() === sheet) {
-        this.current.set(saved.clerkLimit);
-        this.clerkLimit.set(saved.clerkLimit ?? '');
+      let saved: SettingsView | null = null;
+      if (saveLimit) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(url, { clerkLimit: limit === '' ? null : limit }, this.session.headers()),
+        );
+        this.clerkLimitEdited = false;
       }
+      if (saveFloor) {
+        saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/floor`, { floor }, this.session.headers()));
+        this.floorEdited = false;
+      }
+      if (saved && this.session.sheet() === sheet) this.show(saved);
     } catch {
       this.settingsError.set('The settings could not be saved.');
     } finally {
@@ -193,9 +219,18 @@ export class Settings {
     ]).catch(() => [null, null]);
     // A later read wins over a slower earlier one.
     if (settings && roles && read === this.reads && this.session.sheet() === sheet) {
-      this.current.set(settings.clerkLimit);
-      this.clerkLimit.set(settings.clerkLimit ?? '');
+      this.show(settings);
       this.roleList.set(roles);
     }
+  }
+
+  /** Show the settings in force, and put them back in the form. */
+  private show(settings: SettingsView): void {
+    this.current.set(settings.clerkLimit);
+    this.clerkLimit.set(settings.clerkLimit ?? '');
+    this.session.floor.set(settings.floor);
+    this.floor.set(settings.floor);
+    this.clerkLimitEdited = false;
+    this.floorEdited = false;
   }
 }

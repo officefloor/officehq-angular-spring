@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods';
-import { Rate, dueOf, rateOn } from '../rates/rates';
+import { Rate, dueOf, floored, rateOn } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -36,12 +36,12 @@ export function counts(claim: Claim): boolean {
 
 /**
  * The due fixed when the claim was settled, else the one its person's last statement bound it to, else its amount
- * times its grade's rate on its date, or n/a with no rate.
+ * times its grade's rate on its date raised to the sheet's floor, or n/a with no rate.
  */
-export function claimDue(claim: Claim, rates: Rate[], grade: string): string {
+export function claimDue(claim: Claim, rates: Rate[], grade: string, floor: string | null): string {
   if (claim.settledDue !== null) return claim.settledDue;
   if (claim.stated) return claim.statedDue ?? 'n/a';
-  return dueOf(claim.amount, rateOn(rates, grade, claim.date));
+  return floored(dueOf(claim.amount, rateOn(rates, grade, claim.date)), floor);
 }
 
 /** Whether the claim's due is fixed, by settling or by a statement, rather than worked out from the rates. */
@@ -191,7 +191,7 @@ export class Claims {
 
   /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
   protected due(claim: Claim): string {
-    return claimDue(claim, this.rates(), this.grade());
+    return claimDue(claim, this.rates(), this.grade(), this.session.floor());
   }
 
   /** The name of the period the claim's date falls in, or blank when none. */

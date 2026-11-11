@@ -146,12 +146,15 @@ public class ClaimService {
         return saved;
     }
 
-    /** The claim's amount at the rate its person's grade has on its date, two decimals; null (n/a) with no rate. */
+    /**
+     * The claim's amount at the rate its person's grade has on its date, two decimals, raised to the sheet's floor;
+     * null (n/a) with no rate.
+     */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
-        return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
+        return settings.get(sheetId).floored(rates.rateOn(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .orElse(null);
+                .orElse(null));
     }
 
     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */

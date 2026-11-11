@@ -21,6 +21,8 @@ export class Session {
   readonly showRetired = signal(false);
   /** Counts completed sheet loads, so the screen re-reads the sheet's data even for the same id. */
   readonly loaded = signal(0);
+  /** The active sheet's floor (two decimals): a live due is at least it; null until the settings are read. */
+  readonly floor = signal<string | null>(null);
   private loads = 0;
 
   signIn(name: string): void {

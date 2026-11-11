@@ -42,6 +42,12 @@ export function dueOf(amount: string, pct: string | undefined): string {
   return `${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`;
 }
 
+/** The due raised to the floor when below it; n/a, or no floor, leaves it as it is. */
+export function floored(due: string, floor: string | null): string {
+  if (due === 'n/a' || floor === null) return due;
+  return hundredths(due) < hundredths(floor) ? floor : due;
+}
+
 /** Adds dues with two decimals exactly, skipping the n/a ones. */
 export function sumDues(dues: string[]): string {
   const cents = dues.filter((d) => d !== 'n/a').reduce((total, d) => total + hundredths(d), 0n);

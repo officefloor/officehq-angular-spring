@@ -26,6 +26,10 @@ public class SheetService {
         return sheets.findById(id).orElseGet(() -> start(id, user));
     }
 
+    public Sheet get(String id) {
+        return sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
+    }
+
     /** The sheet's today: use it for every date-dependent decision and default date. */
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(() -> new SheetNotFoundException(id));

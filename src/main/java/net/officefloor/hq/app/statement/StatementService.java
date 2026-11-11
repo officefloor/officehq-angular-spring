@@ -100,7 +100,7 @@ public class StatementService {
 
     /**
      * The due the claim shows now: the due fixed when it was settled, else the one its last statement bound it to,
-     * else its amount times its grade's rate on its date; empty when it has none (n/a).
+     * else its amount times its grade's rate on its date raised to the sheet's floor; empty when it has none (n/a).
      */
     private Optional<BigDecimal> dueOf(String sheetId, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
@@ -111,6 +111,7 @@ public class StatementService {
         }
         return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN));
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(sheets.get(sheetId)::floored);
     }
 }

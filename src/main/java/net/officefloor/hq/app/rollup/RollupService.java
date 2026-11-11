@@ -54,7 +54,8 @@ public class RollupService {
 
     /** The sheet's figures now; empty when the sheet does not exist. */
     public Snapshot snapshot(String sheetId) {
-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
         Map<Long, List<Claim>> counted = new LinkedHashMap<>();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
@@ -77,7 +78,7 @@ public class RollupService {
                 if (claim.getSettledDue() != null || claim.getStatedDue() != null) {
                     anyDue = true;
                 }
-                Optional<BigDecimal> claimDue = dueOf(sheetRates, person, claim);
+                Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
                 if (claimDue.isPresent()) {
                     due = due.add(claimDue.get());
                 }
@@ -96,6 +97,7 @@ public class RollupService {
      * and SETTLED claims dated in them, skipping those with no due and the OPEN ones of a person on hold.
      */
     public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
         Map<Long, Person> byId = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
@@ -108,7 +110,7 @@ public class RollupService {
                     || claim.getDate().isAfter(to)) {
                 continue;
             }
-            Optional<BigDecimal> due = dueOf(sheetRates, person, claim);
+            Optional<BigDecimal> due = dueOf(sheet, sheetRates, person, claim);
             if (due.isPresent()) {
                 total = total.add(due.get());
             }
@@ -138,8 +140,11 @@ public class RollupService {
         }
     }
 
-    /** As on the screen: the settled due, else the stated one, else the amount at the rate on the claim's date. */
-    private static Optional<BigDecimal> dueOf(List<Rate> sheetRates, Person person, Claim claim) {
+    /**
+     * As on the screen: the settled due, else the stated one, else the amount at the rate on the claim's date raised
+     * to the sheet's floor.
+     */
+    private static Optional<BigDecimal> dueOf(Sheet sheet, List<Rate> sheetRates, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
             return Optional.of(claim.getSettledDue());
         }
@@ -148,7 +153,8 @@ public class RollupService {
         }
         return rateOn(sheetRates, person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN));
+                .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(due -> sheet == null ? due : sheet.floored(due));
     }
 
     private static Optional<Rate> rateOn(List<Rate> sheetRates, String grade, LocalDate date) {

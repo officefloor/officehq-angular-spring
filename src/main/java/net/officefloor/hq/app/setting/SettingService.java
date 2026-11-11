@@ -2,22 +2,25 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the sheet's settings: its clerk limit. */
+/** Keeps the sheet's settings: its clerk limit and its floor. */
 @Service
 public class SettingService {
 
     private final SheetRepository sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
-    public SettingService(SheetRepository sheets, Audit audit) {
+    public SettingService(SheetRepository sheets, Audit audit, RollupService rollup) {
         this.sheets = sheets;
         this.audit = audit;
+        this.rollup = rollup;
     }
 
     public Sheet get(String sheetId) {
@@ -32,6 +35,19 @@ public class SettingService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=clerk-limit value="
                 + (limit == null ? "" : limit.toPlainString()));
+        return saved;
+    }
+
+    /** Set the floor, the least a live due can be. Every save is recorded, then the figures it moved. */
+    @Transactional
+    public Sheet setFloor(String sheetId, String user, BigDecimal floor) {
+        Sheet sheet = get(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setFloor(floor);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=floor value="
+                + floor.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 }

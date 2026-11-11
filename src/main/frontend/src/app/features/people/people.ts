@@ -229,7 +229,7 @@ export class People {
       if (!period || person === undefined || !live(c, person.held)) continue;
       const grade = person.grade;
       const list = dues.get(period.name) ?? [];
-      list.push(claimDue(c, this.rates(), grade));
+      list.push(claimDue(c, this.rates(), grade, this.session.floor()));
       dues.set(period.name, list);
     }
     return new Map([...dues].map(([name, list]) => [name, sumDues(list)]));
@@ -309,7 +309,7 @@ export class People {
   protected dueTotalOf(person: Person): string {
     const counted = this.claimsOf(person.id).filter((c) => live(c, person.held));
     if (this.rateOf(person.grade) === undefined && !counted.some(dueFixed)) return 'n/a';
-    return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade)));
+    return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade, this.session.floor())));
   }
 
   /** Show a set rate at once, then re-read so the screen holds what the store does. */
