@@ -8,9 +8,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adds a person per pasted line of name,grade,terms,contact, in order, each as the person form would (the terms and
- * the contact may be absent or blank). Every line is checked first with the person form's rules, and a name or a
- * contact repeated within the paste is refused too. The whole is one change: if any line is refused, nothing is added.
+ * Adds or updates a person per pasted line of name,grade,terms,contact, in order, each as the person form would (the
+ * terms and the contact may be absent or blank). A line whose name matches a person on the sheet, by name or alias,
+ * updates them: their grade is recorded from the sheet's today, and their terms and contact are set when the line
+ * gives them. Every other line adds a person. Every line is checked first with the person form's rules, and a person
+ * or a contact repeated within the paste is refused too. The whole is one change: if any line is refused, nothing is
+ * imported.
  */
 @Service
 public class ImportPeopleService {
@@ -22,15 +25,19 @@ public class ImportPeopleService {
     private record Line(int number, String name, String grade, Integer terms, String contact) {
     }
 
+    /** How many people an import added and how many it updated. */
+    public record Result(int added, int updated) {
+    }
+
     private final PersonService people;
 
     public ImportPeopleService(PersonService people) {
         this.people = people;
     }
 
-    /** How many people were added. */
+    /** How many people were added and how many updated. */
     @Transactional
-    public int importPeople(String sheetId, String user, String text) {
+    public Result importPeople(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
         String[] rows = text.split("\\r?\\n");
         for (int i = 0; i < rows.length; i++) {
@@ -43,10 +50,14 @@ public class ImportPeopleService {
         }
         Set<String> names = new HashSet<>();
         Set<String> contacts = new HashSet<>();
+        List<Person> matches = new ArrayList<>();
         for (Line line : lines) {
             String key = Person.key(line.name());
-            if (!names.add(key) || people.findByNameOrAlias(sheetId, line.name()).isPresent()
-                    || people.usedInTree(sheetId, key, null)) {
+            Person match = people.findByNameOrAlias(sheetId, line.name()).orElse(null);
+            matches.add(match);
+            // A person named twice, by their name or an alias, is a repeat as much as a new name given twice.
+            if (!names.add(match != null ? "#" + match.getId() : key)
+                    || match == null && people.usedInTree(sheetId, key, null)) {
                 throw new ImportPeopleException(line.number(), "the name " + line.name().trim() + " is already in use");
             }
             String contactKey = Person.contactKey(line.contact());
@@ -54,11 +65,23 @@ public class ImportPeopleService {
                 throw new ImportPeopleException(line.number(), "the contact " + contactKey + " is already in use");
             }
         }
-        // Each person is checked again as the person form's are; a refused one rolls back those added before it.
-        for (Line line : lines) {
-            people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact());
+        // Each person is checked again as the person form's are; a refused one rolls back those imported before it.
+        int added = 0;
+        int updated = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            Line line = lines.get(i);
+            Person match = matches.get(i);
+            if (match == null) {
+                people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact());
+                added++;
+            } else {
+                people.update(sheetId, user, match.getId(), null, match.getName(), line.grade(), null,
+                        line.terms() != null ? line.terms() : match.getTerms(),
+                        line.contact().isBlank() ? match.getContact() : line.contact());
+                updated++;
+            }
         }
-        return lines.size();
+        return new Result(added, updated);
     }
 
     private static Line parse(int number, String row) {

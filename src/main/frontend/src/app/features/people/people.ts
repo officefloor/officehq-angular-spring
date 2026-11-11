@@ -238,7 +238,8 @@ function csvField(value: string): string {
         ></textarea>
         <button type="submit" data-testid="import-submit">Import people</button>
         @if (importAdded() !== null) {
-          Added <strong data-testid="import-added">{{ importAdded() }}</strong>
+          Added <strong data-testid="import-added">{{ importAdded() }}</strong>,
+          updated <strong data-testid="import-updated">{{ importUpdated() }}</strong>
         }
         @if (importError(); as message) {
           <p role="alert" data-testid="import-error">{{ message }}</p>
@@ -789,9 +790,13 @@ export class People {
   protected readonly pasteAdded = signal<number | null>(null);
   protected readonly pasteError = signal<string | null>(null);
   private pasting = false;
-  /** The import box: its lines, how many its last import added (null while it runs and before the first), its error. */
+  /**
+   * The import box: its lines, how many its last import added and updated (null while it runs and before the first),
+   * its error.
+   */
   protected readonly importText = signal('');
   protected readonly importAdded = signal<number | null>(null);
+  protected readonly importUpdated = signal<number | null>(null);
   protected readonly importError = signal<string | null>(null);
   private importing = false;
   /** The error of the last action on a person's row that was refused, and the person it belongs to. */
@@ -873,6 +878,7 @@ export class People {
         this.pasteError.set(null);
         this.importText.set('');
         this.importAdded.set(null);
+        this.importUpdated.set(null);
         this.importError.set(null);
         if (sheet) void this.read(sheet);
       });
@@ -1667,14 +1673,15 @@ export class People {
   }
 
   /**
-   * Add a person per pasted line of name,grade,terms,contact, in order, each as the person form would.
-   * Refused as a whole when any line would be.
+   * Add or update a person per pasted line of name,grade,terms,contact, in order, each as the person form would: a
+   * line naming a person on the sheet updates them. Refused as a whole when any line would be.
    */
   protected async importPeople(event: Event): Promise<void> {
     event.preventDefault();
     if (this.importing) return;
     this.importError.set(null);
     this.importAdded.set(null);
+    this.importUpdated.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const text = this.importText();
@@ -1685,7 +1692,7 @@ export class People {
     this.importing = true;
     try {
       const result = await firstValueFrom(
-        this.http.post<{ added: number }>(
+        this.http.post<{ added: number; updated: number }>(
           `/api/sheets/${encodeURIComponent(sheet)}/people/import`,
           { text },
           this.session.headers(),
@@ -1695,6 +1702,7 @@ export class People {
       this.importText.set('');
       await this.read(sheet);
       this.importAdded.set(result.added);
+      this.importUpdated.set(result.updated);
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
       const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';

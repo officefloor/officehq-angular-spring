@@ -117,10 +117,6 @@ public class PersonController {
     public record ImportRequest(@NotNull @Size(max = 1000000) String text) {
     }
 
-    /** How many people an import added. */
-    public record ImportResult(int added) {
-    }
-
     private final PersonService service;
     private final StatementService statements;
     private final SheetService sheets;
@@ -170,12 +166,15 @@ public class PersonController {
                 request.termsValue(), request.contact()), user.trim());
     }
 
-    /** Add a person per pasted line, in order, each as the person form would; refused as a whole when any line is. */
+    /**
+     * Add or update a person per pasted line, in order, each as the person form would; refused as a whole when any
+     * line is.
+     */
     @PostMapping("/import")
-    public ImportResult importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+    public ImportPeopleService.Result importPeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ImportRequest request) {
-        return new ImportResult(imports.importPeople(sheetId.trim(), user.trim(), request.text()));
+        return imports.importPeople(sheetId.trim(), user.trim(), request.text());
     }
 
     /** Saves the person; with a version, only when it is still the version stored. */
