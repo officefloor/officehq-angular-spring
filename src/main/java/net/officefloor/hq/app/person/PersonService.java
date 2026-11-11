@@ -43,6 +43,12 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+        return add(sheetId, user, name, grade, terms, null);
+    }
+
+    /** Add the person with their contact (blank: none), refused when another person on the sheet has it. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException(sheetId);
         }
@@ -50,12 +56,18 @@ public class PersonService {
         if (people.existsBySheetIdAndNameKey(sheetId, Person.key(name))) {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
+        String contactKey = Person.contactKey(contact);
+        if (contactKey != null && people.existsBySheetIdAndContact(sheetId, contactKey)) {
+            throw new PersonContactTakenException(sheetId, contactKey);
+        }
         Person person = new Person(sheetId, name, grade);
         person.setTerms(terms);
+        person.setContact(contactKey);
         person.setAddedOn(sheetService.today(sheetId));
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_ADDED", user, saved, grade)
-                + (terms != null ? " terms=" + terms : ""));
+                + (terms != null ? " terms=" + terms : "")
+                + (contactKey != null ? " contact=" + contactKey : ""));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -64,10 +76,10 @@ public class PersonService {
     /**
      * Save the person. The grade is recorded from the from-date (null: the sheet's today), keeping the grades
      * already recorded; a save leaving the grade as it is in force today, with no from-date, records none. The
-     * terms (null: none) replace the person's own.
+     * terms (null: none) and the contact (blank: none) replace the person's own.
      */
     public Person update(String sheetId, String user, Long id, Long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
@@ -77,16 +89,23 @@ public class PersonService {
         if (people.existsBySheetIdAndNameKeyAndIdNot(sheetId, Person.key(name), id)) {
             throw new PersonNameTakenException(sheetId, name.trim());
         }
+        String contactKey = Person.contactKey(contact);
+        if (contactKey != null && people.existsBySheetIdAndContactAndIdNot(sheetId, contactKey, id)) {
+            throw new PersonContactTakenException(sheetId, contactKey);
+        }
         LocalDate today = sheetService.today(sheetId);
         Integer termsBefore = person.getTerms();
+        String contactBefore = person.getContact();
         person.setName(name);
         person.setTerms(terms);
+        person.setContact(contactKey);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", user, saved, saved.gradeOn(today))
-                + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : "")));
+                + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : ""))
+                + (Objects.equals(contactBefore, contactKey) ? "" : " contact=" + (contactKey != null ? contactKey : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -171,7 +190,11 @@ public class PersonService {
         try {
             return people.saveAndFlush(person);
         } catch (DataIntegrityViolationException e) {
-            // Another user took the name at the same moment: the unique index refused it.
+            // Another user took the name or the contact at the same moment: a unique index refused it.
+            if (person.getContact() != null && !people.existsBySheetIdAndNameKeyAndIdNot(person.getSheetId(),
+                    Person.key(person.getName()), person.getId() == null ? -1L : person.getId())) {
+                throw new PersonContactTakenException(person.getSheetId(), person.getContact());
+            }
             throw new PersonNameTakenException(person.getSheetId(), person.getName());
         } catch (ObjectOptimisticLockingFailureException e) {
             // Another user saved the person at the same moment.

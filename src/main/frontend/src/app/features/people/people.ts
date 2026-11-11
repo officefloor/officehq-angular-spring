@@ -18,6 +18,8 @@ interface Person {
   grades: PersonGrade[];
   /** The person's own terms in whole days; null when they have none. */
   terms: number | null;
+  /** The person's contact, trimmed and lower-cased; null when they have none. */
+  contact: string | null;
   /** Raised on each save; the editor sends back the one it loaded. */
   version: number;
   /** How many statements the person has had. */
@@ -142,6 +144,13 @@ function csvField(value: string): string {
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
         />
+        <label for="person-form-contact">Contact (blank: none)</label>
+        <input
+          id="person-form-contact"
+          data-testid="person-form-contact"
+          [value]="contact()"
+          (input)="contact.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -204,7 +213,7 @@ function csvField(value: string): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
-            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>
+            <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Settled</th><th scope="col">Open</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
             }
@@ -231,6 +240,7 @@ function csvField(value: string): string {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueTotalOf(p) }}</td>
               <td data-testid="person-settled-total">{{ settledTotalOf(p) }}</td>
@@ -637,6 +647,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in whole days; blank for none. */
   protected readonly terms = signal('');
+  /** The person's contact; blank for none. */
+  protected readonly contact = signal('');
   /** The id of the person whose editor is open, or null when the form adds a person. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded. */
@@ -1251,6 +1263,7 @@ export class People {
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set('');
     this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.contact.set(person.contact ?? '');
     this.error.set(null);
   }
 
@@ -1266,6 +1279,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.contact.set('');
     this.error.set(null);
   }
 
@@ -1281,6 +1295,7 @@ export class People {
       grade: this.grade(),
       gradeFrom: this.gradeFrom() || null,
       terms: this.terms().trim() || null,
+      contact: this.contact().trim() || null,
       version: editing === null ? null : this.editingVersion,
     };
     if (!body.name.trim()) {
@@ -1316,6 +1331,8 @@ export class People {
         await this.reloadEditor(sheet, editing);
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
         this.refuse('Another person on the sheet already has that name.');
+      } else if (e instanceof HttpErrorResponse && e.status === 422) {
+        this.refuse('Another person on the sheet already has that contact.');
       } else {
         this.refuse(editing === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
@@ -1425,6 +1442,7 @@ export class People {
       this.name.set(person.name);
       this.grade.set(this.gradeOf(person));
       this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.contact.set(person.contact ?? '');
     }
   }
 

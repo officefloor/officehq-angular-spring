@@ -41,14 +41,14 @@ public class PersonController {
 
     /**
      * A person as shown, with their grade in force on the sheet's today and every grade with its from-date, with how many statements they have had and the due-total and date of the last one. */
-    public record PersonView(Long id, String name, String grade, Integer terms, long version, int statementCount,
+    public record PersonView(Long id, String name, String grade, Integer terms, String contact, long version, int statementCount,
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<GradeView> grades, List<HoldView> holds, boolean watched) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
                 boolean watched) {
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today), person.getTerms(),
-                    person.getVersion(),
+                    person.getContact(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(),
                     person.isRetired(), person.getRetiredFrom(), person.isHeld(), patronIds,
                     person.getGrades().stream().map(g -> new GradeView(g.getGrade(), g.getFromDate())).toList(),
@@ -62,6 +62,7 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms,
+            @Size(max = 200) String contact,
             Long version) {
 
         /** The person's own terms in whole days; null when blank. */
@@ -133,7 +134,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
         return view(service.add(sheetId.trim(), user.trim(), request.name(), request.grade(),
-                request.termsValue()), user.trim());
+                request.termsValue(), request.contact()), user.trim());
     }
 
     /** Saves the person; with a version, only when it is still the version stored. */
@@ -143,7 +144,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PersonRequest request) {
         return view(service.update(sheetId.trim(), user.trim(), id, request.version(), request.name(),
-                request.grade(), request.gradeFrom(), request.termsValue()), user.trim());
+                request.grade(), request.gradeFrom(), request.termsValue(), request.contact()), user.trim());
     }
 
     /** Give the selected people a grade from a date, in list order, each as the person form would. */

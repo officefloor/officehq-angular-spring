@@ -48,6 +48,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's contact, trimmed and lower-cased; null when they have none. */
+    @Column(name = "contact")
+    private String contact;
+
     /** The date the person is retired from; null while not retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -138,6 +142,20 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    public String getContact() {
+        return contact;
+    }
+
+    /** Keeps the contact trimmed and lower-cased; a blank one is none. */
+    public void setContact(String contact) {
+        this.contact = contactKey(contact);
+    }
+
+    /** The contact as kept: trimmed and lower-cased; null when blank. */
+    public static String contactKey(String contact) {
+        return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
     }
 
     public LocalDate getRetiredFrom() {

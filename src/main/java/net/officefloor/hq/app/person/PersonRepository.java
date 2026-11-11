@@ -24,5 +24,10 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
 
     boolean existsBySheetIdAndNameKey(String sheetId, String nameKey);
 
+    /** Whether a person on the sheet, other than the one with this id, has the contact. */
+    boolean existsBySheetIdAndContactAndIdNot(String sheetId, String contact, Long id);
+
+    boolean existsBySheetIdAndContact(String sheetId, String contact);
+
     Optional<Person> findBySheetIdAndNameKey(String sheetId, String nameKey);
 }

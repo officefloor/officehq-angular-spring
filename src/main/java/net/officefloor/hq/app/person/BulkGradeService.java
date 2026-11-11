@@ -49,7 +49,8 @@ public class BulkGradeService {
             throw new PersonNotFoundException(sheetId, missing);
         }
         for (Person person : ordered) {
-            service.update(sheetId, user, person.getId(), null, person.getName(), grade, from, person.getTerms());
+            service.update(sheetId, user, person.getId(), null, person.getName(), grade, from, person.getTerms(),
+                    person.getContact());
         }
         return new Result(ordered.size());
     }
