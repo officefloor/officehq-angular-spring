@@ -71,6 +71,10 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** The business days after its date its due-by was fixed with; a holiday added later works the due-by out again with them. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
+
     /** The date that decides how the claim's live figures round: its own date, or a correction's corrected claim's. */
     @Column(name = "rounding_date", nullable = false)
     private LocalDate roundingDate;
@@ -186,6 +190,14 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
     }
 
     public LocalDate getRoundingDate() {

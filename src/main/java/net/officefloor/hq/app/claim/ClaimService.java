@@ -156,7 +156,8 @@ public class ClaimService {
         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
         // Due by its person's terms on its date in business days after it, skipping the sheet's holidays now, fixed from now on;
         // its period is the one of its due-by.
-        LocalDate dueBy = dueByOf(sheetId, person, dated);
+        int terms = termsFor(sheetId, person, dated);
+        LocalDate dueBy = holidays.businessDaysAfter(sheetId, dated, terms);
         periods.requireOpen(sheetId, dueBy);
         person.requireClaimable(dated);
         LocalDate correctedDate = requireCorrection(sheetId, personId, amount, corrects);
@@ -164,6 +165,7 @@ public class ClaimService {
         claim.setCorrects(corrects);
         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
         claim.setDueBy(dueBy);
+        claim.setTerms(terms);
         // Taking the next list place locks the sheet, so two adds of the same reference do not both pass the check.
         claim.setListed(sheets.nextListed(sheetId));
         String reference = refOf(ref);
@@ -595,7 +597,8 @@ public class ClaimService {
         Claim kept = claims.saveAndFlush(claim);
         Claim part = new Claim(sheetId, kept.getPersonId(), amount, kept.getDate(), kept.getNote());
         part.setRoundingDate(kept.getRoundingDate());
-        part.setDueBy(dueByOf(sheetId, person, kept.getDate()));
+        part.setTerms(termsFor(sheetId, person, kept.getDate()));
+        part.setDueBy(holidays.businessDaysAfter(sheetId, kept.getDate(), part.getTerms()));
         part.setListed(sheets.nextListed(sheetId));
         part.setLateEntry(periods.softClosedOn(sheetId, part.getDueBy()));
         part.setStatus(ClaimStatus.OPEN);
@@ -833,11 +836,6 @@ public class ClaimService {
             return sheets.nextSequenceNumber(sheetId, periods.nameOn(sheetId, date).orElse("X"));
         }
         return String.valueOf(sheets.nextClaimNumber(sheetId));
-    }
-
-    /** The person's terms on the date counted as business days after it, skipping the sheet's holidays. */
-    private LocalDate dueByOf(String sheetId, Person person, LocalDate date) {
-        return holidays.businessDaysAfter(sheetId, date, termsFor(sheetId, person, date));
     }
 
     /** The terms of the person on the date: their own, else their grade's on that date, else the sheet's then. */
