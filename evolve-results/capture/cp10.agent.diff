@@ -1,0 +1,156 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 0b05b608d..bda9f65e8 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -15,6 +15,8 @@ export interface Claim {
+   status: ClaimStatus;
+   /** Given when the claim is opened; null for a DRAFT and once voided. */
+   number: number | null;
++  /** The due fixed when the claim was settled, two decimals; null when it has none and its due is live. */
++  settledDue: string | null;
+ }
+ 
+ /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
+@@ -154,9 +156,9 @@ export class Claims {
+     return `claim-form-${field}-${this.personId()}`;
+   }
+ 
+-  /** The claim's amount times the rate, or n/a with no rate. */
++  /** The due fixed when the claim was settled, else its amount times the rate, or n/a with no rate. */
+   protected due(claim: Claim): string {
+-    return dueOf(claim.amount, this.pct());
++    return claim.settledDue ?? dueOf(claim.amount, this.pct());
+   }
+ 
+   protected value(event: Event): string {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c5bf61114..c225ab18a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -43,6 +43,10 @@ public class Claim {
+     @Column(name = "claim_number")
+     private Long number;
+ 
++    /** The due fixed when the claim is settled; null otherwise, or when the grade had no rate then. */
++    @Column(name = "settled_due", precision = 14, scale = 2)
++    private BigDecimal settledDue;
++
+     protected Claim() {
+     }
+ 
+@@ -105,4 +109,12 @@ public class Claim {
+     public void setNumber(Long number) {
+         this.number = number;
+     }
++
++    public BigDecimal getSettledDue() {
++        return settledDue;
++    }
++
++    public void setSettledDue(BigDecimal settledDue) {
++        this.settledDue = settledDue;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 1a0e4cd99..beb600b6c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -27,14 +27,18 @@ import org.springframework.web.bind.annotation.RestController;
+ @Validated
+ public class ClaimController {
+ 
+-    /** A claim as shown: the amount with two decimals, the date as yyyy-mm-dd. */
++    /**
++     * A claim as shown: the amount with two decimals, the date as yyyy-mm-dd, and the due fixed when it was
++     * settled (null when it has none, so its due is worked out from the current rate).
++     */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
+-            Long number) {
++            Long number, String settledDue) {
+ 
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(),
+                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+-                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
++                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
++                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index de1b66314..e6ed778d5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -8,6 +8,8 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.rate.RateRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -18,12 +20,15 @@ public class ClaimService {
+ 
+     private final ClaimRepository claims;
+     private final PersonRepository people;
++    private final RateRepository rates;
+     private final SheetService sheets;
+     private final Audit audit;
+ 
+-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
++    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
++            Audit audit) {
+         this.claims = claims;
+         this.people = people;
++        this.rates = rates;
+         this.sheets = sheets;
+         this.audit = audit;
+     }
+@@ -63,7 +68,19 @@ public class ClaimService {
+         if (!claim.getStatus().canMoveTo(status)) {
+             throw new ClaimStatusException(id, claim.getStatus(), status);
+         }
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+         claim.setStatus(status);
++        // Settling fixes the due at the rate the person's grade has now; with no rate it stays live.
++        String due = "";
++        if (status == ClaimStatus.SETTLED) {
++            BigDecimal settledDue = rates.findBySheetIdAndGrade(sheetId, person.getGrade())
++                    .map(Rate::getPct)
++                    .map(pct -> claim.getAmount().multiply(pct).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
++                    .orElse(null);
++            claim.setSettledDue(settledDue);
++            due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
++        }
+         // The CLAIM_VOIDED record carries the number the claim had.
+         Long number = claim.getNumber();
+         if (status == ClaimStatus.OPEN) {
+@@ -73,15 +90,13 @@ public class ClaimService {
+             claim.setNumber(null);
+         }
+         Claim saved = claims.saveAndFlush(claim);
+-        Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
+-                .orElseThrow(() -> new PersonNotFoundException(sheetId, saved.getPersonId()));
+         String event = switch (status) {
+             case OPEN -> "CLAIM_OPENED";
+             case SETTLED -> "CLAIM_SETTLED";
+             case VOID -> "CLAIM_VOIDED";
+             case DRAFT -> throw new IllegalStateException();
+         };
+-        audit.recordOnCommit(record(event, user, person, saved) + numberOf(number));
++        audit.recordOnCommit(record(event, user, person, saved) + numberOf(number) + due);
+         return saved;
+     }
+ 
+diff --git a/src/main/resources/db/migration/V9__claim_settled_due.sql b/src/main/resources/db/migration/V9__claim_settled_due.sql
+new file mode 100644
+index 000000000..0fe2816fc
+--- /dev/null
++++ b/src/main/resources/db/migration/V9__claim_settled_due.sql
+@@ -0,0 +1,4 @@
++-- A claim's due as it was when it was settled: its amount times its person's grade's rate then,
++-- rounded half up to cents. Null while the claim is not settled, or when the grade had no rate
++-- (that due stays live).
++ALTER TABLE claim ADD COLUMN settled_due DECIMAL(14, 2);
