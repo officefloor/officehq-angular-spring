@@ -67,7 +67,7 @@ public class ClaimController {
             @PathVariable Long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
-        return ClaimView.of(service.add(sheetId.trim(), personId, request.amountValue(), request.date(),
+        return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.date(),
                 request.note()));
     }
 
@@ -76,7 +76,7 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ClaimRequest request) {
-        return ClaimView.of(service.update(sheetId.trim(), id, request.amountValue(), request.date(),
+        return ClaimView.of(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
                 request.note()));
     }
 }
