@@ -258,9 +258,9 @@ function csvField(value: string): string {
           [value]="pasteText()"
           (input)="pasteText.set(value($event)); pasteError.set(null)"
         ></textarea>
-        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        <button type="submit" data-testid="paste-submit">Add and open pasted claims</button>
         @if (pasteAdded() !== null) {
-          Added <strong data-testid="paste-added">{{ pasteAdded() }}</strong>
+          Lines through <strong data-testid="paste-added">{{ pasteAdded() }}</strong>
         }
         @if (pasteError(); as message) {
           <p role="alert" data-testid="paste-error">{{ message }}</p>
@@ -2043,8 +2043,9 @@ export class People {
   }
 
   /**
-   * Add a DRAFT claim per pasted line of name,amount,date,note, in order, for the person of that name on the sheet.
-   * Refused as a whole when any line would be.
+   * Add and open a claim per pasted line of name,amount,date,note, in order, for the person of that name on the sheet;
+   * a line matching one of their DRAFTs by date and note updates and opens it instead. Refused as a whole when any
+   * line would be.
    */
   protected async pasteClaims(event: Event): Promise<void> {
     event.preventDefault();
@@ -2074,7 +2075,7 @@ export class People {
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
       const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
-      this.pasteError.set('The pasted claims could not be added; none were.' + detail);
+      this.pasteError.set('The pasted claims could not be added and opened; none were.' + detail);
     } finally {
       this.pasting = false;
     }

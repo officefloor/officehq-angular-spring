@@ -288,6 +288,18 @@ public class ClaimService {
         return saved;
     }
 
+    /** Edit a DRAFT claim's amount, keeping its other fields, as its editor would; nothing when the amount is the same. */
+    @Transactional
+    public Claim editAmount(String sheetId, String user, Long id, BigDecimal amount) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (amount.compareTo(claim.getAmount()) == 0) {
+            return claim;
+        }
+        return update(sheetId, user, id, amount, claim.getDate(), claim.getNote(), claim.getCorrects(), claim.getRef(),
+                claim.getTags());
+    }
+
     /**
      * Open the claim's editor for the user, locking the claim against other users' edits until it is saved or
      * cancelled, or the sheet's today changes. Refused, taking no lock, for a claim that cannot be edited: not a DRAFT,
