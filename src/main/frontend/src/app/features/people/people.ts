@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, sumAmounts } from '../claims/claims';
+import { Claim, Claims, counts, sumAmounts } from '../claims/claims';
 import { Rate, Rates, dueOf, sumDues } from '../rates/rates';
 
 interface Person {
@@ -108,7 +108,7 @@ export class People {
     }
     return by;
   });
-  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().map((c) => c.amount)));
+  protected readonly claimedTotal = computed(() => sumAmounts(this.claims().filter(counts).map((c) => c.amount)));
   /** The sheet's rates, one per grade that has one. */
   protected readonly rates = signal<Rate[]>([]);
   private readonly rateByGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.pct])));
@@ -143,9 +143,9 @@ export class People {
     return this.claimsByPerson().get(personId) ?? [];
   }
 
-  /** The sum of the person's claims' amounts, with two decimals. */
+  /** The sum of the person's OPEN and SETTLED claims' amounts, with two decimals. */
   protected claimedBy(personId: number): string {
-    return sumAmounts(this.claimsOf(personId).map((c) => c.amount));
+    return sumAmounts(this.claimsOf(personId).filter(counts).map((c) => c.amount));
   }
 
   /** The rate for a grade, or undefined when it has none. */

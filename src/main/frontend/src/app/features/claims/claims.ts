@@ -12,7 +12,18 @@ export interface Claim {
   /** yyyy-mm-dd */
   date: string;
   note: string;
+  status: ClaimStatus;
 }
+
+/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** Whether a claim counts toward claimed and the totals: only OPEN and SETTLED ones do. */
+export function counts(claim: Claim): boolean {
+  return claim.status === 'OPEN' || claim.status === 'SETTLED';
+}
+
+type ClaimAction = 'open' | 'settle' | 'void';
 
 /** Sums amounts with two decimals exactly, in whole cents. */
 export function sumAmounts(amounts: string[]): string {
@@ -62,6 +73,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
+            <th scope="col">Status</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -72,6 +84,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
+              <td data-testid="claim-status">{{ c.status }}</td>
               <td>
                 <button
                   type="button"
@@ -83,6 +96,21 @@ export function sumAmounts(amounts: string[]): string {
                 </button>
                 @if (editing() === c.id) {
                   <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+                }
+                @for (a of actions; track a.action) {
+                  <button
+                    type="button"
+                    [attr.data-testid]="'claim-' + a.action"
+                    [attr.aria-label]="a.label + ' claim of ' + c.amount + ' on ' + c.date"
+                    (click)="act(c, a.action)"
+                  >
+                    {{ a.label }}
+                  </button>
+                }
+                @if (actionError(); as e) {
+                  @if (e.id === c.id) {
+                    <p role="alert" data-testid="claim-error">{{ e.message }}</p>
+                  }
                 }
               </td>
             </tr>
@@ -102,7 +130,7 @@ export class Claims {
   readonly claims = input.required<Claim[]>();
   /** The rate for the person's grade, or undefined when the grade has no rate. */
   readonly pct = input<string>();
-  /** A claim was added or saved. */
+  /** A claim was added, saved or changed status. */
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -111,6 +139,13 @@ export class Claims {
   /** The id of the claim whose editor is open, or null when the form adds a claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** The error of the last status change refused, and the claim it belongs to. */
+  protected readonly actionError = signal<{ id: number; message: string } | null>(null);
+  protected readonly actions: { action: ClaimAction; label: string }[] = [
+    { action: 'open', label: 'Open' },
+    { action: 'settle', label: 'Settle' },
+    { action: 'void', label: 'Void' },
+  ];
 
   protected fieldId(field: string): string {
     return `claim-form-${field}-${this.personId()}`;
@@ -131,6 +166,7 @@ export class Claims {
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.error.set(null);
+    this.actionError.set(null);
   }
 
   protected reset(): void {
@@ -139,6 +175,20 @@ export class Claims {
     this.date.set('');
     this.note.set('');
     this.error.set(null);
+  }
+
+  /** Open, settle or void a claim; the store refuses a change its status does not allow. */
+  protected async act(claim: Claim, action: ClaimAction): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/${action}`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, null, this.session.headers()));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch {
+      this.actionError.set({ id: claim.id, message: `This claim's status does not let it be ${pastOf[action]}.` });
+    }
   }
 
   protected async submit(event: Event): Promise<void> {
@@ -174,3 +224,5 @@ export class Claims {
     }
   }
 }
+
+const pastOf: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };

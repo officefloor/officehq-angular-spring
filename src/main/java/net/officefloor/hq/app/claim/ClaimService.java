@@ -55,6 +55,28 @@ public class ClaimService {
         return saved;
     }
 
+    /** Move a claim to another status, if its current one allows it; refused otherwise. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (!claim.getStatus().canMoveTo(status)) {
+            throw new ClaimStatusException(id, claim.getStatus(), status);
+        }
+        claim.setStatus(status);
+        Claim saved = claims.saveAndFlush(claim);
+        Person person = people.findByIdAndSheetId(saved.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, saved.getPersonId()));
+        String event = switch (status) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException();
+        };
+        audit.recordOnCommit(record(event, user, person, saved));
+        return saved;
+    }
+
     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */
     private static String record(String event, String user, Person person, Claim claim) {
         return event + " sheet=" + claim.getSheetId() + " by=" + user + " person=" + person.getName()

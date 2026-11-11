@@ -28,12 +28,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as shown: the amount with two decimals, the date as yyyy-mm-dd. */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    claim.getDate(), claim.getNote());
+                    claim.getDate(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -78,5 +78,29 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), id, request.amountValue(), request.date(),
                 request.note()));
+    }
+
+    /** Open a DRAFT claim. */
+    @PostMapping("/claims/{id}/open")
+    public ClaimView open(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
+    }
+
+    /** Settle an OPEN claim. */
+    @PostMapping("/claims/{id}/settle")
+    public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
+    }
+
+    /** Void a DRAFT or OPEN claim. */
+    @PostMapping("/claims/{id}/void")
+    public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.VOID));
     }
 }
