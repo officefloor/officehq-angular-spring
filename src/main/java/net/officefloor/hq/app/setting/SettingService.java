@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, its late percent and its cap, each
+ * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, its late percent, its cap and its proof threshold, each
  * dated (kept from a from-date); and its policy date and its period numbering from, not dated.
  */
 @Service
@@ -104,6 +104,17 @@ public class SettingService {
     @Transactional
     public Sheet setCap(String sheetId, String user, BigDecimal cap, LocalDate from) {
         return record(sheetId, user, Sheet.CAP, cap == null ? null : cap.toPlainString(), from, true);
+    }
+
+    /**
+     * Set the proof threshold from the date (null: the sheet's today): a claim dated from then whose due is above it
+     * cannot be settled or approved without a proof; a null threshold means none. Every save is recorded, even of the
+     * same value.
+     */
+    @Transactional
+    public Sheet setProofThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        return record(sheetId, user, Sheet.PROOF_THRESHOLD, threshold == null ? null : threshold.toPlainString(), from,
+                false);
     }
 
     /**

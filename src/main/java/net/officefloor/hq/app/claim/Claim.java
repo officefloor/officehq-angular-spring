@@ -79,6 +79,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs the claim has: raised by one at a time. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     protected Claim() {
     }
 
@@ -241,5 +245,14 @@ public class Claim {
      */
     public boolean isDeferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Adds one proof to the claim. */
+    public void addProof() {
+        proofs++;
     }
 }

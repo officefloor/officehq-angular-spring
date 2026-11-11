@@ -26,7 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. A claim dated in a closed
  * period cannot be added, edited, deferred or change status. Only a DRAFT claim can be edited; a PENDING claim, waiting for a
  * steward to approve or reject it, is otherwise handled like an OPEN one. No claim
- * can be dated after the retirement date of its person. A claim with a negative amount is a correction: it must name,
+ * can be dated after the retirement date of its person. A claim whose due is above the proof threshold on its date
+ * cannot be settled or approved without a proof. A claim with a negative amount is a correction: it must name,
  * by number, a SETTLED claim of the same person that it corrects, and its due has no floor and no late charge.
  */
 @Service
@@ -148,6 +149,9 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        if (status == ClaimStatus.SETTLED) {
+            requireProof(sheetId, person, claim);
+        }
         // A clerk settles only a claim whose due (the one its statement bound it to, else worked out from the rate)
         // is at or below the clerk limit; one above it goes to PENDING. A due of n/a is within any limit.
         if (status == ClaimStatus.SETTLED && roles.roleOf(sheetId, user) == Role.CLERK) {
@@ -193,6 +197,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        requireProof(sheetId, person, claim);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String due = settle(sheetId, person, claim);
         claim.setStatus(ClaimStatus.SETTLED);
@@ -315,6 +320,42 @@ public class ClaimService {
                 + " old=" + old + " new=" + shownDue(sheetId, person, saved));
         rollup.recordChanges(sheetId, user, before);
         return saved;
+    }
+
+    /**
+     * Add a proof to a claim, raising its proofs count by one. Refused for a SETTLED or VOID claim, or a closed period.
+     */
+    @Transactional
+    public Claim addProof(String sheetId, String user, Long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ClaimProofException(id, "it is " + claim.getStatus() + ", a proof cannot be added");
+        }
+        periods.requireOpen(sheetId, claim.getDate());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        claim.addProof();
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_PROOF_ADDED", user, person, saved) + numberOf(saved.getNumber())
+                + " proofs=" + saved.getProofs());
+        return saved;
+    }
+
+    /**
+     * A claim whose due (as the clerk limit weighs it) is above the proof threshold in force on its date cannot be
+     * settled or approved while it has no proof; refused then. A due of n/a is within any threshold.
+     */
+    private void requireProof(String sheetId, Person person, Claim claim) {
+        BigDecimal threshold = settings.get(sheetId).proofThresholdOn(claim.getDate());
+        if (threshold == null || claim.getProofs() > 0) {
+            return;
+        }
+        BigDecimal due = withLateCharge(sheetId, claim, figureOf(sheetId, person, claim));
+        if (due != null && due.compareTo(threshold) > 0) {
+            throw new ClaimProofException(claim.getId(), "its due " + due.toPlainString()
+                    + " is above the proof threshold " + threshold.toPlainString() + " and it has no proof");
+        }
     }
 
     /** The PENDING claim a steward decides; refused for any other status, a closed period, or a user not a steward. */

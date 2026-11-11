@@ -30,6 +30,7 @@ public class Sheet {
     public static final String TERMS = "terms";
     public static final String LATE_PCT = "late-pct";
     public static final String CAP = "cap";
+    public static final String PROOF_THRESHOLD = "proof-threshold";
 
     /** The sheet's starting values, in force before a key's first from-date: none for a key not listed. */
     private static final Map<String, String> STARTING = Map.of(FLOOR, "1.00", TERMS, "14", LATE_PCT, "0.00");
@@ -44,8 +45,8 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
-    /** The values of the dated settings (the clerk limit, the floor, the terms and each grade's, the late percent and
-     *  the cap), each from its from-date. */
+    /** The values of the dated settings (the clerk limit, the floor, the terms and each grade's, the late percent,
+     *  the cap and the proof threshold), each from its from-date. */
     @OneToMany(mappedBy = "sheet", fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     @OrderBy("key ASC, fromDate ASC")
     private List<DatedSetting> dated = new ArrayList<>();
@@ -134,6 +135,14 @@ public class Sheet {
     /** The most a person's due-total can be, in force on the sheet's today; null when there is no cap. */
     public BigDecimal getCap() {
         return decimalOn(CAP, today).orElse(null);
+    }
+
+    /**
+     * The due above which a claim dated on the date cannot be settled or approved without a proof; null when there is
+     * no threshold then.
+     */
+    public BigDecimal proofThresholdOn(LocalDate date) {
+        return decimalOn(PROOF_THRESHOLD, date).orElse(null);
     }
 
     /** The days after its date a claim dated on the date of a grade without its own terms then is due by. */

@@ -34,11 +34,13 @@ public class ClaimController {
      * whether the person's last statement bound it, and the due it bound it to (null: none, so n/a); and the number of
      * the claim it corrects (null unless it is a correction); and the date that decides how its live figures round (its
      * own, or a correction's corrected claim's); and its place in its person's list (a later place listed first); and
-     * its status log, oldest first; and the date it is deferred until (null when never deferred).
+     * its status log, oldest first; and the date it is deferred until (null when never deferred); and how many proofs
+     * it has.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
-            LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil) {
+            LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
+            int proofs) {
 
         static ClaimView of(Claim claim, List<ClaimLog> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
@@ -48,7 +50,8 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getRoundingDate(), claim.getListed(), claim.getDueBy(),
-                    log.stream().map(ClaimLogView::of).toList(), claim.getDeferredUntil());
+                    log.stream().map(ClaimLogView::of).toList(), claim.getDeferredUntil(),
+                    claim.getProofs());
         }
     }
 
@@ -238,6 +241,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid DeferRequest request) {
         return view(service.defer(sheetId.trim(), user.trim(), id, request.until()));
+    }
+
+    /** Add a proof to a claim, raising its proofs count by one; refused for a SETTLED or VOID claim. */
+    @PostMapping("/claims/{id}/proof")
+    public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.addProof(sheetId.trim(), user.trim(), id));
     }
 
     /** Void a DRAFT, OPEN or PENDING claim. */

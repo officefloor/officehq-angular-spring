@@ -20,6 +20,8 @@ interface SettingsView {
   periodNumberingFrom: string | null;
   /** The most a person's due-total can be, two decimals; null when there is no cap. */
   cap: string | null;
+  /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
+  proofThreshold: string | null;
   /** Every value recorded of each dated setting, by key, from-date first to last. */
   dated: Record<string, DatedValue[]>;
 }
@@ -35,7 +37,7 @@ const GRADES = ['A', 'B', 'C'];
 /** A date typed as yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, its late percent and its cap; not dated: its policy date and its period numbering from) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, its late percent, its cap and its proof threshold; not dated: its policy date and its period numbering from) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -163,6 +165,23 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="froms()['cap'] ?? ''"
           (input)="setFrom('cap', value($event))"
         />
+        <label for="setting-proof-threshold">Proof threshold (a claim due above it needs a proof to settle; blank: none)</label>
+        <input
+          id="setting-proof-threshold"
+          data-testid="setting-proof-threshold"
+          inputmode="decimal"
+          [value]="proofThreshold()"
+          (focus)="lastFocused = 'proofThreshold'"
+          (input)="proofThreshold.set(value($event)); proofThresholdEdited = true; settingsError.set(null)"
+        />
+        <label for="setting-proof-threshold-from">From (blank: the sheet's today)</label>
+        <input
+          id="setting-proof-threshold-from"
+          data-testid="setting-proof-threshold-from"
+          type="date"
+          [value]="froms()['proof-threshold'] ?? ''"
+          (input)="setFrom('proof-threshold', value($event))"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -178,6 +197,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
+      <p>Proof threshold in force: <strong data-testid="setting-proof-threshold-current">{{ session.settingOn('proof-threshold', session.today()) ?? '' }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -242,6 +262,7 @@ export class Settings {
   protected readonly periodNumberingFrom = signal('');
   protected readonly periodNumberingFromCurrent = signal<string | null>(null);
   protected readonly cap = signal('');
+  protected readonly proofThreshold = signal('');
   /** The from-date typed for each dated setting, by key; blank: the sheet's today. */
   protected readonly froms = signal<Record<string, string>>({});
   /** Which settings were typed in since the form was last saved or read: a save sends only those. */
@@ -252,8 +273,9 @@ export class Settings {
   protected policyDateEdited = false;
   protected periodNumberingFromEdited = false;
   protected capEdited = false;
+  protected proofThresholdEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap' | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap' | 'proofThreshold' | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -299,6 +321,7 @@ export class Settings {
       case 'terms': this.termsEdited = true; break;
       case 'late-pct': this.latePctEdited = true; break;
       case 'cap': this.capEdited = true; break;
+      case 'proof-threshold': this.proofThresholdEdited = true; break;
       default: this.gradeTermsEdited.add(key.slice('terms-'.length));
     }
     this.settingsError.set(null);
@@ -312,7 +335,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.capEdited;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.capEdited && !this.proofThresholdEdited;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -322,6 +345,7 @@ export class Settings {
         case 'policyDate': this.policyDateEdited = true; break;
         case 'periodNumberingFrom': this.periodNumberingFromEdited = true; break;
         case 'cap': this.capEdited = true; break;
+        case 'proofThreshold': this.proofThresholdEdited = true; break;
       }
     }
     const saveLimit = this.clerkLimitEdited || (nothingTyped && !this.lastFocused);
@@ -332,6 +356,7 @@ export class Settings {
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     const saveCap = this.capEdited;
+    const saveProofThreshold = this.proofThresholdEdited;
     const limit = this.clerkLimit().trim();
     const floor = this.floor().trim();
     const terms = this.terms().trim();
@@ -339,6 +364,7 @@ export class Settings {
     const policyDate = this.policyDate().trim();
     const periodNumberingFrom = this.periodNumberingFrom().trim();
     const cap = this.cap().trim();
+    const proofThreshold = this.proofThreshold().trim();
     const froms = this.froms();
     const fromOf = (key: string): string | null => (froms[key] ?? '').trim() || null;
     const saving = [
@@ -348,6 +374,7 @@ export class Settings {
       ...saveGradeTerms.map((g) => 'terms-' + g),
       ...(saveLatePct ? ['late-pct'] : []),
       ...(saveCap ? ['cap'] : []),
+      ...(saveProofThreshold ? ['proof-threshold'] : []),
     ];
     if (saving.some((key) => { const from = fromOf(key); return from !== null && !DATE.test(from); })) {
       this.settingsError.set('Type a from-date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
@@ -383,6 +410,10 @@ export class Settings {
     }
     if (saveCap && cap !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(cap)) {
       this.settingsError.set('Type a cap of 0.00 or more with at most two decimals, or leave it blank for no cap.');
+      return;
+    }
+    if (saveProofThreshold && proofThreshold !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(proofThreshold)) {
+      this.settingsError.set('Type a proof threshold of 0.00 or more with at most two decimals, or leave it blank for none.');
       return;
     }
     this.savingSettings = true;
@@ -439,6 +470,16 @@ export class Settings {
           this.http.put<SettingsView>(`${url}/cap`, { cap: cap === '' ? null : cap, from: fromOf('cap') }, this.session.headers()),
         );
         this.capEdited = false;
+      }
+      if (saveProofThreshold) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(
+            `${url}/proof-threshold`,
+            { proofThreshold: proofThreshold === '' ? null : proofThreshold, from: fromOf('proof-threshold') },
+            this.session.headers(),
+          ),
+        );
+        this.proofThresholdEdited = false;
       }
       if (saved && this.session.sheet() === sheet) this.show(saved);
     } catch {
@@ -513,6 +554,7 @@ export class Settings {
     this.periodNumberingFromCurrent.set(settings.periodNumberingFrom ?? '');
     this.periodNumberingFrom.set(settings.periodNumberingFrom ?? '');
     this.cap.set(settings.cap ?? '');
+    this.proofThreshold.set(settings.proofThreshold ?? '');
     this.clerkLimitEdited = false;
     this.floorEdited = false;
     this.termsEdited = false;
@@ -521,5 +563,6 @@ export class Settings {
     this.policyDateEdited = false;
     this.periodNumberingFromEdited = false;
     this.capEdited = false;
+    this.proofThresholdEdited = false;
   }
 }

@@ -36,6 +36,8 @@ export interface Claim {
   log: ClaimLogLine[];
   /** The date (yyyy-mm-dd) an OPEN claim is deferred until; null when it was never deferred. */
   deferredUntil: string | null;
+  /** How many proofs the claim has: one above the proof threshold on its date cannot be settled or approved with none. */
+  proofs: number;
 }
 
 /** A line of a claim's status log: the status, who changed it, the sheet's today then, and the due then (or n/a). */
@@ -210,7 +212,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Log</th>
+            <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Log</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -239,7 +241,8 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-period">{{ periodOf(c) }}</td>
               <td data-testid="claim-corrects">{{ c.corrects ?? '' }}</td>
               <td data-testid="claim-deferred">{{ deferred(c) ? 'yes' : 'no' }}</td>
-              <td data-testid="claim-deferred-until">{{ deferred(c) ? c.deferredUntil : '' }}</td>
+              <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</td>
+              <td data-testid="claim-proofs">{{ c.proofs }}</td>
               <td>
                 <ol class="claim-log">
                   @for (line of c.log; track $index) {
@@ -269,6 +272,14 @@ export function sumAmounts(amounts: string[]): string {
                     {{ a.label }}
                   </button>
                 }
+                <button
+                  type="button"
+                  data-testid="claim-proof"
+                  [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date"
+                  (click)="addProof(c)"
+                >
+                  Add proof
+                </button>
                 <label class="visually-hidden" [for]="'claim-defer-date-' + c.id">Defer until</label>
                 <input
                   [id]="'claim-defer-date-' + c.id"
@@ -488,6 +499,27 @@ export class Claims {
     }
   }
 
+  /** Add a proof to the claim; the store refuses a SETTLED or VOID claim, and a closed period. */
+  protected async addProof(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/proof`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, null, this.session.headers()));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch {
+      const closed = this.closedOn(claim.date);
+      const message =
+        claim.status === 'SETTLED' || claim.status === 'VOID'
+          ? `This claim is ${claim.status}: a proof cannot be added to it.`
+          : closed
+            ? `This claim is dated in the closed period ${closed.name}: a proof cannot be added to it.`
+            : 'A proof could not be added to this claim.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
   protected setReassignTo(id: number, personId: string): void {
     this.reassignTo.update((all) => ({ ...all, [id]: personId }));
     if (this.actionError()?.id === id) this.actionError.set(null);
@@ -555,6 +587,8 @@ export class Claims {
             : 'Only a steward can approve or reject a pending claim, and not the one who opened it.'
           : closed
               ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
+              : e instanceof HttpErrorResponse && e.status === 422 && (action === 'settle' || action === 'approve')
+                ? `This claim's due is above the proof threshold: add a proof before it can be ${pastOf[action]}.`
               : action === 'settle' && this.deferred(claim)
                 ? `This claim is deferred until ${claim.deferredUntil}: it cannot be settled before then.`
               : action === 'resettle'

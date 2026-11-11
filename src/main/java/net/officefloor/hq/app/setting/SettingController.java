@@ -32,12 +32,13 @@ public class SettingController {
      * when there is none; the floor with two decimals; the terms in whole days; each grade's own terms in whole days,
      * by grade (a grade without its own is left out); the late percent with two decimals; the policy date as
      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
-     * the cap with two decimals, null when there is none. Then every value recorded of each dated setting, by key
-     * (clerk-limit, floor, terms, terms-A, terms-B, terms-C, late-pct, cap), from-date first to last.
+     * the cap with two decimals, null when there is none; the proof threshold with two decimals, null when there is none.
+     * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
+     * late-pct, cap, proof-threshold), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, String cap,
-            Map<String, List<DatedValue>> dated) {
+            String proofThreshold, Map<String, List<DatedValue>> dated) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
@@ -46,7 +47,7 @@ public class SettingController {
                     values.stream().map(d -> new DatedValue(d.getFromDate(), d.getValue())).toList()));
             return new SettingsView(shown(sheet.getClerkLimit()), shown(sheet.floorOn(today)), sheet.termsOn(today),
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
-                    shown(sheet.getCap()), dated);
+                    shown(sheet.getCap()), shown(sheet.proofThresholdOn(today)), dated);
         }
 
         private static String shown(BigDecimal value) {
@@ -108,6 +109,19 @@ public class SettingController {
         BigDecimal capValue() {
             return cap == null || cap.isBlank() ? null
                     : new BigDecimal(cap.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /**
+     * A proof threshold of 0.00 or more with up to two decimals, blank or missing meaning none, from the date
+     * (missing: the sheet's today).
+     */
+    public record ProofThresholdRequest(@Pattern(regexp = "\\s*(\\d{1,10}(\\.\\d{1,2})?)?\\s*") String proofThreshold,
+            LocalDate from) {
+
+        BigDecimal proofThresholdValue() {
+            return proofThreshold == null || proofThreshold.isBlank() ? null
+                    : new BigDecimal(proofThreshold.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
     }
 
@@ -186,6 +200,14 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid CapRequest request) {
         return view(service.setCap(sheetId.trim(), user.trim(), request.capValue(), request.from()));
+    }
+
+    @PutMapping("/proof-threshold")
+    public SettingsView setProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ProofThresholdRequest request) {
+        return view(service.setProofThreshold(sheetId.trim(), user.trim(), request.proofThresholdValue(),
+                request.from()));
     }
 
     private SettingsView view(Sheet sheet) {
