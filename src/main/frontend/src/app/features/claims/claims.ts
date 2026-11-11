@@ -42,7 +42,7 @@ export interface Claim {
   splitFrom: string | null;
   /** The user whose open editor locks the claim against other users' edits; null when not locked. */
   lockedBy: string | null;
-  /** Whether the claim was added while the period its date falls in was soft-closed. */
+  /** Whether the claim was added while the period its due-by falls in was soft-closed. */
   lateEntry: boolean;
 }
 
@@ -411,7 +411,7 @@ export class Claims implements OnInit {
   readonly grades = input.required<PersonGrade[]>();
   /** The sheet's rates: a claim's due uses the rate in force on the claim's date of the grade in force then. */
   readonly rates = input.required<Rate[]>();
-  /** The sheet's periods: a claim belongs to the one whose dates contain its date. */
+  /** The sheet's periods: a claim belongs to the one whose dates contain its due-by. */
   readonly periods = input.required<Period[]>();
   /** The sheet's people, in the order they were added: a claim may be reassigned to any of the others. */
   readonly people = input<{ id: number; name: string }[]>([]);
@@ -495,12 +495,17 @@ export class Claims implements OnInit {
     return deferred(claim, this.session.today());
   }
 
-  /** The name of the period the claim's date falls in, or blank when none. */
+  /** The name of the period the claim's due-by falls in, or blank when none. */
   protected periodOf(claim: Claim): string {
-    return periodOn(this.periods(), claim.date)?.name ?? '';
+    return periodOn(this.periods(), claim.dueBy)?.name ?? '';
   }
 
-  /** The closed period the date falls in, or undefined when none does. */
+  /** The due-by of the claim being edited, or blank when none is. */
+  private editedDueBy(): string {
+    return this.claims().find((c) => c.id === this.editing())?.dueBy ?? '';
+  }
+
+  /** The closed period the date (a claim's due-by) falls in, or undefined when none does. */
   private closedOn(date: string): Period | undefined {
     const period = periodOn(this.periods(), date);
     return period?.closed ? period : undefined;
@@ -559,14 +564,14 @@ export class Claims implements OnInit {
   /** Why the claim's editor cannot be opened (with the store's refusal, when it gave one), or null when it can. */
   private editRefusal(claim: Claim, e: unknown): string | null {
     const user = this.session.user();
-    const closed = this.closedOn(claim.date);
+    const closed = this.closedOn(claim.dueBy);
     if (this.session.viewer() || (e instanceof HttpErrorResponse && e.status === 403)) {
       return 'A viewer may not edit a claim.';
     }
     if (claim.status !== 'DRAFT') {
       return `This claim is ${claim.status}: only a DRAFT can be edited. To change an open claim, void it and add a new one.`;
     }
-    if (closed) return `This claim is dated in the closed period ${closed.name}: it cannot be edited.`;
+    if (closed) return `This claim is due by a date in the closed period ${closed.name}: it cannot be edited.`;
     if ((claim.lockedBy !== null && claim.lockedBy !== user) || (e instanceof HttpErrorResponse && e.status === 423)) {
       return `${claim.lockedBy ?? 'Another user'} has this claim open in their editor: it cannot be edited until they save or cancel it.`;
     }
@@ -641,13 +646,13 @@ export class Claims implements OnInit {
       this.setDeferDate(claim.id, '');
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch {
-      const closed = this.closedOn(claim.date);
+      const closed = this.closedOn(claim.dueBy);
       const today = this.session.today();
       const message =
         claim.status !== 'OPEN'
           ? `This claim is ${claim.status}: only an OPEN claim can be deferred.`
           : closed
-            ? `This claim is dated in the closed period ${closed.name}: it cannot be deferred.`
+            ? `This claim is due by a date in the closed period ${closed.name}: it cannot be deferred.`
             : today !== null && until <= today
               ? `A claim can only be deferred to a date after today (${today}).`
               : 'This claim could not be deferred.';
@@ -679,7 +684,7 @@ export class Claims implements OnInit {
       this.setRedate(claim.id, '');
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch (e) {
-      const closed = this.closedOn(claim.date) ?? this.closedOn(date);
+      const closed = this.closedOn(claim.dueBy);
       const retiredFrom = this.retiredFrom();
       const message =
         e instanceof HttpErrorResponse && e.status === 403
@@ -687,7 +692,7 @@ export class Claims implements OnInit {
           : claim.status !== 'OPEN' && claim.status !== 'PENDING'
             ? `This claim is ${claim.status}: only an OPEN or PENDING claim can be re-dated.`
             : closed
-              ? `The closed period ${closed.name} holds this claim or its new date: it cannot be re-dated.`
+              ? `This claim is due by a date in the closed period ${closed.name}: it cannot be re-dated.`
               : retiredFrom !== null && date > retiredFrom
                 ? `${this.personName()} is retired from ${retiredFrom}: the claim cannot be dated after that.`
                 : 'This claim could not be re-dated.';
@@ -705,12 +710,12 @@ export class Claims implements OnInit {
       const saved = await firstValueFrom(this.http.post<Claim>(url, null, this.session.headers()));
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch {
-      const closed = this.closedOn(claim.date);
+      const closed = this.closedOn(claim.dueBy);
       const message =
         claim.status === 'SETTLED' || claim.status === 'VOID'
           ? `This claim is ${claim.status}: a proof cannot be added to it.`
           : closed
-            ? `This claim is dated in the closed period ${closed.name}: a proof cannot be added to it.`
+            ? `This claim is due by a date in the closed period ${closed.name}: a proof cannot be added to it.`
             : 'A proof could not be added to this claim.';
       this.actionError.set({ id: claim.id, message });
     }
@@ -740,7 +745,7 @@ export class Claims implements OnInit {
       this.setSplitAmount(claim.id, '');
       if (this.session.sheet() === sheet) this.saved.emit(added);
     } catch (e) {
-      const closed = this.closedOn(claim.date);
+      const closed = this.closedOn(claim.dueBy);
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Your role may not open a claim, so it may not split one.'
@@ -749,7 +754,7 @@ export class Claims implements OnInit {
             : this.deferred(claim)
               ? `This claim is deferred until ${claim.deferredUntil}: it cannot be split.`
               : closed
-                ? `This claim is dated in the closed period ${closed.name}: it cannot be split.`
+                ? `This claim is due by a date in the closed period ${closed.name}: it cannot be split.`
                 : `The amount split off must be more than 0.00 and less than ${claim.amount}.`;
       this.actionError.set({ id: claim.id, message });
     }
@@ -779,12 +784,12 @@ export class Claims implements OnInit {
       this.setReassignTo(claim.id, '');
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch (e) {
-      const closed = this.closedOn(claim.date);
+      const closed = this.closedOn(claim.dueBy);
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? 'Only a steward can reassign a claim.'
           : closed
-            ? `This claim is dated in the closed period ${closed.name}: it cannot be reassigned.`
+            ? `This claim is due by a date in the closed period ${closed.name}: it cannot be reassigned.`
             : claim.status === 'SETTLED' || claim.status === 'VOID'
               ? `This claim is ${claim.status}: only a DRAFT, OPEN or PENDING claim can be reassigned.`
               : `This claim could not be reassigned to ${to.name}.`;
@@ -812,7 +817,7 @@ export class Claims implements OnInit {
       if (action === 'reject') this.setRejectReason(claim.id, '');
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch (e) {
-      const closed = this.closedOn(claim.date);
+      const closed = this.closedOn(claim.dueBy);
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? action === 'settle'
@@ -825,7 +830,7 @@ export class Claims implements OnInit {
               : 'Your role is not allowed to void a claim.'
             : 'Only a steward can approve or reject a pending claim, and not the one who opened it.'
           : closed
-              ? `This claim is dated in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
+              ? `This claim is due by a date in the closed period ${closed.name}: it cannot be ${pastOf[action]}.`
               : e instanceof HttpErrorResponse && e.status === 422 && (action === 'settle' || action === 'approve')
                 ? `This claim's due is above the proof threshold: add a proof before it can be ${pastOf[action]}.`
               : action === 'settle' && this.deferred(claim)
@@ -883,10 +888,10 @@ export class Claims implements OnInit {
       }
     } catch (e) {
       const dated = date || ((editing === null ? this.session.newClaimDate() : this.session.today()) ?? '');
-      const closed = this.closedOn(dated);
+      const closed = editing === null ? undefined : this.closedOn(this.editedDueBy());
       const retiredFrom = this.retiredFrom();
       const why = closed
-        ? ` Its date is in the closed period ${closed.name}.`
+        ? ` It is due by a date in the closed period ${closed.name}.`
         : retiredFrom !== null && dated > retiredFrom
           ? ` ${this.personName()} is retired from ${retiredFrom}.`
           : editing !== null && e instanceof HttpErrorResponse && e.status === 409

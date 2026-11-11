@@ -115,8 +115,8 @@ public class PeriodService {
     }
 
     /**
-     * Soft-close a period, fixing every person's due-total for it, and so its own, as they are now, while claims dated
-     * in it can still change; refused when it is closed or soft-closed already or the user's role may not close.
+     * Soft-close a period, fixing every person's due-total for it, and so its own, as they are now, while claims due by
+     * a date in it can still change; refused when it is closed or soft-closed already or the user's role may not close.
      */
     @Transactional
     public Period softClose(String sheetId, String user, String name) {
@@ -199,7 +199,7 @@ public class PeriodService {
     }
 
     /**
-     * Refuse a change to a claim dated on any of the dates when one falls in a closed period. The sheet is locked
+     * Refuse a change to a claim due by any of the dates when one falls in a closed period. The sheet is locked
      * until the caller's transaction ends, so a period cannot close while the change is made.
      */
     @Transactional

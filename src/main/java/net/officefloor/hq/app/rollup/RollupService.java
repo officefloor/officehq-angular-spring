@@ -126,7 +126,7 @@ public class RollupService {
 
     /**
      * Each person's due-total of the dates from and to, both inclusive, by person id for every person on the sheet, as
-     * the screen shows a person's for a period: the dues as shown now of their claims dated in them that were OPEN,
+     * the screen shows a person's for a period: the dues as shown now of their claims due by a date in them that were OPEN,
      * PENDING or SETTLED at the end of the to-date by their status log, skipping those with no due and the open ones a
      * hold of theirs leaves out; 0.00 with none.
      */
@@ -147,8 +147,8 @@ public class RollupService {
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
             ClaimStatus status = statusOn(claim, logOf.getOrDefault(claim.getId(), List.of()), to);
-            if (person == null || !person.countsAsOf(claim, status, today) || claim.getDate().isBefore(from)
-                    || claim.getDate().isAfter(to)) {
+            if (person == null || !person.countsAsOf(claim, status, today) || claim.getDueBy().isBefore(from)
+                    || claim.getDueBy().isAfter(to)) {
                 continue;
             }
             dueOf(sheet, sheetRates, person, claim).ifPresent(due -> totals.merge(person.getId(), due, BigDecimal::add));

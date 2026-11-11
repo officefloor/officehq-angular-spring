@@ -478,13 +478,13 @@ export class People {
   protected readonly periods = signal<Period[]>([]);
   /**
    * Each person's live due-total for each period, by person id and then period name: the dues as shown now of their
-   * claims dated in it that were OPEN, PENDING or SETTLED at the end of its last day, skipping the n/a ones; a period they have none in is missing.
+   * claims due by a date in it that were OPEN, PENDING or SETTLED at the end of its last day, skipping the n/a ones; a period they have none in is missing.
    */
   private readonly livePersonPeriodDues = computed(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const dues = new Map<number, Map<string, string[]>>();
     for (const c of this.claims()) {
-      const period = periodOn(this.periods(), c.date);
+      const period = periodOn(this.periods(), c.dueBy);
       const person = byId.get(c.personId);
       if (!period || person === undefined || !liveAtEnd(c, person, this.session.today(), period.to)) continue;
       const theirs = dues.get(person.id) ?? new Map<string, string[]>();
@@ -1199,9 +1199,7 @@ export class People {
         this.claimSaved(added);
       }
     } catch {
-      const closed = periodOn(this.periods(), this.session.newClaimDate() ?? '');
-      const why = closed?.closed ? ` The date of a new claim is in the closed period ${closed.name}.` : '';
-      this.quickError.set('The claim could not be added.' + why);
+      this.quickError.set('The claim could not be added.');
     } finally {
       this.quickAdding = false;
     }
