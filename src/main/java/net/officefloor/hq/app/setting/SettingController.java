@@ -23,13 +23,16 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class SettingController {
 
-    /** The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals. */
-    public record SettingsView(String clerkLimit, String floor) {
+    /**
+     * The settings as shown: the clerk limit with two decimals, null when there is none; the floor with two decimals;
+     * the terms in whole days.
+     */
+    public record SettingsView(String clerkLimit, String floor, int terms) {
 
         static SettingsView of(Sheet sheet) {
             return new SettingsView(sheet.getClerkLimit() == null ? null
                     : sheet.getClerkLimit().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+                    sheet.getFloor().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), sheet.getTerms());
         }
     }
 
@@ -47,6 +50,14 @@ public class SettingController {
 
         BigDecimal floorValue() {
             return new BigDecimal(floor.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /** Terms of 0 or more whole days. */
+    public record TermsRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,5}\\s*") String terms) {
+
+        int termsValue() {
+            return Integer.parseInt(terms.trim());
         }
     }
 
@@ -74,5 +85,12 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid FloorRequest request) {
         return SettingsView.of(service.setFloor(sheetId.trim(), user.trim(), request.floorValue()));
+    }
+
+    @PutMapping("/terms")
+    public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid TermsRequest request) {
+        return SettingsView.of(service.setTerms(sheetId.trim(), user.trim(), request.termsValue()));
     }
 }

@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, claimDue, counts, dueFixed, sumAmounts } from '../claims/claims';
+import { Claim, Claims, claimDue, counts, dueFixed, overdue, sumAmounts } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
 import { Rate, Rates, rateOn, sumDues } from '../rates/rates';
 
@@ -108,6 +108,7 @@ function live(claim: Claim, held: boolean): boolean {
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
             <th scope="col">Retired</th><th scope="col">Retired from</th><th scope="col">On hold</th>
+            <th scope="col">Overdue</th><th scope="col">Overdue total</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
@@ -124,6 +125,8 @@ function live(claim: Claim, held: boolean): boolean {
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-overdue-count">{{ overdueOf(p).length }}</td>
+              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td>
                 <button
                   type="button"
@@ -188,6 +191,8 @@ function live(claim: Claim, held: boolean): boolean {
       </table>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+      <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
     </section>
   `,
 })
@@ -236,6 +241,12 @@ export class People {
   });
   /** Everyone's due-total added up, skipping the n/a ones. */
   protected readonly dueTotal = computed(() => sumDues(this.people().map((p) => this.dueTotalOf(p))));
+  /** How many of everyone's counted claims are overdue. */
+  protected readonly overdueCount = computed(() =>
+    this.people().reduce((total, p) => total + this.overdueOf(p).length, 0),
+  );
+  /** Everyone's overdue-total added up. */
+  protected readonly overdueTotal = computed(() => sumDues(this.people().map((p) => this.overdueTotalOf(p))));
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   /** The id of the person whose editor is open, or null when the form adds a person. */
@@ -310,6 +321,18 @@ export class People {
     const counted = this.claimsOf(person.id).filter((c) => live(c, person.held));
     if (this.rateOf(person.grade) === undefined && !counted.some(dueFixed)) return 'n/a';
     return sumDues(counted.map((c) => claimDue(c, this.rates(), person.grade, this.session.floor())));
+  }
+
+  /** The person's claims that count in the live totals and are overdue. */
+  protected overdueOf(person: Person): Claim[] {
+    return this.claimsOf(person.id).filter(
+      (c) => live(c, person.held) && overdue(c, this.session.terms(), this.session.today()),
+    );
+  }
+
+  /** The sum of the dues of the person's overdue claims, skipping the n/a ones. */
+  protected overdueTotalOf(person: Person): string {
+    return sumDues(this.overdueOf(person).map((c) => claimDue(c, this.rates(), person.grade, this.session.floor())));
   }
 
   /** Show a set rate at once, then re-read so the screen holds what the store does. */

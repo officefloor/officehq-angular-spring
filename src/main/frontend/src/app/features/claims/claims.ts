@@ -49,6 +49,19 @@ export function dueFixed(claim: Claim): boolean {
   return claim.settledDue !== null || claim.statedDue !== null;
 }
 
+/** The claim's date plus the terms in days (yyyy-mm-dd); blank until the terms are known. */
+export function dueBy(claim: Claim, terms: number | null): string {
+  if (terms === null) return '';
+  const [y, m, d] = claim.date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+}
+
+/** Whether the claim is OPEN and its due-by is before the sheet's today. */
+export function overdue(claim: Claim, terms: number | null, today: string | null): boolean {
+  const by = dueBy(claim, terms);
+  return claim.status === 'OPEN' && by !== '' && today !== null && by < today;
+}
+
 type ClaimAction = 'open' | 'settle' | 'void';
 
 /** Sums amounts with two decimals exactly, in whole cents. */
@@ -98,7 +111,7 @@ export function sumAmounts(amounts: string[]): string {
         <caption class="visually-hidden">Claims of {{ personName() }}</caption>
         <thead>
           <tr>
-            <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th>
+            <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
             <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -111,6 +124,8 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-date">{{ c.date }}</td>
               <td data-testid="claim-note">{{ c.note }}</td>
               <td data-testid="claim-due">{{ due(c) }}</td>
+              <td data-testid="claim-due-by">{{ dueBy(c) }}</td>
+              <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' }}</td>
               <td data-testid="claim-status">{{ c.status }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</td>
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</td>
@@ -192,6 +207,16 @@ export class Claims {
   /** The due fixed when the claim was settled, else its amount times the rate on its date, or n/a with no rate. */
   protected due(claim: Claim): string {
     return claimDue(claim, this.rates(), this.grade(), this.session.floor());
+  }
+
+  /** The claim's date plus the sheet's terms. */
+  protected dueBy(claim: Claim): string {
+    return dueBy(claim, this.session.terms());
+  }
+
+  /** Whether the claim is OPEN and was due by a day before the sheet's today. */
+  protected overdue(claim: Claim): boolean {
+    return overdue(claim, this.session.terms(), this.session.today());
   }
 
   /** The name of the period the claim's date falls in, or blank when none. */

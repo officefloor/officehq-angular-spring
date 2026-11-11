@@ -8,6 +8,8 @@ interface SettingsView {
   clerkLimit: string | null;
   /** The least a claim's live due can be, two decimals. */
   floor: string;
+  /** The days after its date a claim is due by. */
+  terms: number;
 }
 
 interface RoleView {
@@ -18,7 +20,7 @@ interface RoleView {
 
 const ROLES = ['clerk', 'steward'];
 
-// The sheet's settings (its clerk limit and its floor) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (its clerk limit, its floor and its terms) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -41,6 +43,14 @@ const ROLES = ['clerk', 'steward'];
           [value]="floor()"
           (input)="floor.set(value($event)); floorEdited = true; settingsError.set(null)"
         />
+        <label for="setting-terms">Terms (days after its date a claim is due by)</label>
+        <input
+          id="setting-terms"
+          data-testid="setting-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); termsEdited = true; settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -48,6 +58,7 @@ const ROLES = ['clerk', 'steward'];
       </form>
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ current() ?? '' }}</strong></p>
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' }}</strong></p>
+      <p>Terms in force: <strong data-testid="setting-terms-current">{{ session.terms() ?? '' }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
       <h2 id="roles-heading">Roles</h2>
@@ -102,9 +113,11 @@ export class Settings {
   protected readonly current = signal<string | null>(null);
   protected readonly clerkLimit = signal('');
   protected readonly floor = signal('');
+  protected readonly terms = signal('');
   /** Which settings were typed in since the form was last saved or read: a save sends only those. */
   protected clerkLimitEdited = false;
   protected floorEdited = false;
+  protected termsEdited = false;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
   protected readonly roleUser = signal('');
@@ -122,6 +135,7 @@ export class Settings {
       untracked(() => {
         this.current.set(null);
         this.session.floor.set(null);
+        this.session.terms.set(null);
         this.roleList.set([]);
         this.settingsError.set(null);
         this.roleError.set(null);
@@ -141,16 +155,22 @@ export class Settings {
     const sheet = this.session.sheet();
     if (!sheet) return;
     // Saving with nothing typed saves the clerk limit as it stands.
-    const saveLimit = this.clerkLimitEdited || !this.floorEdited;
+    const saveLimit = this.clerkLimitEdited || (!this.floorEdited && !this.termsEdited);
     const saveFloor = this.floorEdited;
+    const saveTerms = this.termsEdited;
     const limit = this.clerkLimit().trim();
     const floor = this.floor().trim();
+    const terms = this.terms().trim();
     if (saveLimit && limit !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more with at most two decimals, or leave it blank for no limit.');
       return;
     }
     if (saveFloor && !/^\d{1,10}(\.\d{1,2})?$/.test(floor)) {
       this.settingsError.set('Type a floor of 0.00 or more with at most two decimals.');
+      return;
+    }
+    if (saveTerms && !/^\d{1,5}$/.test(terms)) {
+      this.settingsError.set('Type terms of 0 or more whole days.');
       return;
     }
     this.savingSettings = true;
@@ -166,6 +186,10 @@ export class Settings {
       if (saveFloor) {
         saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/floor`, { floor }, this.session.headers()));
         this.floorEdited = false;
+      }
+      if (saveTerms) {
+        saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/terms`, { terms }, this.session.headers()));
+        this.termsEdited = false;
       }
       if (saved && this.session.sheet() === sheet) this.show(saved);
     } catch {
@@ -230,7 +254,10 @@ export class Settings {
     this.clerkLimit.set(settings.clerkLimit ?? '');
     this.session.floor.set(settings.floor);
     this.floor.set(settings.floor);
+    this.session.terms.set(settings.terms);
+    this.terms.set(String(settings.terms));
     this.clerkLimitEdited = false;
     this.floorEdited = false;
+    this.termsEdited = false;
   }
 }
