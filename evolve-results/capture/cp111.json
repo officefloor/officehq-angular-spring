@@ -1,0 +1,64 @@
+{
+  "checkpoint": 111,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp111_transfer-person",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can transfer a person to another sheet by id (an entry and a button on the row; anyone\nelse, a retired person, this sheet's own id, is refused with an error on the row). The person\narrives on the other sheet with every grade they were given (and its from-date), their terms,\ncontact, aliases and tags, and their claims with their status, dates, notes, frozen figures and\nlogs; each claim that had a number receives the next number of the other sheet, in the order the\nclaims were opened (by the sheet's today when each was opened, then by the order they were added);\nfigures a statement bound are lost and the statement count starts at 0; references are not carried.\nA name, alias or contact already on the other sheet refuses the transfer. The person leaves this\nsheet entirely (patron links, pool memberships, plans and watches dropped). This sheet writes\nPERSON_TRANSFERRED name=<name> to=<sheet id>, the other PERSON_TRANSFERRED name=<name> from=<sheet\nid>, each followed by that sheet's rollup lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can transfer a person to another sheet by id (an entry and a button on the row; anyone\nelse, a retired person, this sheet's own id, is refused with an error on the row). The person\narrives on the other sheet with every grade they were given (and its from-date), their terms,\ncontact, aliases and tags, and their claims with their status, dates, notes, frozen figures and\nlogs; each claim that had a number receives the next number of the other sheet, in the order the\nclaims were opened (by the sheet's today when each was opened, then by the order they were added);\nfigures a statement bound are lost and the statement count starts at 0; references are not carried.\nA name, alias or contact already on the other sheet refuses the transfer. The person leaves this\nsheet entirely (patron links, pool memberships, plans and watches dropped). This sheet writes\nPERSON_TRANSFERRED name=<name> to=<sheet id>, the other PERSON_TRANSFERRED name=<name> from=<sheet\nid>, each followed by that sheet's rollup lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3e9e0b21d07f2dd6a72cdb86fdc95897b06543d7",
+  "reset_sha": "",
+  "preagent_sha": "a3883e2da07db6d014ceb18668a36f37f01d27ee",
+  "prev_sha": "a3883e2da07db6d014ceb18668a36f37f01d27ee",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.2924056,
+    "input_tokens": 76,
+    "output_tokens": 23065,
+    "cache_read_tokens": 3605168,
+    "cache_creation_tokens": 138721,
+    "num_turns": 41,
+    "duration_ms": 1229418,
+    "duration_api_ms": 241809,
+    "model": "claude-opus-5-5",
+    "session_id": "a2a2d493-cd64-4171-b632-b72e366f82e4",
+    "stop_reason": "success",
+    "result_text": "All four tests in `e2e/specs/acceptance.spec.ts` now pass with `bin/e2e`. Getting there also meant fixing an older bug in the consolidated figures: scenarios 2 and 3 were already failing before I changed anything.\n\n**Transfer**\n- **Screen:** each person row has a sheet-id entry (`person-transfer-to`) and a Transfer button (`person-transfer`). A refusal shows the row's `person-error`, and editing the entry clears it.\n- **Server:** a new `POST /api/sheets/{sheetId}/people/{id}/transfer` endpoint backed by a new `person/TransferService.java`. It is refused if the user isn't a steward, the person is retired, the id is blank or this sheet's own, or the person's name, an alias or their contact is already used on the other sheet.\n- **What moves:** the person is recreated on the other sheet with every grade and its from-date, their terms, contact and aliases. Their claims keep their status, dates, notes, tags, frozen figures and logs.\n- **Renumbering:** each claim that had a number gets the other sheet's next number, in the order the claims were opened. The open date is taken from the first log line after DRAFT, ties broken by the order they were added.\n- **What is cleared:** statement bindings, references, bulk-settle batch numbers and editor locks.\n- **What is dropped:** on the old sheet the person is deleted, along with their patron links in both directions, pool memberships, statements, holds and watches.\n- **Audit:** each sheet gets its `PERSON_TRANSFERRED` line followed by its rollup lines.\n\n**Choices the request didn't cover**\n- A sheet id that has never been used is started on transfer, and an archived destination sheet is refused.\n- Claim comments move with their claims.\n- Closed periods on the old sheet keep the fixed figures they already recorded for the person.\n- Claims that name another claim by number (corrections, split-offs) still name the old number, which may not match after renumbering.\n\n**The as-of fix**\nWith an as-of date set, the spec expects the consolidated people count and totals to stay live: for example, 0 people in the header but 3 consolidated. The app was working those out from the as-of view instead, so they showed 0.\n- I added a `GET \u2026/consolidated/figures` endpoint that the as-of filter answers from the current data (in `AsOfFilter.java`).\n- The people screen uses it only while an as-of date is set. Otherwise the figures are calculated as before.\n\nThis is outside the transfer request, so check that \"consolidated figures ignore as-of\" is the behaviour you want, rather than something only the test expects.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.2924056,
+        "num_turns": 41,
+        "duration_ms": 1229418,
+        "duration_api_ms": 241809,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp111.agent.jsonl",
+  "agent_diff_file": "cp111.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
