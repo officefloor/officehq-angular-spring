@@ -1,0 +1,224 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonAlias.java b/src/main/java/net/officefloor/hq/app/person/PersonAlias.java
+index 659e52d0f..15aed86cd 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonAlias.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonAlias.java
+@@ -29,6 +29,10 @@ public class PersonAlias {
+     @Column(name = "alias_key", nullable = false)
+     private String aliasKey;
+ 
++    /** 0 for an alias added; the next free slot for its key for one joined by a transfer that merged. */
++    @Column(name = "alias_slot", nullable = false)
++    private int aliasSlot;
++
+     protected PersonAlias() {
+     }
+ 
+@@ -39,6 +43,11 @@ public class PersonAlias {
+         this.aliasKey = Person.key(alias);
+     }
+ 
++    public PersonAlias(String sheetId, Long personId, String alias, int aliasSlot) {
++        this(sheetId, personId, alias);
++        this.aliasSlot = aliasSlot;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -63,4 +72,8 @@ public class PersonAlias {
+     public String getAliasKey() {
+         return aliasKey;
+     }
++
++    public int getAliasSlot() {
++        return aliasSlot;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonAliasRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonAliasRepository.java
+index ca4fee677..df93a46c6 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonAliasRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonAliasRepository.java
+@@ -14,7 +14,12 @@ public interface PersonAliasRepository extends JpaRepository<PersonAlias, Long>
+ 
+     boolean existsBySheetIdAndAliasKey(String sheetId, String aliasKey);
+ 
+-    Optional<PersonAlias> findBySheetIdAndAliasKey(String sheetId, String aliasKey);
++    /** The first alias on the sheet with the key (one joined by a transfer may share it). */
++    Optional<PersonAlias> findFirstBySheetIdAndAliasKeyOrderByIdAsc(String sheetId, String aliasKey);
++
++    /** The next free slot for the key on the sheet: 0 when no alias has it. */
++    @Query("select coalesce(max(a.aliasSlot) + 1, 0) from PersonAlias a where a.sheetId = :sheetId and a.aliasKey = :aliasKey")
++    int nextSlot(String sheetId, String aliasKey);
+ 
+     /** Whether an alias on any of the sheets, of a person other than the one with this id, has the key. */
+     boolean existsBySheetIdInAndAliasKeyAndPersonIdNot(Collection<String> sheetIds, String aliasKey, Long personId);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 0c4430df4..17970811d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -274,7 +274,7 @@ public class PersonService {
+     public Optional<Person> findByNameOrAlias(String sheetId, String name) {
+         String key = Person.key(name);
+         return people.findBySheetIdAndNameKey(sheetId, key)
+-                .or(() -> aliases.findBySheetIdAndAliasKey(sheetId, key)
++                .or(() -> aliases.findFirstBySheetIdAndAliasKeyOrderByIdAsc(sheetId, key)
+                         .flatMap(a -> people.findByIdAndSheetId(a.getPersonId(), sheetId)));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferRefusedException.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferRefusedException.java
+index 653506121..04c32b94a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferRefusedException.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferRefusedException.java
+@@ -4,8 +4,8 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+ /**
+- * A transfer refused: not by a steward, of a retired person, to the same sheet, to an archived sheet, or with a name,
+- * alias or contact the other sheet has already.
++ * A transfer refused: not by a steward, of a retired person, to the same sheet, to an archived sheet, matching two
++ * people or a retired one there, or with a name used elsewhere in its tree or a contact the other sheet has already.
+  */
+ @ResponseStatus(HttpStatus.CONFLICT)
+ public class PersonTransferRefusedException extends RuntimeException {
+diff --git a/src/main/java/net/officefloor/hq/app/person/TransferService.java b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+index b6dc83d1b..ea0484913 100644
+--- a/src/main/java/net/officefloor/hq/app/person/TransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+@@ -32,9 +32,12 @@ import org.springframework.transaction.annotation.Transactional;
+  * archived one). The person arrives with every grade and its from-date, their terms, contact and aliases, and their
+  * claims with their status, dates, notes, tags, frozen figures and logs; each claim that had a number takes the next
+  * number of the other sheet, in the order the claims were opened (by the sheet's today when each was opened, then by
+- * the order they were added). Figures a statement bound are lost and references are not carried. A name, alias or
+- * contact the other sheet has already refuses the transfer. The person leaves this sheet entirely: their statements,
+- * holds, patron links, pool memberships and watches are dropped.
++ * the order they were added). Figures a statement bound are lost and references are not carried. Where the other
++ * sheet has a person with their name or one of their aliases, the person arrives merged into them, as a merge does:
++ * their claims are listed after that person's, their name and aliases join that person's aliases, and their grades,
++ * terms and contact are dropped (two such people, or a retired one, refuse the transfer). Otherwise a name or alias
++ * used elsewhere in the other sheet's tree, or a contact the other sheet has already, refuses the transfer. The person
++ * leaves this sheet entirely: their statements, holds, patron links, pool memberships and watches are dropped.
+  */
+ @Service
+ public class TransferService {
+@@ -79,7 +82,10 @@ public class TransferService {
+         this.personService = personService;
+     }
+ 
+-    /** Transfer the person to the other sheet (started when its id was never used); the person as they arrived. */
++    /**
++     * Transfer the person to the other sheet (started when its id was never used); the person as they arrived, or the
++     * person there they were merged into.
++     */
+     @Transactional
+     public Person transfer(String sheetId, String user, Long id, String toSheetId) {
+         Person from = people.findForUpdate(id, sheetId)
+@@ -102,32 +108,55 @@ public class TransferService {
+         List<String> names = new ArrayList<>();
+         names.add(from.getName());
+         theirAliases.forEach(a -> names.add(a.getAlias()));
++        Person into = null;
+         for (String name : names) {
+-            String key = Person.key(name);
+-            if (people.existsBySheetIdAndNameKey(to, key) || aliases.existsBySheetIdAndAliasKey(to, key)
+-                    || personService.usedInTree(to, key, from.getId())) {
++            Person match = personService.findByNameOrAlias(to, name).orElse(null);
++            if (match != null && into != null && !match.getId().equals(into.getId())) {
++                throw new PersonTransferRefusedException(from.getName() + " matches both " + into.getName() + " and "
++                        + match.getName() + " on sheet " + to);
++            }
++            if (match != null) {
++                into = match;
++            } else if (personService.usedInTree(to, Person.key(name), from.getId())) {
+                 throw new PersonTransferRefusedException("The name " + name + " is already in use on sheet " + to);
+             }
+         }
+-        if (from.getContact() != null && people.existsBySheetIdAndContact(to, from.getContact())) {
++        if (into != null) {
++            Long intoId = into.getId();
++            into = people.findForUpdate(intoId, to).orElseThrow(() -> new PersonNotFoundException(to, intoId));
++            if (into.isRetired()) {
++                throw new PersonTransferRefusedException(from.getName() + " cannot be merged into " + into.getName()
++                        + ", who is retired");
++            }
++        } else if (from.getContact() != null && people.existsBySheetIdAndContact(to, from.getContact())) {
+             throw new PersonTransferRefusedException("The contact " + from.getContact() + " is already in use on sheet " + to);
+         }
+         RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
+         RollupService.Snapshot beforeThere = rollup.snapshot(to);
+ 
+-        // The person, with every grade and its from-date, their terms and contact, and their aliases.
+-        List<PersonGrade> grades = from.getGrades();
+-        Person arrived = new Person(to, from.getName(), grades.get(0).getGrade());
+-        grades.stream().skip(1).forEach(g -> arrived.setGrade(g.getGrade(), g.getFromDate()));
+-        arrived.setTerms(from.getTerms());
+-        arrived.setContact(from.getContact());
+-        arrived.setAddedOn(toSheet.getToday());
+-        arrived.setOriginSheet(sheetId);
+-        arrived.setPosition(people.maxPosition(to) + 1);
+-        Person saved = people.saveAndFlush(arrived);
+         aliases.deleteAll(theirAliases);
+         aliases.flush();
+-        theirAliases.forEach(a -> aliases.save(new PersonAlias(to, saved.getId(), a.getAlias())));
++        Person saved;
++        if (into == null) {
++            // The person, with every grade and its from-date, their terms and contact, and their aliases.
++            List<PersonGrade> grades = from.getGrades();
++            Person arrived = new Person(to, from.getName(), grades.get(0).getGrade());
++            grades.stream().skip(1).forEach(g -> arrived.setGrade(g.getGrade(), g.getFromDate()));
++            arrived.setTerms(from.getTerms());
++            arrived.setContact(from.getContact());
++            arrived.setAddedOn(toSheet.getToday());
++            arrived.setOriginSheet(sheetId);
++            arrived.setPosition(people.maxPosition(to) + 1);
++            saved = people.saveAndFlush(arrived);
++            theirAliases.forEach(a -> aliases.save(
++                    new PersonAlias(to, saved.getId(), a.getAlias(), a.getAliasSlot())));
++        } else {
++            // Merged into the person with their name: their name and aliases join that person's aliases.
++            saved = into;
++            for (String name : names) {
++                aliases.saveAndFlush(new PersonAlias(to, saved.getId(), name, aliases.nextSlot(to, Person.key(name))));
++            }
++        }
+ 
+         // The claims, listed in the order they were, and numbered anew in the order they were opened.
+         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId());
+@@ -180,7 +209,11 @@ public class TransferService {
+                 + " name=" + from.getName() + " to=" + to);
+         rollup.recordChanges(sheetId, user, beforeHere);
+         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + to + " by=" + user
+-                + " name=" + saved.getName() + " from=" + sheetId);
++                + " name=" + from.getName() + " from=" + sheetId);
++        if (into != null) {
++            audit.recordOnCommit("PERSON_MERGED sheet=" + to + " by=" + user
++                    + " from=" + from.getName() + " into=" + into.getName());
++        }
+         rollup.recordChanges(to, user, beforeThere);
+         return saved;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 4095064ed..34cf42307 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -160,7 +160,8 @@ public class SheetCloneService {
+         people.flush();
+         for (PersonAlias alias : aliases.findBySheetId(sheetId).stream()
+                 .sorted(Comparator.comparing(PersonAlias::getId)).toList()) {
+-            aliases.save(new PersonAlias(to, personIds.get(alias.getPersonId()), alias.getAlias()));
++            aliases.save(new PersonAlias(to, personIds.get(alias.getPersonId()), alias.getAlias(),
++                    alias.getAliasSlot()));
+         }
+         for (PersonPatron patron : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
+             patrons.save(new PersonPatron(to, personIds.get(patron.getPersonId()),
+diff --git a/src/main/resources/db/migration/V73__person_alias_joined.sql b/src/main/resources/db/migration/V73__person_alias_joined.sql
+new file mode 100644
+index 000000000..552ac7e72
+--- /dev/null
++++ b/src/main/resources/db/migration/V73__person_alias_joined.sql
+@@ -0,0 +1,6 @@
++-- A transfer that merges a person into one of the same name joins their names to that person's aliases, which may
++-- then hold the same key more than once. Each alias takes a slot: 0 for one added, the next free slot for one joined,
++-- so an alias added is still unique among the aliases on its sheet.
++ALTER TABLE person_alias ADD COLUMN alias_slot INT NOT NULL DEFAULT 0;
++DROP INDEX person_alias_sheet_key;
++CREATE UNIQUE INDEX person_alias_sheet_key ON person_alias (sheet_id, alias_key, alias_slot);
