@@ -221,7 +221,7 @@ public class ClaimController {
     public record ReassignRequest(@NotNull Long personId) {
     }
 
-    /** Move a DRAFT, OPEN or PENDING claim to another person: a steward only. */
+    /** Move a DRAFT, OPEN or PENDING claim to another person: a role the permission matrix allows to reassign. */
     @PostMapping("/claims/{id}/reassign")
     public ClaimView reassign(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,

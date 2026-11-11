@@ -53,7 +53,7 @@ public class BulkOpenService {
             try {
                 service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN);
                 opened++;
-            } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException
+            } catch (ClaimStatusException | ClaimActionForbiddenException | PeriodClosedException | ClaimNotFoundException
                     | PersonNotFoundException refused) {
                 // Left as it is.
             }

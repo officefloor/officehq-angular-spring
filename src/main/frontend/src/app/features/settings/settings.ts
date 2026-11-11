@@ -22,6 +22,8 @@ interface SettingsView {
   cap: string | null;
   /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
   proofThreshold: string | null;
+  /** The permission matrix, by action: the roles that may take it, comma separated; null: the standing rule. */
+  permissions: Record<string, string | null>;
   /** Every value recorded of each dated setting, by key, from-date first to last. */
   dated: Record<string, DatedValue[]>;
 }
@@ -34,10 +36,14 @@ interface RoleView {
 
 const ROLES = ['clerk', 'steward'];
 const GRADES = ['A', 'B', 'C'];
+/** The actions the permission matrix decides. */
+const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
+/** Roles typed for an action: clerk and/or steward, comma separated; blank keeps the standing rule. */
+const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
 /** A date typed as yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, its late percent, its cap and its proof threshold; not dated: its policy date and its period numbering from) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, its late percent, its cap and its proof threshold; not dated: its policy date, its period numbering from and its permission matrix) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -182,6 +188,19 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="froms()['proof-threshold'] ?? ''"
           (input)="setFrom('proof-threshold', value($event))"
         />
+        <fieldset>
+          <legend>Permissions (roles that may take each action, comma separated; blank: the standing rule)</legend>
+          @for (a of actions; track a) {
+            <label [for]="'setting-perm-' + a">Who may {{ a }} (clerk, steward)</label>
+            <input
+              [id]="'setting-perm-' + a"
+              [attr.data-testid]="'setting-perm-' + a"
+              [value]="perms()[a]"
+              (focus)="focusPerm(a)"
+              (input)="setPerm(a, value($event)); settingsError.set(null)"
+            />
+          }
+        </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsError(); as message) {
           <p role="alert" data-testid="settings-error">{{ message }}</p>
@@ -197,6 +216,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Policy date in force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
+      @for (a of actions; track a) {
+        <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' }}</strong></p>
+      }
       <p>Proof threshold in force: <strong data-testid="setting-proof-threshold-current">{{ session.settingOn('proof-threshold', session.today()) ?? '' }}</strong></p>
     </section>
     <section aria-labelledby="roles-heading">
@@ -250,6 +272,13 @@ export class Settings {
 
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
+  protected readonly actions = ACTIONS;
+  /** Each action's roles as typed. */
+  protected readonly perms = signal<Record<string, string>>({});
+  /** Each action's roles as saved; null: the standing rule. */
+  protected readonly permsCurrent = signal<Record<string, string | null>>({});
+  /** The actions whose roles were typed in since the form was last saved or read. */
+  protected permsEdited = new Set<string>();
   /** Each grade's terms as typed. */
   protected readonly gradeTerms = signal<Record<string, string>>({});
   /** The grades whose terms were typed in since the form was last saved or read. */
@@ -275,7 +304,7 @@ export class Settings {
   protected capEdited = false;
   protected proofThresholdEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap' | 'proofThreshold' | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'cap' | 'proofThreshold' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -295,6 +324,7 @@ export class Settings {
         this.session.dated.set(null);
         this.session.policyDate.set(null);
         this.periodNumberingFromCurrent.set(null);
+        this.permsCurrent.set({});
         this.roleList.set([]);
         this.settingsError.set(null);
         this.roleError.set(null);
@@ -310,6 +340,15 @@ export class Settings {
   protected setGradeTerms(grade: string, terms: string): void {
     this.gradeTerms.update((all) => ({ ...all, [grade]: terms }));
     this.gradeTermsEdited.add(grade);
+  }
+
+  protected focusPerm(action: string): void {
+    this.lastFocused = `perm-${action}`;
+  }
+
+  protected setPerm(action: string, roles: string): void {
+    this.perms.update((all) => ({ ...all, [action]: roles }));
+    this.permsEdited.add(action);
   }
 
   /** A from-date typed for a dated setting: a save then saves that setting from it. */
@@ -335,7 +374,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.capEdited && !this.proofThresholdEdited;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.capEdited && !this.proofThresholdEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -346,6 +385,7 @@ export class Settings {
         case 'periodNumberingFrom': this.periodNumberingFromEdited = true; break;
         case 'cap': this.capEdited = true; break;
         case 'proofThreshold': this.proofThresholdEdited = true; break;
+        default: if (this.lastFocused) this.permsEdited.add(this.lastFocused.slice('perm-'.length));
       }
     }
     const saveLimit = this.clerkLimitEdited || (nothingTyped && !this.lastFocused);
@@ -357,6 +397,7 @@ export class Settings {
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
+    const savePerms = ACTIONS.filter((a) => this.permsEdited.has(a));
     const limit = this.clerkLimit().trim();
     const floor = this.floor().trim();
     const terms = this.terms().trim();
@@ -414,6 +455,10 @@ export class Settings {
     }
     if (saveProofThreshold && proofThreshold !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(proofThreshold)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (savePerms.some((a) => !PERM.test((this.perms()[a] ?? '').trim()))) {
+      this.settingsError.set('Type the roles allowed as clerk and/or steward, comma separated, or leave it blank for the standing rule.');
       return;
     }
     this.savingSettings = true;
@@ -480,6 +525,13 @@ export class Settings {
           ),
         );
         this.proofThresholdEdited = false;
+      }
+      for (const a of savePerms) {
+        const roles = (this.perms()[a] ?? '').trim();
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/perm/${a}`, { roles: roles === '' ? null : roles }, this.session.headers()),
+        );
+        this.permsEdited.delete(a);
       }
       if (saved && this.session.sheet() === sheet) this.show(saved);
     } catch {
@@ -555,6 +607,11 @@ export class Settings {
     this.periodNumberingFrom.set(settings.periodNumberingFrom ?? '');
     this.cap.set(settings.cap ?? '');
     this.proofThreshold.set(settings.proofThreshold ?? '');
+    this.permsCurrent.set(settings.permissions);
+    const perms: Record<string, string> = {};
+    for (const a of ACTIONS) perms[a] = settings.permissions[a] ?? '';
+    this.perms.set(perms);
+    this.permsEdited.clear();
     this.clerkLimitEdited = false;
     this.floorEdited = false;
     this.termsEdited = false;

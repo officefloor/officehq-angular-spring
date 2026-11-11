@@ -31,6 +31,12 @@ public class RoleService {
         return roles.findBySheetIdAndUserName(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
     }
 
+    /** Whether the user's role may take the action (open, settle, void, reassign, close, reopen) on the sheet. */
+    public boolean may(String sheetId, String user, String action) {
+        return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId))
+                .allows(action, roleOf(sheetId, user).value());
+    }
+
     @Transactional
     public SheetRole set(String sheetId, String by, String user, Role role) {
         if (!sheets.existsById(sheetId)) {

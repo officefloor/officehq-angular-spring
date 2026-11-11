@@ -4,7 +4,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
-import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -63,7 +62,7 @@ public class PeriodService {
         return saved;
     }
 
-    /** Close a period, fixing every person's due-total for it, and so its own, as they are now; refused when it is already closed. */
+    /** Close a period, fixing every person's due-total for it, and so its own, as they are now; refused when it is already closed or the user's role may not close. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
         // Lock the sheet so no claim in the period changes while its total is fixed.
@@ -72,6 +71,9 @@ public class PeriodService {
         }
         Period period = periods.findBySheetIdAndName(sheetId, name)
                 .orElseThrow(() -> new PeriodNotFoundException(sheetId, name));
+        if (!roles.may(sheetId, user, "close")) {
+            throw new PeriodCloseForbiddenException(name, user);
+        }
         if (period.isClosed()) {
             throw new PeriodClosedException(name);
         }
@@ -82,7 +84,7 @@ public class PeriodService {
         return saved;
     }
 
-    /** Reopen a closed period, making its due-total live again; refused unless the user is a steward and it is closed. */
+    /** Reopen a closed period, making its due-total live again; refused unless the user's role may reopen and it is closed. */
     @Transactional
     public Period reopen(String sheetId, String user, String name) {
         if (sheets.lockById(sheetId) == 0) {
@@ -90,7 +92,7 @@ public class PeriodService {
         }
         Period period = periods.findBySheetIdAndName(sheetId, name)
                 .orElseThrow(() -> new PeriodNotFoundException(sheetId, name));
-        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+        if (!roles.may(sheetId, user, "reopen")) {
             throw new PeriodReopenForbiddenException(name, user);
         }
         if (!period.isClosed()) {

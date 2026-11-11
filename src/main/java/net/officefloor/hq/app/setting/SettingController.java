@@ -32,22 +32,26 @@ public class SettingController {
      * when there is none; the floor with two decimals; the terms in whole days; each grade's own terms in whole days,
      * by grade (a grade without its own is left out); the late percent with two decimals; the policy date as
      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
-     * the cap with two decimals, null when there is none; the proof threshold with two decimals, null when there is none.
+     * the cap with two decimals, null when there is none; the proof threshold with two decimals, null when there is none;
+     * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
+     * separated, null when blank (the standing rule).
      * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
      * late-pct, cap, proof-threshold), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, String cap,
-            String proofThreshold, Map<String, List<DatedValue>> dated) {
+            String proofThreshold, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
             Map<String, List<DatedValue>> dated = new LinkedHashMap<>();
             sheet.datedSettings().forEach((key, values) -> dated.put(key,
                     values.stream().map(d -> new DatedValue(d.getFromDate(), d.getValue())).toList()));
+            Map<String, String> permissions = new LinkedHashMap<>();
+            Sheet.PERMISSION_ACTIONS.forEach(action -> permissions.put(action, sheet.permission(action)));
             return new SettingsView(shown(sheet.getClerkLimit()), shown(sheet.floorOn(today)), sheet.termsOn(today),
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
-                    shown(sheet.getCap()), shown(sheet.proofThresholdOn(today)), dated);
+                    shown(sheet.getCap()), shown(sheet.proofThresholdOn(today)), permissions, dated);
         }
 
         private static String shown(BigDecimal value) {
@@ -122,6 +126,15 @@ public class SettingController {
         BigDecimal proofThresholdValue() {
             return proofThreshold == null || proofThreshold.isBlank() ? null
                     : new BigDecimal(proofThreshold.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /** The roles that may take an action, comma separated (clerk, steward); blank or missing keeps the standing rule. */
+    public record PermissionRequest(
+            @Pattern(regexp = "\\s*((clerk|steward)(\\s*,\\s*(clerk|steward))*)?\\s*") String roles) {
+
+        String rolesValue() {
+            return roles == null || roles.isBlank() ? null : roles.replaceAll("\\s", "");
         }
     }
 
@@ -208,6 +221,14 @@ public class SettingController {
             @RequestBody @Valid ProofThresholdRequest request) {
         return view(service.setProofThreshold(sheetId.trim(), user.trim(), request.proofThresholdValue(),
                 request.from()));
+    }
+
+    @PutMapping("/perm/{action}")
+    public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid PermissionRequest request) {
+        return view(service.setPermission(sheetId.trim(), user.trim(), action, request.rolesValue()));
     }
 
     private SettingsView view(Sheet sheet) {

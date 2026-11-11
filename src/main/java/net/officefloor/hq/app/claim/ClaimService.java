@@ -138,6 +138,16 @@ public class ClaimService {
         if (!claim.getStatus().canMoveTo(status) || status == ClaimStatus.PENDING) {
             throw new ClaimStatusException(id, claim.getStatus(), status);
         }
+        // The sheet's permission matrix decides which roles may open, settle or void.
+        String action = switch (status) {
+            case OPEN -> "open";
+            case SETTLED -> "settle";
+            case VOID -> "void";
+            case DRAFT, PENDING -> throw new ClaimStatusException(id, claim.getStatus(), status);
+        };
+        if (!roles.may(sheetId, user, action)) {
+            throw new ClaimActionForbiddenException(id, user, action);
+        }
         periods.requireOpen(sheetId, claim.getDate());
         // A deferred claim cannot be settled until the sheet's today reaches the date it is deferred until.
         if (status == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
@@ -228,16 +238,16 @@ public class ClaimService {
     }
 
     /**
-     * A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
+     * A user whose role may reassign moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
      * loses any figure a statement bound it to (live again until its new person's next statement), and is listed as
      * its new person's newest claim. Refused for a SETTLED or VOID claim, its own person, a closed period, a new person
-     * retired before its date, or a user not a steward.
+     * retired before its date, or a user whose role may not reassign.
      */
     @Transactional
     public Claim reassign(String sheetId, String user, Long id, Long toPersonId) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
-        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+        if (!roles.may(sheetId, user, "reassign")) {
             throw new ClaimReassignForbiddenException(id, user);
         }
         if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {

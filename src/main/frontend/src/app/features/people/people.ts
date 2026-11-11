@@ -57,14 +57,14 @@ function live(claim: Claim, holds: PersonHold[], today: string | null): boolean 
 
 /**
  * Whether the claim counts in a period's due-total: by the status it had at the end of the period's last day, an OPEN,
- * PENDING or SETTLED one, but one open then and dated within a hold of its person not unless a statement binds it, and
- * one deferred on the sheet's today not at all.
+ * PENDING or SETTLED one, but one open then and still open now and dated within a hold of its person not unless a
+ * statement binds it, and one deferred on the sheet's today not at all.
  */
 function liveAtEnd(claim: Claim, holds: PersonHold[], today: string | null, end: string): boolean {
   const status = statusOn(claim, end);
   if (status === null || deferred(claim, today)) return false;
   const open = status === 'OPEN' || status === 'PENDING';
-  return (open || status === 'SETTLED') && !(open && !bound(claim) && heldOn(holds, claim.date));
+  return (open || status === 'SETTLED') && !(open && isOpen(claim) && !bound(claim) && heldOn(holds, claim.date));
 }
 
 /** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */

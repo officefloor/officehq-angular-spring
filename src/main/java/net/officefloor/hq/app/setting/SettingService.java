@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, its late percent, its cap and its proof threshold, each
- * dated (kept from a from-date); and its policy date and its period numbering from, not dated.
+ * dated (kept from a from-date); and its policy date, its period numbering from and its permission matrix, not dated.
  */
 @Service
 public class SettingService {
@@ -147,6 +147,20 @@ public class SettingService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=policy-date value="
                 + (policyDate == null ? "" : policyDate.toString()));
         rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Set the roles (comma separated) that may take the action; null or blank keeps the standing rule. Every save is
+     * recorded, even of the same value.
+     */
+    @Transactional
+    public Sheet setPermission(String sheetId, String user, String action, String roles) {
+        Sheet sheet = get(sheetId);
+        sheet.setPermission(action, roles);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=perm-" + action + " value="
+                + (roles == null ? "" : roles));
         return saved;
     }
 

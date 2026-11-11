@@ -1,10 +1,14 @@
 package net.officefloor.hq.app.sheet;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
@@ -13,7 +17,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,6 +37,13 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+
+    /** The actions the permission matrix decides, each with the roles that may take it when its entry is blank. */
+    public static final Map<String, String> STANDING_PERMISSIONS = Map.of("open", "clerk,steward", "settle",
+            "clerk,steward", "void", "clerk,steward", "reassign", "steward", "close", "clerk,steward", "reopen",
+            "steward");
+    public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close",
+            "reopen");
 
     /** The sheet's starting values, in force before a key's first from-date: none for a key not listed. */
     private static final Map<String, String> STARTING = Map.of(FLOOR, "1.00", TERMS, "14", LATE_PCT, "0.00");
@@ -50,6 +63,14 @@ public class Sheet {
     @OneToMany(mappedBy = "sheet", fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     @OrderBy("key ASC, fromDate ASC")
     private List<DatedSetting> dated = new ArrayList<>();
+
+    /** The permission matrix: the roles (comma separated) that may take each action; an action left out keeps the
+     *  standing rule. Not dated. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "action")
+    @Column(name = "roles", nullable = false)
+    private Map<String, String> permissions = new HashMap<>();
 
     /** The policy date: a claim dated before it rounds half up, one on or after it half to even; null: the today. */
     @Column(name = "policy_date")
@@ -163,6 +184,26 @@ public class Sheet {
     /** The percent of its figure an overdue claim dated on the date gains for every full 30 days it is overdue. */
     public BigDecimal latePctOn(LocalDate date) {
         return decimalOn(LATE_PCT, date).orElseThrow();
+    }
+
+    /** The roles entered for the action, comma separated; null when blank (the standing rule applies). */
+    public String permission(String action) {
+        return permissions.get(action);
+    }
+
+    /** Enter the roles that may take the action; null or blank keeps the standing rule. */
+    public void setPermission(String action, String roles) {
+        if (roles == null || roles.isBlank()) {
+            permissions.remove(action);
+        } else {
+            permissions.put(action, roles);
+        }
+    }
+
+    /** Whether the role (clerk or steward) may take the action: as entered in the matrix, else the standing rule. */
+    public boolean allows(String action, String role) {
+        String roles = permissions.getOrDefault(action, STANDING_PERMISSIONS.get(action));
+        return roles != null && Arrays.stream(roles.split(",")).map(String::trim).anyMatch(role::equals);
     }
 
     public LocalDate getPolicyDate() {
