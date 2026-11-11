@@ -1,0 +1,78 @@
+{
+  "checkpoint": 148,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp148_claimed-without-corrections",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    32,
+    36,
+    51,
+    56,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year",
+    "cp30_corrections.spec.ts::corrections",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date",
+    "cp36_approvals.spec.ts::approvals scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1",
+    "cp56_late-per-boundary.spec.ts::late per boundary scenario 1"
+  ],
+  "request": {
+    "spec": "A person's claimed, and the sheet's claimed-total, no longer include corrections: claimed is the\namounts of the person's claims that count, leaving out claims that correct another. Everything that\nreads claimed (the rollup lines included) follows; due figures are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person's claimed, and the sheet's claimed-total, no longer include corrections: claimed is the\namounts of the person's claims that count, leaving out claims that correct another. Everything that\nreads claimed (the rollup lines included) follows; due figures are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "38676932b382732cbe2a4993cf63a42b009d4800",
+  "reset_sha": "",
+  "preagent_sha": "ea988b4731c20d03b2c553300c29f50987ebbbf0",
+  "prev_sha": "ea988b4731c20d03b2c553300c29f50987ebbbf0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3381648,
+    "input_tokens": 6,
+    "output_tokens": 469,
+    "cache_read_tokens": 71943,
+    "cache_creation_tokens": 1637,
+    "num_turns": 2,
+    "duration_ms": 5606,
+    "duration_api_ms": 32934,
+    "model": "claude-opus-5-5",
+    "session_id": "ff258b52-92d8-418d-ad90-b347304e0436",
+    "stop_reason": "success",
+    "result_text": "A person's claimed and the sheet's claimed-total now leave out corrections, and all 4 tests in `bin/e2e` pass.\n\nA correction is any claim that names the claim it corrects. The change is in two places:\n\n- **Server:** `src/main/java/net/officefloor/hq/app/rollup/RollupService.java` skips corrections when adding up a person's claimed. The sheet's claimed-total and the `ROLLUP` / `TOTALS` audit lines are built from that same sum, so they follow it.\n- **Front end:** `claimedBy` in `src/main/frontend/src/app/features/people/people.ts` applies the same rule. The on-screen claimed-total is added up from it.\n\nDue figures still include corrections. For example, Ada shows claimed 50.00 and due-total 3.00 after a -20.00 correction to her 50.00 claim.\n\nNo change to the stored data or its schema was needed, because claims already record which claim they correct.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3381648,
+        "num_turns": 2,
+        "duration_ms": 5606,
+        "duration_api_ms": 32934,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp148.agent.jsonl",
+  "agent_diff_file": "cp148.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
