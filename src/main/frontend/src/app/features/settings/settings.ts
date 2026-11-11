@@ -130,6 +130,8 @@ interface SettingsResponse {
   maxOpen: string;
   /** The pending SLA in days, blank for none. */
   pendingSla: string;
+  /** The policy versions, in the order made: the from-date of each, blank for none (counts always). */
+  policyVersions: string[];
   /** The mid score threshold, blank for none. */
   scoreMid: string;
   /** The high score threshold, blank for none. */
@@ -651,6 +653,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </p>
       <p>
+        Policy version:
+        <strong data-testid="policy-version">{{ policyVersions().length }}</strong>
+      </p>
+      <p>
         Rounding mode in force:
         <strong data-testid="setting-rounding-current">{{ rounding() }}</strong>
         @if (rounding() === '') {
@@ -833,6 +839,10 @@ export class Settings {
   protected readonly cap = computed(() => valueOn(this.caps(), this.session.figureDay(), ''));
   /** The cap typed; null while its field has not been entered (left as it is). */
   protected readonly capInput = signal<string | null>(null);
+  /** The policy versions (the rounding mode, the floor, the cap, the terms, the late percent and the
+   *  clerk limit, versioned together), in the order made: the from-date of each (blank: counts always);
+   *  shared with whoever shows a claim's version. The current version is how many there are. */
+  readonly policyVersions = model<string[]>([]);
   /** The sheet's rounding modes, dated (blank: none), shared with whoever works out how a claim rounds. */
   readonly roundings = model<DatedValue[]>([]);
   /** The rounding mode in force on the sheet's today; blank for none. */
@@ -1298,7 +1308,7 @@ export class Settings {
 
   private show(
     res: Pick<SettingsResponse, 'dated' | 'policyDate' | 'periodNumberingFrom' | 'permissions' | 'graceDays' | 'entryDate' | 'pot'>
-      & Partial<Pick<SettingsResponse, 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'pendingSla' | 'maxOpen' | 'proofKinds' | 'defaultGrade' | 'scoreMid' | 'scoreHigh' | 'scoreLog'>>,
+      & Partial<Pick<SettingsResponse, 'policyVersions' | 'parent' | 'fiscalStartMonth' | 'alertThreshold' | 'escalateAfter' | 'reviewSla' | 'pendingSla' | 'maxOpen' | 'proofKinds' | 'defaultGrade' | 'scoreMid' | 'scoreHigh' | 'scoreLog'>>,
   ): void {
     this.dated.set(res.dated);
     this.permissions.set(res.permissions);
@@ -1307,6 +1317,7 @@ export class Settings {
     this.graces.set(Object.fromEntries(GRADES.map((g) => [g, this.datedOf(this.graceKey(g))])));
     this.caps.set(this.datedOf('cap'));
     this.roundings.set(this.datedOf('rounding'));
+    this.policyVersions.set(res.policyVersions ?? []);
     this.policyDate.set(res.policyDate);
     this.numberingFrom.set(res.periodNumberingFrom);
     this.graceDays.set(res.graceDays);

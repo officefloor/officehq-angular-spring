@@ -107,7 +107,8 @@ import { FigurePipe } from '../../core/figure';
 // The export-claims button downloads every claim as a CSV file the same way: people in list order,
 // retired included, each person's claims oldest first, with person, number, date, amount, due,
 // status and period as the claim's row shows them (an empty number or period, or n/a, as it is).
-// The sheet may have a cap (the one in force on its today): a person's due-total is at most it less their cut total (not below
+// The sheet may have a cap (a person's is the one in force on the date of their latest claim that counts, the sheet's
+// today when none does): a person's due-total is at most it less their cut total (not below
 // 0.00), and their excess is how far the sum of their figures is above that (0.00 otherwise; a due-total of n/a is not capped). Every total
 // of due-totals (the sheet's, a grade's, the export) adds up the capped figures.
 // People can be ticked and given a grade together from a from-date (the sheet's today when blank):
@@ -325,7 +326,7 @@ const PERSON_COUNTED_STATUSES = ['OPEN', 'SETTLED'] as const;
     <app-rates [(rates)]="rates" />
     <app-grades />
     <app-roles />
-    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(roundings)]="roundings" [(caps)]="caps" [(pot)]="pot" />
+    <app-settings [(floors)]="floors" [(latePcts)]="latePcts" [(graces)]="graces" [(policyDate)]="policyDate" [(roundings)]="roundings" [(caps)]="caps" [(policyVersions)]="policyVersions" [(pot)]="pot" />
     <app-periods [(periods)]="periods" [dues]="dues()" [claimDueBys]="claimDueBys()" />
     <app-holidays />
     <app-void-reasons />
@@ -979,6 +980,7 @@ const PERSON_COUNTED_STATUSES = ['OPEN', 'SETTLED'] as const;
                   [graces]="graces()"
                   [policyDate]="policyDate()"
                   [roundings]="roundings()"
+                  [policyVersions]="policyVersions()"
                   [periods]="periods()"
                   [selected]="selectedClaims()"
                   [people]="people()"
@@ -1377,13 +1379,11 @@ export class People {
   protected readonly periods = signal<Period[]>([]);
   /** The sheet's floors, dated: the one in force on a claim's date is the least its live due can be. */
   protected readonly floors = signal<DatedValue[]>([]);
-  /** The sheet's caps, dated (blank: none): the one in force on the sheet's today is the most a
-   *  person's due-total can be. */
+  /** The sheet's caps, dated (blank: none): the one in force on the date of a person's latest claim
+   *  that counts is the most their due-total can be. */
   protected readonly caps = signal<DatedValue[]>([]);
-  private readonly capCents = computed(() => {
-    const cap = valueOn(this.caps(), this.session.figureDay(), '');
-    return cap === '' ? null : cents(cap);
-  });
+  /** The policy versions, in the order made: the from-date of each (blank: counts always). */
+  protected readonly policyVersions = signal<string[]>([]);
   /** The sheet's late percents, dated: for each full 30 days a claim is overdue, the one in force on
    *  that boundary date (its due-by plus 30, 60, 90 ... days) is what it gains of its figure. */
   protected readonly latePcts = signal<DatedValue[]>([]);
@@ -2013,10 +2013,14 @@ export class People {
     return sum === null || room === null ? 0 : Math.max(sum - room, 0);
   }
 
-  /** The sheet's cap less the person's cut total (not below 0), in whole cents; null for no cap. */
+  /** The cap in force on the date of the person's latest claim that counts less their cut total (not below 0), in whole cents; null for no cap. */
   private roomOf(p: Person): number | null {
-    const cap = this.capCents();
-    return cap === null ? null : Math.max(cap - this.cutTotalOf(p.id), 0);
+    const today = this.session.figureDay();
+    const latest = this.claimsOf(p.id)
+      .filter((c) => countsFor(p, c, today))
+      .reduce<string | null>((max, c) => (max === null || c.date > max ? c.date : max), null);
+    const cap = valueOn(this.caps(), latest ?? today, '');
+    return cap === '' ? null : Math.max(cents(cap) - this.cutTotalOf(p.id), 0);
   }
 
   /**

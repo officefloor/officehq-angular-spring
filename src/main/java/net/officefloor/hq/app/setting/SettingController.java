@@ -137,7 +137,8 @@ public class SettingController {
      * And the review SLA in days, blank for none. And the proof kinds, comma separated, blank for none.
      * And the default grade, blank for none (A). And the score thresholds, mid and high, each blank for none.
      * And the score log switch, on or blank for off. And the most open claims a person may have, blank for none.
-     * And the pending SLA in days, blank for none.
+     * And the pending SLA in days, blank for none. And the policy versions, in the order made: the
+     * from-date of each, blank for none (counts always); the current version is how many there are.
      */
     public record SettingsResponse(String clerkLimit, String floor, int terms, String latePct, String policyDate,
             String periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
@@ -145,7 +146,7 @@ public class SettingController {
             List<DatedValue> dated, Map<String, String> permissions, String graceDays, String entryDate, String pot,
             String parent, int fiscalStartMonth, String alertThreshold, String rounding, String escalateAfter,
             String reviewSla, String proofKinds, String defaultGrade, String scoreMid, String scoreHigh,
-            String scoreLog, String maxOpen, String pendingSla) {
+            String scoreLog, String maxOpen, String pendingSla, List<String> policyVersions) {
     }
 
     private static SettingsResponse response(Sheet sheet) {
@@ -169,7 +170,8 @@ public class SettingController {
                 sheet.getScoreHigh() == null ? "" : String.valueOf(sheet.getScoreHigh()),
                 sheet.isScoreLog() ? "on" : "",
                 sheet.getMaxOpen() == null ? "" : String.valueOf(sheet.getMaxOpen()),
-                sheet.getPendingSla() == null ? "" : String.valueOf(sheet.getPendingSla()));
+                sheet.getPendingSla() == null ? "" : String.valueOf(sheet.getPendingSla()),
+                sheet.getPolicyVersions().stream().map(d -> d == null ? "" : d.toString()).toList());
     }
 
     private static DatedValue dated(DatedSetting s) {

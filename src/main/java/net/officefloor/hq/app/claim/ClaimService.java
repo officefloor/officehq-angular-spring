@@ -471,7 +471,7 @@ public class ClaimService {
                     "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
                             + " without a proof of each kind the sheet needs.");
         }
-        if (next == ClaimStatus.SETTLED && !review && aboveClerkLimit(sheetId, user, person, settling)) {
+        if (next == ClaimStatus.SETTLED && !review && aboveClerkLimit(sheetId, user, person, claim, settling)) {
             next = ClaimStatus.PENDING;
             settling = null;
         }
@@ -1442,12 +1442,12 @@ public class ClaimService {
     }
 
     /**
-     * Whether the user is a clerk settling a claim whose figure is above the clerk limit in force: its
-     * person's grade's (on the sheet's today) when one is set, else the sheet's.
+     * Whether the user is a clerk settling a claim whose figure is above the clerk limit in force on the
+     * claim's date: its person's grade's (on the sheet's today) when one is set, else the sheet's.
      */
-    private boolean aboveClerkLimit(String sheetId, String user, Person person, BigDecimal figure) {
+    private boolean aboveClerkLimit(String sheetId, String user, Person person, Claim claim, BigDecimal figure) {
         BigDecimal limit = figure == null ? null
-                : sheets.clerkLimit(sheetId, person.gradeOn(sheets.today(sheetId)));
+                : sheets.clerkLimit(sheetId, person.gradeOn(sheets.today(sheetId)), claim.getDate());
         return figure != null && limit != null && figure.compareTo(limit) > 0 && !isSteward(sheetId, user);
     }
 

@@ -37,7 +37,9 @@ import org.springframework.web.server.ResponseStatusException;
  * The settings that carry a figure (the floor, the late percent, the terms, a grade's own terms,
  * a grade's grace days, the clerk limit, the cap, the proof threshold, a grade's own proof threshold and the note threshold) are dated: each value is recorded from a from-date (the sheet's
  * today when none is given). A claim's floor and late percent are those in force on its
- * date (its terms are those in force on the day it was created: the sheet's today then), as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}) and its review threshold (see {@link Sheet#reviewThresholdOn}); the clerk limit and the cap are those in force on the sheet's today (see {@link Sheet}).
+ * date (its terms are those in force on the day it was created: the sheet's today then), as is its proof threshold (its person's grade's own in force then when it has one, else the sheet's; see {@link Sheet#proofThresholdFor}) and its note threshold (see {@link Sheet#noteThresholdOn}) and its review threshold (see {@link Sheet#reviewThresholdOn}); a claim's clerk limit is the one in force on its own date, and a person's cap the one in force on the date of their latest claim that counts (see {@link Sheet}).
+ * The rounding mode, the floor, the cap, the terms, the late percent and the clerk limit are versioned together: every
+ * value recorded for one of them is a new policy version, numbered from 1 in the order made (see {@link Sheet#getPolicyVersions}).
  * The policy date and the period-numbering-from date are not dated. Nor is the permission matrix:
  * for each of open, settle, void, reassign, close and reopen, the roles that may take it (blank: the
  * standing rule, see {@link Sheet#permits}), recorded under the key {@code perm-<action>}. Nor are

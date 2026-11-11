@@ -211,12 +211,13 @@ public class RollupService {
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, BigDecimal> heldParts = heldParts(sheet, sheetRates, sheetClaims, sheetPeople, claim -> true);
         Map<Long, Person> byId = byId(sheetPeople);
-        Map<Long, BigDecimal> cutTotals = sheet.getCap() == null ? Map.of() : pools.getObject().cutTotalsNow(sheetId);
+        Map<Long, BigDecimal> cutTotals = !sheet.hasCap() ? Map.of() : pools.getObject().cutTotalsNow(sheetId);
         for (Person person : sheetPeople) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
             boolean anyFigure = false;
+            List<LocalDate> countedDates = new ArrayList<>();
             for (Claim claim : sheetClaims) {
                 if (!claim.getPersonId().equals(person.getId())) {
                     continue;
@@ -224,6 +225,7 @@ public class RollupService {
                 if (!person.counts(claim, today)) {
                     continue;
                 }
+                countedDates.add(claim.getDate());
                 if (!claim.isCorrection()) {
                     claimed = claimed.add(claim.getAmount());
                 }
@@ -244,7 +246,8 @@ public class RollupService {
             // as on screen: n/a when the grade in force today has no rate today and no claim that
             // counts has a figure
             boolean none = inForce(sheetRates, person.gradeOn(today), today).isEmpty() && !anyFigure;
-            figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due, cutTotals.get(person.getId())),
+            figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due, cutTotals.get(person.getId()),
+                    sheet.capDate(countedDates.stream())),
                     overdue, person.gradeOn(today), person.isRetired()));
         }
         return new Snapshot(figures);

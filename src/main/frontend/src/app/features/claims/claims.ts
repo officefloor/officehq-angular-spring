@@ -38,7 +38,9 @@ import { FigurePipe } from '../../core/figure';
 // used on the sheet, compared without regard to case, is refused with an error on the form.
 // A claim may carry tags, typed comma separated: each trimmed and lower-cased, repeats dropped,
 // shown sorted. A claim split off another carries the original's tags.
-// A clerk settling a claim whose due is above the clerk limit makes it PENDING. A PENDING claim
+// Each claim shows the policy version in force on its date: the number of policy versions whose from-date is
+// on or before it (one with no from-date counts always).
+// A clerk settling a claim whose due is above the clerk limit in force on its date makes it PENDING. A PENDING claim
 // counts like an OPEN one, and a statement binds it like any other claim that counts. A steward
 // approves it (SETTLED, its due fixed then) or rejects it with a reason (back to OPEN, still bound
 // by the last statement); the user who opened or last edited it cannot approve it.
@@ -483,6 +485,7 @@ export function money(c: number): string {
           <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+          <span>Policy <span data-testid="claim-policy">{{ policyOf(c) }}</span></span>
           <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
@@ -756,6 +759,8 @@ export class PersonClaims {
   readonly policyDate = input.required<string>();
   /** The sheet's rounding modes, dated (blank: none): the one in force on a claim's date, when there is one, is how it rounds. */
   readonly roundings = input.required<DatedValue[]>();
+  /** The policy versions, in the order made: the from-date of each (blank: counts always). */
+  readonly policyVersions = input<string[]>([]);
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   /** The ids of the claims selected for a bulk action, across the sheet. */
@@ -873,6 +878,11 @@ export class PersonClaims {
   protected deferredOf(c: Claim): boolean {
     const today = this.session.figureDay();
     return c.status === 'VOID' ? c.deferredUntil !== null && today !== null && today < c.deferredUntil : deferred(c, today);
+  }
+
+  /** The policy version in force on the claim's date: how many versions are from on or before it (blank: always). */
+  protected policyOf(c: Claim): number {
+    return this.policyVersions().filter((from) => from === '' || from <= c.date).length;
   }
 
   /** The name of the period whose dates contain the claim's due-by; blank when none does. */

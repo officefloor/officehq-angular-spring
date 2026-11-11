@@ -139,8 +139,10 @@ public class StatementService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
         int counted = 0;
+        List<LocalDate> countedDates = new ArrayList<>();
         for (Claim claim : theirs) {
             if (person.counts(claim, today)) {
+                countedDates.add(claim.getDate());
                 BigDecimal figure = claimService.figure(sheetId, person, claim);
                 if (claim.getStatus() != ClaimStatus.SETTLED) {
                     figure = LateCharge.floored(sheets.sheet(sheetId), claim, figure);
@@ -163,7 +165,7 @@ public class StatementService {
             anyFigure = true;
         }
         // as on screen: n/a when the grade has no rate today and no claim that counts has a figure
-        BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, person.getId(), total) : null;
+        BigDecimal dueTotal = anyFigure || rates.findInForce(sheetId, person.gradeOn(today), today).isPresent() ? sheets.capped(sheetId, person.getId(), total, countedDates) : null;
         return new Tally(dueTotal, counted);
     }
 
@@ -185,6 +187,7 @@ public class StatementService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
         int counted = 0;
+        List<LocalDate> countedDates = new ArrayList<>();
         for (Claim claim : theirs) {
             ClaimStatus status = claim.statusAt(day).orElse(null);
             boolean stated = boundThen && claim.isStated();
@@ -210,6 +213,7 @@ public class StatementService {
                                 status.isOpen() && !claim.isDeferredAsOf(status, day, stated));
             }
             claim.bind(true, figure, status.isOpen() ? charged : null);
+            countedDates.add(claim.getDate());
             if (charged != null) {
                 total = total.add(charged);
                 anyFigure = true;
@@ -218,7 +222,7 @@ public class StatementService {
         }
         // as on screen: n/a when the grade then has no rate then and no claim that counted has a figure
         boolean none = !anyFigure && RateChain.inForce(ratesThen, person.gradeOn(day, day), day).isEmpty();
-        return new Tally(none ? null : then.capped(total, null), counted);
+        return new Tally(none ? null : then.capped(total, null, then.capDate(countedDates.stream())), counted);
     }
 
     /**

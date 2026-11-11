@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 /** A sheet: the unit everything else in the app is kept under. Created on its first load. */
 @Entity
@@ -59,6 +60,12 @@ public class Sheet {
     public static final String ROUNDING = "rounding";
     /** The rounding modes, by the code each is stored under in its dated setting's figure (1, 2, ...). */
     public static final List<String> ROUNDING_MODES = List.of("half-up", "half-even");
+
+    /**
+     * The policy settings, versioned together: every value recorded for one of them is a new policy
+     * version, numbered from 1 in the order recorded.
+     */
+    public static final Set<String> POLICY_KEYS = Set.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT, CLERK_LIMIT);
 
     /** The actions the permission matrix covers. */
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close", "reopen", "today");
@@ -257,7 +264,10 @@ public class Sheet {
      */
     public Sheet asOf(LocalDate day) {
         Sheet then = new Sheet(id, createdBy, createdAt, day);
-        settingLog.stream().filter(s -> s.madeBy(day)).forEach(s -> then.put(s.getKey(), s.getFromDate(), s.getValue()));
+        settingLog.stream().filter(s -> s.madeBy(day)).forEach(s -> {
+            then.put(s.getKey(), s.getFromDate(), s.getValue());
+            then.settingLog.add(s);
+        });
         then.policyDate = policyDate;
         then.periodNumberingFrom = periodNumberingFrom;
         then.entryDate = entryDate;
@@ -299,6 +309,24 @@ public class Sheet {
                         Comparator.nullsFirst(Comparator.naturalOrder())));
     }
 
+    /** The policy versions, in the order made: the from-date of each (null: from the beginning of time). */
+    public List<LocalDate> getPolicyVersions() {
+        return settingLog.stream().filter(s -> POLICY_KEYS.contains(s.getKey())).map(LoggedSetting::getFromDate).toList();
+    }
+
+    /** The current policy version: how many have been made; 0 for none. */
+    public int getPolicyVersion() {
+        return getPolicyVersions().size();
+    }
+
+    /**
+     * The policy version in force on a date: the number of versions whose from-date is on or before it
+     * (one with no from-date counts always).
+     */
+    public int policyVersionOn(LocalDate date) {
+        return (int) getPolicyVersions().stream().filter(f -> f == null || !f.isAfter(date)).count();
+    }
+
     /** The clerk limit in force on the sheet's today: the most a clerk may settle a claim's due at; null for no limit. */
     public BigDecimal getClerkLimit() {
         return inForce(CLERK_LIMIT, today).map(DatedSetting::getValue).orElse(null);
@@ -309,8 +337,17 @@ public class Sheet {
      * has one (a blank one is none), else the sheet's; null for no limit.
      */
     public BigDecimal clerkLimitFor(String grade) {
-        return (grade == null ? Optional.<DatedSetting>empty() : inForce(GRADE_CLERK_LIMIT + grade, today))
-                .map(DatedSetting::getValue).orElseGet(this::getClerkLimit);
+        return clerkLimitFor(grade, today);
+    }
+
+    /**
+     * The clerk limit for a grade in force on a date (a claim's own): the grade's own in force then when
+     * it has one (a blank one is none), else the sheet's in force then; null for no limit.
+     */
+    public BigDecimal clerkLimitFor(String grade, LocalDate date) {
+        return (grade == null ? Optional.<DatedSetting>empty() : inForce(GRADE_CLERK_LIMIT + grade, date))
+                .map(DatedSetting::getValue)
+                .orElseGet(() -> inForce(CLERK_LIMIT, date).map(DatedSetting::getValue).orElse(null));
     }
 
     /** The floor in force on the sheet's today. */
@@ -348,15 +385,33 @@ public class Sheet {
      * be; null for no cap.
      */
     public BigDecimal getCap() {
-        return inForce(CAP, today).map(DatedSetting::getValue).orElse(null);
+        return capOn(today);
+    }
+
+    /** The cap in force on a date; null for no cap. */
+    public BigDecimal capOn(LocalDate date) {
+        return inForce(CAP, date).map(DatedSetting::getValue).orElse(null);
+    }
+
+    /** Whether any cap is recorded, on any date. */
+    public boolean hasCap() {
+        return settings.stream().anyMatch(s -> s.getKey().equals(CAP) && s.getValue() != null);
     }
 
     /**
-     * A person's due-total held to the cap in force on the sheet's today less their cut total (not
-     * below 0.00; n/a stays n/a).
+     * The date a person's cap is taken on: the date of their latest claim that counts (the sheet's
+     * today when none counts).
      */
-    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
-        BigDecimal cap = getCap();
+    public LocalDate capDate(Stream<LocalDate> countedDates) {
+        return countedDates.max(Comparator.naturalOrder()).orElse(today);
+    }
+
+    /**
+     * A person's due-total held to the cap in force on a date (the date of their latest claim that
+     * counts, see {@link #capDate}) less their cut total (not below 0.00; n/a stays n/a).
+     */
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal, LocalDate capDate) {
+        BigDecimal cap = capOn(capDate);
         if (dueTotal == null || cap == null) {
             return dueTotal;
         }

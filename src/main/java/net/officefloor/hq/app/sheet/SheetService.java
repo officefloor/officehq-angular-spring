@@ -143,22 +143,24 @@ public class SheetService {
     }
 
     /**
-     * The clerk limit in force on the sheet's today for a person of the grade: the grade's own when one
+     * The clerk limit in force on a date (a claim's own) for a person of the grade: the grade's own when one
      * is set, else the sheet's; the most a clerk may settle a claim's due at; null for no limit.
      */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimit(String id, String grade) {
-        return sheets.findById(id).map(s -> s.clerkLimitFor(grade)).orElse(null);
+    public BigDecimal clerkLimit(String id, String grade, LocalDate date) {
+        return sheets.findById(id).map(s -> s.clerkLimitFor(grade, date)).orElse(null);
     }
 
     /**
-     * A person's due-total held to the sheet's cap in force on its today less their cut total as the
-     * pools stand now (none: as it is; n/a stays n/a).
+     * A person's due-total held to the sheet's cap in force on the date of their latest claim that
+     * counts (the sheet's today when none does) less their cut total as the pools stand now (none: as
+     * it is; n/a stays n/a).
      */
     @Transactional(readOnly = true)
-    public BigDecimal capped(String id, long personId, BigDecimal dueTotal) {
+    public BigDecimal capped(String id, long personId, BigDecimal dueTotal, List<LocalDate> countedDates) {
         return sheets.findById(id)
-                .map(s -> s.capped(dueTotal, s.getCap() == null ? null : pools.getObject().cutTotalsNow(id).get(personId)))
+                .map(s -> s.capped(dueTotal, !s.hasCap() ? null : pools.getObject().cutTotalsNow(id).get(personId),
+                        s.capDate(countedDates.stream())))
                 .orElse(dueTotal);
     }
 
