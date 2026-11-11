@@ -169,7 +169,8 @@ public class RollupService {
         return sheetRates.stream()
                 .filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
-                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())));
+                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .filter(r -> r.appliesOn(date));
     }
 
     private static BigDecimal zero() {

@@ -9,12 +9,14 @@ export interface Rate {
   pct: string;
   /** The first day the rate applies (yyyy-mm-dd); null when it applies from the beginning of time. */
   from: string | null;
+  /** The last day the rate applies (yyyy-mm-dd); null when it has no end. */
+  to: string | null;
 }
 
 /**
  * The percent of the grade's rate in force on the date: the one with the latest from-date on or
  * before it, an undated rate counting as from the beginning of time; undefined when the date is
- * before every rate.
+ * before every rate, or after that rate's to-date.
  */
 export function rateOn(rates: Rate[], grade: string, date: string): string | undefined {
   let found: Rate | undefined;
@@ -22,7 +24,7 @@ export function rateOn(rates: Rate[], grade: string, date: string): string | und
     if (r.grade !== grade || (r.from !== null && r.from > date)) continue;
     if (found === undefined || (found.from ?? '') < (r.from ?? '')) found = r;
   }
-  return found?.pct;
+  return found === undefined || (found.to !== null && found.to < date) ? undefined : found.pct;
 }
 
 /** Hundredths of a unit in a decimal with at most two decimals, maybe negative ("10.25" is 1025n, "-0.30" is -30n). */
@@ -107,6 +109,14 @@ export function sumDues(dues: string[]): string {
           [value]="from()"
           (input)="from.set(value($event)); error.set(null)"
         />
+        <label for="rate-form-to">To (blank: no end)</label>
+        <input
+          id="rate-form-to"
+          data-testid="rate-form-to"
+          type="date"
+          [value]="to()"
+          (input)="to.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as message) {
           <p role="alert" data-testid="rate-form-error">{{ message }}</p>
@@ -129,13 +139,14 @@ export function sumDues(dues: string[]): string {
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (r of rates(); track r.grade + '-' + r.from) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? 'no end' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
@@ -156,6 +167,7 @@ export class Rates {
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');
+  protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer: a second submit meanwhile is ignored. */
   private submitting = false;
@@ -186,19 +198,29 @@ export class Rates {
       this.error.set('Pick a from-date for the rate, or leave it blank for always.');
       return;
     }
+    const to = this.to().trim();
+    if (to !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      this.error.set('Pick a to-date for the rate, or leave it blank for no end.');
+      return;
+    }
+    if (to !== '' && from !== '' && to < from) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     const grade = this.grade();
     this.submitting = true;
     try {
       const saved = await firstValueFrom(
         this.http.put<Rate>(
           `/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`,
-          { pct, from: from === '' ? null : from },
+          { pct, from: from === '' ? null : from, to: to === '' ? null : to },
           this.session.headers(),
         ),
       );
       if (this.session.sheet() === sheet) {
         this.pct.set('');
         this.from.set('');
+        this.to.set('');
         this.saved.emit(saved);
       }
     } catch (e) {

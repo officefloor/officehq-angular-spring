@@ -27,34 +27,45 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class RateController {
 
-    /** A rate as shown: the percent with two decimals, and its from-date as yyyy-mm-dd (null when it has none). */
-    public record RateView(String grade, String pct, String from) {
+    /** A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none). */
+    public record RateView(String grade, String pct, String from, String to) {
 
         static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
-                    rate.getFromDate() == null ? null : rate.getFromDate().toString());
+                    rate.getFromDate() == null ? null : rate.getFromDate().toString(),
+                    rate.getToDate() == null ? null : rate.getToDate().toString());
         }
     }
 
     /**
      * A percent of 0.00 up to 999.99 with up to two decimals, and an optional from-date as yyyy-mm-dd;
-     * a blank or missing from-date means the rate applies from the beginning of time.
+     * a blank or missing from-date means the rate applies from the beginning of time. An optional to-date likewise:
+     * blank or missing means the rate has no end.
      */
     public record RateRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String pct,
-            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from) {
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String to) {
 
         BigDecimal pctValue() {
             return new BigDecimal(pct.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
 
         LocalDate fromValue() {
-            if (from == null || from.isBlank()) {
+            return date(from);
+        }
+
+        LocalDate toValue() {
+            return date(to);
+        }
+
+        private static LocalDate date(String value) {
+            if (value == null || value.isBlank()) {
                 return null;
             }
             try {
-                return LocalDate.parse(from.trim());
+                return LocalDate.parse(value.trim());
             } catch (DateTimeParseException e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + from.trim());
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date: " + value.trim());
             }
         }
     }
@@ -77,6 +88,7 @@ public class RateController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
-        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.fromValue(), request.pctValue()));
+        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.fromValue(),
+                request.toValue(), request.pctValue()));
     }
 }
