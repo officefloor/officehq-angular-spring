@@ -54,6 +54,9 @@ public class PeriodController {
     public record RolloverResponse(int made, List<PeriodResponse> periods) {
     }
 
+    public record UndoRolloverRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
+    }
+
     public record ClosePeriodRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
             @NotNull Long id) {
     }
@@ -158,6 +161,14 @@ public class PeriodController {
         String sheet = req.sheet().trim();
         int made = rollovers.rollover(sheet, req.user().trim(), Integer.parseInt(req.year().trim())).size();
         return new RolloverResponse(made, responses(sheet, service.list(sheet)));
+    }
+
+    /** Undo the last rollover: the sheet's periods now. */
+    @PostMapping("/rollover-undo")
+    public List<PeriodResponse> undoRollover(@Valid @RequestBody UndoRolloverRequest req) {
+        String sheet = req.sheet().trim();
+        rollovers.undo(sheet, req.user().trim());
+        return responses(sheet, service.list(sheet));
     }
 
     @PostMapping("/reopen")

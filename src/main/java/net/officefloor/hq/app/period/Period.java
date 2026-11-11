@@ -175,6 +175,16 @@ public class Period {
         openings.merge(personId, amount, BigDecimal::add);
     }
 
+    /** Take an amount back from a person's opening balance for the period; none is left at 0.00. */
+    public void takeOpening(long personId, BigDecimal amount) {
+        BigDecimal left = openings.getOrDefault(personId, BigDecimal.ZERO).subtract(amount);
+        if (left.signum() == 0) {
+            openings.remove(personId);
+        } else {
+            openings.put(personId, left);
+        }
+    }
+
     /** Give out the next claim number within this period. */
     public int nextClaimNumber() {
         return ++lastClaimNumber;

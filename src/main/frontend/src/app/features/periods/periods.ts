@@ -225,6 +225,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
           (input)="rolloverYear.set($any($event.target).value); rolloverError.set(null)"
         />
         <button type="submit" data-testid="rollover">Roll year over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo last rollover</button>
         @if (rolloverMade() !== null) {
           <p role="status">Made <span data-testid="rollover-made">{{ rolloverMade() }}</span></p>
         }
@@ -624,6 +625,34 @@ export class Periods {
           : e instanceof HttpErrorResponse && e.status === 400 && typeof e.error?.message === 'string' && e.error.message
             ? e.error.message
             : 'Could not roll the year over.',
+      );
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Undo the last rollover: the server removes the periods it generated and takes back the opening
+   *  balances it set; shows the sheet's periods now, or why it was refused. */
+  protected async undoRollover(): Promise<void> {
+    if (this.submitting) return;
+    this.rolloverError.set(null);
+    this.rolloverMade.set(null);
+    const sheet = this.session.sheet();
+    this.submitting = true;
+    try {
+      const periods = await firstValueFrom(
+        this.http.post<Period[]>('/api/periods/rollover-undo', { sheet, user: this.session.user() }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.periods.set(periods);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.rolloverError.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only the steward who rolled the year over may undo it.'
+          : e instanceof HttpErrorResponse && e.status === 409
+            ? 'That rollover cannot be undone: none is left to undo, it was made on an earlier day, or a claim now belongs to a period it made.'
+            : 'Could not undo the rollover.',
       );
     } finally {
       this.submitting = false;
