@@ -427,7 +427,7 @@ public class ClaimService {
                     "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
                             + " without a proof of each kind the sheet needs.");
         }
-        if (next == ClaimStatus.SETTLED && !review && aboveClerkLimit(sheetId, user, settling)) {
+        if (next == ClaimStatus.SETTLED && !review && aboveClerkLimit(sheetId, user, person, settling)) {
             next = ClaimStatus.PENDING;
             settling = null;
         }
@@ -853,8 +853,8 @@ public class ClaimService {
      * unless a DRAFT (which has no number), takes the next number in the sequence it is numbered in
      * (its old number is never used again), is unbound from any statement (live again until its new person's next statement), and
      * is listed first under its new person. Refused (403) for a role the permission matrix does not allow, (409) for a SETTLED or VOID
-     * claim or a move to the person it is already on, (400) for a correction (it must stay with
-     * the claim it corrects), (423) when dated inside a closed period and (422) when dated after
+     * claim or a move to the person it is already on, (400) for a correction past DRAFT (it must stay
+     * with the claim it corrects), (423) when dated inside a closed period and (422) when dated after
      * the new person's retirement date.
      */
     @Transactional
@@ -879,7 +879,7 @@ public class ClaimService {
         if (!allowSamePerson && from.getId().equals(to.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That claim is already on that person.");
         }
-        if (claim.isCorrection()) {
+        if (claim.isCorrection() && claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A correction cannot be moved.");
         }
         periods.refuseIfClosed(sheetId, claim.getDueBy());
@@ -1284,9 +1284,13 @@ public class ClaimService {
         return due != null && due.compareTo(threshold) > 0;
     }
 
-    /** Whether the user is a clerk settling a claim whose figure is above the sheet's clerk limit. */
-    private boolean aboveClerkLimit(String sheetId, String user, BigDecimal figure) {
-        BigDecimal limit = sheets.clerkLimit(sheetId);
+    /**
+     * Whether the user is a clerk settling a claim whose figure is above the clerk limit in force: its
+     * person's grade's (on the sheet's today) when one is set, else the sheet's.
+     */
+    private boolean aboveClerkLimit(String sheetId, String user, Person person, BigDecimal figure) {
+        BigDecimal limit = figure == null ? null
+                : sheets.clerkLimit(sheetId, person.gradeOn(sheets.today(sheetId)));
         return figure != null && limit != null && figure.compareTo(limit) > 0 && !isSteward(sheetId, user);
     }
 

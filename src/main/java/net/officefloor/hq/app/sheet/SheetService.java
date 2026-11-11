@@ -116,10 +116,13 @@ public class SheetService {
         return sheets.findById(id).orElseGet(() -> new Sheet(id, null, null, LocalDate.now()));
     }
 
-    /** The sheet's clerk limit in force on its today: the most a clerk may settle a claim's due at; null for no limit. */
+    /**
+     * The clerk limit in force on the sheet's today for a person of the grade: the grade's own when one
+     * is set, else the sheet's; the most a clerk may settle a claim's due at; null for no limit.
+     */
     @Transactional(readOnly = true)
-    public BigDecimal clerkLimit(String id) {
-        return sheets.findById(id).map(Sheet::getClerkLimit).orElse(null);
+    public BigDecimal clerkLimit(String id, String grade) {
+        return sheets.findById(id).map(s -> s.clerkLimitFor(grade)).orElse(null);
     }
 
     /** A person's due-total held to the sheet's cap in force on its today (none: as it is; n/a stays n/a). */

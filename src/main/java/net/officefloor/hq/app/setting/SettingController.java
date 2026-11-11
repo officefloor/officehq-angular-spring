@@ -63,7 +63,7 @@ public class SettingController {
      * or blank for off. A grade's own terms (A, B or C): a whole number of days. A cap: an amount with
      * up to two decimals, or blank for none. A proof threshold: an amount with up to two decimals, or blank
      * for none. A note threshold: an amount with up to two decimals, or blank for none. A review threshold: an amount with up to two decimals, or blank for none. A permission matrix entry for open, settle, void, reassign, close or reopen: roles
-     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. A rounding mode: half-up or half-even, or blank for none. An escalation gap: a whole number of days, or blank for off. Proof kinds: receipt or photo, comma separated, or blank for none. A default grade: A, B or C, or blank for none (A). Each setting that carries a figure may name the date it
+     * comma separated, or blank for the standing rule. Grace days: a whole number of days, or blank for off. A grade's grace days (A, B or C): a whole number of days, or blank for none. A grade's own proof threshold (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). An entry date: yyyy-mm-dd, or blank for off. A pot: an amount with up to two decimals, or blank for none. A parent: a sheet id, or blank for none. A fiscal start month: 1 to 12. An alert threshold: an amount with up to two decimals, or blank for off. A rounding mode: half-up or half-even, or blank for none. An escalation gap: a whole number of days, or blank for off. Proof kinds: receipt or photo, comma separated, or blank for none. A default grade: A, B or C, or blank for none (A). A grade's own clerk limit (A, B or C): an amount with up to two decimals, or blank for none (the sheet's). Each setting that carries a figure may name the date it
      * is in force from (its {@code ...From}: yyyy-mm-dd, or blank or null for the sheet's today).
      */
     public record SetSettingsRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
@@ -104,7 +104,12 @@ public class SettingController {
             @Pattern(regexp = "\\s*|" + TERMS) String escalateAfter,
             @Pattern(regexp = "\\s*|" + TERMS) String reviewSla,
             @Pattern(regexp = PROOF_KINDS) String proofKinds,
-            @Pattern(regexp = GRADE) String defaultGrade) {
+            @Pattern(regexp = GRADE) String defaultGrade,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimitA,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimitB,
+            @Pattern(regexp = "\\s*|" + ClaimController.AMOUNT) String clerkLimitC,
+            @Pattern(regexp = DATE) String clerkLimitAFrom, @Pattern(regexp = DATE) String clerkLimitBFrom,
+            @Pattern(regexp = DATE) String clerkLimitCFrom) {
     }
 
     /** A value recorded for a setting that carries a figure: blank from for the beginning of time, blank value for none. */
@@ -184,6 +189,10 @@ public class SettingController {
         if (req.proofThresholdA() != null) gradeProofThresholds.put("A", amount(req.proofThresholdA(), req.proofThresholdAFrom()));
         if (req.proofThresholdB() != null) gradeProofThresholds.put("B", amount(req.proofThresholdB(), req.proofThresholdBFrom()));
         if (req.proofThresholdC() != null) gradeProofThresholds.put("C", amount(req.proofThresholdC(), req.proofThresholdCFrom()));
+        Map<String, SettingService.Dated<BigDecimal>> gradeClerkLimits = new TreeMap<>();
+        if (req.clerkLimitA() != null) gradeClerkLimits.put("A", amount(req.clerkLimitA(), req.clerkLimitAFrom()));
+        if (req.clerkLimitB() != null) gradeClerkLimits.put("B", amount(req.clerkLimitB(), req.clerkLimitBFrom()));
+        if (req.clerkLimitC() != null) gradeClerkLimits.put("C", amount(req.clerkLimitC(), req.clerkLimitCFrom()));
         Map<String, String> permissions = new LinkedHashMap<>();
         permission(permissions, "open", req.permOpen());
         permission(permissions, "settle", req.permSettle());
@@ -200,7 +209,7 @@ public class SettingController {
         String reviewSla = req.reviewSla() == null ? "" : req.reviewSla().trim();
         String defaultGrade = req.defaultGrade() == null ? "" : req.defaultGrade().trim();
         return response(service.set(req.sheet().trim(), req.user().trim(),
-                req.clerkLimit() == null ? null : amount(req.clerkLimit(), req.clerkLimitFrom()),
+                req.clerkLimit() == null ? null : amount(req.clerkLimit(), req.clerkLimitFrom()), gradeClerkLimits,
                 req.floor() == null ? null : amount(req.floor(), req.floorFrom()),
                 req.terms() == null ? null : terms(req.terms(), req.termsFrom()),
                 req.latePct() == null ? null : amount(req.latePct(), req.latePctFrom()), req.policyDate() != null,

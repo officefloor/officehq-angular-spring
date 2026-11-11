@@ -38,6 +38,8 @@ public class Sheet {
     public static final BigDecimal DEFAULT_LATE_PCT = new BigDecimal("0.00");
 
     public static final String CLERK_LIMIT = "clerk-limit";
+    /** The key of a grade's own clerk limit: {@code clerk-limit-<grade>}. */
+    public static final String GRADE_CLERK_LIMIT = "clerk-limit-";
     public static final String FLOOR = "floor";
     public static final String CAP = "cap";
     public static final String TERMS = "terms";
@@ -263,6 +265,15 @@ public class Sheet {
     /** The clerk limit in force on the sheet's today: the most a clerk may settle a claim's due at; null for no limit. */
     public BigDecimal getClerkLimit() {
         return inForce(CLERK_LIMIT, today).map(DatedSetting::getValue).orElse(null);
+    }
+
+    /**
+     * The clerk limit for a grade in force on the sheet's today: the grade's own in force then when it
+     * has one (a blank one is none), else the sheet's; null for no limit.
+     */
+    public BigDecimal clerkLimitFor(String grade) {
+        return (grade == null ? Optional.<DatedSetting>empty() : inForce(GRADE_CLERK_LIMIT + grade, today))
+                .map(DatedSetting::getValue).orElseGet(this::getClerkLimit);
     }
 
     /** The floor in force on the sheet's today. */

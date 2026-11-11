@@ -32,6 +32,9 @@ import { FigurePipe } from '../../core/figure';
 // Each grade may have its own proof threshold (two decimals; blank: none), dated like the floor: a
 // claim's threshold is its person's grade's on its date when it has one then, else the sheet's.
 // Each saves, like the clerk limit, once its field has been entered.
+// Each grade may have its own clerk limit (two decimals; blank: none), dated like the floor: the
+// limit a claim settles under is its person's grade's on the sheet's today when one is set, else
+// the sheet's. Each saves, like the clerk limit, once its field has been entered.
 // The note threshold (two decimals; blank for none) is dated like the floor: a claim whose due is
 // above the one in force on its date cannot be opened while its note is empty. It saves, like the
 // clerk limit, once its field has been entered (blank: none).
@@ -153,7 +156,7 @@ const PCT = /^\d{1,3}(\.\d{1,2})?$/;
 
 
 /** The keys of the dated settings, each with its own from field. */
-const DATED_KEYS = ['clerk-limit', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'proof-threshold-A', 'proof-threshold-B', 'proof-threshold-C', 'note-threshold', 'review-threshold', 'rounding'] as const;
+const DATED_KEYS = ['clerk-limit', 'clerk-limit-A', 'clerk-limit-B', 'clerk-limit-C', 'floor', 'terms', 'terms-A', 'terms-B', 'terms-C', 'grace-A', 'grace-B', 'grace-C', 'late-pct', 'cap', 'proof-threshold', 'proof-threshold-A', 'proof-threshold-B', 'proof-threshold-C', 'note-threshold', 'review-threshold', 'rounding'] as const;
 type DatedKey = (typeof DATED_KEYS)[number];
 
 /** A rounding mode. */
@@ -186,6 +189,25 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="fromInput()['clerk-limit'] ?? ''"
           (input)="typeFrom('clerk-limit', $any($event.target).value)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (blank: none, the sheet's)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g"
+            [attr.data-testid]="'setting-clerk-limit-' + g"
+            inputmode="decimal"
+            [value]="gradeLimitInput()[g] ?? ''"
+            (focus)="enterGradeLimit(g, $any($event.target))"
+            (input)="typeGradeLimit(g, $any($event.target).value)"
+          />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} in force from (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g + '-from'"
+            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+            type="date"
+            [value]="fromInput()[limitKey(g)] ?? ''"
+            (input)="typeFrom(limitKey(g), $any($event.target).value)"
+          />
+        }
         <label for="setting-floor">Floor (blank: leave as it is)</label>
         <input
           id="setting-floor"
@@ -507,6 +529,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           <span>(no limit)</span>
         }
       </p>
+      @for (g of grades; track g) {
+        <p>
+          Clerk limit in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ gradeLimits()[g] | figure }}</strong>
+          @if (gradeLimits()[g] === '') {
+            <span>(the sheet's)</span>
+          }
+        </p>
+      }
       <p>
         Floor in force:
         <strong data-testid="setting-floor-current">{{ floor() | figure }}</strong>
@@ -740,6 +771,12 @@ export class Settings {
   protected readonly numberingFrom = signal('');
   /** The clerk limit typed; null while its field has not been entered (left as it is). */
   protected readonly limitInput = signal<string | null>(null);
+  /** The clerk limit in force on the sheet's today for each grade; blank for none (the sheet's). */
+  protected readonly gradeLimits = computed(
+    () => Object.fromEntries(GRADES.map((g) => [g, this.inForce(this.limitKey(g), '')])) as Record<Grade, string>,
+  );
+  /** The clerk limit typed for each grade; missing while its field has not been entered (left as it is). */
+  protected readonly gradeLimitInput = signal<Partial<Record<Grade, string>>>({});
   /** The floor typed; blank (or null) leaves it as it is. */
   protected readonly floorInput = signal<string | null>(null);
   /** The terms typed; blank (or null) leaves them as they are. */
@@ -805,6 +842,7 @@ export class Settings {
       this.gradeTermsInput.set({});
       this.gradeGraceInput.set({});
       this.gradeThresholdInput.set({});
+      this.gradeLimitInput.set({});
       this.fromInput.set({});
       this.capInput.set(null);
       this.roundingInput.set(null);
@@ -1052,6 +1090,25 @@ export class Settings {
     this.error.set(null);
   }
 
+  protected limitKey(grade: Grade): DatedKey {
+    return `clerk-limit-${grade}`;
+  }
+
+  /** Entering a grade's clerk limit's field fills it with the limit in force, selected, so it
+   *  saves as it is unless typed over. */
+  protected enterGradeLimit(grade: Grade, input: HTMLInputElement): void {
+    if (this.gradeLimitInput()[grade] !== undefined) return;
+    const limit = this.gradeLimits()[grade];
+    input.value = limit;
+    input.select();
+    this.gradeLimitInput.update((m) => ({ ...m, [grade]: limit }));
+  }
+
+  protected typeGradeLimit(grade: Grade, value: string): void {
+    this.gradeLimitInput.update((m) => ({ ...m, [grade]: value }));
+    this.error.set(null);
+  }
+
   protected typeFrom(key: DatedKey, value: string): void {
     this.fromInput.update((m) => ({ ...m, [key]: value }));
     this.error.set(null);
@@ -1126,6 +1183,16 @@ export class Settings {
     if (clerkLimit !== null && clerkLimit !== '' && !LIMIT.test(clerkLimit)) {
       this.error.set('Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.');
       return;
+    }
+    const gradeLimits: Partial<Record<Grade, string>> = {};
+    for (const g of GRADES) {
+      const l = this.gradeLimitInput()[g]?.trim();
+      if (l === undefined) continue;
+      if (l !== '' && !LIMIT.test(l)) {
+        this.error.set(`Enter a clerk limit for grade ${g} of 0.00 or more, with up to two decimals, or leave it blank.`);
+        return;
+      }
+      gradeLimits[g] = l;
     }
     if (floor !== null && !LIMIT.test(floor)) {
       this.error.set('Enter a floor of 0.00 or more, with up to two decimals.');
@@ -1321,6 +1388,12 @@ export class Settings {
           reviewSla,
           proofKinds,
           defaultGrade,
+          clerkLimitA: gradeLimits.A ?? null,
+          clerkLimitB: gradeLimits.B ?? null,
+          clerkLimitC: gradeLimits.C ?? null,
+          clerkLimitAFrom: from['clerk-limit-A'] ?? null,
+          clerkLimitBFrom: from['clerk-limit-B'] ?? null,
+          clerkLimitCFrom: from['clerk-limit-C'] ?? null,
         }),
       );
       if (this.session.sheet() !== sheet) return;
@@ -1331,6 +1404,7 @@ export class Settings {
       this.gradeTermsInput.set({});
       this.gradeGraceInput.set({});
       this.gradeThresholdInput.set({});
+      this.gradeLimitInput.set({});
       this.latePctInput.set(null);
       this.policyInput.set(null);
       this.numberingInput.set(null);

@@ -60,6 +60,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class SettingService {
 
     public static final String CLERK_LIMIT = Sheet.CLERK_LIMIT;
+    public static final String GRADE_CLERK_LIMIT = Sheet.GRADE_CLERK_LIMIT;
     public static final String FLOOR = Sheet.FLOOR;
     public static final String CAP = Sheet.CAP;
     public static final String TERMS = Sheet.TERMS;
@@ -119,7 +120,8 @@ public class SettingService {
     }
 
     /**
-     * Save the settings given: a clerk limit when {@code limit} is not null, and the floor, the
+     * Save the settings given: a clerk limit when {@code limit} is not null, and each grade's own clerk
+     * limit given in {@code gradeClerkLimits} (by grade, in grade order; null for none), and the floor, the
      * terms and the late percent when they are not null, and a policy date when {@code changePolicy}
      * (null for none), and a period-numbering-from date when {@code changeNumbering} (null for off),
      * and a cap when {@code cap} is not null, and each grade's own terms given in {@code gradeTerms}
@@ -140,7 +142,8 @@ public class SettingService {
      * recorded, in that order.
      */
     @Transactional
-    public Sheet set(String sheetId, String user, Dated<BigDecimal> limit, Dated<BigDecimal> floor,
+    public Sheet set(String sheetId, String user, Dated<BigDecimal> limit,
+            Map<String, Dated<BigDecimal>> gradeClerkLimits, Dated<BigDecimal> floor,
             Dated<Integer> terms, Dated<BigDecimal> latePct, boolean changePolicy, LocalDate policyDate,
             boolean changeNumbering, LocalDate numberingFrom, Dated<BigDecimal> cap,
             Map<String, Dated<Integer>> gradeTerms, Map<String, Dated<Integer>> gradeGraces,
@@ -175,6 +178,10 @@ public class SettingService {
         }
         if (limit != null) {
             sheet = record(sheet, user, CLERK_LIMIT, limit.value(), limit.from(), text(limit.value()), false);
+        }
+        for (Map.Entry<String, Dated<BigDecimal>> e : new TreeMap<>(gradeClerkLimits).entrySet()) {
+            Dated<BigDecimal> l = e.getValue();
+            sheet = record(sheet, user, GRADE_CLERK_LIMIT + e.getKey(), l.value(), l.from(), text(l.value()), false);
         }
         if (floor != null) {
             sheet = record(sheet, user, FLOOR, floor.value(), floor.from(), text(floor.value()), true);
