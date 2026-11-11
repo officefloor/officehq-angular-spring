@@ -75,6 +75,10 @@ public class Claim {
     @Column(name = "listed", nullable = false)
     private long listed;
 
+    /** The date an OPEN claim is deferred until; null when it was never deferred. */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     protected Claim() {
     }
 
@@ -221,5 +225,21 @@ public class Claim {
     public void setStated(boolean stated, BigDecimal statedDue) {
         this.stated = stated;
         this.statedDue = stated ? statedDue : null;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    public void setDeferredUntil(LocalDate deferredUntil) {
+        this.deferredUntil = deferredUntil;
+    }
+
+    /**
+     * Whether the claim is deferred on the date (the sheet's today): an OPEN claim deferred until a later date. It then
+     * counts in no total, is not overdue, cannot be settled and is left unbound by a statement.
+     */
+    public boolean isDeferredOn(LocalDate today) {
+        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 }

@@ -49,10 +49,10 @@ function heldOn(holds: PersonHold[], date: string): boolean {
 
 /**
  * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one dated within
- * a hold of its person not unless a statement binds it.
+ * a hold of its person not unless a statement binds it, and one deferred on the sheet's today not at all.
  */
-function live(claim: Claim, holds: PersonHold[]): boolean {
-  return counts(claim) && !(isOpen(claim) && !bound(claim) && heldOn(holds, claim.date));
+function live(claim: Claim, holds: PersonHold[], today: string | null): boolean {
+  return counts(claim, today) && !(isOpen(claim) && !bound(claim) && heldOn(holds, claim.date));
 }
 
 /** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */
@@ -379,7 +379,7 @@ export class People {
     for (const c of this.claims()) {
       const period = periodOn(this.periods(), c.date);
       const person = byId.get(c.personId);
-      if (!period || person === undefined || !live(c, person.holds)) continue;
+      if (!period || person === undefined || !live(c, person.holds, this.session.today())) continue;
       const theirs = dues.get(person.id) ?? new Map<string, string[]>();
       const list = theirs.get(period.name) ?? [];
       list.push(claimDue(c, this.rates(), person.grades, this.session));
@@ -525,7 +525,7 @@ export class People {
   /** The sum of the person's OPEN, PENDING and SETTLED claims' amounts, with two decimals; open ones dated within a hold not unless a statement binds them. */
   protected claimedBy(personId: number): string {
     const holds = this.people().find((p) => p.id === personId)?.holds ?? [];
-    return sumAmounts(this.claimsOf(personId).filter((c) => live(c, holds)).map((c) => c.amount));
+    return sumAmounts(this.claimsOf(personId).filter((c) => live(c, holds, this.session.today())).map((c) => c.amount));
   }
 
   /** The person's grade in force on the sheet's today. */
@@ -565,7 +565,7 @@ export class People {
 
   /** The sum of the person's dues as {@link dueTotalOf} has it, before the cap. */
   private uncappedDueTotalOf(person: Person): string {
-    const counted = this.claimsOf(person.id).filter((c) => live(c, person.holds));
+    const counted = this.claimsOf(person.id).filter((c) => live(c, person.holds, this.session.today()));
     const dues = counted.map((c) => claimDue(c, this.rates(), person.grades, this.session));
     const today = this.session.today();
     // A due under a grade the person had on an earlier date counts too.
@@ -577,7 +577,7 @@ export class People {
   /** The person's claims that count in the live totals and are overdue. */
   protected overdueOf(person: Person): Claim[] {
     return this.claimsOf(person.id).filter(
-      (c) => live(c, person.holds) && overdue(c, this.session.today()),
+      (c) => live(c, person.holds, this.session.today()) && overdue(c, this.session.today()),
     );
   }
 

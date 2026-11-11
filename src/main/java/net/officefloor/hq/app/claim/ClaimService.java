@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. A claim dated in a closed
- * period cannot be added, edited or change status. Only a DRAFT claim can be edited; a PENDING claim, waiting for a
+ * period cannot be added, edited, deferred or change status. Only a DRAFT claim can be edited; a PENDING claim, waiting for a
  * steward to approve or reject it, is otherwise handled like an OPEN one. No claim
  * can be dated after the retirement date of its person. A claim with a negative amount is a correction: it must name,
  * by number, a SETTLED claim of the same person that it corrects, and its due has no floor and no late charge.
@@ -138,6 +138,10 @@ public class ClaimService {
             throw new ClaimStatusException(id, claim.getStatus(), status);
         }
         periods.requireOpen(sheetId, claim.getDate());
+        // A deferred claim cannot be settled until the sheet's today reaches the date it is deferred until.
+        if (status == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ClaimDeferException(id, "it is deferred until " + claim.getDeferredUntil());
+        }
         // Four eyes: whoever opened a claim cannot also settle it.
         if (status == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ClaimSettledByOpenerException(id, user);
@@ -250,6 +254,34 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_REASSIGNED", user, to, saved) + numberOf(saved.getNumber())
                 + " from=" + from.getName() + " to=" + to.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it the claim counts in
+     * no total, is not overdue, cannot be settled and is left unbound by a statement. Refused for a claim not OPEN, a
+     * date not after today, or a closed period.
+     */
+    @Transactional
+    public Claim defer(String sheetId, String user, Long id, LocalDate until) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ClaimDeferException(id, "it is " + claim.getStatus() + ", only an OPEN claim can be deferred");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (until == null || !until.isAfter(today)) {
+            throw new ClaimDeferException(id, "it can only be deferred to a date after " + today);
+        }
+        periods.requireOpen(sheetId, claim.getDate());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setDeferredUntil(until);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_DEFERRED", user, person, saved) + numberOf(saved.getNumber())
+                + " until=" + until);
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -370,11 +402,12 @@ public class ClaimService {
 
     /**
      * The due with the late charge of an OPEN or PENDING claim overdue on the sheet's today added on top (none on a
-     * correction); null (n/a) stays null.
+     * correction, nor on a claim deferred on the sheet's today); null (n/a) stays null.
      */
     private BigDecimal withLateCharge(String sheetId, Claim claim, BigDecimal due) {
-        return settings.get(sheetId).withLateCharge(due,
-                claim.getStatus().isOpen() && !claim.isCorrection(), claim.getDueBy(), claim.getDate());
+        Sheet sheet = settings.get(sheetId);
+        return sheet.withLateCharge(due, claim.getStatus().isOpen() && !claim.isCorrection()
+                && !claim.isDeferredOn(sheet.getToday()), claim.getDueBy(), claim.getDate());
     }
 
     /** The amount as shown (two decimals) and the date as yyyy-mm-dd. */

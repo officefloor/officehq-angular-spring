@@ -155,11 +155,12 @@ public class Person {
 
     /**
      * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one dated
-     * within a hold not unless a statement binds it.
+     * within a hold not unless a statement binds it, and an OPEN one deferred on the sheet's today not at all.
      */
-    public boolean counts(Claim claim) {
+    public boolean counts(Claim claim, LocalDate today) {
         ClaimStatus status = claim.getStatus();
-        return status.counts() && !(status.isOpen() && !claim.isBound() && heldOn(claim.getDate()));
+        return status.counts() && !(status.isOpen() && !claim.isBound() && heldOn(claim.getDate()))
+                && !claim.isDeferredOn(today);
     }
 
     /** Refused when the person is retired and the date is after their retirement date. */

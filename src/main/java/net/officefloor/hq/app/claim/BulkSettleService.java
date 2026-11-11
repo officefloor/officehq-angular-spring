@@ -54,7 +54,7 @@ public class BulkSettleService {
             try {
                 service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED);
                 settled++;
-            } catch (ClaimStatusException | ClaimSettledByOpenerException | PeriodClosedException
+            } catch (ClaimStatusException | ClaimDeferException | ClaimSettledByOpenerException | PeriodClosedException
                     | ClaimNotFoundException | PersonNotFoundException refused) {
                 // Left as it is.
             }
