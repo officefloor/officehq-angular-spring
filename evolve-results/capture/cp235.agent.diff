@@ -1,0 +1,184 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9863e203a..3d4ba7e0c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -634,6 +634,31 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
+           <p role="alert" data-testid="person-error">{{ err }}</p>
+         }
+       </form>
++      <form aria-label="Hold selected people" (submit)="bulkHold($event)">
++        <label for="bulk-hold-from">Hold selected people from</label>
++        <input
++          type="date"
++          id="bulk-hold-from"
++          data-testid="bulk-hold-from"
++          [value]="bulkHoldFrom()"
++          (input)="bulkHoldFrom.set($any($event.target).value); bulkHoldError.set(null)"
++        />
++        <label for="bulk-hold-to">to</label>
++        <input
++          type="date"
++          id="bulk-hold-to"
++          data-testid="bulk-hold-to"
++          [value]="bulkHoldTo()"
++          (input)="bulkHoldTo.set($any($event.target).value); bulkHoldError.set(null)"
++        />
++        <button type="submit" data-testid="bulk-hold">Hold selected</button>
++        @if (bulkHeld() !== null) {
++          <p>Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong></p>
++        }
++        @if (bulkHoldError(); as err) {
++          <p role="alert" data-testid="person-error">{{ err }}</p>
++        }
++      </form>
+       <form aria-label="Compare snapshots" (submit)="compareSnapshots($event)">
+         <label for="snapshot-from">Compare snapshot of</label>
+         <input
+@@ -1261,6 +1286,12 @@ export class People {
+   protected readonly bulkRetireDate = signal('');
+   /** How many people the last bulk retire retired; cleared while the next one runs. */
+   protected readonly bulkRetired = signal<number | null>(null);
++  /** The from-date (blank: the sheet's today) and to-date (blank: open-ended) of the bulk hold. */
++  protected readonly bulkHoldFrom = signal('');
++  protected readonly bulkHoldTo = signal('');
++  /** How many people the last bulk hold held; cleared while the next one runs. */
++  protected readonly bulkHeld = signal<number | null>(null);
++  protected readonly bulkHoldError = signal<string | null>(null);
+   /** The snapshot comparison's from-date and to-date (blank: now), and its lines once compared. */
+   protected readonly snapshotFrom = signal('');
+   protected readonly snapshotTo = signal('');
+@@ -1729,6 +1760,10 @@ export class People {
+       this.bulkRetireDate.set('');
+       this.bulkRetired.set(null);
+       this.bulkRetireError.set(null);
++      this.bulkHoldFrom.set('');
++      this.bulkHoldTo.set('');
++      this.bulkHeld.set(null);
++      this.bulkHoldError.set(null);
+       this.importText.set('');
+       this.importAdded.set(null);
+       this.importUpdated.set(null);
+@@ -2821,6 +2856,7 @@ export class People {
+     });
+     this.bulkGradeError.set(null);
+     this.bulkRetireError.set(null);
++    this.bulkHoldError.set(null);
+     this.clearRowError(id);
+   }
+ 
+@@ -2899,6 +2935,46 @@ export class People {
+     }
+   }
+ 
++  /** Hold the selected people from the from-date (the sheet's today when blank) to the to-date, if
++   *  any: the server holds each, in list order, as the row's hold would; all or none. */
++  protected async bulkHold(event: Event): Promise<void> {
++    event.preventDefault();
++    this.bulkHeld.set(null);
++    this.bulkHoldError.set(null);
++    const sheet = this.session.sheet();
++    const from = this.bulkHoldFrom().trim();
++    const to = this.bulkHoldTo().trim();
++    const ids = this.people().filter((p) => this.selectedPeople().has(p.id)).map((p) => p.id);
++    if (ids.length === 0) {
++      this.bulkHoldError.set('Select at least one person.');
++      return;
++    }
++    const isDate = (d: string) => d === '' || /^\d{4}-\d{2}-\d{2}$/.test(d);
++    if (!isDate(from) || !isDate(to)) {
++      this.bulkHoldError.set('Enter dates, or leave the from-date blank for the sheet\'s today.');
++      return;
++    }
++    try {
++      const done = await firstValueFrom(
++        this.http.post<{ held: number; people: Person[] }>('/api/people/bulk-hold', {
++          sheet,
++          user: this.session.user(),
++          ids,
++          from: from || null,
++          to: to || null,
++        }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      const byId = new Map(done.people.map((p) => [p.id, p]));
++      this.people.update((list) => list.map((p) => byId.get(p.id) ?? p));
++      this.selectedPeople.set(new Set());
++      this.bulkHeld.set(done.held);
++    } catch {
++      if (this.session.sheet() !== sheet) return;
++      this.bulkHoldError.set('Could not hold the selected people.');
++    }
++  }
++
+   /**
+    * Import the pasted people: the server checks every line first, then updates each person a line
+    * names as the person form would edit them, and adds each other as the person form would; all or none.
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index eb6c4518a..464a36a2b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -83,6 +83,14 @@ public class PersonController {
+     public record BulkRetireResponse(int retired, List<PersonResponse> people) {
+     }
+ 
++    public record BulkHoldRequest(@NotBlank @Size(max = 100) String sheet,
++            @NotBlank @Size(max = 100) String user, @NotEmpty List<@NotNull Long> ids, LocalDate from, LocalDate to) {
++    }
++
++    /** How many people were held, and each as the store now holds them. */
++    public record BulkHoldResponse(int held, List<PersonResponse> people) {
++    }
++
+     public record RetirePersonRequest(@NotBlank @Size(max = 100) String sheet,
+             @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate date) {
+     }
+@@ -256,6 +264,13 @@ public class PersonController {
+         return new BulkRetireResponse(retired.size(), retired);
+     }
+ 
++    @PostMapping("/bulk-hold")
++    public BulkHoldResponse bulkHold(@Valid @RequestBody BulkHoldRequest req) {
++        List<PersonResponse> held = service.bulkHold(req.sheet().trim(), req.user().trim(), req.ids(), req.from(),
++                req.to()).stream().map(p -> response(req.sheet().trim(), p)).toList();
++        return new BulkHoldResponse(held.size(), held);
++    }
++
+     @PostMapping("/retire")
+     public PersonResponse retire(@Valid @RequestBody RetirePersonRequest req) {
+         return response(req.sheet().trim(), service.retire(req.sheet().trim(), req.user().trim(), req.id(), req.date()));
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 0c699646e..a269d76e4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -328,6 +328,31 @@ public class PersonService {
+         return chosen.stream().map(p -> retire(sheetId, user, p.getId(), date)).toList();
+     }
+ 
++    /**
++     * Put each of the people on hold from a from-date (the sheet's today when none is given) to an
++     * optional to-date, in list order, exactly as holding each from their row would. All or none: a
++     * person not on the sheet, or a to-date before the from-date, refuses the lot. A viewer may hold
++     * no one: each person is refused and none is held.
++     */
++    @Transactional
++    public List<Person> bulkHold(String sheetId, String user, List<Long> ids, LocalDate fromDate, LocalDate toDate) {
++        try {
++            roles.refuseViewer(sheetId, user);
++        } catch (ResponseStatusException e) {
++            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
++                return List.of();
++            }
++            throw e;
++        }
++        Set<Long> wanted = new HashSet<>(ids);
++        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> wanted.contains(p.getId())).toList();
++        if (chosen.size() != wanted.size()) {
++            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person on this sheet.");
++        }
++        return chosen.stream().map(p -> hold(sheetId, user, p.getId(), fromDate, toDate)).toList();
++    }
++
+     /**
+      * Swap the person with the one above ({@code up}) or below them in the list; the top person
+      * cannot move up nor the bottom one down (409).
