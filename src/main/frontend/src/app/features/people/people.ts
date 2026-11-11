@@ -604,6 +604,30 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
           <p role="alert" data-testid="person-error">{{ err }}</p>
         }
       </form>
+      <form aria-label="Compare snapshots" (submit)="compareSnapshots($event)">
+        <label for="snapshot-from">Compare snapshot of</label>
+        <input
+          type="date"
+          id="snapshot-from"
+          data-testid="snapshot-from"
+          [value]="snapshotFrom()"
+          (input)="snapshotFrom.set($any($event.target).value)"
+        />
+        <label for="snapshot-to">with snapshot of (now when blank)</label>
+        <input
+          type="date"
+          id="snapshot-to"
+          data-testid="snapshot-to"
+          [value]="snapshotTo()"
+          (input)="snapshotTo.set($any($event.target).value)"
+        />
+        <button type="submit" data-testid="snapshot-compare">Compare snapshots</button>
+        <ul aria-label="Snapshot comparison">
+          @for (line of snapshotLines(); track $index) {
+            <li data-testid="snapshot-line">{{ line }}</li>
+          }
+        </ul>
+      </form>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Settled in total <strong data-testid="rollup-settled-total">{{ money(settledOpenTotals().settled) | figure }}</strong></p>
@@ -1184,6 +1208,10 @@ export class People {
   protected readonly bulkRetireDate = signal('');
   /** How many people the last bulk retire retired; cleared while the next one runs. */
   protected readonly bulkRetired = signal<number | null>(null);
+  /** The snapshot comparison's from-date and to-date (blank: now), and its lines once compared. */
+  protected readonly snapshotFrom = signal('');
+  protected readonly snapshotTo = signal('');
+  protected readonly snapshotLines = signal<string[]>([]);
   protected readonly bulkRetireError = signal<string | null>(null);
   protected readonly importText = signal('');
   /** How many people the last import added; cleared while the next one runs. */
@@ -1672,6 +1700,35 @@ export class People {
   /** A claim's amount in whole cents when it counts toward claimed, else nothing: a correction never does. */
   private countedCents(p: Person | undefined, c: Claim): number {
     return countsFor(p, c, this.session.today()) && !isCorrection(c) ? cents(c.amount) : 0;
+  }
+
+  /**
+   * Compare two snapshot dates: per person in list order, their name, the due-total of the last
+   * snapshot written when today moved away from the from-date (empty when none), and likewise for
+   * the to-date or their due-total now when it is blank; each line trimmed.
+   */
+  protected async compareSnapshots(event: Event): Promise<void> {
+    event.preventDefault();
+    const sheet = this.session.sheet();
+    const from = this.snapshotFrom();
+    const to = this.snapshotTo();
+    this.snapshotLines.set([]);
+    // the snapshots are written when today moves, so read them afresh from the store
+    let snapshots: Map<number, SnapshotLine[]>;
+    try {
+      const list = await firstValueFrom(this.http.post<Person[]>('/api/people/list', { sheet }));
+      snapshots = new Map(list.map((p) => [p.id, p.snapshots]));
+    } catch {
+      snapshots = new Map(this.people().map((p) => [p.id, p.snapshots]));
+    }
+    if (this.session.sheet() !== sheet) return;
+    const on = (p: Person, day: string) =>
+      (snapshots.get(p.id) ?? p.snapshots).filter((n) => n.day === day).at(-1)?.dueTotal ?? '';
+    this.snapshotLines.set(
+      this.listed().map((p) =>
+        [p.name, on(p, from), to ? on(p, to) : dueText(this.dueOf(p))].join(' ').trim(),
+      ),
+    );
   }
 
   /** What the person owes, in whole cents: the sum of their figures held to the sheet's cap. */
