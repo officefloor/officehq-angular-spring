@@ -112,12 +112,15 @@ public class SheetSnapshotService {
         }
     }
 
-    /** The sheet's own row as it was kept, or as a sheet just started has it when nothing was kept by then. */
+    /**
+     * The sheet's own row as it was kept, or as a sheet just started has it when nothing was kept by then. Its parent
+     * sheet is a link between sheets, not part of how the sheet stood: it stays as it is now.
+     */
     private void restoreSheet(Table table, Map<String, Object> row, String sheetId, LocalDate asOf) {
         List<String> sets = new ArrayList<>();
         List<Object> args = new ArrayList<>();
         for (String column : table.columns()) {
-            if (column.equals("ID") || column.equals("CREATED_BY") || column.equals("TODAY")) {
+            if (column.equals("ID") || column.equals("CREATED_BY") || column.equals("TODAY") || column.equals("PARENT")) {
                 continue;
             }
             if (row == null) {

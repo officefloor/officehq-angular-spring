@@ -7,4 +7,7 @@ public interface RateLogRepository extends JpaRepository<RateLog, Long> {
 
     /** A grade's rate settings on a sheet, in the order they were made. */
     List<RateLog> findBySheetIdAndGradeOrderByIdAsc(String sheetId, String grade);
+
+    /** Every rate setting on a sheet, in the order they were made. */
+    List<RateLog> findBySheetIdOrderByIdAsc(String sheetId);
 }

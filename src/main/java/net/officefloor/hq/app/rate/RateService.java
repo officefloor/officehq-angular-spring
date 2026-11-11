@@ -3,12 +3,8 @@ package net.officefloor.hq.app.rate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -37,53 +33,42 @@ public class RateService {
         this.rollup = rollup;
     }
 
-    public List<Rate> list(String sheetId) {
-        return rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
+    /**
+     * The sheet's rates, then each parent sheet's up to {@link RollupService#PARENT_LEVELS} levels up (nearest first),
+     * each in grade order then by from-date.
+     */
+    public List<List<Rate>> chain(String sheetId) {
+        return rollup.rateChain(sheetId);
     }
 
     /**
      * The grade's rate in force on the date: the one with the latest from-date on or before it, an
      * undated rate counting as from the beginning of time. Empty when the date is before every rate, or
-     * after that rate's to-date.
+     * after that rate's to-date. With none on the sheet, the parent sheet's, then its parent's, up to three levels up.
      */
     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date) {
-        return rates.findBySheetIdAndGrade(sheetId, grade).stream()
-                .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
-                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
-                .filter(r -> r.appliesOn(date));
+        return RollupService.rateOn(rollup.rateChain(sheetId), grade, date);
     }
 
     /**
      * The grade's rate percent in force on the date as the rates stood at the end of {@code asOf}: each from-date's
      * last setting made while the sheet's today was on or before it (a rate set before settings were logged counts as
-     * it is now). Empty when the grade had no rate in force on the date then.
+     * it is now). With none on the sheet then, the parent sheets' rates in force on the date as they stood then.
+     * Empty when the grade had no rate in force on the date then.
      */
     public Optional<BigDecimal> rateAsOf(String sheetId, String grade, LocalDate date, LocalDate asOf) {
-        List<Rate> now = rates.findBySheetIdAndGrade(sheetId, grade);
-        List<RateLog> set = logs.findBySheetIdAndGradeOrderByIdAsc(sheetId, grade);
-        Map<LocalDate, RateLog> then = new LinkedHashMap<>();
-        for (RateLog log : set) {
-            if (!log.getSetOn().isAfter(asOf)) {
-                then.put(log.getFromDate(), log);
-            }
-        }
-        List<Rate> stood = new ArrayList<>();
-        for (Rate rate : now) {
-            boolean logged = set.stream().anyMatch(l -> Objects.equals(l.getFromDate(), rate.getFromDate()));
-            if (!logged) {
-                stood.add(rate);
-            }
-        }
-        for (RateLog log : then.values()) {
-            Rate rate = new Rate(sheetId, grade, log.getFromDate(), log.getPct());
-            rate.setToDate(log.getToDate());
-            stood.add(rate);
-        }
-        return stood.stream()
+        List<Rate> stood = RateLog.stood(sheetId, grade, rates.findBySheetIdAndGrade(sheetId, grade),
+                logs.findBySheetIdAndGradeOrderByIdAsc(sheetId, grade), asOf);
+        Optional<BigDecimal> own = stood.stream()
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
                 .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(r -> r.appliesOn(date))
                 .map(Rate::getPct);
+        if (own.isPresent()) {
+            return own;
+        }
+        List<List<Rate>> chain = rollup.rateChain(sheetId, asOf);
+        return RollupService.rateOn(chain.subList(1, chain.size()), grade, date).map(Rate::getPct);
     }
 
     /** What the grade having the percent on every date would change on the sheet; nothing is saved. */

@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DatedValue, Session } from '../../core/session';
@@ -30,6 +30,8 @@ interface SettingsView {
   noteThreshold: string | null;
   /** The pot shared out over each balanced pool's members by their shares, two decimals; null when there is none. */
   pot: string | null;
+  /** The parent sheet's id, whose rates a grade with none in force falls back on; null when there is none. */
+  parent: string | null;
   /** The permission matrix, by action: the roles that may take it, comma separated; null: the standing rule. */
   permissions: Record<string, string | null>;
   /** Every value recorded of each dated setting, by key, from-date first to last. */
@@ -60,7 +62,7 @@ const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
 /** A date typed as yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, and its note threshold; not dated: its policy date, its period numbering from, its entry date, its grace days and its permission matrix) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, and its note threshold; not dated: its policy date, its period numbering from, its entry date, its grace days, its pot, its parent sheet and its permission matrix) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   template: `
@@ -216,6 +218,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'pot'"
           (input)="pot.set(value($event)); potEdited = true; settingsError.set(null)"
         />
+        <label for="setting-parent">Parent sheet (its rates apply to a grade with none in force here; blank: none)</label>
+        <input
+          id="setting-parent"
+          data-testid="setting-parent"
+          [value]="parent()"
+          (focus)="lastFocused = 'parent'"
+          (input)="parent.set(value($event)); parentEdited = true; settingsError.set(null)"
+        />
         <label for="setting-cap">Cap (the most a person's due-total can be; blank: no cap)</label>
         <input
           id="setting-cap"
@@ -318,6 +328,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
+      <p>Parent sheet: <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
       <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
       @for (a of actions; track a) {
         <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' }}</strong></p>
@@ -444,6 +455,7 @@ export class Settings {
   protected readonly graceDays = signal('');
   protected readonly graceDaysCurrent = signal<string | null>(null);
   protected readonly pot = signal('');
+  protected readonly parent = signal('');
   protected readonly cap = signal('');
   protected readonly proofThreshold = signal('');
   protected readonly noteThreshold = signal('');
@@ -459,11 +471,12 @@ export class Settings {
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
   protected potEdited = false;
+  protected parentEdited = false;
   protected capEdited = false;
   protected proofThresholdEdited = false;
   protected noteThresholdEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -492,6 +505,7 @@ export class Settings {
         this.session.entryDate.set(null);
         this.graceDaysCurrent.set(null);
         this.session.pot.set(null);
+        this.session.parent.set(null);
         this.permsCurrent.set({});
         this.roleList.set([]);
         this.settingsError.set(null);
@@ -558,7 +572,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -570,6 +584,7 @@ export class Settings {
         case 'entryDate': this.entryDateEdited = true; break;
         case 'graceDays': this.graceDaysEdited = true; break;
         case 'pot': this.potEdited = true; break;
+        case 'parent': this.parentEdited = true; break;
         case 'cap': this.capEdited = true; break;
         case 'proofThreshold': this.proofThresholdEdited = true; break;
         case 'noteThreshold': this.noteThresholdEdited = true; break;
@@ -588,6 +603,7 @@ export class Settings {
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
     const savePot = this.potEdited;
+    const saveParent = this.parentEdited;
     const saveCap = this.capEdited;
     const saveProofThreshold = this.proofThresholdEdited;
     const saveNoteThreshold = this.noteThresholdEdited;
@@ -601,6 +617,7 @@ export class Settings {
     const entryDate = this.entryDate().trim();
     const graceDays = this.graceDays().trim();
     const pot = this.pot().trim();
+    const parent = this.parent().trim();
     const cap = this.cap().trim();
     const proofThreshold = this.proofThreshold().trim();
     const noteThreshold = this.noteThreshold().trim();
@@ -664,6 +681,10 @@ export class Settings {
     }
     if (savePot && pot !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(pot)) {
       this.settingsError.set('Type a pot of 0.00 or more with at most two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveParent && parent.length > 100) {
+      this.settingsError.set('Type a parent sheet id of at most 100 characters, or leave it blank for none.');
       return;
     }
     if (saveCap && cap !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(cap)) {
@@ -764,6 +785,12 @@ export class Settings {
         );
         this.potEdited = false;
       }
+      if (saveParent) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/parent`, { parent: parent === '' ? null : parent }, this.session.headers()),
+        );
+        this.parentEdited = false;
+      }
       if (saveCap) {
         saved = await firstValueFrom(
           this.http.put<SettingsView>(`${url}/cap`, { cap: cap === '' ? null : cap, from: fromOf('cap') }, this.session.headers()),
@@ -809,8 +836,12 @@ export class Settings {
         this.permsEdited.delete(a);
       }
       if (saved && this.session.sheet() === sheet) this.show(saved);
-    } catch {
-      this.settingsError.set('The settings could not be saved.');
+    } catch (e) {
+      this.settingsError.set(
+        saveParent && e instanceof HttpErrorResponse && e.status === 422
+          ? 'The parent sheet must be a sheet that has been loaded, not this sheet nor one that has this sheet as an ancestor.'
+          : 'The settings could not be saved.',
+      );
     } finally {
       this.savingSettings = false;
     }
@@ -937,6 +968,8 @@ export class Settings {
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.session.pot.set(settings.pot ?? '');
     this.pot.set(settings.pot ?? '');
+    this.session.parent.set(settings.parent ?? '');
+    this.parent.set(settings.parent ?? '');
     this.cap.set(settings.cap ?? '');
     this.proofThreshold.set(settings.proofThreshold ?? '');
     this.noteThreshold.set(settings.noteThreshold ?? '');
@@ -957,6 +990,7 @@ export class Settings {
     this.entryDateEdited = false;
     this.graceDaysEdited = false;
     this.potEdited = false;
+    this.parentEdited = false;
     this.capEdited = false;
     this.proofThresholdEdited = false;
     this.noteThresholdEdited = false;

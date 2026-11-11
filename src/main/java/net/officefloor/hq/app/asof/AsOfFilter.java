@@ -95,11 +95,14 @@ public class AsOfFilter extends OncePerRequestFilter {
             Exception failed = rolledBack.execute(status -> {
                 status.setRollbackOnly();
                 snapshots.restore(sheetId, asOf);
+                AsOfContext.set(asOf);
                 try {
                     chain.doFilter(request, response);
                     return null;
                 } catch (IOException | ServletException e) {
                     return e;
+                } finally {
+                    AsOfContext.clear();
                 }
             });
             if (failed instanceof IOException e) {

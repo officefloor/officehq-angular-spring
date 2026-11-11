@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.http.HttpStatus;
@@ -29,13 +30,20 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class RateController {
 
-    /** A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none). */
-    public record RateView(String grade, String pct, String from, String to) {
+    /**
+     * A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none);
+     * and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on.
+     */
+    public record RateView(String grade, String pct, String from, String to, int level) {
 
         static RateView of(Rate rate) {
+            return of(rate, 0);
+        }
+
+        static RateView of(Rate rate, int level) {
             return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     rate.getFromDate() == null ? null : rate.getFromDate().toString(),
-                    rate.getToDate() == null ? null : rate.getToDate().toString());
+                    rate.getToDate() == null ? null : rate.getToDate().toString(), level);
         }
     }
 
@@ -78,11 +86,22 @@ public class RateController {
         this.service = service;
     }
 
-    /** The sheet's rates in grade order, then by from-date (the undated one first); a grade with no rate is left out. */
+    /**
+     * The sheet's rates in grade order, then by from-date (the undated one first); a grade with no rate is left out.
+     * Then, likewise, the rates of its parent sheet, of that sheet's parent and so on up to three levels up, each
+     * with its level.
+     */
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(RateView::of).toList();
+        List<List<Rate>> chain = service.chain(sheetId.trim());
+        List<RateView> views = new ArrayList<>();
+        for (int level = 0; level < chain.size(); level++) {
+            for (Rate rate : chain.get(level)) {
+                views.add(RateView.of(rate, level));
+            }
+        }
+        return views;
     }
 
     /**

@@ -743,6 +743,14 @@ export class People {
   private reads = 0;
 
   constructor() {
+    // The rates fall back on the parent sheet's: once it is read or changed, read them again.
+    effect(() => {
+      const parent = this.session.parent();
+      untracked(() => {
+        const sheet = this.session.sheet();
+        if (parent !== null && sheet) void this.read(sheet);
+      });
+    });
     effect(() => {
       const sheet = this.session.sheet();
       this.session.loaded();
@@ -1053,7 +1061,7 @@ export class People {
     const sheet = this.session.sheet();
     if (!sheet) return;
     this.rates.update((list) =>
-      [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate].sort(
+      [...list.filter((r) => r.level !== rate.level || r.grade !== rate.grade || r.from !== rate.from), rate].sort(
         (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
       ),
     );

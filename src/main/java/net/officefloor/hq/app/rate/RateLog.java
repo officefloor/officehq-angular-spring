@@ -8,6 +8,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /** One setting of a grade's rate: its from- and to-dates and percent as set, and the sheet's today when it was set. */
 @Entity
@@ -70,5 +75,34 @@ public class RateLog {
 
     public LocalDate getSetOn() {
         return setOn;
+    }
+
+    /**
+     * A grade's rates on a sheet as they stood at the end of {@code asOf}: each from-date's last setting made while the
+     * sheet's today was on or before it (a rate set before settings were logged counts as it is now).
+     *
+     * @param now the grade's rates as they are now
+     * @param set the grade's rate settings, in the order they were made
+     */
+    public static List<Rate> stood(String sheetId, String grade, List<Rate> now, List<RateLog> set, LocalDate asOf) {
+        Map<LocalDate, RateLog> then = new LinkedHashMap<>();
+        for (RateLog log : set) {
+            if (!log.getSetOn().isAfter(asOf)) {
+                then.put(log.getFromDate(), log);
+            }
+        }
+        List<Rate> stood = new ArrayList<>();
+        for (Rate rate : now) {
+            boolean logged = set.stream().anyMatch(l -> Objects.equals(l.getFromDate(), rate.getFromDate()));
+            if (!logged) {
+                stood.add(rate);
+            }
+        }
+        for (RateLog log : then.values()) {
+            Rate rate = new Rate(sheetId, grade, log.getFromDate(), log.getPct());
+            rate.setToDate(log.getToDate());
+            stood.add(rate);
+        }
+        return stood;
     }
 }

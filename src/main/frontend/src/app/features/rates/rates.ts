@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -18,14 +18,26 @@ export interface Rate {
   from: string | null;
   /** The last day the rate applies (yyyy-mm-dd); null when it has no end. */
   to: string | null;
+  /** 0 for the sheet's own rate, 1 for its parent sheet's, 2 for that sheet's parent's, and so on. */
+  level: number;
 }
 
 /**
  * The percent of the grade's rate in force on the date: the one with the latest from-date on or
  * before it, an undated rate counting as from the beginning of time; undefined when the date is
- * before every rate, or after that rate's to-date.
+ * before every rate, or after that rate's to-date. With none of the sheet's own in force, the
+ * parent sheet's, then its parent's, and so on (nearest level first).
  */
 export function rateOn(rates: Rate[], grade: string, date: string): string | undefined {
+  const levels = [...new Set(rates.map((r) => r.level))].sort((a, b) => a - b);
+  for (const level of levels) {
+    const pct = rateOnLevel(rates.filter((r) => r.level === level), grade, date);
+    if (pct !== undefined) return pct;
+  }
+  return undefined;
+}
+
+function rateOnLevel(rates: Rate[], grade: string, date: string): string | undefined {
   let found: Rate | undefined;
   for (const r of rates) {
     if (r.grade !== grade || (r.from !== null && r.from > date)) continue;
@@ -216,7 +228,7 @@ export function trimmedSumDues(dues: string[]): string {
           <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
-          @for (r of rates(); track r.grade + '-' + r.from) {
+          @for (r of ownRates(); track r.grade + '-' + r.from) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
@@ -235,6 +247,8 @@ export class Rates {
 
   readonly grades = input.required<string[]>();
   readonly rates = input.required<Rate[]>();
+  /** The sheet's own rates, leaving out the parent sheets' it falls back on. */
+  protected readonly ownRates = computed(() => this.rates().filter((r) => r.level === 0));
   /** A rate was set. */
   readonly saved = output<Rate>();
 

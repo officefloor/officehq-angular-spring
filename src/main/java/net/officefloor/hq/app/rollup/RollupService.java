@@ -10,7 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.asof.AsOfContext;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
@@ -19,6 +21,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateLog;
+import net.officefloor.hq.app.rate.RateLogRepository;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -47,15 +51,17 @@ public class RollupService {
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
     private final RateRepository rates;
+    private final RateLogRepository rateLogs;
     private final SheetRepository sheets;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
-            RateRepository rates, SheetRepository sheets, Audit audit) {
+            RateRepository rates, RateLogRepository rateLogs, SheetRepository sheets, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.logs = logs;
         this.rates = rates;
+        this.rateLogs = rateLogs;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -64,7 +70,7 @@ public class RollupService {
     public Snapshot snapshot(String sheetId) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
+        List<List<Rate>> sheetRates = rateChain(sheetId);
         Map<Long, List<Claim>> counted = new LinkedHashMap<>();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (claim.getStatus().counts()) {
@@ -125,9 +131,11 @@ public class RollupService {
      */
     public RatePreview preview(String sheetId, String grade, BigDecimal pct) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
-        List<Rate> candidate = new ArrayList<>(sheetRates.stream().filter(r -> !r.getGrade().equals(grade)).toList());
-        candidate.add(new Rate(sheetId, grade, null, pct));
+        List<List<Rate>> sheetRates = rateChain(sheetId);
+        List<Rate> own = new ArrayList<>(sheetRates.get(0).stream().filter(r -> !r.getGrade().equals(grade)).toList());
+        own.add(new Rate(sheetId, grade, null, pct));
+        List<List<Rate>> candidate = new ArrayList<>(sheetRates);
+        candidate.set(0, own);
         Map<Long, Person> byId = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             byId.put(person.getId(), person);
@@ -173,7 +181,7 @@ public class RollupService {
     public Map<Long, BigDecimal> dueTotalsBetween(String sheetId, LocalDate from, LocalDate to) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
         LocalDate today = sheet == null ? null : sheet.getToday();
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
+        List<List<Rate>> sheetRates = rateChain(sheetId);
         Map<Long, Person> byId = new LinkedHashMap<>();
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
@@ -227,7 +235,7 @@ public class RollupService {
      * date, rounded as the sheet's policy date has the claim round) with the late charge of an overdue claim added on
      * top, raised last to the floor in force on the claim's date; a correction has neither floor nor late charge.
      */
-    private static Optional<BigDecimal> dueOf(Sheet sheet, List<Rate> sheetRates, Person person, Claim claim) {
+    private static Optional<BigDecimal> dueOf(Sheet sheet, List<List<Rate>> sheetRates, Person person, Claim claim) {
         if (claim.getSettledDue() != null) {
             return Optional.of(claim.getSettledDue());
         }
@@ -269,7 +277,71 @@ public class RollupService {
                 && sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()).isBefore(today);
     }
 
-    private static Optional<Rate> rateOn(List<Rate> sheetRates, String grade, LocalDate date) {
+    /** How many levels of parent sheets a grade with no rate in force on a sheet falls back on. */
+    public static final int PARENT_LEVELS = 3;
+
+    /**
+     * The sheet's rates, then its parent's, its parent's parent's and so on up to {@link #PARENT_LEVELS} levels up, in
+     * grade order then by from-date: the rates a grade's rate on a date is looked for in, nearest first. While the
+     * request shows the sheet as of a date, the parents' rates are as they stood then.
+     */
+    public List<List<Rate>> rateChain(String sheetId) {
+        return rateChain(sheetId, AsOfContext.current());
+    }
+
+    /**
+     * As {@link #rateChain(String)}, with the parents' rates as they stood at the end of {@code asOf} (null: as they
+     * are now).
+     */
+    public List<List<Rate>> rateChain(String sheetId, LocalDate asOf) {
+        List<List<Rate>> chain = new ArrayList<>();
+        chain.add(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId));
+        List<String> seen = new ArrayList<>(List.of(sheetId));
+        String parent = sheets.findById(sheetId).map(Sheet::getParent).orElse(null);
+        while (parent != null && chain.size() <= PARENT_LEVELS && !seen.contains(parent)) {
+            seen.add(parent);
+            chain.add(asOf == null ? rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(parent) : ratesAsOf(parent, asOf));
+            parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
+        }
+        return chain;
+    }
+
+    /** The sheet's rates as they stood at the end of {@code asOf}, by its rate log, in grade order then by from-date. */
+    private List<Rate> ratesAsOf(String sheetId, LocalDate asOf) {
+        Map<String, List<Rate>> now = new TreeMap<>();
+        for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId)) {
+            now.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
+        }
+        Map<String, List<RateLog>> set = new TreeMap<>();
+        for (RateLog log : rateLogs.findBySheetIdOrderByIdAsc(sheetId)) {
+            set.computeIfAbsent(log.getGrade(), g -> new ArrayList<>()).add(log);
+            now.computeIfAbsent(log.getGrade(), g -> new ArrayList<>());
+        }
+        List<Rate> stood = new ArrayList<>();
+        for (Map.Entry<String, List<Rate>> grade : now.entrySet()) {
+            stood.addAll(RateLog.stood(sheetId, grade.getKey(), grade.getValue(),
+                    set.getOrDefault(grade.getKey(), List.of()), asOf).stream()
+                    .sorted(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                    .toList());
+        }
+        return stood;
+    }
+
+    /**
+     * The grade's rate in force on the date: the sheet's own, else the first in force of its parents' (nearest
+     * first); empty when none is.
+     */
+    public static Optional<Rate> rateOn(List<List<Rate>> chain, String grade, LocalDate date) {
+        for (List<Rate> level : chain) {
+            Optional<Rate> found = rateOnLevel(level, grade, date);
+            if (found.isPresent()) {
+                return found;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<Rate> rateOnLevel(List<Rate> sheetRates, String grade, LocalDate date) {
         return sheetRates.stream()
                 .filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))

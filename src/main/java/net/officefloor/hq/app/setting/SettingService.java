@@ -2,9 +2,11 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -15,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, each
- * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its pot and
+ * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its pot, its parent sheet and
  * its permission matrix, not dated.
  */
 @Service
@@ -216,6 +218,37 @@ public class SettingService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=pot value="
                 + (pot == null ? "" : pot.toPlainString()));
+        return saved;
+    }
+
+    /**
+     * Set the parent sheet, whose rates a grade with none in force on a date here falls back on; null means none.
+     * Refused for the sheet itself, a sheet that has this sheet as an ancestor, and a sheet never loaded. Every save
+     * is recorded, even of the same value, then the figures it moved.
+     */
+    @Transactional
+    public Sheet setParent(String sheetId, String user, String parent) {
+        Sheet sheet = get(sheetId);
+        if (parent != null) {
+            if (parent.equals(sheetId)) {
+                throw new ParentRefusedException(sheetId, parent, "a sheet cannot be its own parent");
+            }
+            Sheet ancestor = sheets.findById(parent)
+                    .orElseThrow(() -> new ParentRefusedException(sheetId, parent, "it has never been loaded"));
+            Set<String> seen = new HashSet<>();
+            while (ancestor != null && seen.add(ancestor.getId())) {
+                if (sheetId.equals(ancestor.getParent())) {
+                    throw new ParentRefusedException(sheetId, parent, "it has this sheet as an ancestor");
+                }
+                ancestor = ancestor.getParent() == null ? null : sheets.findById(ancestor.getParent()).orElse(null);
+            }
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setParent(parent);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=parent value="
+                + (parent == null ? "" : parent));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
