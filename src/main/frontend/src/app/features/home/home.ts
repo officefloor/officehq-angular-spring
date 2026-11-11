@@ -37,6 +37,22 @@ import { Settings } from '../settings/settings';
           />
           <button type="submit" data-testid="sheet-today-save">Set today</button>
         </form>
+        <form (submit)="setAsOf($event)">
+          <label for="asof-date">Show as of</label>
+          <input
+            id="asof-date"
+            type="date"
+            data-testid="asof-date"
+            [value]="asOfInput()"
+            (input)="asOfInput.set(value($event)); asOfError.set(null)"
+          />
+          <button type="submit" data-testid="asof-set">Set as of</button>
+          <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+          @if (asOfError(); as error) {
+            <p role="alert" data-testid="asof-error">{{ error }}</p>
+          }
+        </form>
+        <p>As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
         <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         <app-settings />
@@ -66,6 +82,8 @@ export class Home {
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayInput = signal('');
+  protected readonly asOfInput = signal('');
+  protected readonly asOfError = signal<string | null>(null);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -103,6 +121,30 @@ export class Home {
       await this.session.archive();
     } catch {
       this.sheetError.set('The sheet could not be archived.');
+    }
+  }
+
+  protected async setAsOf(event: Event): Promise<void> {
+    event.preventDefault();
+    const date = this.asOfInput().trim();
+    this.asOfError.set(null);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.asOfError.set('Pick a date to show the sheet as of.');
+      return;
+    }
+    try {
+      await this.session.setAsOf(date);
+    } catch {
+      this.asOfError.set(`The sheet could not be shown as of ${date}.`);
+    }
+  }
+
+  protected async clearAsOf(): Promise<void> {
+    this.asOfError.set(null);
+    try {
+      await this.session.setAsOf(null);
+    } catch {
+      this.asOfError.set('The sheet could not be shown as it stands.');
     }
   }
 

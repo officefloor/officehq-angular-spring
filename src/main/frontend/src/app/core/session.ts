@@ -34,6 +34,9 @@ export class Session {
   readonly viewer = signal(false);
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
   readonly showRetired = signal(false);
+  /** The date this screen shows the sheet as of (yyyy-mm-dd): it stands in for the sheet's today and every change is
+   *  refused; null shows the sheet as it stands. It belongs to this screen and is kept when another sheet is loaded. */
+  readonly asOf = signal<string | null>(null);
   /** Counts completed sheet loads, so the screen re-reads the sheet's data even for the same id. */
   readonly loaded = signal(0);
   /** Every value recorded of each dated setting of the active sheet (clerk-limit, floor, terms, terms-A, terms-B,
@@ -58,6 +61,7 @@ export class Session {
 
   signIn(name: string): void {
     this.user.set(name);
+    this.asOf.set(null);
     this.sheet.set(null);
     this.today.set(null);
   }
@@ -93,6 +97,20 @@ export class Session {
     if (load === this.loads) {
       this.show(loaded);
       this.loaded.update((n) => n + 1);
+    }
+  }
+
+  /** Show the active sheet as of the date (null: as it stands), re-reading all of it. */
+  async setAsOf(date: string | null): Promise<void> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet loaded.');
+    const was = this.asOf();
+    this.asOf.set(date);
+    try {
+      await this.loadSheet(id);
+    } catch (e) {
+      this.asOf.set(was);
+      throw e;
     }
   }
 

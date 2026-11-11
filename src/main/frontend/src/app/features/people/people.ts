@@ -879,6 +879,8 @@ export class People {
         void this.read(sheet);
       }
     } catch {
+      // The date of a refused statement does not carry into the next one.
+      this.statementAsOfs.update((dates) => ({ ...dates, [person.id]: '' }));
       this.rowError.set({ id: person.id, message: `A statement of ${person.name} could not be taken.` });
     }
   }
