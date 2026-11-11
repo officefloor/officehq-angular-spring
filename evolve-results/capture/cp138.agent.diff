@@ -1,0 +1,157 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 541e7ae6f..593ae66f7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -384,6 +384,24 @@ function csvField(value: string): string {
+                 >
+                   Edit
+                 </button>
++                <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade of {{ p.name }} from today</label>
++                <select
++                  [id]="'person-inline-grade-' + p.id"
++                  data-testid="person-inline-grade"
++                  (change)="setInlineGrade(p.id, value($event))"
++                >
++                  @for (g of grades; track g) {
++                    <option [value]="g" [selected]="g === inlineGradeOf(p)">{{ g }}</option>
++                  }
++                </select>
++                <button
++                  type="button"
++                  data-testid="person-inline-grade-save"
++                  [attr.aria-label]="'Save the grade of ' + p.name"
++                  (click)="saveInlineGrade(p)"
++                >
++                  Save grade
++                </button>
+                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Take a statement of {{ p.name }} as of</label>
+                 <input
+                   [id]="'person-statement-asof-' + p.id"
+@@ -743,6 +761,7 @@ export class People {
+   });
+   /** The date typed to retire each person from, by id; blank retires from the sheet's today. */
+   protected readonly retireDates = signal<Record<number, string>>({});
++  protected readonly inlineGrades = signal<Record<number, string>>({});
+   /** The alias typed on each person's row, by person id. */
+   protected readonly aliasInputs = signal<Record<number, string>>({});
+   /** The person chosen on each person's row to merge them into, by person id, as the chosen person's id. */
+@@ -1013,6 +1032,7 @@ export class People {
+         this.descendantFigures.set(NO_DESCENDANTS);
+         this.liveConsolidated.set(null);
+         this.retireDates.set({});
++        this.inlineGrades.set({});
+         this.aliasInputs.set({});
+         this.mergeChoices.set({});
+         this.transferTos.set({});
+@@ -1154,6 +1174,46 @@ export class People {
+     }
+   }
+ 
++  /** The grade chosen in the person's row select: their grade in force until another is chosen. */
++  protected inlineGradeOf(person: Person): string {
++    return this.inlineGrades()[person.id] ?? this.gradeOf(person);
++  }
++
++  protected setInlineGrade(id: number, grade: string): void {
++    this.inlineGrades.update((grades) => ({ ...grades, [id]: grade }));
++    if (this.rowError()?.id === id) this.rowError.set(null);
++  }
++
++  /** Save the grade chosen in the person's row from the sheet's today, as the person form would save it. */
++  protected async saveInlineGrade(person: Person): Promise<void> {
++    this.rowError.set(null);
++    this.patronError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const body = {
++      name: person.name,
++      grade: this.inlineGradeOf(person),
++      gradeFrom: null,
++      terms: person.terms === null ? null : String(person.terms),
++      contact: person.contact,
++      tags: null,
++      version: null,
++    };
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}`;
++    try {
++      const saved = await firstValueFrom(this.http.put<Person>(url, body, this.session.headers()));
++      if (this.session.sheet() === sheet) {
++        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++        this.inlineGrades.update((grades) =>
++          Object.fromEntries(Object.entries(grades).filter(([id]) => Number(id) !== person.id)),
++        );
++        void this.read(sheet);
++      }
++    } catch {
++      this.rowError.set({ id: person.id, message: `The grade of ${person.name} could not be saved.` });
++    }
++  }
++
+   protected setRetireDate(id: number, date: string): void {
+     this.retireDates.update((dates) => ({ ...dates, [id]: date }));
+     if (this.rowError()?.id === id) this.rowError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
+index 8ae87f0db..ffb75b047 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
+@@ -30,8 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
+  * <p>After every change to a sheet, every row the sheet keeps (the sheet's own row, the rows carrying its id, and the
+  * rows hanging off its people, periods and claims) is copied under the sheet's today then. Showing the sheet as of a
+  * date replaces those rows, inside a transaction the caller rolls back, with the copy of the latest today on or before
+- * the date (none: an empty sheet), and the date stands in for the sheet's today. The tables are found from the schema,
+- * so a table a later change adds is kept as well.
++ * the date (none: an empty sheet), and the date stands in for the sheet's today. A kept row that has since moved to
++ * another sheet (a transferred person's, say) is taken back for that transaction. The tables are found from the
++ * schema, so a table a later change adds is kept as well.
+  */
+ @Service
+ public class SheetSnapshotService {
+@@ -39,8 +40,8 @@ public class SheetSnapshotService {
+     private static final String SHEET = "SHEET";
+     private static final Set<String> NOT_KEPT = Set.of("SHEET_SNAPSHOT", "FLYWAY_SCHEMA_HISTORY");
+ 
+-    /** A table a sheet keeps rows in: the columns copied, and which of its rows are the sheet's. */
+-    private record Table(String name, List<String> columns, String where) {
++    /** A table a sheet keeps rows in: the columns copied, which of its rows are the sheet's, and its key columns. */
++    private record Table(String name, List<String> columns, String where, List<String> keys) {
+     }
+ 
+     private final DataSource dataSource;
+@@ -105,7 +106,10 @@ public class SheetSnapshotService {
+             }
+             for (Map<String, Object> row : kept) {
+                 List<String> columns = table.columns().stream().filter(row::containsKey).toList();
+-                jdbc.update("INSERT INTO " + table.name() + " (" + String.join(", ", columns) + ") VALUES ("
++                // A row since moved to another sheet keeps its key there: take it back rather than add it again.
++                boolean keyed = !table.keys().isEmpty() && columns.containsAll(table.keys());
++                jdbc.update((keyed ? "MERGE INTO " : "INSERT INTO ") + table.name() + " (" + String.join(", ", columns)
++                        + ")" + (keyed ? " KEY (" + String.join(", ", table.keys()) + ")" : "") + " VALUES ("
+                         + String.join(", ", columns.stream().map(c -> "?").toList()) + ")",
+                         columns.stream().map(row::get).toArray());
+             }
+@@ -174,6 +178,16 @@ public class SheetSnapshotService {
+                 }
+             }
+         }
++        Map<String, List<String>> keys = new HashMap<>();
++        for (String name : columns.keySet()) {
++            List<String> key = new ArrayList<>();
++            try (ResultSet rs = meta.getPrimaryKeys(null, "PUBLIC", name)) {
++                while (rs.next()) {
++                    key.add(rs.getString("COLUMN_NAME").toUpperCase(Locale.ROOT));
++                }
++            }
++            keys.put(name, key);
++        }
+         // Each table's references to other tables: its column -> the table referred to.
+         Map<String, Map<String, String>> refs = new HashMap<>();
+         for (String name : columns.keySet()) {
+@@ -225,7 +239,7 @@ public class SheetSnapshotService {
+                 throw new IllegalStateException("The sheet's tables refer to each other in a cycle");
+             }
+         }
+-        return ordered.stream().map(n -> new Table(n, columns.get(n), where.get(n))).toList();
++        return ordered.stream().map(n -> new Table(n, columns.get(n), where.get(n), keys.get(n))).toList();
+     }
+ 
+     private static byte[] serialize(Object rows) {
