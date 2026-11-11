@@ -7,6 +7,8 @@ import { FigurePipe } from '../../core/figure';
 // and the sheet's due- and overdue-totals (as the people list's totals show them). Then the same
 // figures consolidated over the sheet and all its descendants (the sheets naming it as parent, and
 // theirs): each sheet's as that sheet shows it, added up; a sheet with no children shows its own.
+// With them, per grade the due-totals of the people on it (retired left out) and per status the
+// count of claims in it, each over the whole tree.
 // Last, the signed-in user's own figures: the due- and overdue-totals of the person on the sheet
 // with the user's name (by name or alias); blank when there is no such person. And their crew total:
 // the due-totals of the crews that person leads, added up; blank when they lead none.
@@ -34,6 +36,14 @@ import { FigurePipe } from '../../core/figure';
         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | figure }}</dd>
         <dt>Overdue, with sub-sheets</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | figure }}</dd>
+        @for (g of consolidatedGrades(); track g.grade) {
+          <dt>Grade {{ g.grade }} due, with sub-sheets</dt>
+          <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | figure }}</dd>
+        }
+        @for (s of consolidatedStatuses(); track s.status) {
+          <dt>{{ s.status }}, with sub-sheets</dt>
+          <dd [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</dd>
+        }
       </dl>
       <dl aria-label="My figures">
         <dt>My due</dt>
@@ -54,6 +64,8 @@ export class Header {
   readonly consolidatedPeopleCount = input.required<number>();
   readonly consolidatedDueTotal = input.required<string>();
   readonly consolidatedOverdueTotal = input.required<string>();
+  readonly consolidatedGrades = input.required<{ grade: string; dueTotal: string }[]>();
+  readonly consolidatedStatuses = input.required<StatusSummary[]>();
   readonly myDueTotal = input.required<string>();
   readonly myOverdueTotal = input.required<string>();
   readonly myCrewDueTotal = input.required<string>();

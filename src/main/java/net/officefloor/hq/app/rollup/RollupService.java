@@ -48,12 +48,28 @@ import org.springframework.stereotype.Service;
 @Service
 public class RollupService {
 
-    /** A person's figures: claimed, due-total (null for n/a) and overdue-total. */
-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /**
+     * A person's figures: claimed, due-total (null for n/a) and overdue-total; with their grade on the
+     * sheet's today and whether they are retired.
+     */
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, String grade,
+            boolean retired) {
     }
 
     /** The sheet's figures: each person's by id, in the order they were added. */
     public record Snapshot(Map<Long, Figures> people) {
+
+        /** Per grade (on the sheet's today), the due-totals of the people not retired on it added up (n/a is no figure). */
+        public Map<String, BigDecimal> gradeDueTotals() {
+            Map<String, BigDecimal> totals = new LinkedHashMap<>();
+            for (Figures figures : people.values()) {
+                if (!figures.retired() && figures.grade() != null) {
+                    totals.merge(figures.grade(),
+                            figures.dueTotal() == null ? zero() : figures.dueTotal(), BigDecimal::add);
+                }
+            }
+            return totals;
+        }
 
         public BigDecimal claimedTotal() {
             return people.values().stream().map(Figures::claimed).reduce(zero(), BigDecimal::add);
@@ -80,8 +96,12 @@ public class RollupService {
         }
     }
 
-    /** Figures added up over sheets: their people (retired included), due-totals and overdue-totals. */
-    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /**
+     * Figures added up over sheets: their people (retired included), due-totals and overdue-totals;
+     * per grade the due-totals of the people on it (retired left out), and per status the count of claims in it.
+     */
+    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
+            Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {
     }
 
     private final PersonRepository people;
@@ -140,7 +160,7 @@ public class RollupService {
             // counts has a figure
             boolean none = inForce(sheetRates, person.gradeOn(today), today).isEmpty() && !anyFigure;
             figures.put(person.getId(), new Figures(person.getName(), claimed, none ? null : sheet.capped(due),
-                    overdue));
+                    overdue, person.gradeOn(today), person.isRetired()));
         }
         return new Snapshot(figures);
     }
@@ -174,13 +194,26 @@ public class RollupService {
         int count = 0;
         BigDecimal due = zero();
         BigDecimal overdue = zero();
+        Map<String, BigDecimal> grades = new LinkedHashMap<>();
+        Map<String, Integer> statuses = new LinkedHashMap<>();
         for (String id : tree) {
             Snapshot figures = snapshot(id);
             count += figures.people().size();
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
+            figures.gradeDueTotals().forEach((grade, total) -> grades.merge(grade, total, BigDecimal::add));
+            statusCounts(id).forEach((status, n) -> statuses.merge(status, n, Integer::sum));
         }
-        return new Consolidated(count, due, overdue);
+        return new Consolidated(count, due, overdue, grades, statuses);
+    }
+
+    /** Per status, how many of the sheet's claims as the store holds them are in it (retired people's included). */
+    public Map<String, Integer> statusCounts(String sheetId) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            counts.merge(claim.getStatus().name(), 1, Integer::sum);
+        }
+        return counts;
     }
 
     /**

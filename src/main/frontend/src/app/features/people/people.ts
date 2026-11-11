@@ -170,11 +170,28 @@ interface Descendants {
   peopleCount: number;
   dueTotal: string;
   overdueTotal: string;
+  /** Per grade, the due-totals of the people on it (retired left out); a grade with none is absent. */
+  gradeDueTotals: Record<string, string>;
+  /** Per status, how many claims are in it; a status with none is absent. */
+  statusCounts: Record<string, number>;
   /** The sheet's own figures as the store holds them (as of the as-of date, when one is set). */
-  own: { peopleCount: number; dueTotal: string; overdueTotal: string } | null;
+  own: {
+    peopleCount: number;
+    dueTotal: string;
+    overdueTotal: string;
+    gradeDueTotals: Record<string, string>;
+    statusCounts: Record<string, number>;
+  } | null;
 }
 
-const NO_DESCENDANTS: Descendants = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00', own: null };
+const NO_DESCENDANTS: Descendants = {
+  peopleCount: 0,
+  dueTotal: '0.00',
+  overdueTotal: '0.00',
+  gradeDueTotals: {},
+  statusCounts: {},
+  own: null,
+};
 
 interface DatedHold {
   from: string;
@@ -255,6 +272,8 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       [consolidatedPeopleCount]="consolidated().peopleCount"
       [consolidatedDueTotal]="consolidated().dueTotal"
       [consolidatedOverdueTotal]="consolidated().overdueTotal"
+      [consolidatedGrades]="consolidated().grades"
+      [consolidatedStatuses]="consolidated().statuses"
       [myDueTotal]="myFigures()?.dueTotal ?? ''"
       [myOverdueTotal]="myFigures()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDueTotal()"
@@ -1326,13 +1345,34 @@ export class People {
    */
   protected readonly consolidated = computed(() => {
     const d = this.descendants();
-    const own = this.session.asOf() && d.own
-      ? { peopleCount: d.own.peopleCount, due: cents(d.own.dueTotal), overdue: cents(d.own.overdueTotal) }
-      : { peopleCount: this.people().length, due: cents(this.dueTotal()), overdue: this.overdueTotals().cents };
+    const asOfOwn = this.session.asOf() ? d.own : null;
+    const own = asOfOwn
+      ? {
+          peopleCount: asOfOwn.peopleCount,
+          due: cents(asOfOwn.dueTotal),
+          overdue: cents(asOfOwn.overdueTotal),
+          grade: (g: string) => cents(asOfOwn.gradeDueTotals[g] ?? '0.00'),
+          status: (s: string) => asOfOwn.statusCounts[s] ?? 0,
+        }
+      : {
+          peopleCount: this.people().length,
+          due: cents(this.dueTotal()),
+          overdue: this.overdueTotals().cents,
+          grade: (g: string) => cents(this.gradeSummary().find((x) => x.grade === g)?.dueTotal ?? '0.00'),
+          status: (s: string) => this.statusCount(s),
+        };
     return {
       peopleCount: own.peopleCount + d.peopleCount,
       dueTotal: money(own.due + cents(d.dueTotal)),
       overdueTotal: money(own.overdue + cents(d.overdueTotal)),
+      grades: GRADES.map((grade) => ({
+        grade,
+        dueTotal: money(own.grade(grade) + cents(d.gradeDueTotals[grade] ?? '0.00')),
+      })),
+      statuses: SUMMARY_STATUSES.map((status) => ({
+        status,
+        count: own.status(status) + (d.statusCounts[status] ?? 0),
+      })),
     };
   });
   /** The person on the sheet with the user's name, by name or alias (compared without regard to case). */

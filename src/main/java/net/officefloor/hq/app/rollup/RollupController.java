@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,10 +21,12 @@ public class RollupController {
     }
 
     /** The sheet's own figures as the store holds them (as of the date the request is answered as of), as consolidated figures count them. */
-    public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal) {
+    public record OwnFigures(int peopleCount, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
+            Map<String, Integer> statusCounts) {
     }
 
-    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal, OwnFigures own) {
+    public record DescendantsResponse(int peopleCount, String dueTotal, String overdueTotal,
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, OwnFigures own) {
     }
 
     private final RollupService service;
@@ -38,8 +42,15 @@ public class RollupController {
         RollupService.Consolidated figures = service.descendants(sheet);
         RollupService.Snapshot own = service.snapshot(sheet);
         return new DescendantsResponse(figures.peopleCount(), money(figures.dueTotal()),
-                money(figures.overdueTotal()),
-                new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal())));
+                money(figures.overdueTotal()), money(figures.gradeDueTotals()), figures.statusCounts(),
+                new OwnFigures(own.people().size(), money(own.dueTotal()), money(own.overdueTotal()),
+                        money(own.gradeDueTotals()), service.statusCounts(sheet)));
+    }
+
+    private static Map<String, String> money(Map<String, BigDecimal> amounts) {
+        Map<String, String> out = new LinkedHashMap<>();
+        amounts.forEach((key, amount) -> out.put(key, money(amount)));
+        return out;
     }
 
     private static String money(BigDecimal amount) {
