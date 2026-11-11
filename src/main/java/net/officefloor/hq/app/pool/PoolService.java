@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the pools of a sheet, each name at most once, and their members: each person at most once in a pool, with a
- * share percent above 0.00 and at most 100.00. A person may be in several pools. A pool may be a member of another
+ * share percent above 0.00 and at most 100.00, and optionally a from-date and a to-date not before it. A person may be in several pools. A pool may be a member of another
  * pool, of at most one, never containing itself through any chain, and a chain of pools is at most three deep.
  */
 @Service
@@ -65,7 +66,8 @@ public class PoolService {
 
     /** Add the person to the pool with the share (two decimals); refused when already in it or the share is out of range. */
     @Transactional
-    public Pool addMember(String sheetId, String user, Long poolId, Long personId, BigDecimal share) {
+    public Pool addMember(String sheetId, String user, Long poolId, Long personId, BigDecimal share,
+            LocalDate from, LocalDate to) {
         Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
                 .orElseThrow(() -> new PoolRefusedException("No pool " + poolId + " on sheet " + sheetId));
         Person person = people.findByIdAndSheetId(personId, sheetId)
@@ -73,18 +75,23 @@ public class PoolService {
         if (share.scale() > 2 || share.signum() <= 0 || share.compareTo(MAX_SHARE) > 0) {
             throw new PoolRefusedException("A share is more than 0.00 and at most 100.00, with two decimals");
         }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new PoolRefusedException("A membership's to-date is not before its from-date");
+        }
         if (pool.hasMember(personId)) {
             throw new PoolRefusedException(person.getName() + " is already in pool " + pool.getName());
         }
         BigDecimal scaled = share.setScale(2);
-        pool.getMembers().add(new PoolMember(personId, scaled));
+        PoolMember added = new PoolMember(personId, scaled);
+        added.setDates(from, to);
+        pool.getMembers().add(added);
         try {
             pools.saveAndFlush(pool);
         } catch (DataIntegrityViolationException e) {
             throw new PoolRefusedException(person.getName() + " is already in pool " + pool.getName());
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + person.getName() + " share=" + scaled.toPlainString());
+                + " name=" + person.getName() + " share=" + scaled.toPlainString() + dates(from, to));
         return pool;
     }
 
@@ -94,13 +101,17 @@ public class PoolService {
      * when a chain of pools would then be more than three deep.
      */
     @Transactional
-    public Pool addMemberPool(String sheetId, String user, Long poolId, Long memberPoolId, BigDecimal share) {
+    public Pool addMemberPool(String sheetId, String user, Long poolId, Long memberPoolId,
+            BigDecimal share, LocalDate from, LocalDate to) {
         Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
                 .orElseThrow(() -> new PoolRefusedException("No pool " + poolId + " on sheet " + sheetId));
         Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
                 .orElseThrow(() -> new PoolRefusedException("No pool " + memberPoolId + " on sheet " + sheetId));
         if (share.scale() > 2 || share.signum() <= 0 || share.compareTo(MAX_SHARE) > 0) {
             throw new PoolRefusedException("A share is more than 0.00 and at most 100.00, with two decimals");
+        }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new PoolRefusedException("A membership's to-date is not before its from-date");
         }
         List<Pool> all = pools.findBySheetIdOrderByIdAsc(sheetId);
         // Each pool that is a member of another, by the pool above it.
@@ -128,15 +139,22 @@ public class PoolService {
             throw new PoolRefusedException("A chain of pools is at most " + MAX_DEPTH + " deep");
         }
         BigDecimal scaled = share.setScale(2);
-        pool.getMembers().add(PoolMember.ofPool(memberPoolId, scaled));
+        PoolMember added = PoolMember.ofPool(memberPoolId, scaled);
+        added.setDates(from, to);
+        pool.getMembers().add(added);
         try {
             pools.saveAndFlush(pool);
         } catch (DataIntegrityViolationException e) {
             throw new PoolRefusedException(member.getName() + " is already a member of a pool");
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + member.getName() + " share=" + scaled.toPlainString());
+                + " name=" + member.getName() + " share=" + scaled.toPlainString() + dates(from, to));
         return pool;
+    }
+
+    /** The membership's dates for the audit, each only when given. */
+    private static String dates(LocalDate from, LocalDate to) {
+        return (from != null ? " from=" + from : "") + (to != null ? " to=" + to : "");
     }
 
     /** The levels of pools from this one down its deepest chain of member pools, itself counting one. */

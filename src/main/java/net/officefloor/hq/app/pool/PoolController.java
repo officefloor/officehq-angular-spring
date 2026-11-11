@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -25,11 +26,15 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PoolController {
 
-    /** A member as shown: the person's id, or the member pool's id, and their share (two decimals). */
-    public record PoolMemberView(Long personId, Long poolId, String share) {
+    /**
+     * A member as shown: the person's id, or the member pool's id, their share (two decimals) and the membership's
+     * from-date and to-date (null when not given).
+     */
+    public record PoolMemberView(Long personId, Long poolId, String share, LocalDate from, LocalDate to) {
 
         static PoolMemberView of(PoolMember m) {
-            return new PoolMemberView(m.getPersonId(), m.getMemberPoolId(), m.getShare().toPlainString());
+            return new PoolMemberView(m.getPersonId(), m.getMemberPoolId(), m.getShare().toPlainString(),
+                    m.getFromDate(), m.getToDate());
         }
     }
 
@@ -47,10 +52,16 @@ public class PoolController {
 
     /**
      * A member to add: the person, or else another pool, and their share, more than 0.00 and at most 100.00, with at
-     * most two decimals.
+     * most two decimals, with an optional from-date and to-date, the to-date not before the from-date.
      */
     public record PoolMemberRequest(Long personId, Long poolId,
-            @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
+            @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share, LocalDate from,
+            LocalDate to) {
+
+        @AssertTrue(message = "the to-date is not before the from-date")
+        public boolean isDatesInOrder() {
+            return from == null || to == null || !to.isBefore(from);
+        }
 
         @AssertTrue(message = "a member is a person or a pool")
         public boolean isOneMember() {
@@ -87,8 +98,10 @@ public class PoolController {
             @RequestBody @Valid PoolMemberRequest request) {
         BigDecimal share = new BigDecimal(request.share().trim());
         if (request.poolId() != null) {
-            return PoolView.of(service.addMemberPool(sheetId.trim(), user.trim(), poolId, request.poolId(), share));
+            return PoolView.of(service.addMemberPool(sheetId.trim(), user.trim(), poolId, request.poolId(), share,
+                    request.from(), request.to()));
         }
-        return PoolView.of(service.addMember(sheetId.trim(), user.trim(), poolId, request.personId(), share));
+        return PoolView.of(service.addMember(sheetId.trim(), user.trim(), poolId, request.personId(), share,
+                request.from(), request.to()));
     }
 }
