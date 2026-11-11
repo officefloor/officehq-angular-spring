@@ -37,6 +37,11 @@ function live(claim: Claim, held: boolean): boolean {
   return counts(claim) && !(held && claim.status === 'OPEN');
 }
 
+/** A CSV field: wrapped in double quotes, any quote inside doubled, when it holds a comma, a quote or a line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
 // The people on the active sheet, in the order they were added, each with their claims and what
 // they have claimed and their due-total, the sheet's claimed-total and due-total, the grades' rates, and the one form that adds a person or, once a
 // person's editor is opened, saves that person.
@@ -231,6 +236,7 @@ function live(claim: Claim, held: boolean): boolean {
           }
         </tbody>
       </table>
+      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -670,6 +676,23 @@ export class People {
     } finally {
       this.quickAdding = false;
     }
+  }
+
+  /**
+   * Download everyone on the sheet, retired people included, in list order as a CSV file: name, the grade in force
+   * today, the retired-from date or nothing, and the due-total as the list shows it.
+   */
+  protected exportCsv(): void {
+    const lines = [['name', 'grade', 'retired-from', 'due-total']].concat(
+      this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)]),
+    );
+    const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `people-${this.session.sheet() ?? 'sheet'}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   /** Re-read the sheet and show the stored values of the person in the open editor. */
