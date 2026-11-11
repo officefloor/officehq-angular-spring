@@ -116,6 +116,23 @@ public class Sheet {
         this.today = today;
     }
 
+    /**
+     * A copy of the sheet under another id: its today, dated settings, permission matrix and other settings; not
+     * archived, with no settle batch yet.
+     */
+    public Sheet copyTo(String id, String createdBy) {
+        Sheet copy = new Sheet(id, createdBy, today);
+        dated.forEach(d -> copy.dated.add(new DatedSetting(copy, d.getKey(), d.getFromDate(), d.getValue())));
+        copy.permissions.putAll(permissions);
+        copy.policyDate = policyDate;
+        copy.periodNumberingFrom = periodNumberingFrom;
+        copy.entryDate = entryDate;
+        copy.graceDays = graceDays;
+        copy.pot = pot;
+        copy.parent = parent;
+        return copy;
+    }
+
     public String getId() {
         return id;
     }

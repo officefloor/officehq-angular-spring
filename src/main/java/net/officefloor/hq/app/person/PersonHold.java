@@ -49,6 +49,10 @@ public class PersonHold {
         return toDate;
     }
 
+    public LocalDate getMadeOn() {
+        return madeOn;
+    }
+
     /** Whether the hold was added while the sheet's today was on or before the date. */
     public boolean madeBy(LocalDate date) {
         return madeOn == null || !madeOn.isAfter(date);

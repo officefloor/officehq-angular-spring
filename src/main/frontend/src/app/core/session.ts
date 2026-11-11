@@ -154,6 +154,19 @@ export class Session {
     if (this.sheet() === saved.id) this.show(saved);
   }
 
+  /** Clone the active sheet to another id never used: a steward may. */
+  async cloneSheet(to: string): Promise<void> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet loaded.');
+    await firstValueFrom(
+      this.http.post<SheetView>(
+        `/api/sheets/${encodeURIComponent(id)}/clone`,
+        { to },
+        { headers: { 'X-User': this.user() ?? '' } },
+      ),
+    );
+  }
+
   private show(view: SheetView): void {
     this.sheet.set(view.id);
     this.today.set(view.today);

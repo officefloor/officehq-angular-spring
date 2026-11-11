@@ -382,6 +382,32 @@ public class Claim {
         this.settleBatch = settleBatch;
     }
 
+    /**
+     * A copy of the claim for a person on another sheet, with its status, frozen figures, dates, note, tags and the
+     * numbers it corrects or was split from as they are; it has no number, no statement binding, no settle batch and
+     * no editor lock.
+     */
+    public Claim copyTo(String sheetId, Long personId) {
+        Claim copy = new Claim(sheetId, personId, amount, date, note);
+        copy.status = status;
+        copy.settledDue = settledDue;
+        copy.openedBy = openedBy;
+        copy.editedBy = editedBy;
+        copy.corrects = corrects;
+        copy.dueBy = dueBy;
+        copy.terms = terms;
+        copy.roundingDate = roundingDate;
+        copy.deferredUntil = deferredUntil;
+        copy.proofs = proofs;
+        copy.splitFrom = splitFrom;
+        copy.lateEntry = lateEntry;
+        copy.remindedOn = remindedOn;
+        copy.ref = ref;
+        copy.tags = tags;
+        copy.voidReason = voidReason;
+        return copy;
+    }
+
     /** Whether a user other than this one has the claim's editor open. */
     public boolean isLockedAgainst(String user) {
         return lockedBy != null && !lockedBy.equals(user);

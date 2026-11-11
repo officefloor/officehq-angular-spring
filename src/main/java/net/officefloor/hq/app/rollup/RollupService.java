@@ -276,6 +276,18 @@ public class RollupService {
         }
     }
 
+    /** Record a ROLLUP line for every person on the sheet, in list order, then a TOTALS line. */
+    public void recordAll(String sheetId, String user) {
+        Snapshot now = snapshot(sheetId);
+        for (Figures person : now.people().values()) {
+            audit.recordOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + person.name()
+                    + " claimed=" + person.claimed() + " due-total=" + person.dueTotal()
+                    + " overdue-total=" + person.overdueTotal());
+        }
+        audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total=" + now.claimedTotal()
+                + " due-total=" + now.dueTotal() + " overdue-total=" + now.overdueTotal());
+    }
+
     /**
      * As on the screen: the settled due, else the figure (the stated due, else the amount at the rate on the claim's
      * date, rounded as the sheet's policy date has the claim round) with the late charge of an overdue claim added on

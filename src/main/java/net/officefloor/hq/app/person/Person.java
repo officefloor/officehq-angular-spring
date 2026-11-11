@@ -309,6 +309,26 @@ public class Person {
         }
     }
 
+    /**
+     * A copy of the person on another sheet: their grades, terms, contact, retirement and past retirements, holds,
+     * place in the list, origin and the day they were added.
+     */
+    public Person copyTo(String sheetId) {
+        List<PersonGrade> theirGrades = getGrades();
+        Person copy = new Person(sheetId, name, theirGrades.get(0).getGrade());
+        theirGrades.stream().skip(1).forEach(g -> copy.setGrade(g.getGrade(), g.getFromDate()));
+        copy.terms = terms;
+        copy.contact = contact;
+        copy.retiredFrom = retiredFrom;
+        copy.retiredOn = retiredOn;
+        copy.addedOn = addedOn;
+        copy.originSheet = originSheet;
+        copy.position = position;
+        holds.forEach(h -> copy.holds.add(new PersonHold(h.getFromDate(), h.getToDate(), h.getMadeOn())));
+        retirements.forEach(r -> copy.retirements.add(new PersonRetirement(r.getFromDate(), r.getToDate())));
+        return copy;
+    }
+
     public long getVersion() {
         return version;
     }

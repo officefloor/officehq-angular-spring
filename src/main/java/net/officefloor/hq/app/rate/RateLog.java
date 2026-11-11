@@ -53,6 +53,18 @@ public class RateLog {
         this.setOn = setOn;
     }
 
+    /** A copy of the log line on another sheet. */
+    public RateLog copyTo(String sheetId) {
+        RateLog copy = new RateLog();
+        copy.sheetId = sheetId;
+        copy.grade = grade;
+        copy.fromDate = fromDate;
+        copy.toDate = toDate;
+        copy.pct = pct;
+        copy.setOn = setOn;
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }

@@ -21,6 +21,11 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Query(value = "UPDATE sheet SET last_listed = last_listed + 1 WHERE id = :id", nativeQuery = true)
     int incrementLastListed(@Param("id") String id);
 
+    /** Sets the sheet's last list place, for a sheet whose claims were given their places as they were elsewhere. */
+    @Modifying
+    @Query(value = "UPDATE sheet SET last_listed = :listed WHERE id = :id", nativeQuery = true)
+    int setLastListed(@Param("id") String id, @Param("listed") long listed);
+
     @Query(value = "SELECT last_listed FROM sheet WHERE id = :id", nativeQuery = true)
     long lastListed(@Param("id") String id);
 
