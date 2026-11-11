@@ -79,6 +79,7 @@ public class ClaimController {
                 request.note()));
     }
 
+    /** Edit a DRAFT claim; refused for any other status. */
     @PutMapping("/claims/{id}")
     public ClaimView update(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,

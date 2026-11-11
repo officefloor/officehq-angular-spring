@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. A claim dated in a closed
- * period cannot be added, edited or change status.
+ * period cannot be added, edited or change status. Only a DRAFT claim can be edited.
  */
 @Service
 public class ClaimService {
@@ -64,6 +64,10 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        // Only a DRAFT can be edited: an OPEN claim is changed by voiding it and adding a new one.
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotEditableException(id, claim.getStatus());
+        }
         LocalDate dated = dateOr(sheetId, date);
         // Neither out of nor into a closed period.
         periods.requireOpen(sheetId, claim.getDate(), dated);
@@ -105,14 +109,12 @@ public class ClaimService {
             claim.setSettledDue(settledDue);
             due = " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
         }
-        // The CLAIM_VOIDED record carries the number the claim had.
+        // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
         Long number = claim.getNumber();
         if (status == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
             claim.setNumber(number);
             claim.setOpenedBy(user);
-        } else if (status == ClaimStatus.VOID) {
-            claim.setNumber(null);
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (status) {

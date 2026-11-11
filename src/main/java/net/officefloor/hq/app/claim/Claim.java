@@ -39,7 +39,7 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** Given when the claim is opened; null for a DRAFT and once voided. */
+    /** Given when the claim is opened and kept once voided; null for a claim never opened. */
     @Column(name = "claim_number")
     private Long number;
 

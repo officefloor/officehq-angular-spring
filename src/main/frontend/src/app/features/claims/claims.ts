@@ -207,7 +207,16 @@ export class Claims {
     return (event.target as HTMLInputElement).value;
   }
 
+  /** Open the claim's editor; only a DRAFT can be edited; to change an OPEN claim, void it and add a new one. */
   protected edit(claim: Claim): void {
+    if (claim.status !== 'DRAFT') {
+      this.reset();
+      this.actionError.set({
+        id: claim.id,
+        message: `This claim is ${claim.status}: only a DRAFT can be edited. To change an open claim, void it and add a new one.`,
+      });
+      return;
+    }
     this.editing.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
@@ -275,9 +284,13 @@ export class Claims {
         this.reset();
         this.saved.emit(saved);
       }
-    } catch {
+    } catch (e) {
       const closed = this.closedOn(date || (this.session.today() ?? ''));
-      const why = closed ? ` Its date is in the closed period ${closed.name}.` : '';
+      const why = closed
+        ? ` Its date is in the closed period ${closed.name}.`
+        : editing !== null && e instanceof HttpErrorResponse && e.status === 409
+          ? ' Only a DRAFT claim can be edited.'
+          : '';
       this.error.set((editing === null ? 'The claim could not be added.' : 'The claim could not be saved.') + why);
     } finally {
       this.submitting = false;
