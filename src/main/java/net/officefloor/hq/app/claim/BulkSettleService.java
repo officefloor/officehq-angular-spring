@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 /**
  * Settles a selection of claims together, in list order: the people in the order they were added, each person's
  * claims newest first. Each claim is settled on its own, as its Settle button would, so a clerk's claim above the
- * clerk limit goes to PENDING and counts as settled; one that cannot be settled (not OPEN, opened by the same user,
+ * clerk limit goes to PENDING and counts as settled; one that cannot be settled (not OPEN, opened or last edited by the same user,
  * dated in a closed period, above the proof threshold without a proof, or gone) is left as it is and counted as
  * refused.
  */

@@ -226,7 +226,7 @@ public class ClaimController {
         return bulkSettle.settle(sheetId.trim(), user.trim(), request.ids());
     }
 
-    /** Settle an OPEN claim; refused to the user who opened it; PENDING instead when a clerk settles it above the clerk limit. */
+    /** Settle an OPEN claim; refused to the user who opened or last edited it; PENDING instead when a clerk settles it above the clerk limit. */
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
@@ -246,7 +246,7 @@ public class ClaimController {
     public record RejectRequest(@NotBlank @Size(max = 1000) String reason) {
     }
 
-    /** Approve a PENDING claim: a steward only, and not the one who opened it. */
+    /** Approve a PENDING claim: a steward only, and not the one who opened or last edited it. */
     @PostMapping("/claims/{id}/approve")
     public ClaimView approve(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,

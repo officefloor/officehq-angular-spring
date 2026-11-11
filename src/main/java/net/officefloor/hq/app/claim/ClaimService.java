@@ -217,6 +217,7 @@ public class ClaimService {
         claim.setDate(dated);
         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
         claim.setNote(noteOf(note));
+        claim.setEditedBy(user);
         // Saving the editor releases its lock.
         claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
@@ -299,9 +300,12 @@ public class ClaimService {
         if (status == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ClaimDeferException(id, "it is deferred until " + claim.getDeferredUntil());
         }
-        // Four eyes: whoever opened a claim cannot also settle it.
+        // Four eyes: whoever opened or last edited a claim cannot also settle it.
         if (status == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
-            throw new ClaimSettledByOpenerException(id, user);
+            throw new ClaimSettledByOpenerException(id, user, "opened");
+        }
+        if (status == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+            throw new ClaimSettledByOpenerException(id, user, "last edited");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
@@ -372,7 +376,7 @@ public class ClaimService {
     }
 
     /**
-     * A steward other than its opener approves a PENDING claim: it becomes SETTLED, its due frozen at that moment from
+     * A steward other than its opener or last editor approves a PENDING claim: it becomes SETTLED, its due frozen at that moment from
      * its live figure.
      */
     @Transactional
@@ -380,6 +384,9 @@ public class ClaimService {
         Claim claim = pendingForDecision(sheetId, user, id, ClaimStatus.SETTLED);
         if (user.equals(claim.getOpenedBy())) {
             throw new ClaimApprovalForbiddenException(id, user, "whoever opened a claim cannot approve it");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ClaimApprovalForbiddenException(id, user, "whoever last edited a claim cannot approve it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
