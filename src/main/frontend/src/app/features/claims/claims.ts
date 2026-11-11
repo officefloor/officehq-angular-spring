@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Templates } from '../../core/templates';
 import { VoidReasons } from '../../core/void-reasons';
 import { Period, periodOn } from '../periods/periods';
 import { Rate, Rounding, dueOf, floored, percentOf, rateOn, sumDues } from '../rates/rates';
@@ -286,6 +287,20 @@ export function sumAmounts(amounts: string[]): string {
         <p role="alert" data-testid="claim-form-error">{{ message }}</p>
       }
     </form>
+    <div>
+      <label [for]="fieldId('template')">Template</label>
+      <select
+        [id]="fieldId('template')"
+        data-testid="claim-template-select"
+        (change)="template.set(value($event)); error.set(null)"
+      >
+        <option value="" [selected]="template() === ''">No template</option>
+        @for (t of templates.list(); track t.id) {
+          <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">Add claim from template</button>
+    </div>
     @if (claims().length > 0) {
       <table>
         <caption class="visually-hidden">Claims of {{ personName() }}</caption>
@@ -521,6 +536,7 @@ export class Claims implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   protected readonly voidReasons = inject(VoidReasons);
+  protected readonly templates = inject(Templates);
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
@@ -552,6 +568,8 @@ export class Claims implements OnInit {
   protected readonly ref = signal('');
   /** The claim's tags, comma separated: blank for none. */
   protected readonly tags = signal('');
+  /** The name of the template picked to add a claim from: blank for none. */
+  protected readonly template = signal('');
   /** The id of the claim whose editor is open, or null when the form adds a claim. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -1096,6 +1114,45 @@ export class Claims implements OnInit {
                 ? 'A settled claim can only be voided within 7 days of its settlement.'
                 : `This claim's status does not let it be ${pastOf[action]}.`;
       this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  /**
+   * Add a DRAFT claim with the picked template's amount and note now, dated as a claim with no date; the store refuses
+   * it by every rule of the claim form, and the form shows why.
+   */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const name = this.template();
+    if (name === '') {
+      this.error.set('Pick a template to add a claim from.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Claim>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/from-template`,
+          { name },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const dated = this.session.newClaimDate() ?? '';
+      const retiredFrom = this.retiredFrom();
+      const why =
+        e instanceof HttpErrorResponse && e.status === 404
+          ? ` There is no template ${name}.`
+          : retiredFrom !== null && dated > retiredFrom
+            ? ` ${this.personName()} is retired from ${retiredFrom}.`
+            : '';
+      this.error.set('The claim could not be added from the template.' + why);
+    } finally {
+      this.submitting = false;
     }
   }
 
