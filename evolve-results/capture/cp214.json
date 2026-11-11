@@ -1,0 +1,64 @@
+{
+  "checkpoint": 214,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp214_max-open-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7753d2368eae046ff772f0576b43f70f291db820",
+  "reset_sha": "",
+  "preagent_sha": "9752842683815a440cca66211422fd30342fba0f",
+  "prev_sha": "9752842683815a440cca66211422fd30342fba0f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8912786,
+    "input_tokens": 38,
+    "output_tokens": 8915,
+    "cache_read_tokens": 935653,
+    "cache_creation_tokens": 65712,
+    "num_turns": 20,
+    "duration_ms": 296805,
+    "duration_api_ms": 83055,
+    "model": "claude-opus-5-5",
+    "session_id": "f9d0d2d7-5d31-4ba3-936e-195148dda8cb",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a \"max open claims per person\" setting, and opening a claim is refused once that person already has that many OPEN or PENDING claims. I ran `bin/e2e` and all 4 tests in the spec pass.\n\n- **Setting:** a new `max-open` field and current value on the settings screen. It takes a whole number of 0 or more, blank means no limit, and it isn't dated. Saving it writes `SETTING_CHANGED \u2026 key=max-open value=<n>` (blank value when cleared). A new database migration, `V112__max_open.sql`, adds the column to the sheet table.\n- **Opening one claim:** if the person is already at the limit, the open is refused with a conflict error and nothing is saved or audited.\n- **Bulk open:** a claim whose person is at the limit counts as refused. Claims are opened one at a time, so in one batch a person can reach the limit partway through.\n- **Paste:** each pasted claim is opened the same way the open button does it, so a line that goes over the limit refuses the whole paste.\n\nThe limit only applies when someone opens a claim. These also produce OPEN claims but don't check it:\n- a steward approving a claim out of REVIEW\n- rejecting a PENDING claim back to OPEN\n- splitting an amount off an open claim\n- reassigning an open claim to another person\n\nThat fits the request's wording (\"opening a claim, alone or by the bulk button or a paste\"). Tell me if any of those should be limited too.\n\nThe limit check is in `ClaimService.java`, and the settings field is in `settings.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8912786,
+        "num_turns": 20,
+        "duration_ms": 296805,
+        "duration_api_ms": 83055,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp214.agent.jsonl",
+  "agent_diff_file": "cp214.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
