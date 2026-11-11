@@ -1,0 +1,64 @@
+{
+  "checkpoint": 122,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp122_pool-membership-dated",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2bdbc675b597dd754192d0f9323f6c177b2005ed",
+  "reset_sha": "",
+  "preagent_sha": "475db7d3ce8da855803ec3401ced40c4cf2a9fbd",
+  "prev_sha": "475db7d3ce8da855803ec3401ced40c4cf2a9fbd",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6309246,
+    "input_tokens": 26,
+    "output_tokens": 8274,
+    "cache_read_tokens": 483103,
+    "cache_creation_tokens": 46090,
+    "num_turns": 14,
+    "duration_ms": 474055,
+    "duration_api_ms": 72725,
+    "model": "claude-opus-5-5",
+    "session_id": "1b6ea2ce-fa90-45c5-ba4e-1aec3585cdba",
+    "stop_reason": "success",
+    "result_text": "Pool memberships can now have an optional from-date and to-date, and all 4 acceptance tests pass with `bin/e2e`.\n\n- **Stored data:** a new migration, `V71__pool_member_dated.sql`, adds nullable `from_date` and `to_date` columns to `pool_member`. A database check also stops a to-date earlier than the from-date.\n- **Server:** the add-member request and the member view now include `from` and `to`. A to-date before the from-date is refused by both request validation and `PoolService`. `POOL_MEMBER_ADDED` gets ` from=<date>` and/or ` to=<date>` at the end, and only when they are given. This applies to people and to pools added as members.\n- **Front end (`pools.ts`):** each pool row has new date fields, `pool-member-from` and `pool-member-to`, and a to-date before the from-date shows the `pool-error` message. If a member's dates don't include the sheet's today, the member is left out entirely: its share counts as 0 in the total, the balanced check ignores it, and its cut shows blank.\n\nWhen a membership is outside its dates its cut shows blank, not 0.00. The test expects that, and I kept it separate from \"retired\" so retired members still display as before.\n\nWhen two people's memberships are merged into one, the membership that is kept keeps its own dates.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6309246,
+        "num_turns": 14,
+        "duration_ms": 474055,
+        "duration_api_ms": 72725,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp122.agent.jsonl",
+  "agent_diff_file": "cp122.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
