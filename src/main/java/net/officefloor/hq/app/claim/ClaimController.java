@@ -88,12 +88,18 @@ public class ClaimController {
     public record BulkOpenRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
     }
 
+    /** The ids of the claims selected to settle together. */
+    public record BulkSettleRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
+    }
+
     private final ClaimService service;
     private final BulkOpenService bulkOpen;
+    private final BulkSettleService bulkSettle;
 
-    public ClaimController(ClaimService service, BulkOpenService bulkOpen) {
+    public ClaimController(ClaimService service, BulkOpenService bulkOpen, BulkSettleService bulkSettle) {
         this.service = service;
         this.bulkOpen = bulkOpen;
+        this.bulkSettle = bulkSettle;
     }
 
     /** All the sheet's claims, newest first. */
@@ -140,6 +146,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid BulkOpenRequest request) {
         return bulkOpen.open(sheetId.trim(), user.trim(), request.ids());
+    }
+
+    /** Settle the selected claims in list order; each one that cannot be settled is left as it is. */
+    @PostMapping("/claims/bulk-settle")
+    public BulkSettleService.Result bulkSettle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkSettleRequest request) {
+        return bulkSettle.settle(sheetId.trim(), user.trim(), request.ids());
     }
 
     /** Settle an OPEN claim; refused to the user who opened it; PENDING instead when a clerk settles it above the clerk limit. */

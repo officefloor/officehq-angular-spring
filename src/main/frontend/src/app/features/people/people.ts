@@ -295,6 +295,16 @@ function csvField(value: string): string {
       @if (bulkOpenError(); as message) {
         <p role="alert" data-testid="bulk-open-error">{{ message }}</p>
       }
+      <p>
+        <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+        @if (bulkSettleResult(); as r) {
+          Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
+          refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
+        }
+      </p>
+      @if (bulkSettleError(); as message) {
+        <p role="alert" data-testid="bulk-settle-error">{{ message }}</p>
+      }
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
@@ -401,11 +411,14 @@ export class People {
   protected readonly patronChoices = signal<Record<number, string>>({});
   /** The error of the last refused add of a patron, and the person it belongs to. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
-  /** The ids of the claims ticked to open together. */
+  /** The ids of the claims ticked to act on together. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** How many the last bulk open opened and refused; null while it runs and before the first. */
   protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
   protected readonly bulkOpenError = signal<string | null>(null);
+  /** How many the last bulk settle settled and refused; null while it runs and before the first. */
+  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+  protected readonly bulkSettleError = signal<string | null>(null);
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
   private reads = 0;
 
@@ -426,6 +439,8 @@ export class People {
         this.selectedClaims.set(new Set());
         this.bulkOpenResult.set(null);
         this.bulkOpenError.set(null);
+        this.bulkSettleResult.set(null);
+        this.bulkSettleError.set(null);
         this.reset();
         this.quickName.set('');
         this.quickAmount.set('');
@@ -611,6 +626,7 @@ export class People {
       return next;
     });
     this.bulkOpenError.set(null);
+    this.bulkSettleError.set(null);
   }
 
   /** Open the ticked claims together, in list order; each that cannot be opened is left as it is. */
@@ -634,6 +650,30 @@ export class People {
       await this.read(sheet);
     } catch {
       if (this.session.sheet() === sheet) this.bulkOpenError.set('The selected claims could not be opened.');
+    }
+  }
+
+  /** Settle the ticked claims together, in list order; each that cannot be settled is left as it is. */
+  protected async bulkSettle(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.bulkSettleResult.set(null);
+    this.bulkSettleError.set(null);
+    const ids = [...this.selectedClaims()];
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ settled: number; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-settle`,
+          { ids },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedClaims.set(new Set());
+      this.bulkSettleResult.set(result);
+      await this.read(sheet);
+    } catch {
+      if (this.session.sheet() === sheet) this.bulkSettleError.set('The selected claims could not be settled.');
     }
   }
 
