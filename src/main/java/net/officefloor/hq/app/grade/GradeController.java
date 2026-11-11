@@ -22,6 +22,14 @@ public class GradeController {
             @NotNull @Size(max = 10) String grade) {
     }
 
+    public record MergeGradeRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+            @NotNull @Size(max = 10) String from, @NotNull @Size(max = 10) String into) {
+    }
+
+    /** How many people were given the grade merged into. */
+    public record MergeGradeResponse(int merged) {
+    }
+
     /** The grades retired on the sheet, in A, B, C order. */
     public record GradesResponse(List<String> retired) {
     }
@@ -40,5 +48,11 @@ public class GradeController {
     @PostMapping("/retire")
     public GradesResponse retire(@Valid @RequestBody RetireGradeRequest req) {
         return new GradesResponse(service.retire(req.sheet().trim(), req.user().trim(), req.grade().trim()));
+    }
+
+    @PostMapping("/merge")
+    public MergeGradeResponse merge(@Valid @RequestBody MergeGradeRequest req) {
+        return new MergeGradeResponse(service.merge(req.sheet().trim(), req.user().trim(), req.from().trim(),
+                req.into().trim()));
     }
 }

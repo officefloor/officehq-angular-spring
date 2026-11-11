@@ -1,8 +1,12 @@
 package net.officefloor.hq.app.grade;
 
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -15,6 +19,9 @@ import org.springframework.web.server.ResponseStatusException;
  * The grades of a sheet (A, B and C), each of which can be retired. People on a retired grade keep
  * it, but it cannot be chosen for a new person or in an edit (see
  * {@link net.officefloor.hq.app.person.PersonService}); a retired default grade falls back to A.
+ * A steward can merge a grade into another: everyone whose grade in force on the sheet's today is
+ * the merged grade is given the other from the sheet's today, in list order, exactly as the person
+ * form would.
  */
 @Service
 public class GradeService {
@@ -26,8 +33,13 @@ public class GradeService {
     private final SheetRepository sheetRows;
     private final RoleService roles;
     private final Audit audit;
+    private final PersonService people;
+    private final RollupService rollup;
 
-    public GradeService(SheetService sheets, SheetRepository sheetRows, RoleService roles, Audit audit) {
+    public GradeService(SheetService sheets, SheetRepository sheetRows, RoleService roles, Audit audit,
+            PersonService people, RollupService rollup) {
+        this.people = people;
+        this.rollup = rollup;
         this.sheets = sheets;
         this.sheetRows = sheetRows;
         this.roles = roles;
@@ -57,5 +69,34 @@ public class GradeService {
         sheetRows.saveAndFlush(sheet);
         audit.recordOnCommit("GRADE_RETIRED sheet=" + sheetId + " by=" + user + " grade=" + grade);
         return sheet.retiredGradeList();
+    }
+
+    /**
+     * Merge the grade {@code from} into {@code into}: each person whose grade in force on the sheet's
+     * today is {@code from} is edited, in list order, to {@code into} from the sheet's today, as the
+     * person form would (name, terms and contact kept). Refused (403) to anyone but a steward, and
+     * (400) for no grade there is or the same grade twice. Answers how many people were given the grade.
+     */
+    @Transactional
+    public int merge(String sheetId, String user, String from, String into) {
+        roles.refuseViewer(sheetId, user);
+        roles.refuseUnlessSteward(sheetId, user);
+        if (!GRADES.contains(from) || !GRADES.contains(into)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose grades of A, B or C.");
+        }
+        if (from.equals(into)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose two different grades.");
+        }
+        sheets.load(sheetId, user);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
+        LocalDate today = sheets.today(sheetId);
+        List<Person> merged = people.list(sheetId).stream().filter(p -> from.equals(p.gradeOn(today))).toList();
+        for (Person p : merged) {
+            people.update(sheetId, user, p.getId(), p.getVersion(), p.getName(), into, today, p.termsOn(today),
+                    p.getContact());
+        }
+        rollup.recordChanges(sheetId, user, before);
+        return merged.size();
     }
 }
