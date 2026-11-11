@@ -1,0 +1,360 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 90d2ba695..f4c10fad9 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -225,6 +225,7 @@ export function inClosedPeriod(periods: readonly Period[], date: string): boolea
+           (input)="rolloverYear.set($any($event.target).value); rolloverError.set(null)"
+         />
+         <button type="submit" data-testid="rollover">Roll year over</button>
++        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo last rollover</button>
+         @if (rolloverMade() !== null) {
+           <p role="status">Made <span data-testid="rollover-made">{{ rolloverMade() }}</span></p>
+         }
+@@ -630,6 +631,34 @@ export class Periods {
+     }
+   }
+ 
++  /** Undo the last rollover: the server removes the periods it generated and takes back the opening
++   *  balances it set; shows the sheet's periods now, or why it was refused. */
++  protected async undoRollover(): Promise<void> {
++    if (this.submitting) return;
++    this.rolloverError.set(null);
++    this.rolloverMade.set(null);
++    const sheet = this.session.sheet();
++    this.submitting = true;
++    try {
++      const periods = await firstValueFrom(
++        this.http.post<Period[]>('/api/periods/rollover-undo', { sheet, user: this.session.user() }),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.periods.set(periods);
++    } catch (e) {
++      if (this.session.sheet() !== sheet) return;
++      this.rolloverError.set(
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'Only the steward who rolled the year over may undo it.'
++          : e instanceof HttpErrorResponse && e.status === 409
++            ? 'That rollover cannot be undone: none is left to undo, it was made on an earlier day, or a claim now belongs to a period it made.'
++            : 'Could not undo the rollover.',
++      );
++    } finally {
++      this.submitting = false;
++    }
++  }
++
+   /** Paste opening balances: every line is checked by the server before any is set; shows how many
+    *  lines went through, or why the paste was refused. */
+   protected async importOpenings(event: Event): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/period/LastRollover.java b/src/main/java/net/officefloor/hq/app/period/LastRollover.java
+new file mode 100644
+index 000000000..83ad6aba9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/LastRollover.java
+@@ -0,0 +1,99 @@
++package net.officefloor.hq.app.period;
++
++import jakarta.persistence.CollectionTable;
++import jakarta.persistence.Column;
++import jakarta.persistence.ElementCollection;
++import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.MapKeyColumn;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++
++/**
++ * The last rollover on a sheet, kept so the steward who made it can undo it on the same
++ * sheet-today: the periods it generated, and each person's opening balance it added to the
++ * opening period.
++ */
++@Entity
++@Table(name = "rollover_last")
++public class LastRollover {
++
++    @Id
++    @Column(name = "sheet_id")
++    private String sheetId;
++
++    @Column(name = "made_by", nullable = false)
++    private String madeBy;
++
++    /** The sheet's today when it was made. */
++    @Column(name = "made_on", nullable = false)
++    private LocalDate madeOn;
++
++    /** The fiscal year rolled over, FY&lt;year&gt;. */
++    @Column(name = "fy", nullable = false)
++    private String fy;
++
++    /** The period the opening balances went into; null when none was set. */
++    @Column(name = "opening_period_id")
++    private Long openingPeriodId;
++
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "rollover_last_period", joinColumns = @JoinColumn(name = "sheet_id"))
++    @Column(name = "period_id", nullable = false)
++    private Set<Long> periodIds = new HashSet<>();
++
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "rollover_last_opening", joinColumns = @JoinColumn(name = "sheet_id"))
++    @MapKeyColumn(name = "person_id")
++    @Column(name = "amount", nullable = false)
++    private Map<Long, BigDecimal> openings = new HashMap<>();
++
++    protected LastRollover() {
++    }
++
++    public LastRollover(String sheetId, String madeBy, LocalDate madeOn, String fy) {
++        this.sheetId = sheetId;
++        this.madeBy = madeBy;
++        this.madeOn = madeOn;
++        this.fy = fy;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getMadeBy() {
++        return madeBy;
++    }
++
++    public LocalDate getMadeOn() {
++        return madeOn;
++    }
++
++    public String getFy() {
++        return fy;
++    }
++
++    public Long getOpeningPeriodId() {
++        return openingPeriodId;
++    }
++
++    public void setOpeningPeriodId(Long openingPeriodId) {
++        this.openingPeriodId = openingPeriodId;
++    }
++
++    public Set<Long> getPeriodIds() {
++        return periodIds;
++    }
++
++    public Map<Long, BigDecimal> getOpenings() {
++        return openings;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/LastRolloverRepository.java b/src/main/java/net/officefloor/hq/app/period/LastRolloverRepository.java
+new file mode 100644
+index 000000000..c0507e1c3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/LastRolloverRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.period;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface LastRolloverRepository extends JpaRepository<LastRollover, String> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index cda0f20e7..5f87acb50 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -175,6 +175,16 @@ public class Period {
+         openings.merge(personId, amount, BigDecimal::add);
+     }
+ 
++    /** Take an amount back from a person's opening balance for the period; none is left at 0.00. */
++    public void takeOpening(long personId, BigDecimal amount) {
++        BigDecimal left = openings.getOrDefault(personId, BigDecimal.ZERO).subtract(amount);
++        if (left.signum() == 0) {
++            openings.remove(personId);
++        } else {
++            openings.put(personId, left);
++        }
++    }
++
+     /** Give out the next claim number within this period. */
+     public int nextClaimNumber() {
+         return ++lastClaimNumber;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index e0a85a175..b0da87838 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -54,6 +54,9 @@ public class PeriodController {
+     public record RolloverResponse(int made, List<PeriodResponse> periods) {
+     }
+ 
++    public record UndoRolloverRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user) {
++    }
++
+     public record ClosePeriodRequest(@NotBlank @Size(max = 100) String sheet, @NotBlank @Size(max = 100) String user,
+             @NotNull Long id) {
+     }
+@@ -160,6 +163,14 @@ public class PeriodController {
+         return new RolloverResponse(made, responses(sheet, service.list(sheet)));
+     }
+ 
++    /** Undo the last rollover: the sheet's periods now. */
++    @PostMapping("/rollover-undo")
++    public List<PeriodResponse> undoRollover(@Valid @RequestBody UndoRolloverRequest req) {
++        String sheet = req.sheet().trim();
++        rollovers.undo(sheet, req.user().trim());
++        return responses(sheet, service.list(sheet));
++    }
++
+     @PostMapping("/reopen")
+     public PeriodResponse reopen(@Valid @RequestBody ClosePeriodRequest req) {
+         return response(req.sheet().trim(), service.reopen(req.sheet().trim(), req.user().trim(), req.id()));
+diff --git a/src/main/java/net/officefloor/hq/app/period/RolloverService.java b/src/main/java/net/officefloor/hq/app/period/RolloverService.java
+index 035db330e..8e4ff9786 100644
+--- a/src/main/java/net/officefloor/hq/app/period/RolloverService.java
++++ b/src/main/java/net/officefloor/hq/app/period/RolloverService.java
+@@ -2,8 +2,11 @@ package net.officefloor.hq.app.period;
+ 
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+@@ -24,6 +27,8 @@ import org.springframework.web.server.ResponseStatusException;
+  * a period of the old year, OPEN or PENDING at that period's end) is added to their opening balance
+  * for the new year's first period, one OPENING_SET record each (none for a figure of 0.00); then one
+  * ROLLOVER record. Refused (403) to anyone but a steward and (400) for a year with no periods.
++ * Rolling over again a year whose last rollover still stands sets no opening balances a second time.
++ * The last rollover is kept so the steward who made it can undo it on the same sheet-today.
+  */
+ @Service
+ public class RolloverService {
+@@ -36,9 +41,14 @@ public class RolloverService {
+     private final SheetRepository sheetRows;
+     private final RoleService roles;
+     private final Audit audit;
++    private final LastRolloverRepository lastRollovers;
++    private final ClaimRepository claims;
+ 
+     public RolloverService(PeriodService service, PeriodRepository periods, PersonRepository people,
+-            RollupService rollup, SheetService sheets, SheetRepository sheetRows, RoleService roles, Audit audit) {
++            RollupService rollup, SheetService sheets, SheetRepository sheetRows, RoleService roles, Audit audit,
++            LastRolloverRepository lastRollovers, ClaimRepository claims) {
++        this.lastRollovers = lastRollovers;
++        this.claims = claims;
+         this.service = service;
+         this.periods = periods;
+         this.people = people;
+@@ -67,8 +77,16 @@ public class RolloverService {
+         Period last = old.stream().max((a, b) -> a.getToDate().compareTo(b.getToDate())).orElseThrow();
+         Map<Long, BigDecimal> open = rollup.openByPerson(sheetId, old, last.getToDate());
+         List<Period> made = service.generateFiscalYear(sheetId, user, year + 1);
++        // the same year rolled over again, while its last rollover stands, carries nothing a second time
++        boolean carried = lastRollovers.findById(sheetId).map(previous -> {
++            lastRollovers.delete(previous);
++            lastRollovers.flush();
++            return previous.getFy().equals(oldYear);
++        }).orElse(false);
++        LastRollover record = new LastRollover(sheetId, user, sheets.today(sheetId), oldYear);
++        made.forEach(p -> record.getPeriodIds().add(p.getId()));
+         periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+-                .filter(p -> newYear.equals(Sheet.fiscalYearOf(p.getFromDate(), startMonth))).findFirst()
++                .filter(p -> !carried && newYear.equals(Sheet.fiscalYearOf(p.getFromDate(), startMonth))).findFirst()
+                 .ifPresent(first -> {
+                     for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+                         BigDecimal amount = open.getOrDefault(person.getId(), BigDecimal.ZERO)
+@@ -77,13 +95,59 @@ public class RolloverService {
+                             continue;
+                         }
+                         first.addOpening(person.getId(), amount);
++                        record.getOpenings().put(person.getId(), amount);
++                        record.setOpeningPeriodId(first.getId());
+                         audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name="
+                                 + person.getName() + " period=" + first.getName() + " amount="
+                                 + amount.toPlainString());
+                     }
+                     periods.saveAndFlush(first);
+                 });
++        lastRollovers.saveAndFlush(record);
+         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=" + oldYear + " periods=" + made.size());
+         return made;
+     }
++
++    /**
++     * Undo the sheet's last rollover: the periods it generated are removed and the opening balances
++     * it set are taken back; one ROLLOVER_UNDONE record. Refused (403) to anyone but the steward who
++     * made it, (409) when there is none to undo, on a later sheet-today than it was made, or when a
++     * claim now belongs to (is due by a day inside) a period it generated.
++     */
++    @Transactional
++    public void undo(String sheetId, String user) {
++        roles.refuseViewer(sheetId, user);
++        roles.refuseUnlessSteward(sheetId, user);
++        sheets.load(sheetId, user);
++        // hold the sheet so no claim or period changes while the rollover is undone
++        sheetRows.findLockedById(sheetId);
++        LastRollover last = lastRollovers.findById(sheetId).orElseThrow(
++                () -> new ResponseStatusException(HttpStatus.CONFLICT, "There is no rollover to undo."));
++        if (!last.getMadeBy().equals(user)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the steward who rolled the year over may undo it.");
++        }
++        if (!last.getMadeOn().equals(sheets.today(sheetId))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "A rollover can only be undone on the day it was made.");
++        }
++        List<Period> generated = periods.findAllById(last.getPeriodIds());
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            LocalDate day = claim.getDueBy() != null ? claim.getDueBy() : claim.getDate();
++            if (day != null && generated.stream()
++                    .anyMatch(p -> !day.isBefore(p.getFromDate()) && !day.isAfter(p.getToDate()))) {
++                throw new ResponseStatusException(HttpStatus.CONFLICT,
++                        "A claim now belongs to a period the rollover generated.");
++            }
++        }
++        if (last.getOpeningPeriodId() != null && !last.getPeriodIds().contains(last.getOpeningPeriodId())) {
++            periods.findByIdAndSheetId(last.getOpeningPeriodId(), sheetId).ifPresent(first -> {
++                last.getOpenings().forEach(first::takeOpening);
++                periods.saveAndFlush(first);
++            });
++        }
++        periods.deleteAll(generated);
++        periods.flush();
++        lastRollovers.delete(last);
++        lastRollovers.flush();
++        audit.recordOnCommit("ROLLOVER_UNDONE sheet=" + sheetId + " by=" + user + " fy=" + last.getFy());
++    }
+ }
+diff --git a/src/main/resources/db/migration/V116__rollover_last.sql b/src/main/resources/db/migration/V116__rollover_last.sql
+new file mode 100644
+index 000000000..e3f426654
+--- /dev/null
++++ b/src/main/resources/db/migration/V116__rollover_last.sql
+@@ -0,0 +1,21 @@
++-- The last rollover on each sheet, kept so its steward can undo it on the same sheet-today: who made
++-- it, the sheet's today then, the fiscal year rolled over, the periods it generated and the opening
++-- balances it set (each person's amount added to the period it went into).
++CREATE TABLE rollover_last (
++    sheet_id   VARCHAR(100) NOT NULL PRIMARY KEY REFERENCES sheet (id),
++    made_by    VARCHAR(100) NOT NULL,
++    made_on    DATE         NOT NULL,
++    fy         VARCHAR(20)  NOT NULL,
++    opening_period_id BIGINT
++);
++CREATE TABLE rollover_last_period (
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES rollover_last (sheet_id),
++    period_id BIGINT       NOT NULL,
++    PRIMARY KEY (sheet_id, period_id)
++);
++CREATE TABLE rollover_last_opening (
++    sheet_id  VARCHAR(100)   NOT NULL REFERENCES rollover_last (sheet_id),
++    person_id BIGINT         NOT NULL,
++    amount    DECIMAL(14, 2) NOT NULL,
++    PRIMARY KEY (sheet_id, person_id)
++);

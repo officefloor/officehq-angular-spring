@@ -1,0 +1,64 @@
+{
+  "checkpoint": 219,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp219_rollover-undo",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can undo the last rollover on the same sheet-today it was made (a button;\nROLLOVER_UNDONE fy=<old FY>): the periods it generated are removed and the opening balances it set\nare taken back. A later day, anyone else, or a generated period that a claim now belongs to is\nrefused with an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can undo the last rollover on the same sheet-today it was made (a button;\nROLLOVER_UNDONE fy=<old FY>): the periods it generated are removed and the opening balances it set\nare taken back. A later day, anyone else, or a generated period that a claim now belongs to is\nrefused with an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "68303c45f4871903fcefe3f8694d8c95a4940144",
+  "reset_sha": "",
+  "preagent_sha": "d81dd6206c8bd2d8e0cd34dd072cd3c12921cd5b",
+  "prev_sha": "d81dd6206c8bd2d8e0cd34dd072cd3c12921cd5b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5776302,
+    "input_tokens": 8,
+    "output_tokens": 2340,
+    "cache_read_tokens": 281344,
+    "cache_creation_tokens": 3513,
+    "num_turns": 3,
+    "duration_ms": 25811,
+    "duration_api_ms": 208709,
+    "model": "claude-opus-5-5",
+    "session_id": "37fdc985-d931-4084-b086-c18fe34822ba",
+    "stop_reason": "success",
+    "result_text": "The main \"rollover undo\" test now passes, and so do scenarios 2 and 3. **Scenario 1 still fails** at one step, line 610 of the spec: a viewer (`wes`) presses \"generate periods\" for 2026-01-15 to 2026-02-20 and the test expects \"0 made\". The app refuses the request with an error instead (the test gets `null`, not 0).\n\nI didn't change that path. `PeriodService.generate` has always refused viewers with a 403 (`roles.refuseViewer`), and nothing the undo touches reaches it. It looks like a mismatch between the test and the existing viewer rule rather than something this change caused, but I haven't run the original app to prove it fails there too. The only fix I can see is letting viewers generate periods, which goes against the app's rule that viewers change nothing, so I left it for you to decide.\n\n**What I built:**\n- **Saved record:** a new table (`V116__rollover_last.sql`) keeps each sheet's last rollover. It stores who made it, the sheet's today at the time, the fiscal year, the periods it made, and the opening balances it set.\n- **Undo:** `RolloverService.undo`, reached through `POST /api/periods/rollover-undo`, does three things:\n  - It refuses with an error if the user isn't a steward or isn't the person who made the rollover.\n  - It also refuses if there's no rollover to undo, the sheet's today has moved on, or any claim falls due inside one of the generated periods. A voided claim still counts, as the test expects.\n  - Otherwise it takes back the opening balances, deletes the generated periods and writes `ROLLOVER_UNDONE sheet=\u2026 by=\u2026 fy=FY\u2026` to the audit file.\n- **Button:** a `rollover-undo` button sits next to the \"Roll year over\" form, and refusals show in the existing `rollover-error` element.\n\n**One change to how rollover itself works:** the test expects that rolling over the same year again (on 12-21, which makes 0 periods) does *not* carry the balances into the next year a second time. So a rollover now skips the opening balances when the sheet's last rollover was of the same fiscal year and hasn't been undone. The new rollover then becomes the \"last\" one, so the earlier one can no longer be undone.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5776302,
+        "num_turns": 3,
+        "duration_ms": 25811,
+        "duration_api_ms": 208709,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp219.agent.jsonl",
+  "agent_diff_file": "cp219.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
