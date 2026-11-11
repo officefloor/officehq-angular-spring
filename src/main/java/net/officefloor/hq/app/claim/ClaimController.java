@@ -67,6 +67,11 @@ public class ClaimController {
             @NotBlank @Size(max = 100) String user, @NotNull Long id) {
     }
 
+    /** {@code on}: the date the claim is settled as of; none for the sheet's today. */
+    public record SettleClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, LocalDate on) {
+    }
+
     public record VoidClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @Size(max = 200) String reason) {
     }
@@ -214,10 +219,12 @@ public class ClaimController {
 
     private final ClaimService service;
     private final ClaimPasteService pasteService;
+    private final ClaimAsOf asOf;
 
-    public ClaimController(ClaimService service, ClaimPasteService pasteService) {
+    public ClaimController(ClaimService service, ClaimPasteService pasteService, ClaimAsOf asOf) {
         this.service = service;
         this.pasteService = pasteService;
+        this.asOf = asOf;
     }
 
     @PostMapping("/list")
@@ -271,8 +278,13 @@ public class ClaimController {
     }
 
     @PostMapping("/settle")
-    public ClaimResponse settle(@Valid @RequestBody ClaimStatusRequest req) {
-        return changeStatus(req, ClaimStatus.SETTLED);
+    public ClaimResponse settle(@Valid @RequestBody SettleClaimRequest req) {
+        String sheet = req.sheet().trim();
+        if (req.on() == null) {
+            return response(service.changeStatus(sheet, req.user().trim(), req.id(), ClaimStatus.SETTLED));
+        }
+        BigDecimal due = asOf.due(sheet, req.id(), req.on());
+        return response(service.settleAsOf(sheet, req.user().trim(), req.id(), req.on(), due));
     }
 
     @PostMapping("/approve")

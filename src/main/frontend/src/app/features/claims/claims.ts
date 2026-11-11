@@ -490,6 +490,14 @@ export function money(c: number): string {
           <button type="button" data-testid="claim-comment-add" (click)="comment(c)">Add comment</button>
           <button type="button" data-testid="claim-open" (click)="act(c, 'open')">Open</button>
           <button type="button" data-testid="claim-review" (click)="act(c, 'review')">Review</button>
+          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+          <input
+            [id]="'claim-settle-date-' + c.id"
+            type="date"
+            data-testid="claim-settle-date"
+            [value]="settleDates().get(c.id) ?? ''"
+            (input)="setSettleDate(c.id, $any($event.target).value)"
+          />
           <button type="button" data-testid="claim-settle" (click)="act(c, 'settle')">Settle</button>
           <button type="button" data-testid="claim-resettle" (click)="act(c, 'resettle')">Re-settle</button>
           <button type="button" data-testid="claim-approve" (click)="act(c, 'approve')">Approve</button>
@@ -692,6 +700,8 @@ export class PersonClaims {
   protected readonly proofKinds = ['receipt', 'photo'] as const;
   /** The proof kind chosen for each claim's next proof, by claim id; none chosen: a receipt. */
   protected readonly proofKindsChosen = signal<ReadonlyMap<number, string>>(new Map());
+  /** The date typed to settle each claim as of, by claim id; blank for the sheet's today. */
+  protected readonly settleDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The date typed to defer each claim until, by claim id. */
   protected readonly deferDates = signal<ReadonlyMap<number, string>>(new Map());
   /** The new date typed for each claim, by claim id. */
@@ -917,6 +927,11 @@ export class PersonClaims {
 
   protected setTarget(id: number, personId: string): void {
     this.targets.update((m) => new Map(m).set(id, personId));
+    this.clearActionError(id);
+  }
+
+  protected setSettleDate(id: number, date: string): void {
+    this.settleDates.update((m) => new Map(m).set(id, date));
     this.clearActionError(id);
   }
 
@@ -1405,17 +1420,24 @@ export class PersonClaims {
       this.actionErrors.update((m) => new Map(m).set(c.id, 'Choose a reason to void this claim.'));
       return;
     }
+    const on = action === 'settle' ? (this.settleDates().get(c.id) ?? '').trim() : '';
+    if (on !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(on)) {
+      this.actionErrors.update((m) => new Map(m).set(c.id, 'Enter a date to settle this claim as of.'));
+      return;
+    }
     const body = {
       sheet,
       user: this.session.user(),
       id: c.id,
       ...(action === 'reject' ? { reason } : action === 'void' && voidReason ? { reason: voidReason } : {}),
+      ...(on !== '' ? { on } : {}),
     };
     try {
       const claim = await firstValueFrom(this.http.post<Claim>(`/api/claims/${action}`, body));
       if (this.session.sheet() !== sheet) return;
       if (action === 'reject') this.setReason(c.id, '');
       if (action === 'void') this.setVoidReason(c.id, '');
+      if (action === 'settle') this.setSettleDate(c.id, '');
       this.saved.emit(claim);
     } catch (e) {
       if (this.session.sheet() !== sheet) return;
@@ -1438,6 +1460,8 @@ export class PersonClaims {
               : action === 'settle' && c.editedBy === this.session.user()
                 ? 'The user who last edited a claim cannot settle it.'
                 : `Your role may not ${action} a claim on this sheet.`
+          : on !== '' && on > (this.session.today() ?? on)
+            ? 'A claim cannot be settled as of a date after the sheet\'s today.'
           : e instanceof HttpErrorResponse && e.status === 423
             ? CLOSED
             : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
@@ -1448,6 +1472,8 @@ export class PersonClaims {
               ? `This claim is due above the proof threshold and cannot be ${PAST[action]} without a proof (of each kind the sheet needs).`
             : action === 'settle' && deferred(c, this.session.today())
               ? `This claim is deferred until ${c.deferredUntil} and cannot be settled before then.`
+            : on !== '' && e instanceof HttpErrorResponse && e.status === 409 && c.status === 'OPEN'
+              ? `This claim was not on the sheet on ${on}.`
               : action === 'void' && c.status === 'SETTLED'
                 ? 'A SETTLED claim can be voided only within 7 days of its settlement.'
               : action === 'restore' && c.status === 'DELETED'

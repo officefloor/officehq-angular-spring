@@ -351,12 +351,29 @@ public class ClaimService {
     }
 
     /**
-     * Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING
-     * claim, {@code judged} when the four-eyes and proof rules were already judged on the claim it was
-     * split off (see {@link #partSettle}).
+     * Settle a claim as of a date on or before the sheet's today, as
+     * {@link #changeStatus(String, String, long, ClaimStatus)} does, its due fixed at {@code due}: the
+     * claim's due as it stood at the end of that date (see {@link ClaimAsOf}). CLAIM_SETTLED gains the
+     * date as {@code on=}.
      */
+    @Transactional
+    public Claim settleAsOf(String sheetId, String user, long id, LocalDate on, BigDecimal due) {
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, false, null, false, on, due);
+    }
+
     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
             boolean review, String voidReason, boolean judged) {
+        return changeStatus(sheetId, user, id, next, reason, review, voidReason, judged, null, null);
+    }
+
+    /**
+     * Move a claim to a new status; {@code review} for a steward's approval or rejection of a PENDING
+     * claim, {@code judged} when the four-eyes and proof rules were already judged on the claim it was
+     * split off (see {@link #partSettle}); {@code on} when settling as of that date, at the due
+     * {@code asOfDue} it had then.
+     */
+    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus next, String reason,
+            boolean review, String voidReason, boolean judged, LocalDate on, BigDecimal asOfDue) {
         roles.refuseViewer(sheetId, user);
         if (!review) {
             roles.refuseUnlessPermitted(sheetId, user, switch (next) {
@@ -421,7 +438,8 @@ public class ClaimService {
         }
         // settling fixes the figure with its late charge as it stands on the sheet's today (a
         // PENDING claim keeps any figure a statement bound)
-        BigDecimal settling = next == ClaimStatus.SETTLED ? charged(sheetId, person, claim) : null;
+        BigDecimal settling = next != ClaimStatus.SETTLED ? null
+                : on != null ? asOfDue : charged(sheetId, person, claim);
         if (next == ClaimStatus.SETTLED && !judged && needsProof(sheetId, person, claim, settling)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "A claim due above the proof threshold cannot be " + (review ? "approved" : "settled")
@@ -458,7 +476,8 @@ public class ClaimService {
                 + (next == ClaimStatus.SETTLED ? " due=" + dueText(saved.getSettledDue()) : "")
                 + (reason != null ? " reason=" + reason : "")
                 + (reversing ? " reversed=" + dueText(saved.getSettledDue()) : "")
-                + (voidedWith != null ? " reason=" + voidedWith : ""));
+                + (voidedWith != null ? " reason=" + voidedWith : "")
+                + (next == ClaimStatus.SETTLED && on != null ? " on=" + on : ""));
         if (next == ClaimStatus.SETTLED) {
             notifyWatchers(sheetId, user, person, saved);
         }
