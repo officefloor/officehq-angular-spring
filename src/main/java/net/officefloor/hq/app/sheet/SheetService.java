@@ -76,14 +76,19 @@ public class SheetService {
     }
 
     /**
-     * Change the sheet's today; it has no audit record of its own. Every open period past its grace days on the new
-     * today then closes, before the figures it moved are recorded. A new today releases every claim editor's lock.
+     * Change the sheet's today. A change first records a SNAPSHOT of each person's due-total on the day being left,
+     * in list order; every open period past its grace days on the new today then closes, before the figures it moved
+     * are recorded. A new today releases every claim editor's lock.
      */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
         RollupService.Snapshot before = rollup.snapshot(id);
         boolean changed = !today.equals(sheet.getToday());
+        if (changed) {
+            before.people().values().forEach(person -> audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
+                    + " name=" + person.name() + " due-total=" + person.dueTotal()));
+        }
         sheet.setToday(today);
         Sheet saved = sheets.saveAndFlush(sheet);
         periods.autoClose(id, user, today, saved.getGraceDays());
