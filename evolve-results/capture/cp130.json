@@ -1,0 +1,64 @@
+{
+  "checkpoint": 130,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp130_period-comparison",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The summary shows, for each period, the change of its due-total from the period before it by\nstart date (this period's due-total minus the previous one's, two decimals, a minus sign when lower);\nthe earliest period shows nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe summary shows, for each period, the change of its due-total from the period before it by\nstart date (this period's due-total minus the previous one's, two decimals, a minus sign when lower);\nthe earliest period shows nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8f1f6810bdfdd839621f6ddd8e112daa7323b2a2",
+  "reset_sha": "",
+  "preagent_sha": "0510c3bc9c4ed79036c792c891d5d850377b9382",
+  "prev_sha": "0510c3bc9c4ed79036c792c891d5d850377b9382",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.41281180000000006,
+    "input_tokens": 32,
+    "output_tokens": 4056,
+    "cache_read_tokens": 447019,
+    "cache_creation_tokens": 30270,
+    "num_turns": 16,
+    "duration_ms": 258496,
+    "duration_api_ms": 43543,
+    "model": "claude-opus-5-5",
+    "session_id": "c9423f6f-985d-417e-ae71-dafb844ca326",
+    "stop_reason": "success",
+    "result_text": "The summary's \"By period\" table now has a **Change** column showing how each period's due-total differs from the period before it by start date. All 4 tests in `bin/e2e` pass.\n\n- **How it's worked out:** each period's due-total minus the previous one's, to two decimals, with a minus sign when it's lower. The earliest period shows nothing. Each value is in `summary-period-<name>-change`.\n- **Which totals it uses:** the same due-total the summary already shows for each period. For a closed or soft-closed period that's the total fixed when it was closed, otherwise the live total. Periods are ordered by start date even when they were added in a different order.\n- **Where the change is:** only in the front end. I added a small `changeFrom` helper in `rates/rates.ts` that does the subtraction exactly in cents, built the column in `periodSummary` in `people/people.ts`, and added it to the table in `summary/summary.ts`. The server, stored data and audit file are untouched, because the change is worked out from figures the screen already has.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.41281180000000006,
+        "num_turns": 16,
+        "duration_ms": 258496,
+        "duration_api_ms": 43543,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp130.agent.jsonl",
+  "agent_diff_file": "cp130.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
