@@ -171,7 +171,7 @@ export function sumAmounts(amounts: string[]): string {
         <caption class="visually-hidden">Claims of {{ personName() }}</caption>
         <thead>
           <tr>
-            <th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
             <th scope="col">Status</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -179,6 +179,15 @@ export function sumAmounts(amounts: string[]): string {
         <tbody>
           @for (c of claims(); track c.id) {
             <tr [attr.data-testid]="'claim-row-' + c.id">
+              <td>
+                <input
+                  type="checkbox"
+                  data-testid="claim-select"
+                  [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date"
+                  [checked]="selected().has(c.id)"
+                  (change)="selectToggled.emit({ id: c.id, checked: checked($event) })"
+                />
+              </td>
               <td data-testid="claim-number">{{ c.number ?? '' }}</td>
               <td data-testid="claim-amount">{{ c.amount }}</td>
               <td data-testid="claim-date">{{ c.date }}</td>
@@ -242,6 +251,10 @@ export class Claims {
   readonly periods = input.required<Period[]>();
   /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
   readonly retiredFrom = input<string | null>(null);
+  /** The ids of the sheet's claims selected to act on together. */
+  readonly selected = input<ReadonlySet<number>>(new Set());
+  /** A claim's checkbox was ticked or cleared. */
+  readonly selectToggled = output<{ id: number; checked: boolean }>();
   /** A claim was added, saved or changed status. */
   readonly saved = output<Claim>();
 
@@ -295,6 +308,10 @@ export class Claims {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected checked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
   }
 
   /** Open the claim's editor; only a DRAFT can be edited; to change an OPEN claim, void it and add a new one. */

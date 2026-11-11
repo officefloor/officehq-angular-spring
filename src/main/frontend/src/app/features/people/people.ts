@@ -230,12 +230,24 @@ function csvField(value: string): string {
                 [rates]="rates()"
                 [periods]="periods()"
                 [retiredFrom]="p.retiredFrom"
+                [selected]="selectedClaims()"
+                (selectToggled)="selectClaim($event.id, $event.checked)"
                 (saved)="claimSaved($event)"
               ></td>
             </tr>
           }
         </tbody>
       </table>
+      <p>
+        <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+        @if (bulkOpenResult(); as r) {
+          Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
+          refused <strong data-testid="bulk-refused">{{ r.refused }}</strong>
+        }
+      </p>
+      @if (bulkOpenError(); as message) {
+        <p role="alert" data-testid="bulk-open-error">{{ message }}</p>
+      }
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
@@ -338,6 +350,11 @@ export class People {
   protected readonly patronChoices = signal<Record<number, string>>({});
   /** The error of the last refused add of a patron, and the person it belongs to. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
+  /** The ids of the claims ticked to open together. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** How many the last bulk open opened and refused; null while it runs and before the first. */
+  protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkOpenError = signal<string | null>(null);
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
   private reads = 0;
 
@@ -353,6 +370,9 @@ export class People {
         this.retireDates.set({});
         this.patronChoices.set({});
         this.patronError.set(null);
+        this.selectedClaims.set(new Set());
+        this.bulkOpenResult.set(null);
+        this.bulkOpenError.set(null);
         this.reset();
         this.quickName.set('');
         this.quickAmount.set('');
@@ -508,6 +528,40 @@ export class People {
         : [claim, ...list].sort((a, b) => b.id - a.id),
     );
     void this.read(sheet);
+  }
+
+  protected selectClaim(id: number, checked: boolean): void {
+    this.selectedClaims.update((ids) => {
+      const next = new Set(ids);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    this.bulkOpenError.set(null);
+  }
+
+  /** Open the ticked claims together, in list order; each that cannot be opened is left as it is. */
+  protected async bulkOpen(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.bulkOpenResult.set(null);
+    this.bulkOpenError.set(null);
+    const ids = [...this.selectedClaims()];
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ opened: number; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/bulk-open`,
+          { ids },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedClaims.set(new Set());
+      this.bulkOpenResult.set(result);
+      await this.read(sheet);
+    } catch {
+      if (this.session.sheet() === sheet) this.bulkOpenError.set('The selected claims could not be opened.');
+    }
   }
 
   /** Take a statement of the person, then re-read so their claims show the dues it bound them to. */

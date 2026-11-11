@@ -68,10 +68,16 @@ public class ClaimController {
         }
     }
 
-    private final ClaimService service;
+    /** The ids of the claims selected to open together. */
+    public record BulkOpenRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
+    }
 
-    public ClaimController(ClaimService service) {
+    private final ClaimService service;
+    private final BulkOpenService bulkOpen;
+
+    public ClaimController(ClaimService service, BulkOpenService bulkOpen) {
         this.service = service;
+        this.bulkOpen = bulkOpen;
     }
 
     /** All the sheet's claims, newest first. */
@@ -107,6 +113,14 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
+    }
+
+    /** Open the selected claims in list order; each one that cannot be opened is left as it is. */
+    @PostMapping("/claims/bulk-open")
+    public BulkOpenService.Result bulkOpen(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkOpenRequest request) {
+        return bulkOpen.open(sheetId.trim(), user.trim(), request.ids());
     }
 
     /** Settle an OPEN claim; refused to the user who opened it. */
