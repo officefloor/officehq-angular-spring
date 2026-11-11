@@ -1,0 +1,908 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index de897933d..c405a39bb 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -63,6 +63,9 @@ export class Session {
+   /** The active sheet's pot (two decimals), shared out over each balanced pool's members by their shares; blank means
+    *  none; null until the settings are read. */
+   readonly pot = signal<string | null>(null);
++  /** The active sheet's parent sheet id, whose rates a grade with none in force falls back on; blank means none;
++   *  null until the settings are read. */
++  readonly parent = signal<string | null>(null);
+   /** The default date of a new claim: the entry date while it is set, else the sheet's today. */
+   readonly newClaimDate = computed(() => this.entryDate() || this.today());
+   /** The active sheet's cap (two decimals) in force on its today: a person's due-total is at most it; null when there
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 22962b0be..46ba2ea29 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -57,6 +57,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+           }
+         </form>
+         <p>As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
++        <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
+         <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+         <app-settings />
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a6f6d541f..34a45a698 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -743,6 +743,14 @@ export class People {
+   private reads = 0;
+ 
+   constructor() {
++    // The rates fall back on the parent sheet's: once it is read or changed, read them again.
++    effect(() => {
++      const parent = this.session.parent();
++      untracked(() => {
++        const sheet = this.session.sheet();
++        if (parent !== null && sheet) void this.read(sheet);
++      });
++    });
+     effect(() => {
+       const sheet = this.session.sheet();
+       this.session.loaded();
+@@ -1053,7 +1061,7 @@ export class People {
+     const sheet = this.session.sheet();
+     if (!sheet) return;
+     this.rates.update((list) =>
+-      [...list.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate].sort(
++      [...list.filter((r) => r.level !== rate.level || r.grade !== rate.grade || r.from !== rate.from), rate].sort(
+         (a, b) => a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? ''),
+       ),
+     );
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 5d8236a75..c9f6154ad 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Component, effect, inject, input, output, signal } from '@angular/core';
++import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -18,14 +18,26 @@ export interface Rate {
+   from: string | null;
+   /** The last day the rate applies (yyyy-mm-dd); null when it has no end. */
+   to: string | null;
++  /** 0 for the sheet's own rate, 1 for its parent sheet's, 2 for that sheet's parent's, and so on. */
++  level: number;
+ }
+ 
+ /**
+  * The percent of the grade's rate in force on the date: the one with the latest from-date on or
+  * before it, an undated rate counting as from the beginning of time; undefined when the date is
+- * before every rate, or after that rate's to-date.
++ * before every rate, or after that rate's to-date. With none of the sheet's own in force, the
++ * parent sheet's, then its parent's, and so on (nearest level first).
+  */
+ export function rateOn(rates: Rate[], grade: string, date: string): string | undefined {
++  const levels = [...new Set(rates.map((r) => r.level))].sort((a, b) => a - b);
++  for (const level of levels) {
++    const pct = rateOnLevel(rates.filter((r) => r.level === level), grade, date);
++    if (pct !== undefined) return pct;
++  }
++  return undefined;
++}
++
++function rateOnLevel(rates: Rate[], grade: string, date: string): string | undefined {
+   let found: Rate | undefined;
+   for (const r of rates) {
+     if (r.grade !== grade || (r.from !== null && r.from > date)) continue;
+@@ -216,7 +228,7 @@ export function trimmedSumDues(dues: string[]): string {
+           <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+         </thead>
+         <tbody>
+-          @for (r of rates(); track r.grade + '-' + r.from) {
++          @for (r of ownRates(); track r.grade + '-' + r.from) {
+             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+               <th scope="row">{{ r.grade }}</th>
+               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
+@@ -235,6 +247,8 @@ export class Rates {
+ 
+   readonly grades = input.required<string[]>();
+   readonly rates = input.required<Rate[]>();
++  /** The sheet's own rates, leaving out the parent sheets' it falls back on. */
++  protected readonly ownRates = computed(() => this.rates().filter((r) => r.level === 0));
+   /** A rate was set. */
+   readonly saved = output<Rate>();
+ 
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 1153fc497..59099d1f4 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1,4 +1,4 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { DatedValue, Session } from '../../core/session';
+@@ -30,6 +30,8 @@ interface SettingsView {
+   noteThreshold: string | null;
+   /** The pot shared out over each balanced pool's members by their shares, two decimals; null when there is none. */
+   pot: string | null;
++  /** The parent sheet's id, whose rates a grade with none in force falls back on; null when there is none. */
++  parent: string | null;
+   /** The permission matrix, by action: the roles that may take it, comma separated; null: the standing rule. */
+   permissions: Record<string, string | null>;
+   /** Every value recorded of each dated setting, by key, from-date first to last. */
+@@ -60,7 +62,7 @@ const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
+ /** A date typed as yyyy-mm-dd. */
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+-// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, and its note threshold; not dated: its policy date, its period numbering from, its entry date, its grace days and its permission matrix) and the roles of its user names, each with the form that sets it.
++// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, and its note threshold; not dated: its policy date, its period numbering from, its entry date, its grace days, its pot, its parent sheet and its permission matrix) and the roles of its user names, each with the form that sets it.
+ @Component({
+   selector: 'app-settings',
+   template: `
+@@ -216,6 +218,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           (focus)="lastFocused = 'pot'"
+           (input)="pot.set(value($event)); potEdited = true; settingsError.set(null)"
+         />
++        <label for="setting-parent">Parent sheet (its rates apply to a grade with none in force here; blank: none)</label>
++        <input
++          id="setting-parent"
++          data-testid="setting-parent"
++          [value]="parent()"
++          (focus)="lastFocused = 'parent'"
++          (input)="parent.set(value($event)); parentEdited = true; settingsError.set(null)"
++        />
+         <label for="setting-cap">Cap (the most a person's due-total can be; blank: no cap)</label>
+         <input
+           id="setting-cap"
+@@ -318,6 +328,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' }}</strong></p>
+       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' }}</strong></p>
+       <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
++      <p>Parent sheet: <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
+       <p>Cap in force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
+       @for (a of actions; track a) {
+         <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' }}</strong></p>
+@@ -444,6 +455,7 @@ export class Settings {
+   protected readonly graceDays = signal('');
+   protected readonly graceDaysCurrent = signal<string | null>(null);
+   protected readonly pot = signal('');
++  protected readonly parent = signal('');
+   protected readonly cap = signal('');
+   protected readonly proofThreshold = signal('');
+   protected readonly noteThreshold = signal('');
+@@ -459,11 +471,12 @@ export class Settings {
+   protected entryDateEdited = false;
+   protected graceDaysEdited = false;
+   protected potEdited = false;
++  protected parentEdited = false;
+   protected capEdited = false;
+   protected proofThresholdEdited = false;
+   protected noteThresholdEdited = false;
+   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
+-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
++  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'pot' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | `perm-${string}` | null =
+     null;
+   protected readonly settingsError = signal<string | null>(null);
+   protected readonly roleList = signal<RoleView[]>([]);
+@@ -492,6 +505,7 @@ export class Settings {
+         this.session.entryDate.set(null);
+         this.graceDaysCurrent.set(null);
+         this.session.pot.set(null);
++        this.session.parent.set(null);
+         this.permsCurrent.set({});
+         this.roleList.set([]);
+         this.settingsError.set(null);
+@@ -558,7 +572,7 @@ export class Settings {
+     if (!sheet) return;
+     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
+     // nothing), else the clerk limit.
+-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
++    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.potEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && this.permsEdited.size === 0;
+     if (nothingTyped) {
+       switch (this.lastFocused) {
+         case 'clerkLimit': this.clerkLimitEdited = true; break;
+@@ -570,6 +584,7 @@ export class Settings {
+         case 'entryDate': this.entryDateEdited = true; break;
+         case 'graceDays': this.graceDaysEdited = true; break;
+         case 'pot': this.potEdited = true; break;
++        case 'parent': this.parentEdited = true; break;
+         case 'cap': this.capEdited = true; break;
+         case 'proofThreshold': this.proofThresholdEdited = true; break;
+         case 'noteThreshold': this.noteThresholdEdited = true; break;
+@@ -588,6 +603,7 @@ export class Settings {
+     const saveEntryDate = this.entryDateEdited;
+     const saveGraceDays = this.graceDaysEdited;
+     const savePot = this.potEdited;
++    const saveParent = this.parentEdited;
+     const saveCap = this.capEdited;
+     const saveProofThreshold = this.proofThresholdEdited;
+     const saveNoteThreshold = this.noteThresholdEdited;
+@@ -601,6 +617,7 @@ export class Settings {
+     const entryDate = this.entryDate().trim();
+     const graceDays = this.graceDays().trim();
+     const pot = this.pot().trim();
++    const parent = this.parent().trim();
+     const cap = this.cap().trim();
+     const proofThreshold = this.proofThreshold().trim();
+     const noteThreshold = this.noteThreshold().trim();
+@@ -666,6 +683,10 @@ export class Settings {
+       this.settingsError.set('Type a pot of 0.00 or more with at most two decimals, or leave it blank for none.');
+       return;
+     }
++    if (saveParent && parent.length > 100) {
++      this.settingsError.set('Type a parent sheet id of at most 100 characters, or leave it blank for none.');
++      return;
++    }
+     if (saveCap && cap !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(cap)) {
+       this.settingsError.set('Type a cap of 0.00 or more with at most two decimals, or leave it blank for no cap.');
+       return;
+@@ -764,6 +785,12 @@ export class Settings {
+         );
+         this.potEdited = false;
+       }
++      if (saveParent) {
++        saved = await firstValueFrom(
++          this.http.put<SettingsView>(`${url}/parent`, { parent: parent === '' ? null : parent }, this.session.headers()),
++        );
++        this.parentEdited = false;
++      }
+       if (saveCap) {
+         saved = await firstValueFrom(
+           this.http.put<SettingsView>(`${url}/cap`, { cap: cap === '' ? null : cap, from: fromOf('cap') }, this.session.headers()),
+@@ -809,8 +836,12 @@ export class Settings {
+         this.permsEdited.delete(a);
+       }
+       if (saved && this.session.sheet() === sheet) this.show(saved);
+-    } catch {
+-      this.settingsError.set('The settings could not be saved.');
++    } catch (e) {
++      this.settingsError.set(
++        saveParent && e instanceof HttpErrorResponse && e.status === 422
++          ? 'The parent sheet must be a sheet that has been loaded, not this sheet nor one that has this sheet as an ancestor.'
++          : 'The settings could not be saved.',
++      );
+     } finally {
+       this.savingSettings = false;
+     }
+@@ -937,6 +968,8 @@ export class Settings {
+     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
+     this.session.pot.set(settings.pot ?? '');
+     this.pot.set(settings.pot ?? '');
++    this.session.parent.set(settings.parent ?? '');
++    this.parent.set(settings.parent ?? '');
+     this.cap.set(settings.cap ?? '');
+     this.proofThreshold.set(settings.proofThreshold ?? '');
+     this.noteThreshold.set(settings.noteThreshold ?? '');
+@@ -957,6 +990,7 @@ export class Settings {
+     this.entryDateEdited = false;
+     this.graceDaysEdited = false;
+     this.potEdited = false;
++    this.parentEdited = false;
+     this.capEdited = false;
+     this.proofThresholdEdited = false;
+     this.noteThresholdEdited = false;
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfContext.java b/src/main/java/net/officefloor/hq/app/asof/AsOfContext.java
+new file mode 100644
+index 000000000..3f6ceb5ca
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfContext.java
+@@ -0,0 +1,29 @@
++package net.officefloor.hq.app.asof;
++
++import java.time.LocalDate;
++
++/**
++ * The date the request being answered shows its sheet as of, set by {@link AsOfFilter} for the length of an as-of
++ * read. Only the requested sheet's rows are put back as of the date; what is read of another sheet (a parent sheet's
++ * rates) looks it up here to read that as it stood then too.
++ */
++public final class AsOfContext {
++
++    private static final ThreadLocal<LocalDate> AS_OF = new ThreadLocal<>();
++
++    private AsOfContext() {
++    }
++
++    /** The as-of date of the request being answered; null when it shows the sheet as it stands. */
++    public static LocalDate current() {
++        return AS_OF.get();
++    }
++
++    static void set(LocalDate asOf) {
++        AS_OF.set(asOf);
++    }
++
++    static void clear() {
++        AS_OF.remove();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/asof/AsOfFilter.java b/src/main/java/net/officefloor/hq/app/asof/AsOfFilter.java
+index f3cb850f0..49201fe5d 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/AsOfFilter.java
++++ b/src/main/java/net/officefloor/hq/app/asof/AsOfFilter.java
+@@ -95,11 +95,14 @@ public class AsOfFilter extends OncePerRequestFilter {
+             Exception failed = rolledBack.execute(status -> {
+                 status.setRollbackOnly();
+                 snapshots.restore(sheetId, asOf);
++                AsOfContext.set(asOf);
+                 try {
+                     chain.doFilter(request, response);
+                     return null;
+                 } catch (IOException | ServletException e) {
+                     return e;
++                } finally {
++                    AsOfContext.clear();
+                 }
+             });
+             if (failed instanceof IOException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
+index 9d79bacd0..1588f205f 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
+@@ -112,12 +112,15 @@ public class SheetSnapshotService {
+         }
+     }
+ 
+-    /** The sheet's own row as it was kept, or as a sheet just started has it when nothing was kept by then. */
++    /**
++     * The sheet's own row as it was kept, or as a sheet just started has it when nothing was kept by then. Its parent
++     * sheet is a link between sheets, not part of how the sheet stood: it stays as it is now.
++     */
+     private void restoreSheet(Table table, Map<String, Object> row, String sheetId, LocalDate asOf) {
+         List<String> sets = new ArrayList<>();
+         List<Object> args = new ArrayList<>();
+         for (String column : table.columns()) {
+-            if (column.equals("ID") || column.equals("CREATED_BY") || column.equals("TODAY")) {
++            if (column.equals("ID") || column.equals("CREATED_BY") || column.equals("TODAY") || column.equals("PARENT")) {
+                 continue;
+             }
+             if (row == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index e7c0ba01a..8638c956e 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -9,6 +9,7 @@ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.time.format.DateTimeParseException;
++import java.util.ArrayList;
+ import java.util.List;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import org.springframework.http.HttpStatus;
+@@ -29,13 +30,20 @@ import org.springframework.web.server.ResponseStatusException;
+ @Validated
+ public class RateController {
+ 
+-    /** A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none). */
+-    public record RateView(String grade, String pct, String from, String to) {
++    /**
++     * A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none);
++     * and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on.
++     */
++    public record RateView(String grade, String pct, String from, String to, int level) {
+ 
+         static RateView of(Rate rate) {
++            return of(rate, 0);
++        }
++
++        static RateView of(Rate rate, int level) {
+             return new RateView(rate.getGrade(), rate.getPct().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
+                     rate.getFromDate() == null ? null : rate.getFromDate().toString(),
+-                    rate.getToDate() == null ? null : rate.getToDate().toString());
++                    rate.getToDate() == null ? null : rate.getToDate().toString(), level);
+         }
+     }
+ 
+@@ -78,11 +86,22 @@ public class RateController {
+         this.service = service;
+     }
+ 
+-    /** The sheet's rates in grade order, then by from-date (the undated one first); a grade with no rate is left out. */
++    /**
++     * The sheet's rates in grade order, then by from-date (the undated one first); a grade with no rate is left out.
++     * Then, likewise, the rates of its parent sheet, of that sheet's parent and so on up to three levels up, each
++     * with its level.
++     */
+     @GetMapping
+     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+-        return service.list(sheetId.trim()).stream().map(RateView::of).toList();
++        List<List<Rate>> chain = service.chain(sheetId.trim());
++        List<RateView> views = new ArrayList<>();
++        for (int level = 0; level < chain.size(); level++) {
++            for (Rate rate : chain.get(level)) {
++                views.add(RateView.of(rate, level));
++            }
++        }
++        return views;
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateLog.java b/src/main/java/net/officefloor/hq/app/rate/RateLog.java
+index 61123a153..885e1e466 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateLog.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateLog.java
+@@ -8,6 +8,11 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Objects;
+ 
+ /** One setting of a grade's rate: its from- and to-dates and percent as set, and the sheet's today when it was set. */
+ @Entity
+@@ -71,4 +76,33 @@ public class RateLog {
+     public LocalDate getSetOn() {
+         return setOn;
+     }
++
++    /**
++     * A grade's rates on a sheet as they stood at the end of {@code asOf}: each from-date's last setting made while the
++     * sheet's today was on or before it (a rate set before settings were logged counts as it is now).
++     *
++     * @param now the grade's rates as they are now
++     * @param set the grade's rate settings, in the order they were made
++     */
++    public static List<Rate> stood(String sheetId, String grade, List<Rate> now, List<RateLog> set, LocalDate asOf) {
++        Map<LocalDate, RateLog> then = new LinkedHashMap<>();
++        for (RateLog log : set) {
++            if (!log.getSetOn().isAfter(asOf)) {
++                then.put(log.getFromDate(), log);
++            }
++        }
++        List<Rate> stood = new ArrayList<>();
++        for (Rate rate : now) {
++            boolean logged = set.stream().anyMatch(l -> Objects.equals(l.getFromDate(), rate.getFromDate()));
++            if (!logged) {
++                stood.add(rate);
++            }
++        }
++        for (RateLog log : then.values()) {
++            Rate rate = new Rate(sheetId, grade, log.getFromDate(), log.getPct());
++            rate.setToDate(log.getToDate());
++            stood.add(rate);
++        }
++        return stood;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateLogRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateLogRepository.java
+index 611c8d4f3..601db5213 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateLogRepository.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateLogRepository.java
+@@ -7,4 +7,7 @@ public interface RateLogRepository extends JpaRepository<RateLog, Long> {
+ 
+     /** A grade's rate settings on a sheet, in the order they were made. */
+     List<RateLog> findBySheetIdAndGradeOrderByIdAsc(String sheetId, String grade);
++
++    /** Every rate setting on a sheet, in the order they were made. */
++    List<RateLog> findBySheetIdOrderByIdAsc(String sheetId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 2b795cc71..15be797bc 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -3,12 +3,8 @@ package net.officefloor.hq.app.rate;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
+-import java.util.ArrayList;
+ import java.util.Comparator;
+-import java.util.LinkedHashMap;
+ import java.util.List;
+-import java.util.Map;
+-import java.util.Objects;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -37,53 +33,42 @@ public class RateService {
+         this.rollup = rollup;
+     }
+ 
+-    public List<Rate> list(String sheetId) {
+-        return rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
++    /**
++     * The sheet's rates, then each parent sheet's up to {@link RollupService#PARENT_LEVELS} levels up (nearest first),
++     * each in grade order then by from-date.
++     */
++    public List<List<Rate>> chain(String sheetId) {
++        return rollup.rateChain(sheetId);
+     }
+ 
+     /**
+      * The grade's rate in force on the date: the one with the latest from-date on or before it, an
+      * undated rate counting as from the beginning of time. Empty when the date is before every rate, or
+-     * after that rate's to-date.
++     * after that rate's to-date. With none on the sheet, the parent sheet's, then its parent's, up to three levels up.
+      */
+     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date) {
+-        return rates.findBySheetIdAndGrade(sheetId, grade).stream()
+-                .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
+-                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+-                .filter(r -> r.appliesOn(date));
++        return RollupService.rateOn(rollup.rateChain(sheetId), grade, date);
+     }
+ 
+     /**
+      * The grade's rate percent in force on the date as the rates stood at the end of {@code asOf}: each from-date's
+      * last setting made while the sheet's today was on or before it (a rate set before settings were logged counts as
+-     * it is now). Empty when the grade had no rate in force on the date then.
++     * it is now). With none on the sheet then, the parent sheets' rates in force on the date as they stood then.
++     * Empty when the grade had no rate in force on the date then.
+      */
+     public Optional<BigDecimal> rateAsOf(String sheetId, String grade, LocalDate date, LocalDate asOf) {
+-        List<Rate> now = rates.findBySheetIdAndGrade(sheetId, grade);
+-        List<RateLog> set = logs.findBySheetIdAndGradeOrderByIdAsc(sheetId, grade);
+-        Map<LocalDate, RateLog> then = new LinkedHashMap<>();
+-        for (RateLog log : set) {
+-            if (!log.getSetOn().isAfter(asOf)) {
+-                then.put(log.getFromDate(), log);
+-            }
+-        }
+-        List<Rate> stood = new ArrayList<>();
+-        for (Rate rate : now) {
+-            boolean logged = set.stream().anyMatch(l -> Objects.equals(l.getFromDate(), rate.getFromDate()));
+-            if (!logged) {
+-                stood.add(rate);
+-            }
+-        }
+-        for (RateLog log : then.values()) {
+-            Rate rate = new Rate(sheetId, grade, log.getFromDate(), log.getPct());
+-            rate.setToDate(log.getToDate());
+-            stood.add(rate);
+-        }
+-        return stood.stream()
++        List<Rate> stood = RateLog.stood(sheetId, grade, rates.findBySheetIdAndGrade(sheetId, grade),
++                logs.findBySheetIdAndGradeOrderByIdAsc(sheetId, grade), asOf);
++        Optional<BigDecimal> own = stood.stream()
+                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
+                 .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                 .filter(r -> r.appliesOn(date))
+                 .map(Rate::getPct);
++        if (own.isPresent()) {
++            return own;
++        }
++        List<List<Rate>> chain = rollup.rateChain(sheetId, asOf);
++        return RollupService.rateOn(chain.subList(1, chain.size()), grade, date).map(Rate::getPct);
+     }
+ 
+     /** What the grade having the percent on every date would change on the sheet; nothing is saved. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 076b68c65..c73c36f7f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -10,7 +10,9 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+ import java.util.Optional;
++import java.util.TreeMap;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.asof.AsOfContext;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimLog;
+ import net.officefloor.hq.app.claim.ClaimLogRepository;
+@@ -19,6 +21,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.rate.RateLog;
++import net.officefloor.hq.app.rate.RateLogRepository;
+ import net.officefloor.hq.app.rate.RateRepository;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -47,15 +51,17 @@ public class RollupService {
+     private final ClaimRepository claims;
+     private final ClaimLogRepository logs;
+     private final RateRepository rates;
++    private final RateLogRepository rateLogs;
+     private final SheetRepository sheets;
+     private final Audit audit;
+ 
+     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
+-            RateRepository rates, SheetRepository sheets, Audit audit) {
++            RateRepository rates, RateLogRepository rateLogs, SheetRepository sheets, Audit audit) {
+         this.people = people;
+         this.claims = claims;
+         this.logs = logs;
+         this.rates = rates;
++        this.rateLogs = rateLogs;
+         this.sheets = sheets;
+         this.audit = audit;
+     }
+@@ -64,7 +70,7 @@ public class RollupService {
+     public Snapshot snapshot(String sheetId) {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         LocalDate today = sheet == null ? null : sheet.getToday();
+-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
++        List<List<Rate>> sheetRates = rateChain(sheetId);
+         Map<Long, List<Claim>> counted = new LinkedHashMap<>();
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             if (claim.getStatus().counts()) {
+@@ -125,9 +131,11 @@ public class RollupService {
+      */
+     public RatePreview preview(String sheetId, String grade, BigDecimal pct) {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
+-        List<Rate> candidate = new ArrayList<>(sheetRates.stream().filter(r -> !r.getGrade().equals(grade)).toList());
+-        candidate.add(new Rate(sheetId, grade, null, pct));
++        List<List<Rate>> sheetRates = rateChain(sheetId);
++        List<Rate> own = new ArrayList<>(sheetRates.get(0).stream().filter(r -> !r.getGrade().equals(grade)).toList());
++        own.add(new Rate(sheetId, grade, null, pct));
++        List<List<Rate>> candidate = new ArrayList<>(sheetRates);
++        candidate.set(0, own);
+         Map<Long, Person> byId = new LinkedHashMap<>();
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+             byId.put(person.getId(), person);
+@@ -173,7 +181,7 @@ public class RollupService {
+     public Map<Long, BigDecimal> dueTotalsBetween(String sheetId, LocalDate from, LocalDate to) {
+         Sheet sheet = sheets.findById(sheetId).orElse(null);
+         LocalDate today = sheet == null ? null : sheet.getToday();
+-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId);
++        List<List<Rate>> sheetRates = rateChain(sheetId);
+         Map<Long, Person> byId = new LinkedHashMap<>();
+         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+@@ -227,7 +235,7 @@ public class RollupService {
+      * date, rounded as the sheet's policy date has the claim round) with the late charge of an overdue claim added on
+      * top, raised last to the floor in force on the claim's date; a correction has neither floor nor late charge.
+      */
+-    private static Optional<BigDecimal> dueOf(Sheet sheet, List<Rate> sheetRates, Person person, Claim claim) {
++    private static Optional<BigDecimal> dueOf(Sheet sheet, List<List<Rate>> sheetRates, Person person, Claim claim) {
+         if (claim.getSettledDue() != null) {
+             return Optional.of(claim.getSettledDue());
+         }
+@@ -269,7 +277,71 @@ public class RollupService {
+                 && sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()).isBefore(today);
+     }
+ 
+-    private static Optional<Rate> rateOn(List<Rate> sheetRates, String grade, LocalDate date) {
++    /** How many levels of parent sheets a grade with no rate in force on a sheet falls back on. */
++    public static final int PARENT_LEVELS = 3;
++
++    /**
++     * The sheet's rates, then its parent's, its parent's parent's and so on up to {@link #PARENT_LEVELS} levels up, in
++     * grade order then by from-date: the rates a grade's rate on a date is looked for in, nearest first. While the
++     * request shows the sheet as of a date, the parents' rates are as they stood then.
++     */
++    public List<List<Rate>> rateChain(String sheetId) {
++        return rateChain(sheetId, AsOfContext.current());
++    }
++
++    /**
++     * As {@link #rateChain(String)}, with the parents' rates as they stood at the end of {@code asOf} (null: as they
++     * are now).
++     */
++    public List<List<Rate>> rateChain(String sheetId, LocalDate asOf) {
++        List<List<Rate>> chain = new ArrayList<>();
++        chain.add(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId));
++        List<String> seen = new ArrayList<>(List.of(sheetId));
++        String parent = sheets.findById(sheetId).map(Sheet::getParent).orElse(null);
++        while (parent != null && chain.size() <= PARENT_LEVELS && !seen.contains(parent)) {
++            seen.add(parent);
++            chain.add(asOf == null ? rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(parent) : ratesAsOf(parent, asOf));
++            parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
++        }
++        return chain;
++    }
++
++    /** The sheet's rates as they stood at the end of {@code asOf}, by its rate log, in grade order then by from-date. */
++    private List<Rate> ratesAsOf(String sheetId, LocalDate asOf) {
++        Map<String, List<Rate>> now = new TreeMap<>();
++        for (Rate rate : rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId)) {
++            now.computeIfAbsent(rate.getGrade(), g -> new ArrayList<>()).add(rate);
++        }
++        Map<String, List<RateLog>> set = new TreeMap<>();
++        for (RateLog log : rateLogs.findBySheetIdOrderByIdAsc(sheetId)) {
++            set.computeIfAbsent(log.getGrade(), g -> new ArrayList<>()).add(log);
++            now.computeIfAbsent(log.getGrade(), g -> new ArrayList<>());
++        }
++        List<Rate> stood = new ArrayList<>();
++        for (Map.Entry<String, List<Rate>> grade : now.entrySet()) {
++            stood.addAll(RateLog.stood(sheetId, grade.getKey(), grade.getValue(),
++                    set.getOrDefault(grade.getKey(), List.of()), asOf).stream()
++                    .sorted(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
++                    .toList());
++        }
++        return stood;
++    }
++
++    /**
++     * The grade's rate in force on the date: the sheet's own, else the first in force of its parents' (nearest
++     * first); empty when none is.
++     */
++    public static Optional<Rate> rateOn(List<List<Rate>> chain, String grade, LocalDate date) {
++        for (List<Rate> level : chain) {
++            Optional<Rate> found = rateOnLevel(level, grade, date);
++            if (found.isPresent()) {
++                return found;
++            }
++        }
++        return Optional.empty();
++    }
++
++    private static Optional<Rate> rateOnLevel(List<Rate> sheetRates, String grade, LocalDate date) {
+         return sheetRates.stream()
+                 .filter(r -> r.getGrade().equals(grade))
+                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
+diff --git a/src/main/java/net/officefloor/hq/app/setting/ParentRefusedException.java b/src/main/java/net/officefloor/hq/app/setting/ParentRefusedException.java
+new file mode 100644
+index 000000000..0f895f841
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/ParentRefusedException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.setting;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A parent sheet that is the sheet itself, has the sheet as an ancestor, or has never been loaded. */
++@ResponseStatus(HttpStatus.UNPROCESSABLE_CONTENT)
++public class ParentRefusedException extends RuntimeException {
++
++    public ParentRefusedException(String sheetId, String parent, String reason) {
++        super("Sheet " + parent + " cannot be the parent of sheet " + sheetId + ": " + reason);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index f57eef8c7..ceea2bf7b 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -32,7 +32,7 @@ public class SettingController {
+      * when there is none; the floor with two decimals; the terms in whole days; each grade's own terms in whole days,
+      * by grade (a grade without its own is left out); the late percent with two decimals; the policy date as
+      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
+-     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the pot with two decimals, null when there is none;
++     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the parent sheet's id, null when there is none;
+      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
+      * separated, null when blank (the standing rule).
+      * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
+@@ -40,7 +40,7 @@ public class SettingController {
+      */
+     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
+             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
+-            Integer graceDays, String proofThreshold, String noteThreshold, String pot, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
++            Integer graceDays, String proofThreshold, String noteThreshold, String pot, String parent, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
+ 
+         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
+             LocalDate today = sheet.getToday();
+@@ -52,7 +52,8 @@ public class SettingController {
+             return new SettingsView(shown(sheet.getClerkLimit()), shown(sheet.floorOn(today)), sheet.termsOn(today),
+                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
+                     sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), shown(sheet.proofThresholdOn(today)),
+-                    shown(sheet.noteThresholdOn(today)), shown(sheet.getPot()), permissions, dated);
++                    shown(sheet.noteThresholdOn(today)), shown(sheet.getPot()), sheet.getParent(), permissions,
++                    dated);
+         }
+ 
+         private static String shown(BigDecimal value) {
+@@ -180,6 +181,14 @@ public class SettingController {
+         }
+     }
+ 
++    /** A parent sheet's id; blank or missing means none. */
++    public record ParentRequest(@Size(max = 100) String parent) {
++
++        String parentValue() {
++            return parent == null || parent.isBlank() ? null : parent.trim();
++        }
++    }
++
+     /** A period numbering from as yyyy-mm-dd; null (blank) means off. */
+     public record PeriodNumberingFromRequest(LocalDate periodNumberingFrom) {
+     }
+@@ -279,6 +288,13 @@ public class SettingController {
+         return view(service.setPot(sheetId.trim(), user.trim(), request.potValue()));
+     }
+ 
++    @PutMapping("/parent")
++    public SettingsView setParent(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid ParentRequest request) {
++        return view(service.setParent(sheetId.trim(), user.trim(), request.parentValue()));
++    }
++
+     @PutMapping("/cap")
+     public SettingsView setCap(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index bbe609dd8..41fc7df8f 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -2,9 +2,11 @@ package net.officefloor.hq.app.setting;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -15,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, each
+- * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its pot and
++ * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its pot, its parent sheet and
+  * its permission matrix, not dated.
+  */
+ @Service
+@@ -219,6 +221,37 @@ public class SettingService {
+         return saved;
+     }
+ 
++    /**
++     * Set the parent sheet, whose rates a grade with none in force on a date here falls back on; null means none.
++     * Refused for the sheet itself, a sheet that has this sheet as an ancestor, and a sheet never loaded. Every save
++     * is recorded, even of the same value, then the figures it moved.
++     */
++    @Transactional
++    public Sheet setParent(String sheetId, String user, String parent) {
++        Sheet sheet = get(sheetId);
++        if (parent != null) {
++            if (parent.equals(sheetId)) {
++                throw new ParentRefusedException(sheetId, parent, "a sheet cannot be its own parent");
++            }
++            Sheet ancestor = sheets.findById(parent)
++                    .orElseThrow(() -> new ParentRefusedException(sheetId, parent, "it has never been loaded"));
++            Set<String> seen = new HashSet<>();
++            while (ancestor != null && seen.add(ancestor.getId())) {
++                if (sheetId.equals(ancestor.getParent())) {
++                    throw new ParentRefusedException(sheetId, parent, "it has this sheet as an ancestor");
++                }
++                ancestor = ancestor.getParent() == null ? null : sheets.findById(ancestor.getParent()).orElse(null);
++            }
++        }
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        sheet.setParent(parent);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=parent value="
++                + (parent == null ? "" : parent));
++        rollup.recordChanges(sheetId, user, before);
++        return saved;
++    }
++
+     /**
+      * Set the period numbering from; null means off. Every save is recorded, even of the same value. Claims already
+      * opened keep their numbers.
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 180473fb1..f56505c7d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -95,6 +95,10 @@ public class Sheet {
+     @Column(name = "pot")
+     private BigDecimal pot;
+ 
++    /** The id of the parent sheet whose rates a grade with none in force here falls back on; null: none. Not dated. */
++    @Column(name = "parent")
++    private String parent;
++
+     /** Whether a steward archived the sheet: everything stays visible and every change is refused. */
+     @Column(name = "archived", nullable = false)
+     private boolean archived;
+@@ -319,6 +323,14 @@ public class Sheet {
+         this.pot = pot;
+     }
+ 
++    public String getParent() {
++        return parent;
++    }
++
++    public void setParent(String parent) {
++        this.parent = parent;
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/resources/db/migration/V66__sheet_parent.sql b/src/main/resources/db/migration/V66__sheet_parent.sql
+new file mode 100644
+index 000000000..b6b549ed6
+--- /dev/null
++++ b/src/main/resources/db/migration/V66__sheet_parent.sql
+@@ -0,0 +1,3 @@
++-- The sheet's parent sheet: a grade with no rate in force on a date on this sheet takes the parent's for that date,
++-- then the parent's parent's, up to three levels up. Not dated; null means none.
++ALTER TABLE sheet ADD COLUMN parent VARCHAR(100);
