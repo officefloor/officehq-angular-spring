@@ -91,6 +91,14 @@ public class PersonMergeService {
             claims.listFirst(claim.getId());
         }
 
+        // shares the merged person held go to the other
+        List<Claim> shared = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> c.getShares().stream().anyMatch(sh -> sh.getHolderId().equals(from.getId())
+                        || sh.getHolderId().equals(c.getPersonId())))
+                .toList();
+        shared.forEach(c -> c.mergeHolder(from.getId(), into.getId()));
+        claims.saveAllAndFlush(shared);
+
         // patrons: the merged person's go to the other, and whoever named them names the other
         List<Patron> links = patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(l -> l.getPersonId().equals(from.getId()) || l.getPatronId().equals(from.getId())).toList();

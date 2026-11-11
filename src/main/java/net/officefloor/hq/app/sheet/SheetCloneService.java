@@ -135,6 +135,8 @@ public class SheetCloneService {
             copy(table, "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)", sheetId, "ORDER BY claim_id, seq",
                     Map.of("CLAIM_ID", claim));
         }
+        copy("CLAIM_SHARE", "claim_id IN (SELECT id FROM claim WHERE sheet_id = ?)", sheetId, "ORDER BY claim_id, seq",
+                Map.of("CLAIM_ID", claim, "HOLDER_ID", person));
         renumber(sheetId, toSheetId, claims);
 
         history.captureFirst(toSheetId);

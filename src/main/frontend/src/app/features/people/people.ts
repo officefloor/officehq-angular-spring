@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { PEOPLE_COLUMNS, PeopleColumn, Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, plusDays, reviewLate, roundingDate, statusAt } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, ownPart, sharePart, counts, dayNumber, deferred, isCorrection, isOpen, money, overdue, plusDays, reviewLate, roundingDate, statusAt } from '../claims/claims';
 import { AuditView } from '../audit/audit-view';
 import { Activity } from '../audit/activity';
 import { TreeSearch } from '../search/tree-search';
@@ -116,6 +116,10 @@ import { FigurePipe } from '../../core/figure';
 // frozen figures, corrections included) and their open-total (the figures of their OPEN and PENDING
 // claims that count); together they make the sum of their figures before the cap. The sheet's
 // settled-total and open-total add up everyone's, untrimmed.
+// A claim can be shared with other people on the sheet, each at a share percent: a holder's part is
+// the claim's figure times their share divided by 100, rounded half to even. Each holder's due-total,
+// settled-total and open-total count their parts of the claims that count; the claim's own person's
+// count the figure less the holders' parts.
 // Each person shows their score: their settled figures (those of their SETTLED claims that count and
 // correct nothing; corrections are left out) divided by 100, minus 5 for every overdue claim
 // of theirs that counts, rounded half to even to a whole number. While both score thresholds are set,
@@ -1866,10 +1870,39 @@ export class People {
   private figuresOf(p: Person): number | null {
     const figures = this.claimsOf(p.id)
       .filter((c) => countsFor(p, c, this.session.today()))
-      .map((c) => chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)));
-    if (this.pctOf().get(this.gradeToday(p)) === undefined && figures.every((f) => f === null)) return null;
-    return figures.reduce<number>((sum, f) => sum + (f ?? 0), 0);
+      .map((c) => {
+        const f = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
+        return f === null ? null : ownPart(c, f);
+      });
+    const held = this.heldParts().get(p.id);
+    if (this.pctOf().get(this.gradeToday(p)) === undefined && figures.every((f) => f === null) && held === undefined) {
+      return null;
+    }
+    return figures.reduce<number>((sum, f) => sum + (f ?? 0), 0) + (held ? held.settled + held.open : 0);
   }
+
+  /**
+   * Per holder (by person id), the parts they hold of the claims that count for their own person and
+   * have a figure, in whole cents, split into those of SETTLED claims and those of OPEN and PENDING
+   * ones; a person holding none is absent.
+   */
+  private readonly heldParts = computed(() => {
+    const today = this.session.today();
+    const parts = new Map<number, { settled: number; open: number }>();
+    for (const c of this.claims()) {
+      if ((c.shares ?? []).length === 0) continue;
+      const owner = this.peopleById().get(c.personId);
+      if (owner === undefined || !countsFor(owner, c, today)) continue;
+      const figure = chargedDueCents(c, this.rates(), gradeOn(owner.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
+      if (figure === null) continue;
+      for (const s of c.shares) {
+        const held = parts.get(s.holder) ?? { settled: 0, open: 0 };
+        const part = sharePart(figure, s.share);
+        parts.set(s.holder, isOpen(c) ? { ...held, open: held.open + part } : { ...held, settled: held.settled + part });
+      }
+    }
+    return parts;
+  });
 
   /**
    * The figures of the person's claims that count, in whole cents, split into those of their
@@ -1879,9 +1912,15 @@ export class People {
     const out = { settled: 0, open: 0 };
     for (const c of this.claimsOf(p.id)) {
       if (!countsFor(p, c, this.session.today())) continue;
-      const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c)) ?? 0;
-      if (isOpen(c)) out.open += figure;
-      else out.settled += figure;
+      const figure = chargedDueCents(c, this.rates(), gradeOn(p.grades, c.date), this.floors(), this.lateness(), this.roundOn(c));
+      const own = figure === null ? 0 : ownPart(c, figure);
+      if (isOpen(c)) out.open += own;
+      else out.settled += own;
+    }
+    const held = this.heldParts().get(p.id);
+    if (held) {
+      out.settled += held.settled;
+      out.open += held.open;
     }
     return out;
   }

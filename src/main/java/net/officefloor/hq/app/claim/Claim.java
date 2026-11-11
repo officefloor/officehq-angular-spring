@@ -212,6 +212,13 @@ public class Claim {
     @BatchSize(size = 100)
     private List<ClaimLine> lines = new ArrayList<>();
 
+    /** The people the claim is shared with, in the order they were added. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_share", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    @BatchSize(size = 100)
+    private List<ClaimShare> shares = new ArrayList<>();
+
     /** A proof that is a receipt, the kind a proof is when none is chosen. */
     public static final String RECEIPT = "receipt";
     public static final String PHOTO = "photo";
@@ -633,5 +640,47 @@ public class Claim {
     public void addLine(ClaimLine line) {
         lines.add(line);
         amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** The people the claim is shared with, in the order they were added. */
+    public List<ClaimShare> getShares() {
+        return List.copyOf(shares);
+    }
+
+    /** Share the claim with a person. */
+    public void addShare(ClaimShare share) {
+        shares.add(share);
+    }
+
+    /** The claim's shares added up. */
+    public BigDecimal sharedTotal() {
+        return shares.stream().map(ClaimShare::getShare).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * A person merged into another: a share they held goes to the other, added to the other's own,
+     * and none is kept by the claim's own person.
+     */
+    public void mergeHolder(Long fromId, Long intoId) {
+        List<ClaimShare> merged = new ArrayList<>();
+        for (ClaimShare share : shares) {
+            Long holder = share.getHolderId().equals(fromId) ? intoId : share.getHolderId();
+            if (holder.equals(personId)) {
+                continue;
+            }
+            int at = -1;
+            for (int i = 0; i < merged.size(); i++) {
+                if (merged.get(i).getHolderId().equals(holder)) {
+                    at = i;
+                }
+            }
+            if (at < 0) {
+                merged.add(new ClaimShare(holder, share.getShare()));
+            } else {
+                merged.set(at, new ClaimShare(holder, merged.get(at).getShare().add(share.getShare())));
+            }
+        }
+        shares.clear();
+        shares.addAll(merged);
     }
 }

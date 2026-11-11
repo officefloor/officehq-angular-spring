@@ -159,6 +159,33 @@ export interface Claim {
   waived: boolean;
   /** Whether the claim is held: a held claim still counts in every total. */
   held: boolean;
+  /** The people the claim is shared with, in the order added. */
+  shares: ClaimShareItem[];
+}
+
+/** A share of a claim: the holder (another person on the sheet) and their share percent. */
+export interface ClaimShareItem {
+  holder: number;
+  share: string;
+}
+
+/**
+ * A holder's part of a claim's figure, in whole cents: the figure times the share divided by 100,
+ * rounded half to even.
+ */
+export function sharePart(figure: number, share: string): number {
+  // figure cents times share hundredths: ten-thousandths of a cent
+  const units = figure * Math.round(Number(share) * 100);
+  const sign = units < 0 ? -1 : 1;
+  const abs = Math.abs(units);
+  const whole = Math.floor(abs / 10000);
+  const rest = abs - whole * 10000;
+  return sign * (rest > 5000 || (rest === 5000 && whole % 2 !== 0) ? whole + 1 : whole);
+}
+
+/** The part of a claim's figure, in whole cents, its own person keeps: the figure less the holders' parts. */
+export function ownPart(c: Claim, figure: number): number {
+  return (c.shares ?? []).reduce((own, s) => own - sharePart(figure, s.share), figure);
 }
 
 /** One line of a claim: a label, a quantity and a unit amount. */
@@ -434,6 +461,7 @@ export function money(c: number): string {
           <span>Review late <span data-testid="claim-review-late">{{ reviewLateOf(c) ? 'yes' : 'no' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
+          <span>Shared with <span data-testid="claim-shares">{{ sharesOf(c) }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
             @for (l of c.log; track $index) {
@@ -590,6 +618,26 @@ export function money(c: number): string {
             }
           </select>
           <button type="button" data-testid="claim-reassign" (click)="reassign(c)">Move</button>
+          <label [for]="'claim-share-select-' + c.id">Share with</label>
+          <select
+            [id]="'claim-share-select-' + c.id"
+            data-testid="claim-share-select"
+            (change)="setShareHolder(c.id, $any($event.target).value)"
+          >
+            <option value="" [selected]="!shareHolders().get(c.id)">Choose a person</option>
+            @for (o of people(); track o.id) {
+              <option [value]="o.id" [selected]="shareHolders().get(c.id) === '' + o.id">{{ o.name }}</option>
+            }
+          </select>
+          <label [for]="'claim-share-pct-' + c.id">Share percent</label>
+          <input
+            [id]="'claim-share-pct-' + c.id"
+            data-testid="claim-share-pct"
+            inputmode="decimal"
+            [value]="sharePcts().get(c.id) ?? ''"
+            (input)="setSharePct(c.id, $any($event.target).value)"
+          />
+          <button type="button" data-testid="claim-share-add" (click)="share(c)">Share</button>
           <button
             type="button"
             data-testid="claim-edit"
@@ -690,6 +738,10 @@ export class PersonClaims {
   protected readonly reasons = signal<ReadonlyMap<number, string>>(new Map());
   /** The line typed on each claim, by claim id. */
   protected readonly lineDrafts = signal<ReadonlyMap<number, LineDraft>>(new Map());
+  /** The person chosen to share each claim with, by claim id (the person's id as text). */
+  protected readonly shareHolders = signal<ReadonlyMap<number, string>>(new Map());
+  /** The share percent typed on each claim, by claim id. */
+  protected readonly sharePcts = signal<ReadonlyMap<number, string>>(new Map());
   /** The comment typed on each claim, by claim id. */
   protected readonly commentTexts = signal<ReadonlyMap<number, string>>(new Map());
   /** The sheet's void reasons, one of which a void needs while there are any. */
@@ -923,6 +975,66 @@ export class PersonClaims {
   protected setProofKind(id: number, kind: string): void {
     this.proofKindsChosen.update((m) => new Map(m).set(id, kind));
     this.clearActionError(id);
+  }
+
+  protected setShareHolder(id: number, personId: string): void {
+    this.shareHolders.update((m) => new Map(m).set(id, personId));
+    this.clearActionError(id);
+  }
+
+  protected setSharePct(id: number, pct: string): void {
+    this.sharePcts.update((m) => new Map(m).set(id, pct));
+    this.clearActionError(id);
+  }
+
+  /** The claim's holders as "<name> <share>", comma and space separated, in the order added. */
+  protected sharesOf(c: Claim): string {
+    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    return (c.shares ?? []).map((s) => `${names.get(s.holder) ?? ''} ${s.share}`).join(', ');
+  }
+
+  /** Share a claim with the chosen person at the typed share percent. */
+  protected async share(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const sheet = this.session.sheet();
+    const holder = this.shareHolders().get(c.id) ?? '';
+    const pct = (this.sharePcts().get(c.id) ?? '').trim();
+    if (!holder || !/^\d{1,3}(\.\d{1,2})?$/.test(pct) || Number(pct) <= 0) {
+      this.actionErrors.update((m) =>
+        new Map(m).set(c.id, 'Choose a person and enter a share percent above 0.00 with two decimals.'),
+      );
+      return;
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>('/api/claims/share', {
+          sheet,
+          user: this.session.user(),
+          id: c.id,
+          holder: Number(holder),
+          share: pct,
+        }),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.sharePcts.update((m) => {
+        const next = new Map(m);
+        next.delete(c.id);
+        return next;
+      });
+      this.saved.emit(claim);
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const status = e instanceof HttpErrorResponse ? e.status : 0;
+      const err =
+        status === 403
+          ? 'You may not change this claim.'
+          : status === 409
+            ? 'This claim cannot be shared with that person: it is settled, void or deleted, or they are its own person or already hold a share.'
+            : status === 422
+              ? 'The share must be above 0.00 and the claim\'s shares cannot total more than 100.00.'
+              : 'Could not share this claim.';
+      this.actionErrors.update((m) => new Map(m).set(c.id, err));
+    }
   }
 
   protected setTarget(id: number, personId: string): void {

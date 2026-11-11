@@ -694,6 +694,46 @@ public class ClaimService {
     }
 
     /**
+     * Share a claim with another person on the sheet at a share percent (more than 0.00), written as
+     * CLAIM_SHARED with the holder and the share. Refused (409) for a SETTLED, VOID or DELETED claim,
+     * for the claim's own person or a person already holding a share, and (422) for a share of 0.00
+     * or one taking the claim's shares above 100.00.
+     */
+    @Transactional
+    public Claim share(String sheetId, String user, long id, long holderId, BigDecimal share) {
+        roles.refuseViewer(sheetId, user);
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim on this sheet."));
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be shared.");
+        }
+        Person person = person(sheetId, claim.getPersonId());
+        Person holder = person(sheetId, holderId);
+        if (holder.getId().equals(person.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A claim cannot be shared with its own person.");
+        }
+        if (claim.getShares().stream().anyMatch(s -> s.getHolderId().equals(holder.getId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, holder.getName() + " already holds a share.");
+        }
+        if (share.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "A share must be more than 0.00.");
+        }
+        if (claim.sharedTotal().add(share).compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "The claim's shares cannot total more than 100.00.");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.addShare(new ClaimShare(holder.getId(), share));
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_SHARED", sheetId, user, person, saved) + " with=" + holder.getName()
+                + " share=" + share.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Comment on a claim in any status: kept with the user and the sheet's today, and written as
      * COMMENT_ADDED. Refused (422) for an empty comment, and as any change for a viewer or an
      * archived sheet.

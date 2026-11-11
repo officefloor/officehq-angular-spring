@@ -91,6 +91,11 @@ public class ClaimController {
             @NotNull @Min(1) @Max(1000000) Integer qty, @NotNull @Pattern(regexp = AMOUNT) String unit) {
     }
 
+    public record ShareClaimRequest(@NotBlank @Size(max = 100) String sheet,
+            @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull Long holder,
+            @NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String share) {
+    }
+
     public record RedateClaimRequest(@NotBlank @Size(max = 100) String sheet,
             @NotBlank @Size(max = 100) String user, @NotNull Long id, @NotNull LocalDate date) {
     }
@@ -152,7 +157,11 @@ public class ClaimController {
             boolean lateEntry, LocalDate remindedOn, String ref, List<String> tags, String voidReason,
             List<ClaimCommentLine> comments, Integer batch, List<ClaimLineLine> lines, Long addedSeq,
             LocalDate reviewOn, boolean waived, String statedCharged, int proofsReceipt, int proofsPhoto,
-            boolean held) {
+            boolean held, List<ClaimShareLine> shares) {
+    }
+
+    /** One of the people a claim is shared with, in the order added: the holder's id and their share. */
+    public record ClaimShareLine(long holder, String share) {
     }
 
     /** One line of a claim, in the order added: its label, quantity and unit amount. */
@@ -189,7 +198,9 @@ public class ClaimController {
                         .toList(),
                 claim.getAddedSeq(), claim.getReviewOn(), claim.isWaived(),
                 money(claim.getStatedCharged()), claim.proofsOf(Claim.RECEIPT), claim.proofsOf(Claim.PHOTO),
-                claim.isHeld());
+                claim.isHeld(),
+                claim.getShares().stream().map(s -> new ClaimShareLine(s.getHolderId(), money(s.getShare())))
+                        .toList());
     }
 
     public static BigDecimal amount(String amount) {
@@ -347,6 +358,12 @@ public class ClaimController {
     public ClaimResponse addLine(@Valid @RequestBody AddLineRequest req) {
         return response(service.addLine(req.sheet().trim(), req.user().trim(), req.id(), req.label().trim(), req.qty(),
                 amount(req.unit())));
+    }
+
+    @PostMapping("/share")
+    public ClaimResponse share(@Valid @RequestBody ShareClaimRequest req) {
+        return response(service.share(req.sheet().trim(), req.user().trim(), req.id(), req.holder(),
+                amount(req.share())));
     }
 
     @PostMapping("/remind")

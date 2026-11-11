@@ -18,6 +18,7 @@ import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
@@ -194,7 +195,9 @@ public class RollupService {
         List<List<Rate>> sheetRates = rates.current(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        Map<Long, BigDecimal> heldParts = heldParts(sheet, sheetRates, sheetClaims, sheetPeople);
+        for (Person person : sheetPeople) {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
@@ -212,11 +215,16 @@ public class RollupService {
                 BigDecimal figure = figure(sheet, sheetRates, sheetClaims, person, claim);
                 if (figure != null) {
                     anyFigure = true;
-                    due = due.add(figure);
+                    due = due.add(ownPart(claim, figure));
                     if (overdue(sheet, person, claim)) {
                         overdue = overdue.add(figure);
                     }
                 }
+            }
+            BigDecimal held = heldParts.get(person.getId());
+            if (held != null) {
+                anyFigure = true;
+                due = due.add(held);
             }
             // as on screen: n/a when the grade in force today has no rate today and no claim that
             // counts has a figure
@@ -478,6 +486,40 @@ public class RollupService {
                                 Rounding.mode(sheet, Rounding.dateOf(claim, sheetClaims))))
                         .orElse(null);
         return LateCharge.withCharge(sheet, claim, person.gradeOn(claim.getDate()), figure);
+    }
+
+    /** The part of a claim's figure its own person keeps: the figure less the parts of the people it is shared with. */
+    public static BigDecimal ownPart(Claim claim, BigDecimal figure) {
+        BigDecimal own = figure;
+        for (ClaimShare share : claim.getShares()) {
+            own = own.subtract(share.partOf(figure));
+        }
+        return own;
+    }
+
+    /**
+     * Per holder (by person id), the parts they hold of the claims that count for their own person and
+     * have a figure; a person holding none is absent.
+     */
+    private static Map<Long, BigDecimal> heldParts(Sheet sheet, List<List<Rate>> sheetRates, List<Claim> sheetClaims,
+            List<Person> sheetPeople) {
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        sheetPeople.forEach(p -> byId.put(p.getId(), p));
+        Map<Long, BigDecimal> parts = new LinkedHashMap<>();
+        for (Claim claim : sheetClaims) {
+            Person owner = byId.get(claim.getPersonId());
+            if (claim.getShares().isEmpty() || owner == null || !owner.counts(claim, sheet.getToday())) {
+                continue;
+            }
+            BigDecimal figure = figure(sheet, sheetRates, sheetClaims, owner, claim);
+            if (figure == null) {
+                continue;
+            }
+            for (ClaimShare share : claim.getShares()) {
+                parts.merge(share.getHolderId(), share.partOf(figure), BigDecimal::add);
+            }
+        }
+        return parts;
     }
 
     /**
