@@ -8,6 +8,7 @@ import { Rate, Rates, capped, excessOver, rateOn, sumDues, trimmedSumDues } from
 import { GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
+import { Pools } from '../pools/pools';
 
 interface Person {
   id: number;
@@ -99,7 +100,7 @@ function csvField(value: string): string {
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [Claims, Header, Periods, Rates, Summary],
+  imports: [Claims, Header, Periods, Pools, Rates, Summary],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -528,6 +529,7 @@ function csvField(value: string): string {
       }
     </section>
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+    <app-pools [people]="people()" />
   `,
 })
 export class People {
