@@ -497,6 +497,7 @@ const SUMMARY_STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+      <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
       <button type="button" data-testid="dups-show" (click)="dupsShown.set(true)">Show duplicate claims</button>
       @if (dupsShown()) {
         <ul aria-label="Duplicate claims">
@@ -3029,6 +3030,22 @@ export class People {
       }
     }
     this.download('claims', lines);
+  }
+
+  /** Download each person's figures for each period, people in list order (retired included) and
+   *  periods in the order added, with the due-total and carried figure as the person's row shows them. */
+  protected async exportPeriods(): Promise<void> {
+    const sheet = this.session.sheet();
+    await this.session.settled();
+    if (this.session.sheet() !== sheet) return;
+    const periods = [...this.periods()].sort((a, b) => a.id - b.id);
+    const lines = ['person,period,figure,carried'];
+    for (const p of this.people()) {
+      for (const pd of periods) {
+        lines.push([p.name, pd.name, this.periodDueOf(pd, p.id), this.periodCarriedOf(pd, p.id)].map(csvField).join(','));
+      }
+    }
+    this.download('periods', lines);
   }
 
   /** Download the person's statement: each claim of theirs bound by their last statement, oldest first, with the bound figure as the claim shows it. */
