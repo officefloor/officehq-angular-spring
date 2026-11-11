@@ -1,0 +1,64 @@
+{
+  "checkpoint": 27,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp27_patrons-and-backing",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may name other people on the sheet as their patrons, one at a time from their row (not\nthemselves, and not the same person twice; a refusal shows an error on the row; PATRON_ADDED\nname=<name> patron=<patron name>). Show each person's patrons (names, comma and space separated,\nsorted) and their backing: their patrons' due-totals added up, skipping n/a, 0.00 with no\npatrons.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may name other people on the sheet as their patrons, one at a time from their row (not\nthemselves, and not the same person twice; a refusal shows an error on the row; PATRON_ADDED\nname=<name> patron=<patron name>). Show each person's patrons (names, comma and space separated,\nsorted) and their backing: their patrons' due-totals added up, skipping n/a, 0.00 with no\npatrons.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "29a19a3afe91c19a34d59668f17279003448edc8",
+  "reset_sha": "",
+  "preagent_sha": "5d53d37e469ddacb2c378a28fc3164f7e90d96f3",
+  "prev_sha": "5d53d37e469ddacb2c378a28fc3164f7e90d96f3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7628044000000002,
+    "input_tokens": 6,
+    "output_tokens": 825,
+    "cache_read_tokens": 123971,
+    "cache_creation_tokens": 1281,
+    "num_turns": 2,
+    "duration_ms": 10411,
+    "duration_api_ms": 91258,
+    "model": "claude-opus-5-5",
+    "session_id": "a8aa3d4e-c3a9-4a7c-92dc-848ef9732bf3",
+    "stop_reason": "success",
+    "result_text": "People can now name other people on the sheet as patrons from their own row. Each row shows that person's patrons and their backing. `bin/e2e` passes all 4 tests in the spec.\n\n- **How you add one:** each row has a patron picker and an \"Add patron\" button. The picker only lists other people on the sheet who aren't already that person's patrons. When the server refuses an add, the row shows `person-patron-error` and nothing is saved or written to the audit file. The error clears on the next action on that row.\n- **What the server enforces:** it refuses a person naming themselves or the same patron twice, even if two users try at the same moment. On success it writes `PATRON_ADDED sheet=<id> by=<user> name=<name> patron=<patron name>` to the audit file.\n- **What the row shows:** `person-patrons` lists the patrons' names sorted and joined with \", \". `person-backing` adds up the patrons' due-totals as the screen shows them, skips any that are n/a, and is 0.00 with no patrons. Because it's worked out on the screen, it changes whenever a patron's due-total does, for example when they're put on hold.\n- **Storage:** a new `person_patron` table (migration `V22__person_patron.sql`). Patrons are stored by id, so renaming a patron updates the lists. They're kept apart from the person record, so adding a patron doesn't change the person's version or interrupt someone editing that person.\n\nTwo behaviours you might not expect:\n- **Refusals in the test:** you can't pick yourself or an existing patron, so in this test those refusals come from the picker leaving the name out, not from the error message. The error appears only if nobody is chosen or the server refuses, such as when two users add the same patron at once.\n- **Retired people:** they still appear in the picker and still count in backing.\n\nThe server changes are in `PersonService`, `PersonController` and new `PersonPatron` classes in the `person` package; the screen changes are in `people.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7628044000000002,
+        "num_turns": 2,
+        "duration_ms": 10411,
+        "duration_api_ms": 91258,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp27.agent.jsonl",
+  "agent_diff_file": "cp27.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
