@@ -18,6 +18,10 @@ interface Person {
   statedTotal: string | null;
   /** The sheet's today when the last statement was taken (yyyy-mm-dd); null with none. */
   statementDate: string | null;
+  /** Whether the person has a retirement date: they count as retired at once, whatever the date. */
+  retired: boolean;
+  /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
+  retiredFrom: string | null;
 }
 
 // The people on the active sheet, in the order they were added, each with their claims and what
@@ -81,16 +85,27 @@ interface Person {
           <p role="alert" data-testid="quick-error">{{ message }}</p>
         }
       </form>
+      <p>
+        <input
+          id="show-retired"
+          type="checkbox"
+          data-testid="show-retired"
+          [checked]="session.showRetired()"
+          (change)="session.showRetired.set(checked($event))"
+        />
+        <label for="show-retired">Show retired</label>
+      </p>
       <table>
         <thead>
           <tr>
             <th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th>
             <th scope="col">Statements</th><th scope="col">Last stated</th><th scope="col">Stated on</th>
+            <th scope="col">Retired</th><th scope="col">Retired from</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th><th scope="col">Claims</th>
           </tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of listed(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -99,6 +114,8 @@ interface Person {
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td>
                 <button
                   type="button"
@@ -116,6 +133,22 @@ interface Person {
                 >
                   Statement
                 </button>
+                <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
+                <input
+                  [id]="'person-retire-date-' + p.id"
+                  type="date"
+                  data-testid="person-retire-date"
+                  [value]="retireDates()[p.id] ?? ''"
+                  (input)="setRetireDate(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-retire"
+                  [attr.aria-label]="'Retire ' + p.name"
+                  (click)="retire(p)"
+                >
+                  Retire
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ e.message }}</p>
@@ -130,6 +163,7 @@ interface Person {
                 [grade]="p.grade"
                 [rates]="rates()"
                 [periods]="periods()"
+                [retiredFrom]="p.retiredFrom"
                 (saved)="claimSaved($event)"
               ></td>
             </tr>
@@ -143,10 +177,16 @@ interface Person {
 })
 export class People {
   private readonly http = inject(HttpClient);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
+  /** The people listed: the retired ones only while "show retired" is on. Totals still count everyone. */
+  protected readonly listed = computed(() =>
+    this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+  );
+  /** The date typed to retire each person from, by id; blank retires from the sheet's today. */
+  protected readonly retireDates = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -206,6 +246,7 @@ export class People {
         this.claims.set([]);
         this.rates.set([]);
         this.periods.set([]);
+        this.retireDates.set({});
         this.reset();
         this.quickName.set('');
         this.quickAmount.set('');
@@ -217,6 +258,15 @@ export class People {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  protected checked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
+  }
+
+  protected setRetireDate(id: number, date: string): void {
+    this.retireDates.update((dates) => ({ ...dates, [id]: date }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
   }
 
   protected claimsOf(personId: number): Claim[] {
@@ -292,6 +342,29 @@ export class People {
       }
     } catch {
       this.rowError.set({ id: person.id, message: `A statement of ${person.name} could not be taken.` });
+    }
+  }
+
+  /** Retire the person from the typed date, or from the sheet's today when none is typed. */
+  protected async retire(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const from = (this.retireDates()[person.id] ?? '').trim();
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      this.rowError.set({ id: person.id, message: 'Pick a date to retire from, or leave it blank for today.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/retire`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { from: from || null }, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        this.retireDates.update((dates) => ({ ...dates, [person.id]: '' }));
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be retired.` });
     }
   }
 

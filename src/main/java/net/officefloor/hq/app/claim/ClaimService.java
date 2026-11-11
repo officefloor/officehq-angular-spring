@@ -18,7 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the people's claims on a sheet. A claim with no date is dated the sheet's today. A claim dated in a closed
- * period cannot be added, edited or change status. Only a DRAFT claim can be edited.
+ * period cannot be added, edited or change status. Only a DRAFT claim can be edited. No claim
+ * can be dated after the retirement date of its person.
  */
 @Service
 public class ClaimService {
@@ -53,6 +54,7 @@ public class ClaimService {
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
         LocalDate dated = dateOr(sheetId, date);
         periods.requireOpen(sheetId, dated);
+        person.requireClaimable(dated);
         Claim saved = claims.saveAndFlush(new Claim(sheetId, personId, amount, dated, noteOf(note)));
         audit.recordOnCommit(record("CLAIM_ADDED", user, person, saved));
         rollup.recordChanges(sheetId, user, before);
@@ -71,6 +73,9 @@ public class ClaimService {
         LocalDate dated = dateOr(sheetId, date);
         // Neither out of nor into a closed period.
         periods.requireOpen(sheetId, claim.getDate(), dated);
+        people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()))
+                .requireClaimable(dated);
         claim.setAmount(amount);
         claim.setDate(dated);
         claim.setNote(noteOf(note));

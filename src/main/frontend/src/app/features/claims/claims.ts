@@ -164,6 +164,8 @@ export class Claims {
   readonly rates = input.required<Rate[]>();
   /** The sheet's periods: a claim belongs to the one whose dates contain its date. */
   readonly periods = input.required<Period[]>();
+  /** The date the person is retired from (yyyy-mm-dd); null while not retired. */
+  readonly retiredFrom = input<string | null>(null);
   /** A claim was added, saved or changed status. */
   readonly saved = output<Claim>();
 
@@ -285,10 +287,14 @@ export class Claims {
         this.saved.emit(saved);
       }
     } catch (e) {
-      const closed = this.closedOn(date || (this.session.today() ?? ''));
+      const dated = date || (this.session.today() ?? '');
+      const closed = this.closedOn(dated);
+      const retiredFrom = this.retiredFrom();
       const why = closed
         ? ` Its date is in the closed period ${closed.name}.`
-        : editing !== null && e instanceof HttpErrorResponse && e.status === 409
+        : retiredFrom !== null && dated > retiredFrom
+          ? ` ${this.personName()} is retired from ${retiredFrom}.`
+          : editing !== null && e instanceof HttpErrorResponse && e.status === 409
           ? ' Only a DRAFT claim can be edited.'
           : '';
       this.error.set((editing === null ? 'The claim could not be added.' : 'The claim could not be saved.') + why);

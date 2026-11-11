@@ -30,11 +30,12 @@ public class PersonController {
 
     /** A person as shown, with how many statements they have had and the due-total and date of the last one. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate) {
+            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom) {
 
         static PersonView of(Person person, StatementSummary statements) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    statements.count(), statements.lastDueTotal(), statements.lastDate());
+                    statements.count(), statements.lastDueTotal(), statements.lastDate(),
+                    person.isRetired(), person.getRetiredFrom());
         }
     }
 
@@ -42,6 +43,10 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             Long version) {
+    }
+
+    /** The date to retire from; null for the sheet's today. */
+    public record RetireRequest(LocalDate from) {
     }
 
     private final PersonService service;
@@ -86,6 +91,15 @@ public class PersonController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(statements.take(sheetId.trim(), user.trim(), id));
+    }
+
+    /** Retire the person from a date. */
+    @PostMapping("/{id}/retire")
+    public PersonView retire(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody RetireRequest request) {
+        return view(service.retire(sheetId.trim(), user.trim(), id, request.from()));
     }
 
     private PersonView view(Person person) {

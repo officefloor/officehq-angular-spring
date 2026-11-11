@@ -17,6 +17,8 @@ export class Session {
   readonly sheet = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it. */
   readonly today = signal<string | null>(null);
+  /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
+  readonly showRetired = signal(false);
   /** Counts completed sheet loads, so the screen re-reads the sheet's data even for the same id. */
   readonly loaded = signal(0);
   private loads = 0;
