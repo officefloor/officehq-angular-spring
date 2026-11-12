@@ -1,0 +1,64 @@
+{
+  "checkpoint": 199,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp199_approvers",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have an approver: a user name on the row (an entry and a button; APPROVER_SET\nname=<name> user=<user>). That user may approve or reject the person's PENDING claims as a steward\nmay (the opener and the last editor still may not approve their own).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have an approver: a user name on the row (an entry and a button; APPROVER_SET\nname=<name> user=<user>). That user may approve or reject the person's PENDING claims as a steward\nmay (the opener and the last editor still may not approve their own).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9b3e568144ba0a4ee152c182dc3f80b63e5038ff",
+  "reset_sha": "",
+  "preagent_sha": "59f1a0c1c6ea395ac87ad0c58c33f2c1e36ec39c",
+  "prev_sha": "59f1a0c1c6ea395ac87ad0c58c33f2c1e36ec39c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.685492,
+    "input_tokens": 38,
+    "output_tokens": 8354,
+    "cache_read_tokens": 745260,
+    "cache_creation_tokens": 46151,
+    "num_turns": 20,
+    "duration_ms": 347577,
+    "duration_api_ms": 79463,
+    "model": "claude-opus-5-5",
+    "session_id": "8202acc0-ffa6-42f0-8637-690ce5f4e5f5",
+    "stop_reason": "success",
+    "result_text": "A person can now have an approver, and that user can approve or reject the person's PENDING claims the way a steward can. All 4 acceptance tests pass with `bin/e2e`.\n\n**What changed:**\n- **Database:** migration `V106__person_approver.sql` adds a nullable `approver` column to the `person` table.\n- **Server:**\n  - A new `POST /api/sheets/{sheet}/people/{id}/approver` endpoint sets the approver.\n  - It writes `APPROVER_SET sheet=\u2026 by=\u2026 name=<person> user=<approver>` to the audit file.\n  - A blank user name is refused and nothing is written.\n  - The person's view now includes `approver`.\n- **Approve and reject:** the steward-only check in `ClaimService` (`pendingForDecision`) now also lets the person's approver through. The rules that stop the opener or the last editor approving their own claim still apply to the approver.\n- **Front end:** each person's row shows the approver (`person-approver`), with an entry box (`person-approver-input`) and a button (`person-approver-save`). A refusal shows the usual `person-error`.\n\n**Choices to check:**\n- **Who can set an approver:** anyone except a viewer. Viewers are already stopped by the app's existing viewer check. I didn't make it steward-only like flagging, because in the test the user setting it (\"uma\") has no assigned role, so the app treats them as a clerk.\n- **Copied people:** when a person is copied to another sheet, their approver is copied along with their flag.\n- **Clearing an approver:** there's no way to remove one; a blank entry is refused. You can only replace it with another user.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.685492,
+        "num_turns": 20,
+        "duration_ms": 347577,
+        "duration_api_ms": 79463,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp199.agent.jsonl",
+  "agent_diff_file": "cp199.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
