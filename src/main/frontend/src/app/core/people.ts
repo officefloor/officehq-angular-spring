@@ -102,6 +102,8 @@ export class People {
   readonly people = signal<Person[]>([]);
   /** Whether the list shows retired people; belongs to the screen, so loading a sheet leaves it. */
   readonly showRetired = signal(false);
+  /** The ids of the people chosen for a bulk grade. */
+  readonly selected = signal<ReadonlySet<number>>(new Set());
   private loads = 0;
 
   /** Re-read the active sheet's people from the server; an error message when that failed. */
@@ -110,6 +112,7 @@ export class People {
     const sid = this.session.sheetId();
     const load = ++this.loads;
     this.people.set([]);
+    this.selected.set(new Set());
     if (!user || !sid) return null;
     try {
       const people = await firstValueFrom(
@@ -163,6 +166,49 @@ export class People {
         return { error: 'Someone else has changed this person. Their values are shown; review and save again.', current };
       }
       return { error: failed('save', e) };
+    }
+  }
+
+  /** Choose a person for a bulk grade, or leave them out. */
+  select(id: number, on: boolean): void {
+    this.selected.update((s) => {
+      const next = new Set(s);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Give the chosen people a grade from a date (blank takes the sheet's today) together, the server
+   *  changing them in list order as the person form would; how many were changed, or an error message. */
+  async bulkGrade(grade: string, from: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const personIds = [...this.selected()];
+    if (personIds.length === 0) return 'Select the people to grade.';
+    if (!(GRADES as readonly string[]).includes(grade)) return 'Choose a grade.';
+    const d = from.trim();
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ graded: number; people: Person[] }>(
+          `${this.url(sid)}/bulk-grade`,
+          { personIds, grade, from: d || null },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        const byId = new Map(done.people.map((p) => [p.id, p]));
+        this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
+        this.selected.set(new Set());
+      }
+      return done.graded;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string') {
+        return e.error.message;
+      }
+      return e instanceof HttpErrorResponse ? `Could not grade people (${e.status}).` : 'Could not grade people.';
     }
   }
 

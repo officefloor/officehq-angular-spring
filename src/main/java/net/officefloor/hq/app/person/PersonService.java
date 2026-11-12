@@ -174,6 +174,21 @@ public class PersonService {
         return updated;
     }
 
+    /** Give each of the chosen people the grade from a date, in list order, exactly as the person form
+     *  would with their name and terms left as they are; the people changed, in list order. */
+    @Transactional
+    public List<Person> bulkGrade(String sheetId, String user, List<Long> personIds, String grade, LocalDate from) {
+        requireSheet(sheetId);
+        Set<Long> chosen = Set.copyOf(personIds);
+        List<Person> picked = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> chosen.contains(p.getId())).toList();
+        if (picked.size() != chosen.size()) {
+            throw new PersonNotFoundException();
+        }
+        return picked.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade, from,
+                p.getTerms())).toList();
+    }
+
     /** Retire a person from a date, the sheet's today when none is given. */
     @Transactional
     public Person retire(String sheetId, String user, long personId, LocalDate from) {

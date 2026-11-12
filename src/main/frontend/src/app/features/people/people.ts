@@ -96,13 +96,52 @@ import { PersonClaims } from '../claims/claims';
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+      <section aria-label="Grade selected people">
+        <label for="bulk-grade">Grade selected people</label>
+        <select
+          id="bulk-grade"
+          data-testid="bulk-grade"
+          [value]="bulkGrade()"
+          (change)="bulkGrade.set(value($event)); bulkError.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === bulkGrade()">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">from</label>
+        <input
+          id="bulk-grade-from"
+          data-testid="bulk-grade-from"
+          placeholder="YYYY-MM-DD"
+          [value]="bulkFrom()"
+          (input)="bulkFrom.set(value($event)); bulkError.set(null)"
+        />
+        <button type="button" data-testid="bulk-grade-apply" [disabled]="bulkRunning()" (click)="applyBulkGrade()">
+          Grade selected
+        </button>
+        @if (bulkGraded() !== null) {
+          <p>Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span></p>
+        }
+        @if (bulkError(); as err) {
+          <p role="alert" data-testid="person-error">{{ err }}</p>
+        }
+      </section>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
+              <td>
+                <input
+                  type="checkbox"
+                  data-testid="person-select"
+                  [attr.aria-label]="'Select ' + p.name"
+                  [checked]="people.selected().has(p.id)"
+                  (change)="people.select(p.id, checked($event)); bulkError.set(null)"
+                />
+              </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
@@ -310,6 +349,29 @@ export class PeopleList {
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** The last refused action on a person, shown on their row until the next action on it. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
+
+  /** The grade the bulk grade gives the selected people. */
+  protected readonly bulkGrade = signal<string>('A');
+  /** The date the bulk grade applies from; blank takes the sheet's today. */
+  protected readonly bulkFrom = signal('');
+  protected readonly bulkRunning = signal(false);
+  /** How many the last bulk grade changed; gone while the next runs. */
+  protected readonly bulkGraded = signal<number | null>(null);
+  protected readonly bulkError = signal<string | null>(null);
+
+  protected async applyBulkGrade(): Promise<void> {
+    if (this.bulkRunning()) return;
+    this.bulkGraded.set(null);
+    this.bulkError.set(null);
+    this.bulkRunning.set(true);
+    try {
+      const done = await this.people.bulkGrade(this.bulkGrade(), this.bulkFrom());
+      if (typeof done === 'string') this.bulkError.set(done);
+      else this.bulkGraded.set(done);
+    } finally {
+      this.bulkRunning.set(false);
+    }
+  }
 
   protected checked(e: Event): boolean {
     return (e.target as HTMLInputElement).checked;

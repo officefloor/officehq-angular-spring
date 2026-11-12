@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /** The people on a sheet. The signed-in user's name comes in the X-User header. */
 @RestController
@@ -97,6 +98,18 @@ public class PersonController {
             @NotNull Long version) {
     }
 
+    /** The people to give a grade together, the grade, and the date it applies from (none: the sheet's
+     *  today). */
+    public record BulkGradeRequest(
+            @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> personIds,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {
+    }
+
+    /** How many a bulk grade changed, and the people it changed. */
+    public record BulkGradeView(int graded, List<PersonView> people) {
+    }
+
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {
     }
@@ -162,6 +175,21 @@ public class PersonController {
         } catch (ObjectOptimisticLockingFailureException e) {
             // saved by someone else between the version check and the write
             throw new PersonVersionConflictException(service.current(sheetId.trim(), personId));
+        }
+    }
+
+    /** Give the chosen people a grade from a date together, in list order. */
+    @PostMapping("/bulk-grade")
+    public BulkGradeView bulkGrade(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkGradeRequest request) {
+        try {
+            List<Person> graded = service.bulkGrade(sheetId.trim(), user.trim(), request.personIds(), request.grade(),
+                    request.from());
+            return new BulkGradeView(graded.size(), graded.stream().map(p -> view(p, user.trim())).toList());
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // one of them was saved by someone else at the same moment
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone else changed one of them; try again.");
         }
     }
 
