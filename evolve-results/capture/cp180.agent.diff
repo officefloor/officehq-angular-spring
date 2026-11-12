@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index a1249abe1..9c160fbf7 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -33,7 +33,7 @@ export interface Claim {
+   roundingDate: string;
+   /** Its place in its person's list: a claim with a later place is listed first (newest added, or last reassigned). */
+   listed: number;
+-  /** The day (yyyy-mm-dd) the claim is due by, fixed when it was added from the terms of its person's grade on its date. */
++  /** The day (yyyy-mm-dd) the claim is due by, fixed when it was added from its person's terms in force on the sheet's today then. */
+   dueBy: string;
+   /** Its status log, oldest first: one line per status it has had. */
+   log: ClaimLogLine[];
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 539b77f70..a758a8cac 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -219,9 +219,9 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
+         LocalDate dated = date != null ? date : sheets.entryDate(sheetId);
+-        // Due by its person's terms on its date in business days after it, skipping the sheet's holidays now, fixed from now on;
+-        // its period is the one of its due-by.
+-        int terms = termsFor(sheetId, person, dated);
++        // Due by its person's terms in force on the sheet's today (the day it is created) in business days after its date,
++        // skipping the sheet's holidays now, fixed from now on; its period is the one of its due-by.
++        int terms = termsFor(sheetId, person, sheets.today(sheetId));
+         LocalDate dueBy = holidays.businessDaysAfter(sheetId, dated, terms);
+         periods.requireOpen(sheetId, dueBy);
+         person.requireClaimable(dated);
+@@ -809,7 +809,7 @@ public class ClaimService {
+     /**
+      * Split an amount (more than 0.00 and less than its own) off an OPEN claim not deferred. The claim keeps the rest
+      * and loses any figure a statement bound it to; a new OPEN claim of the same person with the amount split off, the
+-     * same date and note, the next number, opened by the user, due by its date plus the terms in force on that date,
++     * same date and note, the next number, opened by the user, due by its date plus the terms in force on the sheet's today,
+      * names the claim's number as the one it was split from. Refused for any other status, a claim due by a date in a
+      * closed period (the new claim's own due-by is not weighed), or a user
+      * whose role may not open a claim.
+@@ -841,7 +841,7 @@ public class ClaimService {
+         Claim kept = claims.saveAndFlush(claim);
+         Claim part = new Claim(sheetId, kept.getPersonId(), amount, kept.getDate(), kept.getNote());
+         part.setRoundingDate(kept.getRoundingDate());
+-        part.setTerms(termsFor(sheetId, person, kept.getDate()));
++        part.setTerms(termsFor(sheetId, person, sheets.today(sheetId)));
+         part.setDueBy(holidays.businessDaysAfter(sheetId, kept.getDate(), part.getTerms()));
+         part.setListed(sheets.nextListed(sheetId));
+         part.setLateEntry(periods.softClosedOn(sheetId, part.getDueBy()));
+@@ -1159,8 +1159,10 @@ public class ClaimService {
+         return sheets.nextClaimNumber(sheetId, date);
+     }
+ 
+-    /** The terms of the person on the date: their own in force then, else their grade's on that date, else the sheet's then. */
+-
++    /**
++     * The terms of the person on the day (the sheet's today a claim is created): their own in force then, else those of
++     * the grade they had that day, else the sheet's then.
++     */
+     private int termsFor(String sheetId, Person person, LocalDate date) {
+         Integer own = person.termsOn(date);
+         return own != null ? own : settings.termsFor(sheetId, person.gradeOn(date), date);
