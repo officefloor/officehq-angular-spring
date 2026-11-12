@@ -43,7 +43,7 @@ public class PoolController {
 
     /**
      * A pool as shown, with its members in the order they were added. A crew is shown as a pool too ({@code crew}
-     * true, its id the crew's id negated): its lead and then its members, at the shares patrons get.
+     * true, its id the crew's id negated): its lead (if it still has one) and then its members, at the shares patrons get.
      */
     public record PoolView(Long id, String name, List<PoolMemberView> members, boolean crew) {
 
@@ -54,7 +54,9 @@ public class PoolController {
 
         static PoolView of(Crew c) {
             List<Long> people = new ArrayList<>();
-            people.add(c.getLeadId());
+            if (c.getLeadId() != null) {
+                people.add(c.getLeadId());
+            }
             c.getMembers().forEach(m -> people.add(m.getPersonId()));
             List<BigDecimal> shares = PersonService.patronShares(people.size());
             List<PoolMemberView> members = new ArrayList<>();

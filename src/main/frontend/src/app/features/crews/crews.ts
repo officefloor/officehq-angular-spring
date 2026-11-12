@@ -9,13 +9,14 @@ import { sumDues } from '../rates/rates';
 interface CrewView {
   id: number;
   name: string;
-  leadId: number;
+  /** Null once the lead was transferred to another sheet. */
+  leadId: number | null;
   memberIds: number[];
 }
 
 /** A crew's lead and its due-total, as the crew's row shows it. */
 export interface CrewTotal {
-  leadId: number;
+  leadId: number | null;
   dueTotal: string;
 }
 
@@ -116,9 +117,11 @@ export class Crews {
       id: crew.id,
       name: crew.name,
       leadId: crew.leadId,
-      lead: byId.get(crew.leadId)?.name ?? '',
+      lead: crew.leadId === null ? '' : (byId.get(crew.leadId)?.name ?? ''),
       members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
-      dueTotal: sumDues([crew.leadId, ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a')),
+      dueTotal: sumDues(
+        [...(crew.leadId === null ? [] : [crew.leadId]), ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a'),
+      ),
     }));
   });
 

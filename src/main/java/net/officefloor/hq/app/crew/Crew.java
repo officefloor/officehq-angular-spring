@@ -29,7 +29,8 @@ public class Crew {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "lead_person_id", nullable = false)
+    /** The lead; null once the lead was transferred to another sheet. */
+    @Column(name = "lead_person_id")
     private Long leadId;
 
     /** The crew's members besides its lead, in the order they were added. */
@@ -59,6 +60,7 @@ public class Crew {
         return name;
     }
 
+    /** The lead, or null when the crew is without one. */
     public Long getLeadId() {
         return leadId;
     }

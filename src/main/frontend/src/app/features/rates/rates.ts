@@ -277,6 +277,27 @@ export function trimmedSumDues(dues: string[]): string {
         </tbody>
       </table>
       <table>
+        <caption>Rate calendar: in force on the first day of each month of {{ year() ?? '' | fig }}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            @for (m of months(); track m) {
+              <th scope="col">{{ m.slice(5) | fig }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (g of grades(); track g) {
+            <tr>
+              <th scope="row">{{ g | fig }}</th>
+              @for (m of months(); track m) {
+                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ onFirstOf(g, m) ?? 'n/a' | fig }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
         <caption>All rates</caption>
         <thead>
           <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
@@ -347,6 +368,19 @@ export class Rates {
   protected current(grade: string): string | undefined {
     const today = this.session.today();
     return today === null ? undefined : rateOn(this.rates(), grade, today);
+  }
+
+  /** The year of the sheet's today, or null before it is known. */
+  protected readonly year = computed(() => this.session.today()?.slice(0, 4) ?? null);
+  /** Each month (yyyy-mm) of the sheet's today's calendar year. */
+  protected readonly months = computed(() => {
+    const year = this.year();
+    return year === null ? [] : Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  });
+
+  /** The grade's rate in force on the first day of the month (yyyy-mm), or undefined when none is. */
+  protected onFirstOf(grade: string, month: string): string | undefined {
+    return rateOn(this.rates(), grade, `${month}-01`);
   }
 
   protected async submit(event: Event): Promise<void> {

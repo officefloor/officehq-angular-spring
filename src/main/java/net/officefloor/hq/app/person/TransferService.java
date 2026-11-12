@@ -42,7 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
  * their claims are listed after that person's, their name and aliases join that person's aliases, and their grades,
  * terms and contact are dropped (two such people, or a retired one, refuse the transfer). Otherwise a name or alias
  * used elsewhere in the other sheet's tree, or a contact the other sheet has already, refuses the transfer. The person
- * leaves this sheet entirely: their holds, patron links, pool and crew memberships and watches are dropped.
+ * leaves this sheet entirely: their holds, patron links, pool and crew memberships and watches are dropped, and a
+ * crew they lead is left without a lead.
  */
 @Service
 public class TransferService {
@@ -213,11 +214,11 @@ public class TransferService {
                 pools.saveAndFlush(pool);
             }
         }
-        // Crew memberships are dropped, and so is a crew the person leads.
+        // Crew memberships are dropped; a crew the person leads is left without a lead.
         for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
             if (from.getId().equals(crew.getLeadId())) {
-                crews.delete(crew);
-                crews.flush();
+                crew.setLeadId(null);
+                crews.saveAndFlush(crew);
             } else if (crew.getMembers().removeIf(m -> from.getId().equals(m.getPersonId()))) {
                 crews.saveAndFlush(crew);
             }

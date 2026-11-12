@@ -202,7 +202,8 @@ public class SheetCloneService {
 
         // The crews, with their leads and members.
         for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
-            Crew copy = new Crew(to, crew.getName(), personIds.get(crew.getLeadId()));
+            Crew copy = new Crew(to, crew.getName(),
+                    crew.getLeadId() == null ? null : personIds.get(crew.getLeadId()));
             for (CrewMember member : crew.getMembers()) {
                 copy.getMembers().add(new CrewMember(personIds.get(member.getPersonId())));
             }
