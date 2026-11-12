@@ -1,0 +1,204 @@
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index f6fe43c41..2be500d98 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -8,6 +8,8 @@ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.support.TransactionSynchronization;
++import org.springframework.transaction.support.TransactionSynchronizationManager;
+ 
+ /**
+  * Audit sink: appends one record per line to a KNOWN FILE (app.audit.file, default .run/audit.log)
+@@ -41,6 +43,23 @@ public class Audit {
+         }
+     }
+ 
++    /**
++     * Append one audit record once the current transaction commits, so a change that is refused or
++     * rolled back (by any rule) writes nothing. Outside a transaction the record is written now.
++     */
++    public void recordOnCommit(String entry) {
++        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
++            record(entry);
++            return;
++        }
++        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
++            @Override
++            public void afterCommit() {
++                record(entry);
++            }
++        });
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c404657a7..e5d60d33b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -64,7 +64,7 @@ public class ClaimController {
+             @PathVariable long personId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid ClaimRequest request) {
+-        return ClaimView.of(service.add(sheetId.trim(), personId, request.amount(), request.date(),
++        return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.date(),
+                 request.noteOrEmpty()));
+     }
+ 
+@@ -74,7 +74,7 @@ public class ClaimController {
+             @PathVariable long claimId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid ClaimRequest request) {
+-        return ClaimView.of(service.update(sheetId.trim(), claimId, request.amount(), request.date(),
++        return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amount(), request.date(),
+                 request.noteOrEmpty()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 546553088..495bc658c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -3,6 +3,8 @@ package net.officefloor.hq.app.claim;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -16,11 +18,13 @@ public class ClaimService {
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final Audit audit;
+ 
+-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets) {
++    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+         this.claims = claims;
+         this.people = people;
+         this.sheets = sheets;
++        this.audit = audit;
+     }
+ 
+     /** The sheet's claims, newest first. */
+@@ -31,18 +35,31 @@ public class ClaimService {
+     }
+ 
+     @Transactional
+-    public Claim add(String sheetId, long personId, BigDecimal amount, LocalDate date, String note) {
+-        people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
++        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+-        return claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note));
++        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note));
++        audit("CLAIM_ADDED", claim, person, user);
++        return claim;
+     }
+ 
+     @Transactional
+-    public Claim update(String sheetId, long claimId, BigDecimal amount, LocalDate date, String note) {
++    public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+         Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+         claim.setAmount(amount.setScale(2));
+         claim.setDate(date != null ? date : sheets.today(sheetId));
+         claim.setNote(note);
+-        return claims.saveAndFlush(claim);
++        Claim updated = claims.saveAndFlush(claim);
++        Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
++                .orElseThrow(PersonNotFoundException::new);
++        audit("CLAIM_EDITED", updated, person, user);
++        return updated;
++    }
++
++    /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */
++    private void audit(String event, Claim claim, Person person, String user) {
++        audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
++                + " person=" + person.getName() + " amount=" + claim.getAmount().toPlainString()
++                + " date=" + claim.getDate());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 43f35f876..b66d715a5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -52,7 +52,7 @@ public class PersonController {
+     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PersonRequest request) {
+-        return PersonView.of(service.add(sheetId.trim(), request.name(), request.grade()));
++        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
+     }
+ 
+     /** Change a person's name and grade. */
+@@ -61,6 +61,6 @@ public class PersonController {
+             @PathVariable long personId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PersonRequest request) {
+-        return PersonView.of(service.update(sheetId.trim(), personId, request.name(), request.grade()));
++        return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.name(), request.grade()));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 0aa68196b..609584145 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.person;
+ 
+ import java.util.List;
++import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -16,10 +17,12 @@ public class PersonService {
+ 
+     private final PersonRepository people;
+     private final SheetRepository sheets;
++    private final Audit audit;
+ 
+-    public PersonService(PersonRepository people, SheetRepository sheets) {
++    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
+         this.people = people;
+         this.sheets = sheets;
++        this.audit = audit;
+     }
+ 
+     @Transactional(readOnly = true)
+@@ -29,19 +32,28 @@ public class PersonService {
+     }
+ 
+     @Transactional
+-    public Person add(String sheetId, String name, String grade) {
++    public Person add(String sheetId, String user, String name, String grade) {
+         requireSheet(sheetId);
+         requireFreeName(sheetId, name.trim(), null);
+-        return saved(new Person(sheetId, name.trim(), grade));
++        Person person = saved(new Person(sheetId, name.trim(), grade));
++        audit("PERSON_ADDED", person, user);
++        return person;
+     }
+ 
+     @Transactional
+-    public Person update(String sheetId, long personId, String name, String grade) {
++    public Person update(String sheetId, String user, long personId, String name, String grade) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         requireFreeName(sheetId, name.trim(), person.getId());
+         person.setName(name.trim());
+         person.setGrade(grade);
+-        return saved(person);
++        Person updated = saved(person);
++        audit("PERSON_EDITED", updated, user);
++        return updated;
++    }
++
++    private void audit(String event, Person person, String user) {
++        audit.recordOnCommit(event + " sheet=" + person.getSheetId() + " by=" + user
++                + " name=" + person.getName() + " grade=" + person.getGrade());
+     }
+ 
+     private void requireFreeName(String sheetId, String name, Long exceptId) {
