@@ -54,9 +54,20 @@ export interface DescendantFigures {
   dueTotal: string;
   /** Two decimals. */
   overdueTotal: string;
+  /** The sheet's own figures as they are now, which a screen showing the sheet as of a date consolidates. */
+  ownPeopleCount: number;
+  ownDueTotal: string;
+  ownOverdueTotal: string;
 }
 
-const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+const NO_DESCENDANTS: DescendantFigures = {
+  peopleCount: 0,
+  dueTotal: '0.00',
+  overdueTotal: '0.00',
+  ownPeopleCount: 0,
+  ownDueTotal: '0.00',
+  ownOverdueTotal: '0.00',
+};
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
  *  clerk and steward; reassign and reopen by steward. */

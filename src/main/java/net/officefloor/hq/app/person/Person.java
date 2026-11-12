@@ -197,6 +197,19 @@ public class Person {
         aliases.add(new PersonAlias(sheetId, alias.trim()));
     }
 
+    /** A copy of them for another sheet: every grade they were given (with its from-date), their terms,
+     *  contact and aliases; not their holds. */
+    public Person copyTo(String otherSheetId) {
+        Person copy = new Person();
+        copy.sheetId = otherSheetId;
+        copy.name = name;
+        grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFromDate())));
+        copy.terms = terms;
+        copy.contact = contact;
+        aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias())));
+        return copy;
+    }
+
     public long getVersion() {
         return version;
     }

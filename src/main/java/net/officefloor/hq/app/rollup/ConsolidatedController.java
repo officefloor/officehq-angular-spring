@@ -17,8 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/descendants")
 public class ConsolidatedController {
 
-    /** The descendants' people count, and their due- and overdue-totals (two decimals), added up. */
-    public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal) {
+    /** The descendants' people count, and their due- and overdue-totals (two decimals), added up; then the
+     *  sheet's own as it is now, for a screen showing the sheet as of a date to consolidate with. */
+    public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal, int ownPeopleCount,
+            String ownDueTotal, String ownOverdueTotal) {
     }
 
     private final Rollup rollup;
@@ -32,6 +34,8 @@ public class ConsolidatedController {
     public ConsolidatedView figures(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         Rollup.Consolidated c = rollup.descendants(sheetId.trim());
-        return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString());
+        Rollup.Snapshot own = rollup.take(sheetId.trim());
+        return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString(),
+                own.people().size(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString());
     }
 }

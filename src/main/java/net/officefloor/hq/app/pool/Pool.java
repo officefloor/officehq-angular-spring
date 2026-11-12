@@ -69,6 +69,11 @@ public class Pool {
         members.add(new PoolMember(personId, share));
     }
 
+    /** Drop a person's membership. */
+    public void removeMember(long personId) {
+        members.removeIf(m -> m.getPersonId() == personId);
+    }
+
     /** Move a person's membership to another: their share is added to the other's (at most 100.00) when the
      *  other is already a member. */
     public void moveMember(long fromId, long intoId) {

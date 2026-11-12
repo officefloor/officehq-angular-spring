@@ -159,6 +159,35 @@ public class Claim {
         this.corrects = corrects;
     }
 
+    /** A copy of the claim for a person on another sheet, listed at a place there: its status, dates, note,
+     *  terms, frozen figure, tags, status log and comments carried; no number (one is given there), no figure
+     *  a statement bound, no reference, settle batch or lock. */
+    public Claim copyTo(String otherSheetId, Long otherPersonId, long otherListOrder) {
+        Claim copy = new Claim(otherSheetId, otherPersonId, amount, date, dueBy, note, corrects);
+        copy.listOrder = otherListOrder;
+        copy.terms = terms;
+        copy.status = status;
+        copy.settledDue = settledDue;
+        copy.openedBy = openedBy;
+        copy.editedBy = editedBy;
+        copy.deferredUntil = deferredUntil;
+        copy.proofs = proofs;
+        copy.splitFrom = splitFrom;
+        copy.lateEntry = lateEntry;
+        copy.remindedOn = remindedOn;
+        copy.voidReason = voidReason;
+        copy.tags = tags;
+        statusLog.forEach(l -> copy.statusLog.add(new StatusChange(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
+        comments.forEach(c -> copy.comments.add(new ClaimComment(c.getBy(), c.getOn(), c.getText())));
+        return copy;
+    }
+
+    /** The sheet's today when it was first opened, from its status log; none when never logged as opened. */
+    public LocalDate openedOn() {
+        return statusLog.stream().filter(l -> l.getStatus() == ClaimStatus.OPEN).map(StatusChange::getOn)
+                .findFirst().orElse(null);
+    }
+
     public Long getId() {
         return id;
     }

@@ -362,6 +362,24 @@ export class People {
     }
   }
 
+  /** Transfer a person to another sheet by its id; an error message when refused. */
+  async transfer(id: number, toSheetId: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!toSheetId.trim()) return 'Enter the id of the sheet to transfer to.';
+    try {
+      await firstValueFrom(
+        this.http.post<void>(`${this.url(sid)}/${id}/transfer`, { toSheetId: toSheetId.trim() }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      return null;
+    } catch (e) {
+      return failed('transfer', e);
+    }
+  }
+
   /** Start (on) or stop watching a person as the signed-in user; an error message when refused. */
   async watch(id: number, on: boolean): Promise<string | null> {
     const sid = this.session.sheetId();

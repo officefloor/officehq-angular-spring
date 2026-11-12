@@ -257,6 +257,27 @@ public class PersonController {
         return Map.of("message", e.getMessage());
     }
 
+    /** The id of the sheet to transfer a person to. */
+    public record TransferRequest(@Size(max = 200) String toSheetId) {
+    }
+
+    /** Transfer a person to another sheet: they leave this one. */
+    @PostMapping("/{personId}/transfer")
+    public ResponseEntity<Void> transfer(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid TransferRequest request) {
+        service.transfer(sheetId.trim(), user.trim(), personId, request.toSheetId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** A transfer that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(TransferRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> transferRefused(TransferRefusedException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     /** Give a person an alias. */
     @PostMapping("/{personId}/aliases")
     public PersonView addAlias(@PathVariable @NotBlank @Size(max = 200) String sheetId,

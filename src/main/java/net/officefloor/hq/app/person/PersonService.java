@@ -3,6 +3,8 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -18,8 +20,10 @@ import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,10 +46,12 @@ public class PersonService {
     private final ClaimRepository claims;
     private final PoolRepository pools;
     private final PeriodRepository periods;
+    private final SheetService sheetService;
 
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
             PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles,
-            ClaimRepository claims, PoolRepository pools, PeriodRepository periods) {
+            ClaimRepository claims, PoolRepository pools, PeriodRepository periods, SheetService sheetService) {
+        this.sheetService = sheetService;
         this.claims = claims;
         this.pools = pools;
         this.periods = periods;
@@ -326,6 +332,109 @@ public class PersonService {
                 + " into=" + merged.getName());
         rollup.recordChanges(sheetId, user, before);
         return merged;
+    }
+
+    /** A steward transfers a person to another sheet by its id. They arrive there with every grade they were
+     *  given, their terms, contact and aliases, and their claims (status, dates, notes, frozen figures, tags
+     *  and logs kept, listed in the order they were); each claim that had a number takes the next number of
+     *  the other sheet, in the order the claims were opened (by the sheet's today then, then by the order they
+     *  were added). Figures a statement bound are lost, their statement count starts again, and references
+     *  are not carried. They leave this sheet entirely: their patron links, pool memberships, watches,
+     *  statements, holds and fixed period figures are dropped. Refused for anyone but a steward, a retired
+     *  person, this sheet's own id, a sheet never loaded or archived, and when their name, an alias or their
+     *  contact is already on the other sheet. Answers the person as they arrived. */
+    @Transactional
+    public Person transfer(String sheetId, String user, long personId, String toSheetId) {
+        Person from = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new TransferRefusedException("Only a steward may transfer people.");
+        }
+        if (from.isRetired()) {
+            throw new TransferRefusedException("A retired person cannot be transferred.");
+        }
+        String to = toSheetId == null ? "" : toSheetId.trim();
+        if (to.isEmpty()) {
+            throw new TransferRefusedException("Enter the id of the sheet to transfer to.");
+        }
+        if (to.equals(sheetId)) {
+            throw new TransferRefusedException("A person cannot be transferred to their own sheet.");
+        }
+        Sheet target = sheets.findById(to)
+                .orElseThrow(() -> new TransferRefusedException("No sheet has the id " + to + "."));
+        if (target.isArchived()) {
+            throw new TransferRefusedException("Sheet " + to + " is archived.");
+        }
+        List<String> names = new ArrayList<>();
+        names.add(from.getName());
+        names.addAll(from.getAliases());
+        for (String name : names) {
+            if (people.nameTaken(to, name, null)) {
+                throw new TransferRefusedException("The name " + name + " is already in use on sheet " + to + ".");
+            }
+        }
+        if (from.getContact() != null && people.contactTaken(to, from.getContact(), null)) {
+            throw new TransferRefusedException("The contact " + from.getContact() + " is already in use on sheet "
+                    + to + ".");
+        }
+
+        Rollup.Snapshot beforeHere = rollup.take(sheetId);
+        Rollup.Snapshot beforeThere = rollup.take(to);
+        Person arrived = saved(from.copyTo(to));
+        List<Claim> leaving = new ArrayList<>(
+                claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, from.getId()));
+        List<Claim> listed = new ArrayList<>(leaving);
+        listed.sort(Comparator.comparingLong(Claim::getListOrder));
+        long order = claims.maxListOrder(to);
+        Map<Claim, Claim> copies = new LinkedHashMap<>();
+        for (Claim claim : listed) {
+            copies.put(claim, claim.copyTo(to, arrived.getId(), ++order));
+        }
+        List<Claim> numbered = new ArrayList<>(listed.stream().filter(c -> c.getNumber() != null).toList());
+        numbered.sort(Comparator.comparing(Claim::openedOn, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(Claim::getId));
+        Map<String, String> renumbered = new HashMap<>();
+        for (Claim claim : numbered) {
+            String number = sheetService.nextClaimNumber(to, claim.getDueBy());
+            copies.get(claim).setNumber(number);
+            renumbered.put(claim.getNumber(), number);
+        }
+        for (Claim copy : copies.values()) {
+            // a correction names the claim it corrects, a split the claim it came from, by their numbers there
+            if (copy.getCorrects() != null) {
+                copy.setCorrects(renumbered.getOrDefault(copy.getCorrects(), copy.getCorrects()));
+            }
+            if (copy.getSplitFrom() != null) {
+                copy.setSplitFrom(renumbered.getOrDefault(copy.getSplitFrom(), copy.getSplitFrom()));
+            }
+        }
+        claims.saveAll(copies.values());
+
+        for (Patron patron : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (patron.getPersonId().equals(from.getId()) || patron.getPatronId().equals(from.getId())) {
+                patrons.delete(patron);
+            }
+        }
+        for (Pool pool : pools.findBySheetIdOrderByIdAsc(sheetId)) {
+            pool.removeMember(from.getId());
+        }
+        for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
+            period.dropClosedTotal(from.getId());
+        }
+        watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+        statements.deleteAll(statements.findByPersonIdOrderByIdAsc(from.getId()));
+        claims.deleteAll(leaving);
+        // everything naming them goes before they do
+        people.flush();
+        people.delete(from);
+        people.flush();
+
+        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + from.getName()
+                + " to=" + to);
+        rollup.recordChanges(sheetId, user, beforeHere);
+        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + to + " by=" + user + " name=" + arrived.getName()
+                + " from=" + sheetId);
+        rollup.recordChanges(to, user, beforeThere);
+        return arrived;
     }
 
     /** Retire a person from a date, the sheet's today when none is given. */

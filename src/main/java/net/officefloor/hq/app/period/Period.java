@@ -135,6 +135,11 @@ public class Period {
         }
     }
 
+    /** Drop a person's fixed due-total for the period, leaving its due-total as it was fixed. */
+    public void dropClosedTotal(long personId) {
+        closedPersonTotals.remove(personId);
+    }
+
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;

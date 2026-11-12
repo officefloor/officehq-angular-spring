@@ -7,7 +7,8 @@ import { Session } from '../../core/session';
 // The sheet's counters, always in view: everyone on it (retired people included), the claims in
 // each status, and the sheet's due- and overdue-totals — the same figures the summary and the
 // people list show. Then the same figures consolidated over the sheet and all its descendants: each
-// descendant's as that sheet shows them, added to this sheet's own.
+// descendant's as that sheet shows them, added to this sheet's own (as it is now, even while the
+// screen shows the sheet as of a date).
 @Component({
   selector: 'app-header',
   template: `
@@ -42,6 +43,13 @@ export class HeaderCounters {
 
   protected readonly consolidated = computed(() => {
     const d = this.session.descendants();
+    if (this.session.asOf()) {
+      return {
+        peopleCount: d.ownPeopleCount + d.peopleCount,
+        dueTotal: money(hundredths(d.ownDueTotal) + hundredths(d.dueTotal)),
+        overdueTotal: money(hundredths(d.ownOverdueTotal) + hundredths(d.overdueTotal)),
+      };
+    }
     return {
       peopleCount: this.people.people().length + d.peopleCount,
       dueTotal: money(hundredths(this.figures.dueTotal()) + hundredths(d.dueTotal)),

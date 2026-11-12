@@ -369,6 +369,21 @@ import { PersonClaims } from '../claims/claims';
                 >
                   Merge<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'person-transfer-to-' + p.id">Transfer to sheet<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-transfer-to-' + p.id"
+                  data-testid="person-transfer-to"
+                  [value]="transferTargets()[p.id] ?? ''"
+                  (input)="setTransferTarget(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-transfer"
+                  [disabled]="transferring() === p.id"
+                  (click)="transfer(p)"
+                >
+                  Transfer<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
                 @if (actionError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ actionError()?.message }}</p>
                 }
@@ -406,6 +421,10 @@ export class PeopleList {
   protected readonly mergeChoices = signal<Record<number, string>>({});
   /** The id of the person being merged into another. */
   protected readonly merging = signal<number | null>(null);
+  /** The sheet id typed on each person's row to transfer them to. */
+  protected readonly transferTargets = signal<Record<number, string>>({});
+  /** The id of the person being transferred to another sheet. */
+  protected readonly transferring = signal<number | null>(null);
   /** The id of the person whose watch is being toggled. */
   protected readonly watching = signal<number | null>(null);
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
@@ -691,6 +710,29 @@ export class PeopleList {
       await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.periods.load()]);
     } finally {
       this.merging.set(null);
+    }
+  }
+
+  protected setTransferTarget(id: number, target: string): void {
+    this.clearActionError(id);
+    this.transferTargets.update((ts) => ({ ...ts, [id]: target }));
+  }
+
+  /** Transfer a person to the sheet typed on their row; once transferred, everything on the sheet is re-read,
+   *  as their claims, patron links, pool memberships and figures have left it. */
+  protected async transfer(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.transferring.set(p.id);
+    try {
+      const err = await this.people.transfer(p.id, this.transferTargets()[p.id] ?? '');
+      if (err) {
+        this.actionError.set({ id: p.id, message: err });
+        return;
+      }
+      this.transferTargets.update((ts) => ({ ...ts, [p.id]: '' }));
+      await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.periods.load()]);
+    } finally {
+      this.transferring.set(null);
     }
   }
 
