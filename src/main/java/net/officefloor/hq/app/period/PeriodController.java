@@ -66,4 +66,13 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
     }
+
+    /** Reopen a closed period, making its due-total live again; by a steward only, and refused when it
+     *  is open. */
+    @PostMapping("/{periodId}/reopen")
+    public PeriodView reopen(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
+    }
 }

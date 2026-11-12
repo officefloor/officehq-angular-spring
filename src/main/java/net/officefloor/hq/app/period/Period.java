@@ -11,7 +11,7 @@ import java.time.LocalDate;
 
 /** A named period on the sheet, from one date to another, both inclusive. A claim belongs to the
  *  period whose dates contain its date, or to none. A closed period keeps the due-total it had when
- *  closed, and its claims can no longer change. */
+ *  closed, and its claims can no longer change, until a steward reopens it. */
 @Entity
 @Table(name = "period")
 public class Period {
@@ -81,6 +81,12 @@ public class Period {
     public void close(BigDecimal total) {
         this.closed = true;
         this.closedTotal = total;
+    }
+
+    /** Reopen the period: its due-total is live again. */
+    public void reopen() {
+        this.closed = false;
+        this.closedTotal = null;
     }
 
     /** Whether a date falls in this period. */

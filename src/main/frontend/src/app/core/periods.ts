@@ -10,7 +10,7 @@ export interface Period {
   /** The first and last day of the period (YYYY-MM-DD), both inclusive. */
   from: string;
   to: string;
-  /** Closed: its due-total is fixed and its claims can no longer change. */
+  /** Closed: its due-total is fixed and its claims can no longer change, until a steward reopens it. */
   closed: boolean;
   /** The due-total fixed when it was closed, two decimals; null while open. */
   closedTotal: string | null;
@@ -96,6 +96,25 @@ export class Periods {
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already closed.';
       return e instanceof HttpErrorResponse ? `Could not close period (${e.status}).` : 'Could not close period.';
+    }
+  }
+
+  /** Reopen a closed period, making its due-total live again (a steward only); an error message when
+   *  refused. */
+  async reopen(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const period = await firstValueFrom(
+        this.http.post<Period>(`${this.url(sid)}/${id}/reopen`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.periods.update((ps) => ps.map((p) => (p.id === id ? period : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reopen a period.';
+      if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is not closed.';
+      return e instanceof HttpErrorResponse ? `Could not reopen period (${e.status}).` : 'Could not reopen period.';
     }
   }
 

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -18,12 +19,15 @@ public class PeriodService {
     private final PeriodRepository periods;
     private final SheetRepository sheets;
     private final Rollup rollup;
+    private final RoleService roles;
     private final Audit audit;
 
-    public PeriodService(PeriodRepository periods, SheetRepository sheets, Rollup rollup, Audit audit) {
+    public PeriodService(PeriodRepository periods, SheetRepository sheets, Rollup rollup, RoleService roles,
+            Audit audit) {
         this.periods = periods;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.roles = roles;
         this.audit = audit;
     }
 
@@ -75,6 +79,25 @@ public class PeriodService {
         periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + total.toPlainString());
+        return period;
+    }
+
+    /** Reopen a closed period, making its due-total live again; by a steward only, and refused when it
+     *  is open. */
+    @Transactional
+    public Period reopen(String sheetId, String user, long periodId) {
+        // Locking the sheet makes the reopen and any claim change on the sheet go one after the other.
+        sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
+        Period period = periods.findByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new PeriodStewardOnlyException();
+        }
+        if (!period.isClosed()) {
+            throw new PeriodRefusedException("The period is not closed.");
+        }
+        period.reopen();
+        periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + period.getName());
         return period;
     }
 }

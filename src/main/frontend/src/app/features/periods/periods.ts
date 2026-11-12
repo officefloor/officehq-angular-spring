@@ -6,7 +6,7 @@ import { Rates, hundredths, money } from '../../core/rates';
 
 // The sheet's periods: one form adds a period, and the list shows each with its dates and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
-// whether it is closed, with a button to close it.
+// whether it is closed, with buttons to close it and (a steward only) reopen it.
 @Component({
   selector: 'app-periods',
   template: `
@@ -57,6 +57,9 @@ import { Rates, hundredths, money } from '../../core/rates';
                 <button type="button" data-testid="period-close" [disabled]="acting() === p.id" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="period-reopen" [disabled]="acting() === p.id" (click)="reopen(p)">
+                  Reopen<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
                 @if (actionError()?.id === p.id) {
                   <p role="alert" data-testid="period-error">{{ actionError()?.message }}</p>
                 }
@@ -104,12 +107,20 @@ export class PeriodsPanel {
     return new Map([...sums].map(([id, sum]) => [id, money(sum)]));
   });
 
-  protected async close(p: Period): Promise<void> {
+  protected close(p: Period): Promise<void> {
+    return this.act(p, () => this.periods.close(p.id));
+  }
+
+  protected reopen(p: Period): Promise<void> {
+    return this.act(p, () => this.periods.reopen(p.id));
+  }
+
+  private async act(p: Period, action: () => Promise<string | null>): Promise<void> {
     if (this.acting() !== null) return;
     this.actionError.set(null);
     this.acting.set(p.id);
     try {
-      const err = await this.periods.close(p.id);
+      const err = await action();
       if (err) this.actionError.set({ id: p.id, message: err });
     } finally {
       this.acting.set(null);
