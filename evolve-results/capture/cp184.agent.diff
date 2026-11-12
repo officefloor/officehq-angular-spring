@@ -1,0 +1,78 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8dce29287..0d9a65a73 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -123,6 +123,15 @@ function live(claim: Claim, person: LeftOutBy, today: string | null): boolean {
+   return counts(claim, today) && !(isOpen(claim) && leftOut(claim, person, today));
+ }
+ 
++/**
++ * Whether the claim's amount counts in claimed: as {@link live}, but a hold (the person's or the claim's) does not take
++ * it out; only its due leaves the totals while held.
++ */
++function claimedLive(claim: Claim, person: LeftOutBy, today: string | null): boolean {
++  const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
++  return counts(claim, today) && !(isOpen(claim) && !bound(claim) && retired);
++}
++
+ /**
+  * Whether the claim counts in a period's due-total: by the status it had at the end of the period's last day, an OPEN,
+  * PENDING or SETTLED one, but one open then and still open now and dated within a hold of its person, or any once
+@@ -1516,10 +1525,10 @@ export class People {
+     return this.claimsByPerson().get(personId) ?? [];
+   }
+ 
+-  /** The sum of the person's OPEN, PENDING and SETTLED claims' amounts, with two decimals, leaving out corrections; open ones dated within a hold, or any once their retirement date is reached, not unless a statement binds them. */
++  /** The sum of the person's OPEN, PENDING and SETTLED claims' amounts, with two decimals, leaving out corrections; open ones once their retirement date is reached, not unless a statement binds them (a hold leaves them in). */
+   protected claimedBy(personId: number): string {
+     const person = this.people().find((p) => p.id === personId) ?? { holds: [], retiredFrom: null };
+-    return sumAmounts(this.claimsOf(personId).filter((c) => c.corrects === null && live(c, person, this.session.today())).map((c) => c.amount));
++    return sumAmounts(this.claimsOf(personId).filter((c) => c.corrects === null && claimedLive(c, person, this.session.today())).map((c) => c.amount));
+   }
+ 
+   /** The person's grade in force on the sheet's today. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 9b5e2af60..292d177af 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -366,6 +366,16 @@ public class Person {
+                 && !claim.isDeferredOn(today);
+     }
+ 
++    /**
++     * Whether the claim's amount counts in claimed: as {@link #counts(Claim, LocalDate)}, but a hold (the person's or
++     * the claim's) does not take it out; only its due leaves the totals while held.
++     */
++    public boolean countsClaimed(Claim claim, LocalDate today) {
++        ClaimStatus status = claim.getStatus();
++        return status.counts() && !(status.isOpen() && !claim.isBound() && retiredOn(today))
++                && !claim.isDeferredOn(today);
++    }
++
+     /**
+      * Whether the claim counts in a period's due-total, given the status it had at the end of the period's last day
+      * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and still open now and held or dated
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 2f6cb3437..f9a933dc9 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -99,7 +99,7 @@ public class RollupService {
+         List<BigDecimal> overdues = new ArrayList<>();
+         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+             List<Claim> theirs = counted.getOrDefault(person.getId(), List.of()).stream()
+-                    .filter(claim -> person.counts(claim, today))
++                    .filter(claim -> person.countsClaimed(claim, today))
+                     .toList();
+             BigDecimal claimed = zero();
+             BigDecimal due = zero();
+@@ -110,6 +110,10 @@ public class RollupService {
+                 if (claim.getCorrects() == null) {
+                     claimed = claimed.add(claim.getAmount());
+                 }
++                // A held claim stays in claimed; its due leaves the totals.
++                if (!person.counts(claim, today)) {
++                    continue;
++                }
+                 if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
+                     anyDue = true;
+                 }
