@@ -181,7 +181,7 @@ import { PersonClaims } from '../claims/claims';
                   data-testid="person-select"
                   [attr.aria-label]="'Select ' + p.name"
                   [checked]="people.selected().has(p.id)"
-                  (change)="people.select(p.id, checked($event)); bulkError.set(null)"
+                  (change)="people.select(p.id, checked($event)); bulkError.set(null); clearActionError(p.id)"
                 />
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
@@ -310,6 +310,22 @@ import { PersonClaims } from '../claims/claims';
                 >
                   Cancel statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-move-up"
+                  [disabled]="moving() === p.id"
+                  (click)="move(p, 'up')"
+                >
+                  Up<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-move-down"
+                  [disabled]="moving() === p.id"
+                  (click)="move(p, 'down')"
+                >
+                  Down<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   [id]="'person-retire-date-' + p.id"
@@ -414,6 +430,8 @@ export class PeopleList {
   protected readonly statementDates = signal<Record<number, string>>({});
   /** The id of the person being retired. */
   protected readonly retiring = signal<number | null>(null);
+  /** The id of the person being moved. */
+  protected readonly moving = signal<number | null>(null);
   /** The hold from- and to-dates typed on each person's row. */
   protected readonly holdDates = signal<Record<number, { from: string; to: string }>>({});
   /** The id of the person being put on hold. */
@@ -482,6 +500,8 @@ export class PeopleList {
     if (this.bulkRunning()) return;
     this.bulkGraded.set(null);
     this.bulkError.set(null);
+    const err = this.actionError();
+    if (err && this.people.selected().has(err.id)) this.actionError.set(null);
     this.bulkRunning.set(true);
     try {
       const done = await this.people.bulkGrade(this.bulkGrade(), this.bulkFrom());
@@ -657,6 +677,17 @@ export class PeopleList {
     this.retireDates.update((ds) => ({ ...ds, [id]: date }));
   }
 
+  protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
+    this.clearActionError(p.id);
+    this.moving.set(p.id);
+    try {
+      const err = await this.people.move(p.id, direction);
+      if (err) this.actionError.set({ id: p.id, message: err });
+    } finally {
+      this.moving.set(null);
+    }
+  }
+
   protected async retire(p: Person): Promise<void> {
     this.clearActionError(p.id);
     this.retiring.set(p.id);
@@ -748,7 +779,7 @@ export class PeopleList {
     }
   }
 
-  private clearActionError(id: number): void {
+  protected clearActionError(id: number): void {
     if (this.actionError()?.id === id) this.actionError.set(null);
     if (this.patronError()?.id === id) this.patronError.set(null);
   }

@@ -138,7 +138,7 @@ public class PersonController {
         this.asOf = asOf;
     }
 
-    /** The sheet's people in the order they were added; as they stood at the end of a date when the screen
+    /** The sheet's people in list order; as they stood at the end of a date when the screen
      *  views the sheet as of one. */
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -267,6 +267,27 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PatronRequest request) {
         return view(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()), user.trim());
+    }
+
+    /** The way to move a person in the list: up or down. */
+    public record MoveRequest(@NotNull @Pattern(regexp = "up|down") String direction) {
+    }
+
+    /** Swap a person with the one above or below them in the list; answers the two, in their new order. */
+    @PostMapping("/{personId}/move")
+    public List<PersonView> move(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid MoveRequest request) {
+        return service.move(sheetId.trim(), user.trim(), personId, request.direction().equals("up")).stream()
+                .map(p -> view(p, user.trim())).toList();
+    }
+
+    /** A move that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(MoveRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> moveRefused(MoveRefusedException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** The person to merge another into. */

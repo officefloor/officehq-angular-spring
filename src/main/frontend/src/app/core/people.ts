@@ -101,7 +101,7 @@ export interface PersonFields {
   contact?: string;
 }
 
-// The people on the active sheet, in the order they were added, re-read from the server each
+// The people on the active sheet, in list order (by position), re-read from the server each
 // time the sheet is loaded.
 @Injectable({ providedIn: 'root' })
 export class People {
@@ -307,6 +307,33 @@ export class People {
       return null;
     } catch (e) {
       return failed('retire', e);
+    }
+  }
+
+  /** Swap a person with the one above (up) or below (down) them in the list; an error message when
+   *  refused (the top cannot move up nor the bottom down). */
+  async move(id: number, direction: 'up' | 'down'): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const [first, second] = await firstValueFrom(
+        this.http.post<Person[]>(`${this.url(sid)}/${id}/move`, { direction }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) {
+        this.people.update((ps) => {
+          const a = ps.findIndex((p) => p.id === first.id);
+          const b = ps.findIndex((p) => p.id === second.id);
+          if (a < 0 || b < 0) return ps;
+          const next = [...ps];
+          next[Math.min(a, b)] = first;
+          next[Math.max(a, b)] = second;
+          return next;
+        });
+      }
+      return null;
+    } catch (e) {
+      return failed('move', e);
     }
   }
 

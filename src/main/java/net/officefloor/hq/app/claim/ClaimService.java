@@ -655,7 +655,7 @@ public class ClaimService {
     public record BulkSettled(int settled, int refused, List<Claim> claims, Integer batch) {
     }
 
-    /** Settle the chosen claims together in list order (people in the order they were added, each person's
+    /** Settle the chosen claims together in list order (people by their position, each person's
      *  claims newest first), each as a single settle by the user would; one a clerk puts PENDING counts as
      *  settled. All or nothing: if any one cannot be settled (or is not on the sheet), none is, every one
      *  counts as refused and nothing is written. Otherwise they are the sheet's next batch, each claim taking
@@ -725,11 +725,11 @@ public class ClaimService {
         return new BulkReassigned(moved.size(), chosen.size() - moved.size(), moved);
     }
 
-    /** The sheet's chosen claims in list order: people in the order they were added, each person's claims
+    /** The sheet's chosen claims in list order: people by their position, each person's claims
      *  newest first. */
     private List<Claim> inListOrder(String sheetId, Set<Long> chosen) {
         Map<Long, Integer> personOrder = new HashMap<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             personOrder.put(person.getId(), personOrder.size());
         }
         return claims.findBySheetIdOrderByListOrderDesc(sheetId).stream()

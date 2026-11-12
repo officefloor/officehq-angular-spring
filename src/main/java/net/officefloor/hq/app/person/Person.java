@@ -65,6 +65,10 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonAlias> aliases = new ArrayList<>();
 
+    /** Their place in the sheet's list; set when they are first saved, next after everyone on the sheet. */
+    @Column(name = "list_position", nullable = false)
+    private Long position;
+
     /** Moved on by each save, so a save made from an older version is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -208,6 +212,14 @@ public class Person {
         copy.contact = contact;
         aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias())));
         return copy;
+    }
+
+    public Long getPosition() {
+        return position;
+    }
+
+    public void setPosition(Long position) {
+        this.position = position;
     }
 
     public long getVersion() {

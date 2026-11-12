@@ -192,7 +192,7 @@ public class PoolController {
     }
 
     private Map<Long, Person> people(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
     }
 

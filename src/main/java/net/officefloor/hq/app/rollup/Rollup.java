@@ -41,7 +41,7 @@ public class Rollup {
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
     }
 
-    /** Everyone's figures by person id, in the order they were added, and the sheet's totals. */
+    /** Everyone's figures by person id, in list order, and the sheet's totals. */
     public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
             BigDecimal overdueTotal) {
     }
@@ -75,7 +75,7 @@ public class Rollup {
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
@@ -156,7 +156,7 @@ public class Rollup {
     }
 
     /** Each person's due-total of their claims due by a day from one date to another, both inclusive, by person
-     *  id, every person on the sheet in the order they were added, as the screen shows a person's for a
+     *  id, every person on the sheet in list order, as the screen shows a person's for a
      *  period: a claim counts by the status it had at the end of the last day, as its status log records
      *  it (one added after then does not), unless a hold or a deferral leaves it out now; each counts its
      *  due as shown now: its settled due, else the figure its statement bound, else its live due, an
@@ -167,7 +167,7 @@ public class Rollup {
         List<Rate> sheetRates = rates.findWithAncestors(sheetId, sheets.ancestors(sheetId));
         Map<Long, Person> byId = new LinkedHashMap<>();
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
-        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> {
             byId.put(p.getId(), p);
             totals.put(p.getId(), ZERO);
         });
@@ -196,7 +196,7 @@ public class Rollup {
     }
 
     /** Record, once the change commits, a SNAPSHOT line of each person's due-total in a snapshot, in the
-     *  order they were added. */
+     *  list order. */
     public void recordSnapshot(String sheetId, String user, Snapshot snapshot) {
         String prefix = " sheet=" + sheetId + " by=" + user;
         snapshot.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT" + prefix

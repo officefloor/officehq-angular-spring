@@ -71,7 +71,7 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
         requireSheet(sheetId);
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** The sheet's statements by person id, each person's in the order they were taken. */
@@ -348,7 +348,7 @@ public class PersonService {
             return List.of();
         }
         Set<Long> chosen = Set.copyOf(personIds);
-        List<Person> picked = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        List<Person> picked = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> chosen.contains(p.getId())).toList();
         if (picked.size() != chosen.size()) {
             throw new PersonNotFoundException();
@@ -568,6 +568,38 @@ public class PersonService {
         return arrived;
     }
 
+    /** Swap a person with the one above them in the list (up) or below them (down); the top cannot move up
+     *  nor the bottom down. Answers the two people swapped, in their new list order. */
+    @Transactional
+    public List<Person> move(String sheetId, String user, long personId, boolean up) {
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId() == personId) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new PersonNotFoundException();
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0) {
+            throw new MoveRefusedException(listed.get(at).getName() + " is already at the top of the list.");
+        }
+        if (to >= listed.size()) {
+            throw new MoveRefusedException(listed.get(at).getName() + " is already at the bottom of the list.");
+        }
+        Person person = listed.get(at);
+        Person other = listed.get(to);
+        Long position = person.getPosition();
+        person.setPosition(other.getPosition());
+        other.setPosition(position);
+        people.saveAllAndFlush(List.of(person, other));
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " position=" + (to + 1));
+        return up ? List.of(person, other) : List.of(other, person);
+    }
+
     /** Retire a person from a date, the sheet's today when none is given. */
     @Transactional
     public Person retire(String sheetId, String user, long personId, LocalDate from) {
@@ -674,6 +706,9 @@ public class PersonService {
 
     /** Save now, so a name another user took at the same moment is refused here, not at commit. */
     private Person saved(Person person) {
+        if (person.getPosition() == null) {
+            person.setPosition(people.maxPosition(person.getSheetId()) + 1);
+        }
         try {
             return people.saveAndFlush(person);
         } catch (DataIntegrityViolationException e) {

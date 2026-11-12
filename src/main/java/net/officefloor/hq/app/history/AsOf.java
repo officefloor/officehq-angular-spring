@@ -56,9 +56,10 @@ public class AsOf {
         return asOf;
     }
 
-    /** The people, in the order they were added. */
+    /** The people, in list order: by their position (those kept before positions, by id). */
     public List<Person> people(String sheetId, LocalDate asOf) {
-        return sorted(Person.class, sheetId, asOf, Comparator.comparing(Person::getId));
+        return sorted(Person.class, sheetId, asOf, Comparator.comparing((Person p) -> p.getPosition() == null
+                ? p.getId() : p.getPosition()).thenComparing(Person::getId));
     }
 
     /** The claims as listed: newest first. */

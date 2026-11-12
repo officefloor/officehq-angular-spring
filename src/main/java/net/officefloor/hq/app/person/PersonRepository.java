@@ -8,8 +8,12 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
-    /** The sheet's people in the order they were added. */
-    List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+    /** The sheet's people in list order: by their position. */
+    List<Person> findBySheetIdOrderByPositionAscIdAsc(String sheetId);
+
+    /** The highest position in the sheet's list; 0 while it has no people. */
+    @Query("select coalesce(max(p.position), 0) from Person p where p.sheetId = :sheetId")
+    long maxPosition(String sheetId);
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 
