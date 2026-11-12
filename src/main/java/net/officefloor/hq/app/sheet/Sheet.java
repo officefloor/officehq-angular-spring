@@ -286,16 +286,22 @@ public class Sheet {
         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
-    /** The late charge on an overdue claim's figure: the late percent in force on the claim's date, of the
-     *  figure for every full 30 days past its due-by on the sheet's today, rounded to cents as its date rounds;
+    /** The late charge on an overdue claim's figure: for each full 30 days past its due-by on the sheet's
+     *  today, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of the
+     *  figure, rounded to cents as its date rounds, the charges added up (a boundary at 0.00 adds nothing);
      *  0.00 for no figure (n/a). Only an OPEN or PENDING claim is overdue, so the caller asks only for those. */
     public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
-        long late = ChronoUnit.DAYS.between(dueBy, today);
-        if (figure == null || late < 30) {
-            return BigDecimal.ZERO.setScale(2);
+        BigDecimal charge = BigDecimal.ZERO.setScale(2);
+        if (figure == null) {
+            return charge;
         }
-        return figure.multiply(latePctOn(date)).multiply(BigDecimal.valueOf(late / 30)).movePointLeft(2)
-                .setScale(2, rounding(date));
+        long boundaries = ChronoUnit.DAYS.between(dueBy, today) / 30;
+        RoundingMode rounding = rounding(date);
+        for (long k = 1; k <= boundaries; k++) {
+            charge = charge.add(figure.multiply(latePctOn(dueBy.plusDays(30 * k))).movePointLeft(2)
+                    .setScale(2, rounding));
+        }
+        return charge;
     }
 
     /** A live due of a claim dated on a date as it counts: at least the floor in force then; none (n/a)

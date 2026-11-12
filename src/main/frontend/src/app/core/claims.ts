@@ -3,7 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { People, Person, heldOn } from './people';
 import { hundredths, rounded } from './rates';
-import { Session, daysBetween, isDate } from './session';
+import { Session, addDays, daysBetween, isDate } from './session';
 
 export interface Claim {
   id: number;
@@ -160,14 +160,21 @@ export class Claims {
     return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
-  /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, the sheet's late
-   *  percent in force on its date of the figure for every full 30 days past its due-by, rounded to cents as its date rounds; none
-   *  otherwise, and none on a correction. Never bound by a statement; frozen into the due when settled. */
+  /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, for each full 30 days
+   *  past its due-by, the sheet's late percent in force on that boundary date (the due-by plus 30, 60, 90 ...
+   *  days) of the figure, rounded to cents as its date rounds, the charges added up; none otherwise, and none
+   *  on a correction. Never bound by a statement; frozen into the due when settled. */
   lateCents(c: Claim, figureCents: bigint): bigint {
     const today = this.session.today();
     if (!this.overdue(c) || today === null || c.amount.startsWith('-')) return 0n;
-    const periods = BigInt(Math.floor(daysBetween(this.dueBy(c), today) / 30));
-    return rounded(figureCents * hundredths(this.session.latePctOn(c.date)) * periods, 10000n, this.session.roundsHalfUp(c.date));
+    const dueBy = this.dueBy(c);
+    const periods = Math.floor(daysBetween(dueBy, today) / 30);
+    const halfUp = this.session.roundsHalfUp(c.date);
+    let total = 0n;
+    for (let k = 1; k <= periods; k++) {
+      total += rounded(figureCents * hundredths(this.session.latePctOn(addDays(dueBy, 30 * k))), 10000n, halfUp);
+    }
+    return total;
   }
 
   /** The date a claim's figures round by: its own, or for a correction the date of the claim of the same
