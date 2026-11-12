@@ -408,6 +408,16 @@ public class ClaimController {
         return view(service.split(sheetId.trim(), user.trim(), id, request.amountValue()));
     }
 
+    /** Part-settle an OPEN claim: split the amount off it and settle the new claim at once: the new claim. */
+    @PostMapping("/claims/{id}/settle-part")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ClaimView settlePart(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid SplitRequest request) {
+        return view(service.settlePart(sheetId.trim(), user.trim(), id, request.amountValue()));
+    }
+
     /** A proof's kind: receipt or photo; blank or missing means none chosen (a receipt). */
     public record ProofRequest(@Pattern(regexp = "\\s*(receipt|photo)?\\s*") String kind) {
 

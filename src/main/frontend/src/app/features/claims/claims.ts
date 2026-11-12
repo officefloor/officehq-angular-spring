@@ -556,6 +556,23 @@ export function sumAmounts(amounts: string[]): string {
                 >
                   Split
                 </button>
+                <label class="visually-hidden" [for]="'claim-settle-part-amount-' + c.id">Amount to settle</label>
+                <input
+                  [id]="'claim-settle-part-amount-' + c.id"
+                  data-testid="claim-settle-part-amount"
+                  inputmode="decimal"
+                  placeholder="Amount to settle"
+                  [value]="settlePartAmounts()[c.id] ?? ''"
+                  (input)="setSettlePartAmount(c.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-settle-part"
+                  [attr.aria-label]="'Part-settle claim of ' + c.amount + ' on ' + c.date"
+                  (click)="settlePart(c)"
+                >
+                  Settle part
+                </button>
                 <label class="visually-hidden" [for]="'claim-defer-date-' + c.id">Defer until</label>
                 <input
                   [id]="'claim-defer-date-' + c.id"
@@ -736,6 +753,8 @@ export class Claims implements OnInit {
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The amount typed to part-settle off each OPEN claim, by claim id. */
+  protected readonly settlePartAmounts = signal<Record<number, string>>({});
   /** The comment typed for each claim, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
   /** The timeline last shown for each claim, by claim id, with the claim as it was shown for. */
@@ -1312,6 +1331,49 @@ export class Claims implements OnInit {
               : closed
                 ? `This claim is due by a date in the closed period ${closed.name}: it cannot be split.`
                 : `The amount split off must be more than 0.00 and less than ${claim.amount}.`;
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  protected setSettlePartAmount(id: number, amount: string): void {
+    this.settlePartAmounts.update((all) => ({ ...all, [id]: amount }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /**
+   * Part-settle an OPEN claim: split the amount typed for it off into a new claim, settled at once by the user (PENDING
+   * when the clerk limit says so). The store refuses the whole action when the split or the settle would be refused;
+   * four eyes and the proof rule are judged on this claim.
+   */
+  protected async settlePart(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const amount = (this.settlePartAmounts()[claim.id] ?? '').trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+      this.actionError.set({ id: claim.id, message: 'Type the amount to settle, with at most two decimals.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/settle-part`;
+    try {
+      const added = await firstValueFrom(this.http.post<Claim>(url, { amount }, this.session.headers()));
+      this.setSettlePartAmount(claim.id, '');
+      if (this.session.sheet() === sheet) this.saved.emit(added);
+    } catch (e) {
+      const closed = this.closedOn(claim.dueBy);
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Your role may not open and settle a claim, so it may not part-settle one.'
+          : claim.status !== 'OPEN'
+            ? `This claim is ${claim.status}: only an OPEN claim can be part-settled.`
+            : claim.openedBy !== null && claim.openedBy === this.session.user()
+              ? 'You opened this claim: someone else must settle any part of it.'
+              : this.deferred(claim)
+                ? `This claim is deferred until ${claim.deferredUntil}: it cannot be part-settled.`
+                : closed
+                  ? `This claim is due by a date in the closed period ${closed.name}: it cannot be part-settled.`
+                  : `This claim cannot be part-settled: the amount must be more than 0.00 and less than ${claim.amount}, `
+                    + 'and the claim must have the proofs it needs and not be last edited by you.';
       this.actionError.set({ id: claim.id, message });
     }
   }

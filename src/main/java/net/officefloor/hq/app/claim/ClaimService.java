@@ -358,7 +358,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason) {
-        return changeStatus(sheetId, user, id, status, voidReason, null);
+        return changeStatus(sheetId, user, id, status, voidReason, null, false);
     }
 
     /**
@@ -367,11 +367,40 @@ public class ClaimService {
      */
     @Transactional
     public Claim settleInBatch(String sheetId, String user, Long id, LongSupplier batch) {
-        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, batch);
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, batch, false);
+    }
+
+    /**
+     * Part-settle an OPEN claim: split the amount off it, as {@link #split(String, String, Long, BigDecimal)}, and
+     * settle the new claim at once, as {@link #changeStatus(String, String, Long, ClaimStatus)} (PENDING instead when
+     * the clerk limit says so). The four-eyes rules and the proof rule are judged on the original claim as it stood
+     * before the split; the new claim's opener (the user) may still settle it. A refused split or settle refuses the
+     * whole action: nothing changes.
+     */
+    @Transactional
+    public Claim settlePart(String sheetId, String user, Long id, BigDecimal amount) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (!roles.may(sheetId, user, "settle")) {
+            throw new ClaimActionForbiddenException(id, user, "settle");
+        }
+        if (user.equals(claim.getOpenedBy())) {
+            throw new ClaimSettledByOpenerException(id, user, "opened");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ClaimSettledByOpenerException(id, user, "last edited");
+        }
+        if (claim.getStatus() == ClaimStatus.OPEN) {
+            Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                    .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+            requireProof(sheetId, person, claim);
+        }
+        Claim part = split(sheetId, user, id, amount);
+        return changeStatus(sheetId, user, part.getId(), ClaimStatus.SETTLED, null, null, true);
     }
 
     private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason,
-            LongSupplier batch) {
+            LongSupplier batch, boolean judgedOnOriginal) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
@@ -398,15 +427,16 @@ public class ClaimService {
             throw new ClaimDeferException(id, "it is deferred until " + claim.getDeferredUntil());
         }
         // Four eyes: whoever opened or last edited a claim cannot also settle it.
-        if (status == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+        // A part-settle judges four eyes and proof on the claim it split from, not on the new claim.
+        if (status == ClaimStatus.SETTLED && !judgedOnOriginal && user.equals(claim.getOpenedBy())) {
             throw new ClaimSettledByOpenerException(id, user, "opened");
         }
-        if (status == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+        if (status == ClaimStatus.SETTLED && !judgedOnOriginal && user.equals(claim.getEditedBy())) {
             throw new ClaimSettledByOpenerException(id, user, "last edited");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
-        if (status == ClaimStatus.SETTLED) {
+        if (status == ClaimStatus.SETTLED && !judgedOnOriginal) {
             requireProof(sheetId, person, claim);
         }
         if (status == ClaimStatus.OPEN) {
