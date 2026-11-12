@@ -24,6 +24,7 @@ import { Session } from '../../core/session';
           inputmode="decimal"
           [value]="limit()"
           (input)="limit.set(value($event)); limitTouched.set(true); error.set(null)"
+          (focus)="focused.set('limit')"
         />
         <p>In force: <strong data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</strong></p>
         <label for="setting-floor">Floor (the least a live due can be)</label>
@@ -42,6 +43,7 @@ import { Session } from '../../core/session';
           inputmode="decimal"
           [value]="cap()"
           (input)="cap.set(value($event)); capTouched.set(true); error.set(null)"
+          (focus)="focused.set('cap')"
           (keydown.delete)="capTouched.set(true); error.set(null)"
           (keydown.backspace)="capTouched.set(true); error.set(null)"
         />
@@ -63,6 +65,7 @@ import { Session } from '../../core/session';
             inputmode="numeric"
             [value]="gradeTerms()[g] ?? ''"
             (input)="setGradeTerms(g, value($event))"
+            (focus)="focused.set('terms-' + g)"
             (keydown.delete)="touchGradeTerms(g)"
             (keydown.backspace)="touchGradeTerms(g)"
           />
@@ -83,6 +86,7 @@ import { Session } from '../../core/session';
           data-testid="setting-policy-date"
           [value]="policyDate()"
           (input)="policyDate.set(value($event)); policyDateTouched.set(true); error.set(null)"
+          (focus)="focused.set('policy-date')"
           (keydown.delete)="policyDateTouched.set(true); error.set(null)"
           (keydown.backspace)="policyDateTouched.set(true); error.set(null)"
         />
@@ -93,6 +97,7 @@ import { Session } from '../../core/session';
           data-testid="setting-period-numbering-from"
           [value]="numberingFrom()"
           (input)="numberingFrom.set(value($event)); numberingFromTouched.set(true); error.set(null)"
+          (focus)="focused.set('period-numbering-from')"
           (keydown.delete)="numberingFromTouched.set(true); error.set(null)"
           (keydown.backspace)="numberingFromTouched.set(true); error.set(null)"
         />
@@ -162,6 +167,9 @@ export class SettingsPanel {
   protected readonly policyDateTouched = signal(false);
   protected readonly numberingFrom = signal('');
   protected readonly numberingFromTouched = signal(false);
+  /** The setting that may be blank whose field was focused last: an untouched save (a blank typed into a
+   *  blank field fires no input) saves that one. */
+  protected readonly focused = signal<string | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly user = signal('');
@@ -190,22 +198,26 @@ export class SettingsPanel {
     this.saving.set(true);
     try {
       // Only the settings typed into since the last save change (a delete in a blank field that may be blank
-      // counts: it saves the blank). With none, the settings that may be blank
-      // are saved where they differ from the value in force (a blank field clears one), else the clerk limit.
+      // counts: it saves the blank). With none, the setting that may be blank whose field was focused last is
+      // saved; with none focused, those that differ from the value in force (a blank field clears one), else
+      // the clerk limit.
       const untouched = !this.limitTouched() && !this.floorTouched() && !this.capTouched() && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
         && this.gradeTermsTouched().size === 0;
+      const pick = untouched ? this.focused() : null;
+      if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
+      const guess = untouched && pick === null;
       const floor = this.floorTouched();
-      const cap = this.capTouched()
-        || (untouched && this.cap().trim() !== (this.session.cap() ?? ''));
+      const cap = this.capTouched() || pick === 'cap'
+        || (guess && this.cap().trim() !== (this.session.cap() ?? ''));
       const terms = this.termsTouched();
       const latePct = this.latePctTouched();
-      const policyDate = this.policyDateTouched()
-        || (untouched && this.policyDate().trim() !== (this.session.policyDate() ?? ''));
-      const numberingFrom = this.numberingFromTouched()
-        || (untouched && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
-      const limit = this.limitTouched() || (untouched && !cap && !policyDate && !numberingFrom)
-        || (untouched && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
+      const policyDate = this.policyDateTouched() || pick === 'policy-date'
+        || (guess && this.policyDate().trim() !== (this.session.policyDate() ?? ''));
+      const numberingFrom = this.numberingFromTouched() || pick === 'period-numbering-from'
+        || (guess && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
+      const limit = this.limitTouched() || pick === 'limit' || (guess && !cap && !policyDate && !numberingFrom)
+        || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
         ?? (floor ? await this.session.setFloor(this.floor()) : null)
         ?? (cap ? await this.session.setCap(this.cap()) : null)
@@ -232,6 +244,7 @@ export class SettingsPanel {
         this.policyDateTouched.set(false);
         this.numberingFrom.set('');
         this.numberingFromTouched.set(false);
+        this.focused.set(null);
       }
     } finally {
       this.saving.set(false);

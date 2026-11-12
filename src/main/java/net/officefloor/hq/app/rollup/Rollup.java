@@ -21,7 +21,8 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
 /**
- * Each person's claimed and due-total on a sheet, and the sheet's totals, as the screen shows them.
+ * Each person's claimed, due-total and overdue-total on a sheet, and the sheet's totals, as the screen
+ * shows them.
  * A change takes the figures before it, then records after its own audit lines a ROLLUP line for each
  * person whose figures moved (a person new to the sheet counting as moved), in the order they were
  * added, and a TOTALS line when the sheet's totals moved.
@@ -32,11 +33,12 @@ public class Rollup {
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     /** A person's figures; a null due-total is n/a. */
-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal) {
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
     }
 
     /** Everyone's figures by person id, in the order they were added, and the sheet's totals. */
-    public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal) {
+    public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
+            BigDecimal overdueTotal) {
     }
 
     private final PersonRepository people;
@@ -63,9 +65,11 @@ public class Rollup {
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
         BigDecimal dueTotal = ZERO;
+        BigDecimal overdueTotal = ZERO;
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
+            BigDecimal overdue = ZERO;
             boolean keptFigure = false;
             for (Claim claim : sheetClaims) {
                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person)) {
@@ -74,9 +78,10 @@ public class Rollup {
                 claimed = claimed.add(claim.getAmount());
                 BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
                         : claim.isBound() ? claim.getStatedDue() : null;
+                BigDecimal figure = null;
                 if (kept != null) {
                     keptFigure = true;
-                    due = due.add(charged(sheet, claim, kept));
+                    figure = charged(sheet, claim, kept);
                 } else if (!claim.isBound()) {
                     // a claim priced at the grade in force on its date keeps a figure too
                     BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
@@ -85,19 +90,26 @@ public class Rollup {
                             .orElse(null);
                     if (live != null) {
                         keptFigure = true;
-                        due = due.add(charged(sheet, claim, live));
+                        figure = charged(sheet, claim, live);
+                    }
+                }
+                if (figure != null) {
+                    due = due.add(figure);
+                    if (overdue(claim, today)) {
+                        overdue = overdue.add(figure);
                     }
                 }
             }
             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
             BigDecimal personDue = rated || keptFigure ? capped(sheet, due) : null;
-            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
+            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
             claimedTotal = claimedTotal.add(claimed);
+            overdueTotal = overdueTotal.add(overdue);
             if (personDue != null) {
                 dueTotal = dueTotal.add(personDue);
             }
         }
-        return new Snapshot(figures, claimedTotal, dueTotal);
+        return new Snapshot(figures, claimedTotal, dueTotal, overdueTotal);
     }
 
     /** The due-total of the claims that count dated from one date to another, both inclusive, as the
@@ -141,21 +153,31 @@ public class Rollup {
         after.people().forEach((id, now) -> {
             Figures was = before.people().get(id);
             if (was == null || was.claimed().compareTo(now.claimed()) != 0
-                    || !sameDue(was.dueTotal(), now.dueTotal())) {
+                    || !sameDue(was.dueTotal(), now.dueTotal())
+                    || was.overdueTotal().compareTo(now.overdueTotal()) != 0) {
                 audit.recordOnCommit("ROLLUP" + prefix + " person=" + now.name()
-                        + " claimed=" + now.claimed().toPlainString() + " due-total=" + show(now.dueTotal()));
+                        + " claimed=" + now.claimed().toPlainString() + " due-total=" + show(now.dueTotal())
+                        + " overdue-total=" + now.overdueTotal().toPlainString());
             }
         });
         if (before.claimedTotal().compareTo(after.claimedTotal()) != 0
-                || before.dueTotal().compareTo(after.dueTotal()) != 0) {
+                || before.dueTotal().compareTo(after.dueTotal()) != 0
+                || before.overdueTotal().compareTo(after.overdueTotal()) != 0) {
             audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + after.claimedTotal().toPlainString()
-                    + " due-total=" + after.dueTotal().toPlainString());
+                    + " due-total=" + after.dueTotal().toPlainString()
+                    + " overdue-total=" + after.overdueTotal().toPlainString());
         }
     }
 
     /** Whether a claim counts in the live totals: its status counts, and it is not left out by a hold. */
     private static boolean countsLive(Claim claim, Person person) {
         return claim.getStatus().counts() && !heldOut(claim, person);
+    }
+
+    /** Whether a claim is overdue: OPEN or PENDING, with its due-by before the sheet's today. */
+    private static boolean overdue(Claim claim, LocalDate today) {
+        return claim.getStatus().isOpen() && today != null && claim.getDueBy() != null
+                && claim.getDueBy().isBefore(today);
     }
 
     /** Whether a hold leaves a claim out of the live totals: it is OPEN or PENDING, bound by no statement,
