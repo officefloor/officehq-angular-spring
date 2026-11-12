@@ -174,7 +174,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           />
           <p>In force: <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ session.gradeGrace()[g] ?? '' }}</strong></p>
         }
-        <label for="setting-late-pct">Late percent (of an overdue claim's figure, per full 30 days)</label>
+        <label for="setting-late-pct">Late percent (of an overdue claim's figure plus earlier charges, per full 30 days)</label>
         <input
           id="setting-late-pct"
           data-testid="setting-late-pct"

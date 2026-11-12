@@ -344,7 +344,8 @@ public class Sheet {
     /** The late charge on an overdue claim's figure: for each full 30 days past the date its lateness runs
      *  from (its due-by plus any grace, see lateFrom) on the sheet's today, the late percent in force on that
      *  boundary date (that date plus 30, 60, 90 ... days) of the
-     *  figure, rounded to cents as its date rounds, the charges added up (a boundary at 0.00 adds nothing);
+     *  figure plus the charges of the boundaries before it (compounding), rounded to cents as its date
+     *  rounds, the charges added up (a boundary at 0.00 adds nothing);
      *  0.00 for no figure (n/a). Only an OPEN or PENDING claim is overdue, so the caller asks only for those. */
     public BigDecimal lateCharge(BigDecimal figure, LocalDate lateFrom, LocalDate date) {
         BigDecimal charge = BigDecimal.ZERO.setScale(2);
@@ -354,7 +355,7 @@ public class Sheet {
         long boundaries = ChronoUnit.DAYS.between(lateFrom, today) / 30;
         RoundingMode rounding = rounding(date);
         for (long k = 1; k <= boundaries; k++) {
-            charge = charge.add(figure.multiply(latePctOn(lateFrom.plusDays(30 * k))).movePointLeft(2)
+            charge = charge.add(figure.add(charge).multiply(latePctOn(lateFrom.plusDays(30 * k))).movePointLeft(2)
                     .setScale(2, rounding));
         }
         return charge;
