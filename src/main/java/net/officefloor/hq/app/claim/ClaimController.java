@@ -40,14 +40,14 @@ public class ClaimController {
      * when it has none); and its tags, sorted and comma separated (null when it has none); and the reason it was voided
      * with (null when none); and its comments, oldest first; and the bulk settle batch that settled it (null when none);
      * and the stamp a forward-only rate is matched against (it sees one whose forwardAfter is below it); and the day it
-     * last went to REVIEW (null when it never did).
+     * last went to REVIEW (null when it never did); and whether a steward waived its late charge.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
             String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
-            List<ClaimLineView> lines, Long rateStamp, LocalDate reviewOn) {
+            List<ClaimLineView> lines, Long rateStamp, LocalDate reviewOn, boolean waived) {
 
         /** A claim with no comments or lines yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
@@ -67,7 +67,8 @@ public class ClaimController {
                     claim.isLateEntry(), claim.getRemindedOn(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
                     comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
-                    lines.stream().map(ClaimLineView::of).toList(), claim.rateStamp(), claim.getReviewOn());
+                    lines.stream().map(ClaimLineView::of).toList(), claim.rateStamp(), claim.getReviewOn(),
+                    claim.isWaived());
         }
     }
 
@@ -243,6 +244,14 @@ public class ClaimController {
             @PathVariable Long id,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.OPEN));
+    }
+
+    /** Waive the late charge of an OPEN or PENDING claim not yet waived: a steward only. */
+    @PostMapping("/claims/{id}/waive")
+    public ClaimView waive(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.waive(sheetId.trim(), user.trim(), id));
     }
 
     /** Review a REVIEW claim to OPEN: a steward only. */

@@ -65,6 +65,8 @@ export interface Claim {
   reviewOn: string | null;
   /** Its lines, oldest first: with any, its amount is their quantities times their unit amounts added up. */
   lines: ClaimLine[];
+  /** Whether a steward waived its late charge: it then bears none, whatever its overdue state. */
+  waived: boolean;
 }
 
 /** A line of a claim: a label, a quantity (a whole number, at least 1) and a unit amount (two decimals). */
@@ -221,7 +223,7 @@ export function lateCharge(claim: Claim, figure: string, grades: PersonGrade[], 
   const by = overdueBy(claim, grades, session);
   const today = session.today();
   if (!isOpen(claim) || isCorrection(claim) || by === '' || today === null) return '0.00';
-  if (deferred(claim, today)) return '0.00';
+  if (deferred(claim, today) || claim.waived) return '0.00';
   const days = Math.round((Date.parse(today) - Date.parse(by)) / 86_400_000);
   const charges: string[] = [];
   for (let boundary = 1; boundary <= Math.floor(days / 30); boundary++) {
@@ -332,7 +334,7 @@ export function sumAmounts(amounts: string[]): string {
         <caption class="visually-hidden">Claims of {{ personName() }}</caption>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Waived</th>
             <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Timeline</th><th scope="col">Comments</th><th scope="col">Lines</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -356,6 +358,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-due">{{ due(c) | fig }}</td>
               <td data-testid="claim-due-by">{{ c.dueBy | fig }}</td>
               <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-status">{{ c.status | fig }}</td>
               <td data-testid="claim-batch">{{ c.settleBatch ?? '' | fig }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' | fig }}</td>
@@ -537,6 +540,14 @@ export function sumAmounts(amounts: string[]): string {
                   [value]="deferDates()[c.id] ?? ''"
                   (input)="setDeferDate(c.id, value($event))"
                 />
+                <button
+                  type="button"
+                  data-testid="claim-waive"
+                  [attr.aria-label]="'Waive late charge of claim of ' + c.amount + ' on ' + c.date"
+                  (click)="waive(c)"
+                >
+                  Waive late charge
+                </button>
                 <button
                   type="button"
                   data-testid="claim-defer"
@@ -977,6 +988,34 @@ export class Claims implements OnInit {
               : retiredFrom !== null
                 ? `${this.personName()} is retired from ${retiredFrom}: the claim cannot be dated after that.`
                 : 'This claim could not be re-dated.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  /**
+   * Waive the late charge of an OPEN or PENDING claim; the store refuses any other status, a claim already waived, a
+   * claim in a closed period, and a user who is not a steward.
+   */
+  protected async waive(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/waive`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, {}, this.session.headers()));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const closed = this.closedOn(claim.dueBy);
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can waive a late charge.'
+          : claim.status !== 'OPEN' && claim.status !== 'PENDING'
+            ? `This claim is ${claim.status}: only an OPEN or PENDING claim can have its late charge waived.`
+            : claim.waived
+              ? 'The late charge of this claim is already waived.'
+              : closed
+                ? `This claim is due by a date in the closed period ${closed.name}: its late charge cannot be waived.`
+                : 'The late charge of this claim could not be waived.';
       this.actionError.set({ id: claim.id, message });
     }
   }

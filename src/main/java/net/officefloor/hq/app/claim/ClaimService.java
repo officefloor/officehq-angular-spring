@@ -731,12 +731,42 @@ public class ClaimService {
         BigDecimal figure = dueOf(sheetId, person, claim);
         Sheet sheet = settings.get(sheetId);
         claim.setSettledDue(claim.isCorrection() ? figure
-                : sheet.floored(sheet.withLateCharge(figure, true, overdueBy(sheet, person, claim), claim.getDate()), claim.getDate()));
+                : sheet.floored(sheet.withLateCharge(figure, !claim.isWaived(), overdueBy(sheet, person, claim), claim.getDate()), claim.getDate()));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_RESETTLED", user, person, saved) + numberOf(saved.getNumber())
                 + " old=" + old + " new=" + shownDue(sheetId, person, saved));
         watches.notifyWatchers(sheetId, user, person, saved.getNumber());
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * A steward waives the late charge of an OPEN or PENDING claim: from then on it bears none, whatever its overdue
+     * state. Refused for any other status, a claim already waived, a claim due by a date in a closed period, or a user
+     * not a steward.
+     */
+    @Transactional
+    public Claim waive(String sheetId, String user, Long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimWaiveForbiddenException(id, user);
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ClaimWaiveException(id, "it is " + claim.getStatus()
+                    + ", only an OPEN or PENDING claim can have its late charge waived");
+        }
+        if (claim.isWaived()) {
+            throw new ClaimWaiveException(id, "its late charge is already waived");
+        }
+        periods.requireOpen(sheetId, claim.getDueBy());
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setWaived(true);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_WAIVED", user, person, saved) + numberOf(saved.getNumber()));
         rollup.recordChanges(sheetId, user, before);
         return saved;
     }
@@ -992,7 +1022,8 @@ public class ClaimService {
         BigDecimal figure = figureOf(sheetId, person, claim);
         Sheet sheet = settings.get(sheetId);
         BigDecimal settledDue = figure == null || claim.isCorrection() ? figure
-                : sheet.floored(figure.add(sheet.lateCharge(figure, overdueBy(sheet, person, claim), claim.getDate())), claim.getDate());
+                : sheet.floored(claim.isWaived() ? figure
+                        : figure.add(sheet.lateCharge(figure, overdueBy(sheet, person, claim), claim.getDate())), claim.getDate());
         claim.setSettledDue(settledDue);
         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
     }
@@ -1078,7 +1109,7 @@ public class ClaimService {
             return figure;
         }
         return sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen()
-                && !claim.isDeferredOn(sheet.getToday()), overdueBy(sheet, person, claim), claim.getDate()), claim.getDate());
+                && !claim.isWaived() && !claim.isDeferredOn(sheet.getToday()), overdueBy(sheet, person, claim), claim.getDate()), claim.getDate());
     }
 
     /** The day the claim goes overdue after: its due-by plus the grace days its person's grade has on its date. */

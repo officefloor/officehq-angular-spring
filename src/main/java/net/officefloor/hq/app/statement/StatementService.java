@@ -119,7 +119,7 @@ public class StatementService {
             // today, and the floor is applied last.
             BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
             BigDecimal due = claim.getSettledDue() != null || claim.isCorrection() ? figure
-                    : sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen(),
+                    : sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen() && !claim.isWaived(),
                             sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()),
                             claim.getDate()), claim.getDate());
             if (due != null) {
@@ -180,7 +180,7 @@ public class StatementService {
                             .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getDate(), claim.getRoundingDate(), asOf))
                             .orElse(null);
             BigDecimal due = settled != null || claim.isCorrection() ? figure
-                    : sheet.floored(sheet.withLateCharge(figure, status.isOpen(),
+                    : sheet.floored(sheet.withLateCharge(figure, status.isOpen() && !claim.isWaived(),
                             sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()),
                             claim.getDate(), asOf), claim.getDate());
             if (due != null) {

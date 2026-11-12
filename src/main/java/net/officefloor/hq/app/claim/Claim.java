@@ -135,6 +135,10 @@ public class Claim {
     @Column(name = "settle_batch")
     private Long settleBatch;
 
+    /** Whether a steward waived the claim's late charge: it then bears none, whatever its overdue state. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     protected Claim() {
     }
 
@@ -402,6 +406,14 @@ public class Claim {
         this.voidReason = voidReason;
     }
 
+    public boolean isWaived() {
+        return waived;
+    }
+
+    public void setWaived(boolean waived) {
+        this.waived = waived;
+    }
+
     public Long getSettleBatch() {
         return settleBatch;
     }
@@ -435,6 +447,7 @@ public class Claim {
         copy.ref = ref;
         copy.tags = tags;
         copy.voidReason = voidReason;
+        copy.waived = waived;
         copy.rateStamp = rateStamp();
         return copy;
     }
