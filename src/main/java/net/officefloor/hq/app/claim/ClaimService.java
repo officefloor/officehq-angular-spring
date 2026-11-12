@@ -480,7 +480,8 @@ public class ClaimService {
         return updated;
     }
 
-    /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
+    /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date and takes the next
+     *  number in the sequence it is numbered in (its old number is never used again; a DRAFT has none),
      *  loses any figure a statement bound it to (live again until its new person's next statement), and is
      *  listed as its new person's newest claim. Refused unless the user's role may reassign, and for a settled or
      *  voided claim, a claim in a closed period, the claim's own person, or a person retired on its date. */
@@ -509,6 +510,9 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.take(sheetId);
         claim.setPersonId(to.getId());
         claim.setStated(false, null);
+        if (claim.getNumber() != null) {
+            claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDueBy()));
+        }
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
         Claim updated = claims.saveAndFlush(claim);
         audit("CLAIM_REASSIGNED", updated, to, user, updated.getNumber(),
