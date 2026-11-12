@@ -140,6 +140,8 @@ public class RollupService {
             BigDecimal openTotal = heldOpenParts.getOrDefault(person.getId(), zero());
             int overdueCount = 0;
             boolean anyDue = today != null && rateOn(sheetRates, person.gradeOn(today), today).isPresent();
+            // Their cap is the one in force on the date of their latest claim that counts (none: the sheet's today).
+            LocalDate latest = null;
             for (Claim claim : theirs) {
                 // A correction leaves claimed alone; only its due counts.
                 if (claim.getCorrects() == null) {
@@ -148,6 +150,9 @@ public class RollupService {
                 // A deferred or retired-out claim leaves the due totals.
                 if (!person.counts(claim, today)) {
                     continue;
+                }
+                if (latest == null || claim.getDate().isAfter(latest)) {
+                    latest = claim.getDate();
                 }
                 if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
                     anyDue = true;
@@ -188,7 +193,7 @@ public class RollupService {
             sheetOverdueCount += overdueCount;
             BigDecimal cutTotal = cutTotals.getOrDefault(PoolCut.person(person.getId()), zero());
             if (anyDue && sheet != null) {
-                due = sheet.capped(due, cutTotal);
+                due = sheet.capped(due, cutTotal, latest != null ? latest : today);
             }
             if (anyDue) {
                 dues.add(due);

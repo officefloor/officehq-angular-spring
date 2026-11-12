@@ -356,7 +356,7 @@ export function sumAmounts(amounts: string[]): string {
         <caption class="visually-hidden">Claims of {{ personName() }}</caption>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Waived</th><th scope="col">Held</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Policy</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Waived</th><th scope="col">Held</th>
             <th scope="col">Status</th><th scope="col">Review assigned to</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Timeline</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Shares</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -378,6 +378,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-date">{{ c.date | fig }}</td>
               <td data-testid="claim-note">{{ c.note | fig }}</td>
               <td data-testid="claim-due">{{ due(c) | fig }}</td>
+              <td data-testid="claim-policy">{{ policyOf(c) | fig }}</td>
               <td data-testid="claim-due-by">{{ c.dueBy | fig }}</td>
               <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' | fig }}</td>
@@ -886,6 +887,11 @@ export class Claims implements OnInit {
   /** The claim's tags as shown: sorted, comma and space separated. */
   protected tagsShown(claim: Claim): string {
     return tagsOf(claim).join(', ');
+  }
+
+  /** The policy version in force on the claim's date; blank until the settings are read. */
+  protected policyOf(claim: Claim): string {
+    return String(this.session.policyVersionOn(claim.date) ?? '');
   }
 
   protected due(claim: Claim): string {

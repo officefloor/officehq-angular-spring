@@ -8,6 +8,14 @@ export interface DatedValue {
   value: string | null;
 }
 
+/** A policy version: its number (from 1, in the order made), the setting changed, and the date (yyyy-mm-dd) it is in
+ *  force from; null: on every date. */
+export interface PolicyVersion {
+  number: number;
+  key: string;
+  from: string | null;
+}
+
 /** The sheet's starting values, in force before a key's first from-date: none for a key not listed. */
 const STARTING: Record<string, string> = { floor: '1.00', terms: '14', 'late-pct': '0.00' };
 
@@ -103,6 +111,10 @@ export class Session {
   /** The active sheet's cap (two decimals) in force on its today: a person's due-total is at most it; null when there
    *  is none or until the settings are read. */
   readonly cap = computed(() => this.settingOn('cap', this.today()));
+  /** The active sheet's policy versions, first made to last; null until the settings are read. */
+  readonly policyVersions = signal<PolicyVersion[] | null>(null);
+  /** The current policy version: the number of versions made; null until the settings are read. */
+  readonly policyVersion = computed(() => this.policyVersions()?.length ?? null);
   private loads = 0;
   /** The number of sheet loads waiting for their answer. */
   private loading = 0;
@@ -129,6 +141,13 @@ export class Session {
       if (d.from <= date) value = d.value;
     }
     return value;
+  }
+
+  /** The policy version in force on the date: the number of versions whose from-date is on or before it, or that
+   *  have none; null until the settings are read. */
+  policyVersionOn(date: string): number | null {
+    const versions = this.policyVersions();
+    return versions === null ? null : versions.filter((v) => v.from === null || v.from <= date).length;
   }
 
   /** Whether a claim is late for review: in REVIEW, with its review day plus the review SLA before the sheet's today. */

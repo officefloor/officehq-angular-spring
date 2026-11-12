@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.sheet.PolicyVersion;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,10 +40,11 @@ public class SettingController {
      * separated, null when blank (the standing rule). The grades retired; the sheet's grades (A, B, C, then those added); the pending SLA in whole days, null when blank (none), last.
      * Then every value recorded of each dated setting, by key (clerk-limit, clerk-limit-A, clerk-limit-B, clerk-limit-C, floor, terms, terms-A, terms-B, terms-C,
      * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold, review-threshold, rounding), from-date first to last.
+     * Then the policy versions, first made to last (the last one's number is the current version).
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
-            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, String proofKinds, Integer escalateAfter, String defaultGrade, Integer reviewSla, Integer maxOpen, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Map<String, String> permissions, Map<String, List<DatedValue>> dated, List<String> retiredGrades, List<String> grades, Integer pendingSla) {
+            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, String proofKinds, Integer escalateAfter, String defaultGrade, Integer reviewSla, Integer maxOpen, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Map<String, String> permissions, Map<String, List<DatedValue>> dated, List<String> retiredGrades, List<String> grades, Integer pendingSla, List<PolicyVersionView> policyVersions) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
@@ -55,11 +57,20 @@ public class SettingController {
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
                     sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), sheet.getFiscalStartMonth(), shown(sheet.proofThresholdOn(today)),
                     shown(sheet.noteThresholdOn(today)), shown(sheet.reviewThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), sheet.getProofKinds(), sheet.getEscalateAfter(), sheet.getDefaultGrade(), sheet.getReviewSla(), sheet.getMaxOpen(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), permissions,
-                    dated, sheet.retiredGrades(), sheet.grades(), sheet.getPendingSla());
+                    dated, sheet.retiredGrades(), sheet.grades(), sheet.getPendingSla(),
+                    sheet.policyVersions().stream().map(PolicyVersionView::of).toList());
         }
 
         private static String shown(BigDecimal value) {
             return value == null ? null : value.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+        }
+    }
+
+    /** A policy version: its number, the setting changed, and the date it is in force from (null: every date). */
+    public record PolicyVersionView(int number, String key, LocalDate from) {
+
+        static PolicyVersionView of(PolicyVersion version) {
+            return new PolicyVersionView(version.getNumber(), version.getKey(), version.getFromDate());
         }
     }
 

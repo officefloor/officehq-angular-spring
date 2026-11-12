@@ -1847,10 +1847,10 @@ export class People {
   /**
    * The sum of the person's OPEN, PENDING and SETTLED claims' dues, each already rounded, skipping the n/a ones; n/a when
    * their grade in force today has no rate in force today, unless a claim keeps a due fixed by settling or a statement
-   * or has a due and is dated on or before today. Held down to the sheet's cap less their cut total.
+   * or has a due and is dated on or before today. Held down to their cap less their cut total.
    */
   protected dueTotalOf(person: Person): string {
-    return capped(this.uncappedDueTotalOf(person), this.session.cap(), this.cutTotalOf(person));
+    return capped(this.uncappedDueTotalOf(person), this.capOf(person), this.cutTotalOf(person));
   }
 
   /**
@@ -1879,9 +1879,20 @@ export class People {
     return this.pools()?.cutTotals().get(person.id) ?? '0.00';
   }
 
-  /** How far the sum of the person's dues plus their cut total is above the sheet's cap; 0.00 when it is not. */
+  /**
+   * The person's cap: the one in force on the date of their latest claim that counts (none: on the sheet's today);
+   * null when there is none.
+   */
+  private capOf(person: Person): string | null {
+    const today = this.session.today();
+    const dates = this.claimsOf(person.id).filter((c) => live(c, person, today)).map((c) => c.date);
+    const latest = dates.reduce<string | null>((a, d) => (a === null || d > a ? d : a), null);
+    return this.session.settingOn('cap', latest ?? today);
+  }
+
+  /** How far the sum of the person's dues plus their cut total is above their cap; 0.00 when it is not. */
   protected excessOf(person: Person): string {
-    return excessOver(this.uncappedDueTotalOf(person), this.session.cap(), this.cutTotalOf(person));
+    return excessOver(this.uncappedDueTotalOf(person), this.capOf(person), this.cutTotalOf(person));
   }
 
   /**

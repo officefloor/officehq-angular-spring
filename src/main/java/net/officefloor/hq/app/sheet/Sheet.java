@@ -42,6 +42,8 @@ public class Sheet {
     /** The rounding mode: half-up or half-even; none (null) leaves the policy date to decide. */
     public static final String ROUNDING = "rounding";
     public static final List<String> ROUNDING_MODES = List.of("half-up", "half-even");
+    /** The policy settings: versioned together, every change to one of them is a new policy version. */
+    public static final List<String> POLICY_KEYS = List.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT, CLERK_LIMIT);
     /** The kinds a proof can be: a proof added with none chosen is a receipt. */
     public static final List<String> PROOF_KINDS = List.of("receipt", "photo");
     /** The prefix of a grade's grace days key (grace-A, grace-B, grace-C). */
@@ -72,6 +74,11 @@ public class Sheet {
     @OneToMany(mappedBy = "sheet", fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     @OrderBy("key ASC, fromDate ASC")
     private List<DatedSetting> dated = new ArrayList<>();
+
+    /** The policy versions, numbered from 1 in the order made. */
+    @OneToMany(mappedBy = "sheet", fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @OrderBy("number ASC")
+    private List<PolicyVersion> policyVersions = new ArrayList<>();
 
     /** The permission matrix: the roles (comma separated) that may take each action; an action left out keeps the
      *  standing rule. Not dated. */
@@ -188,6 +195,8 @@ public class Sheet {
     public Sheet copyTo(String id, String createdBy) {
         Sheet copy = new Sheet(id, createdBy, today);
         dated.forEach(d -> copy.dated.add(new DatedSetting(copy, d.getKey(), d.getFromDate(), d.getValue())));
+        policyVersions.forEach(v -> copy.policyVersions
+                .add(new PolicyVersion(copy, v.getNumber(), v.getKey(), v.getFromDate())));
         copy.permissions.putAll(permissions);
         copy.policyDate = policyDate;
         copy.periodNumberingFrom = periodNumberingFrom;
@@ -259,6 +268,24 @@ public class Sheet {
     public void record(String key, LocalDate from, String value) {
         dated.stream().filter(d -> d.getKey().equals(key) && d.getFromDate().equals(from)).findFirst()
                 .ifPresentOrElse(d -> d.setValue(value), () -> dated.add(new DatedSetting(this, key, from, value)));
+        if (POLICY_KEYS.contains(key)) {
+            policyVersions.add(new PolicyVersion(this, policyVersions.size() + 1, key, from));
+        }
+    }
+
+    /** The policy versions, first made to last. */
+    public List<PolicyVersion> policyVersions() {
+        return policyVersions.stream().sorted(Comparator.comparingInt(PolicyVersion::getNumber)).toList();
+    }
+
+    /** The current policy version: the number of versions made, 0 while there is none. */
+    public int policyVersion() {
+        return policyVersions.size();
+    }
+
+    /** The policy version in force on the date: the number of versions whose from-date is on or before it (or none). */
+    public int policyVersionOn(LocalDate date) {
+        return (int) policyVersions.stream().filter(v -> v.inForceOn(date)).count();
     }
 
     /** Each dated setting's recorded values by key, from-date first to last. */
@@ -287,16 +314,21 @@ public class Sheet {
 
     /** The highest due a clerk may settle, in force on the sheet's today; null when there is no limit. */
     public BigDecimal getClerkLimit() {
-        return decimalOn(CLERK_LIMIT, today).orElse(null);
+        return clerkLimitOn(today);
+    }
+
+    /** The highest due a clerk may settle of a claim dated on the date; null when there is no limit then. */
+    public BigDecimal clerkLimitOn(LocalDate date) {
+        return decimalOn(CLERK_LIMIT, date).orElse(null);
     }
 
     /**
-     * The clerk limit for a person of the grade, in force on the sheet's today: the grade's own when one is set, else
-     * the sheet's; null when there is none.
+     * The clerk limit for a claim dated on the date of a person of the grade, in force on the claim's date: the grade's
+     * own when one is set, else the sheet's; null when there is none.
      */
-    public BigDecimal clerkLimitFor(String grade) {
-        return grade == null ? getClerkLimit()
-                : decimalOn(gradeClerkLimitKey(grade), today).orElseGet(this::getClerkLimit);
+    public BigDecimal clerkLimitFor(String grade, LocalDate date) {
+        return grade == null ? clerkLimitOn(date)
+                : decimalOn(gradeClerkLimitKey(grade), date).orElseGet(() -> clerkLimitOn(date));
     }
 
     /** The least a live due of a claim dated on the date can be. */
@@ -690,27 +722,12 @@ public class Sheet {
         return figure == null || !open ? figure : figure.add(lateCharge(figure, dueBy, date, asOf));
     }
 
-    /** A due-total held down to the cap in force on the sheet's today; null (n/a), or no cap, leaves it as it is. */
-    public BigDecimal capped(BigDecimal dueTotal) {
-        return capped(dueTotal, today);
-    }
-
-    /** A due-total held down to the cap in force on {@code asOf}, standing in for the sheet's today. */
-    public BigDecimal capped(BigDecimal dueTotal, LocalDate asOf) {
-        return capped(dueTotal, BigDecimal.ZERO, asOf);
-    }
-
     /**
-     * A due-total held down to the cap in force on the sheet's today less the person's cut total (not below 0.00);
-     * null (n/a), or no cap, leaves it as it is.
+     * A due-total held down to the cap in force on {@code capDate} (the date of the person's latest claim that counts)
+     * less the cut total (not below 0.00); null (n/a), or no cap then, leaves it as it is.
      */
-    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
-        return capped(dueTotal, cutTotal, today);
-    }
-
-    /** A due-total held down to the cap in force on {@code asOf} less the cut total (not below 0.00). */
-    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal, LocalDate asOf) {
-        BigDecimal cap = decimalOn(CAP, asOf).orElse(null);
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal, LocalDate capDate) {
+        BigDecimal cap = decimalOn(CAP, capDate).orElse(null);
         if (dueTotal == null || cap == null) {
             return dueTotal;
         }

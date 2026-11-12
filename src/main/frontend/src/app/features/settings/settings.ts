@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { FigurePipe } from '../../core/locale';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { DatedValue, Session } from '../../core/session';
+import { DatedValue, PolicyVersion, Session } from '../../core/session';
 
 interface SettingsView {
   /** The highest due a clerk may settle in force on the sheet's today, two decimals; null when there is no limit. */
@@ -60,6 +60,8 @@ interface SettingsView {
   permissions: Record<string, string | null>;
   /** Every value recorded of each dated setting, by key, from-date first to last. */
   dated: Record<string, DatedValue[]>;
+  /** The policy versions, first made to last: the last one's number is the current version. */
+  policyVersions: PolicyVersion[];
 }
 
 /** A delegation of the steward role to a user by a steward, from and to dates (yyyy-mm-dd) inclusive. */
@@ -92,6 +94,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
+      <p>Policy version <strong data-testid="policy-version">{{ session.policyVersion() ?? '' }}</strong></p>
       <form (submit)="saveSettings($event)">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input
@@ -724,6 +727,7 @@ export class Settings {
       this.session.loaded();
       untracked(() => {
         this.session.dated.set(null);
+        this.session.policyVersions.set(null);
         this.session.policyDate.set(null);
         this.periodNumberingFromCurrent.set(null);
         this.session.entryDate.set(null);
@@ -1385,6 +1389,7 @@ export class Settings {
   /** Show the settings in force on the sheet's today, and put them back in the form with no from-dates. */
   private show(settings: SettingsView): void {
     this.session.dated.set(settings.dated);
+    this.session.policyVersions.set(settings.policyVersions);
     this.clerkLimit.set(settings.clerkLimit ?? '');
     this.floor.set(settings.floor);
     this.terms.set(String(settings.terms));
