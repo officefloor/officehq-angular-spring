@@ -35,6 +35,8 @@ interface SettingsView {
   scoreMid: number | null;
   /** The score at or above which a person is HIGH while both score thresholds are set; null: blank. */
   scoreHigh: number | null;
+  /** Whether changing the sheet's today records each person's score on the day being left. */
+  scoreLog: boolean;
   /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
   proofThreshold: string | null;
   /** The due above which a claim cannot be opened with an empty note, two decimals; null when there is none. */
@@ -283,6 +285,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'scoreHigh'"
           (input)="scoreHigh.set(value($event)); scoreHighEdited = true; settingsError.set(null)"
         />
+        <label for="setting-score-log">Score log (on, or blank: off)</label>
+        <input
+          id="setting-score-log"
+          data-testid="setting-score-log"
+          [value]="scoreLog()"
+          (focus)="lastFocused = 'scoreLog'"
+          (input)="scoreLog.set(value($event)); scoreLogEdited = true; settingsError.set(null)"
+        />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input
           id="setting-fiscal-start-month"
@@ -475,6 +485,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' | fig }}</strong></p>
       <p>Mid score threshold: <strong data-testid="setting-score-mid-current">{{ session.scoreMid() ?? '' | fig }}</strong></p>
       <p>High score threshold: <strong data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' | fig }}</strong></p>
+      <p>Score log: <strong data-testid="setting-score-log-current">{{ scoreLogCurrent() ?? '' | fig }}</strong></p>
       <p>Fiscal year start month: <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonthCurrent() ?? '' | fig }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' | fig }}</strong></p>
       <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ alertThresholdCurrent() ?? '' | fig }}</strong></p>
@@ -617,6 +628,8 @@ export class Settings {
   protected readonly reviewSla = signal('');
   protected readonly scoreMid = signal('');
   protected readonly scoreHigh = signal('');
+  protected readonly scoreLog = signal('');
+  protected readonly scoreLogCurrent = signal<string | null>(null);
   protected readonly fiscalStartMonth = signal('');
   protected readonly fiscalStartMonthCurrent = signal<string | null>(null);
   protected readonly pot = signal('');
@@ -647,6 +660,7 @@ export class Settings {
   protected reviewSlaEdited = false;
   protected scoreMidEdited = false;
   protected scoreHighEdited = false;
+  protected scoreLogEdited = false;
   protected fiscalStartMonthEdited = false;
   protected potEdited = false;
   protected alertThresholdEdited = false;
@@ -659,7 +673,7 @@ export class Settings {
   protected reviewThresholdEdited = false;
   protected roundingEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'scoreMid' | 'scoreHigh' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'proofKinds' | 'defaultGrade' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'scoreMid' | 'scoreHigh' | 'scoreLog' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'proofKinds' | 'defaultGrade' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -691,6 +705,7 @@ export class Settings {
         this.session.reviewSla.set(null);
         this.session.scoreMid.set(null);
         this.session.scoreHigh.set(null);
+        this.scoreLogCurrent.set(null);
         this.fiscalStartMonthCurrent.set(null);
         this.session.pot.set(null);
         this.alertThresholdCurrent.set(null);
@@ -771,7 +786,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && this.gradeClerkLimitEdited.size === 0 && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.proofKindsEdited && !this.defaultGradeEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && this.gradeClerkLimitEdited.size === 0 && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.scoreLogEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.proofKindsEdited && !this.defaultGradeEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -786,6 +801,7 @@ export class Settings {
         case 'reviewSla': this.reviewSlaEdited = true; break;
         case 'scoreMid': this.scoreMidEdited = true; break;
         case 'scoreHigh': this.scoreHighEdited = true; break;
+        case 'scoreLog': this.scoreLogEdited = true; break;
         case 'fiscalStartMonth': this.fiscalStartMonthEdited = true; break;
         case 'pot': this.potEdited = true; break;
         case 'alertThreshold': this.alertThresholdEdited = true; break;
@@ -816,6 +832,7 @@ export class Settings {
     const saveReviewSla = this.reviewSlaEdited;
     const saveScoreMid = this.scoreMidEdited;
     const saveScoreHigh = this.scoreHighEdited;
+    const saveScoreLog = this.scoreLogEdited;
     const saveFiscalStartMonth = this.fiscalStartMonthEdited;
     const savePot = this.potEdited;
     const saveAlertThreshold = this.alertThresholdEdited;
@@ -840,6 +857,7 @@ export class Settings {
     const reviewSla = this.reviewSla().trim();
     const scoreMid = this.scoreMid().trim();
     const scoreHigh = this.scoreHigh().trim();
+    const scoreLog = this.scoreLog().trim();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
     const pot = this.pot().trim();
     const alertThreshold = this.alertThreshold().trim();
@@ -926,6 +944,10 @@ export class Settings {
     }
     if (saveScoreHigh && scoreHigh !== '' && !/^-?\d{1,5}$/.test(scoreHigh)) {
       this.settingsError.set('Type a high score threshold as a whole number, or leave it blank.');
+      return;
+    }
+    if (saveScoreLog && scoreLog !== '' && scoreLog !== 'on') {
+      this.settingsError.set('Type on for the score log, or leave it blank for off.');
       return;
     }
     if (saveFiscalStartMonth && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
@@ -1090,6 +1112,12 @@ export class Settings {
           this.http.put<SettingsView>(`${url}/score-high`, { score: scoreHigh === '' ? null : scoreHigh }, this.session.headers()),
         );
         this.scoreHighEdited = false;
+      }
+      if (saveScoreLog) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/score-log`, { scoreLog: scoreLog === '' ? null : scoreLog }, this.session.headers()),
+        );
+        this.scoreLogEdited = false;
       }
       if (saveFiscalStartMonth) {
         saved = await firstValueFrom(
@@ -1335,6 +1363,8 @@ export class Settings {
     this.scoreMid.set(settings.scoreMid === null ? '' : String(settings.scoreMid));
     this.session.scoreHigh.set(settings.scoreHigh === null ? '' : String(settings.scoreHigh));
     this.scoreHigh.set(settings.scoreHigh === null ? '' : String(settings.scoreHigh));
+    this.scoreLogCurrent.set(settings.scoreLog ? 'on' : '');
+    this.scoreLog.set(settings.scoreLog ? 'on' : '');
     this.fiscalStartMonthCurrent.set(String(settings.fiscalStartMonth));
     this.fiscalStartMonth.set(String(settings.fiscalStartMonth));
     this.session.pot.set(settings.pot ?? '');
@@ -1373,6 +1403,7 @@ export class Settings {
     this.reviewSlaEdited = false;
     this.scoreMidEdited = false;
     this.scoreHighEdited = false;
+    this.scoreLogEdited = false;
     this.fiscalStartMonthEdited = false;
     this.potEdited = false;
     this.alertThresholdEdited = false;

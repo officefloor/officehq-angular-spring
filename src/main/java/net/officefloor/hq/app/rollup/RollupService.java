@@ -46,9 +46,10 @@ public class RollupService {
     /**
      * A person's figures as shown: claimed with two decimals, due-total (held down to the cap) with two decimals or
      * n/a, and overdue-total (the dues of their overdue claims) with two decimals; and the grade in force on the
-     * sheet's today, or null when the sheet has none.
+     * sheet's today, or null when the sheet has none; and the score: the dues of their settled claims divided by 100,
+     * less 5 for each of their overdue claims, rounded half to even to a whole number.
      */
-    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade) {
+    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade, String score) {
     }
 
     /** Everyone's figures, by person id in the order they were added, and the sheet's totals. */
@@ -105,6 +106,8 @@ public class RollupService {
             BigDecimal claimed = zero();
             BigDecimal due = zero();
             BigDecimal overdue = zero();
+            BigDecimal settled = zero();
+            int overdueCount = 0;
             boolean anyDue = today != null && rateOn(sheetRates, person.gradeOn(today), today).isPresent();
             for (Claim claim : theirs) {
                 // A correction leaves claimed alone; only its due counts.
@@ -119,8 +122,14 @@ public class RollupService {
                     anyDue = true;
                 }
                 Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
+                if (isOverdue(sheet, person, claim, today)) {
+                    overdueCount++;
+                }
                 if (claimDue.isPresent()) {
                     due = due.add(claimDue.get());
+                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                        settled = settled.add(claimDue.get());
+                    }
                     if (isOverdue(sheet, person, claim, today)) {
                         overdue = overdue.add(claimDue.get());
                     }
@@ -139,7 +148,7 @@ public class RollupService {
                 dues.add(due);
             }
             figures.put(person.getId(), new Figures(person.getName(), shown(claimed), anyDue ? shown(due) : "n/a",
-                    shown(overdue), today == null ? null : person.gradeOn(today)));
+                    shown(overdue), today == null ? null : person.gradeOn(today), scoreOf(settled, overdueCount)));
         }
         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
     }
@@ -731,6 +740,12 @@ public class RollupService {
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
                 .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(r -> r.appliesOn(date));
+    }
+
+    /** The score of a settled figure and a count of overdue claims, as the screen shows it. */
+    private static String scoreOf(BigDecimal settled, int overdue) {
+        return settled.movePointLeft(2).subtract(BigDecimal.valueOf(5L * overdue))
+                .setScale(0, RoundingMode.HALF_EVEN).toPlainString();
     }
 
     private static BigDecimal zero() {

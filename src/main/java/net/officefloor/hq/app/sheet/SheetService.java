@@ -110,7 +110,8 @@ public class SheetService {
     }
 
     /**
-     * Change the sheet's today. A change first records a SNAPSHOT of each person's due-total on the day being left,
+     * Change the sheet's today. While the score log is on, a change first records a SCORE of each person's score on
+     * the day being left, in list order. A change then records a SNAPSHOT of each person's due-total on the day being left,
      * in list order, and keeps it as one of the person's snapshot lines; every open period past its grace days on the new today then closes, before the figures it moved
      * are recorded. A new today releases every claim editor's lock.
      */
@@ -121,6 +122,10 @@ public class SheetService {
         boolean changed = !today.equals(sheet.getToday());
         if (changed) {
             LocalDate left = sheet.getToday();
+            if (sheet.isScoreLog()) {
+                before.people().values().forEach(person -> audit.recordOnCommit("SCORE sheet=" + id + " by=" + user
+                        + " name=" + person.name() + " score=" + person.score()));
+            }
             before.people().forEach((personId, person) -> {
                 snapshots.save(new PersonSnapshot(id, personId, left, person.dueTotal()));
                 audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user

@@ -275,6 +275,17 @@ public class SettingService {
         return saved;
     }
 
+    /** Switch the score log on or off (blank). Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setScoreLog(String sheetId, String user, boolean on) {
+        Sheet sheet = get(sheetId);
+        sheet.setScoreLog(on);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=score-log value="
+                + (on ? "on" : ""));
+        return saved;
+    }
+
     /** Set the escalation gap in days; null means off. Every save is recorded, even of the same value. */
     @Transactional
     public Sheet setEscalateAfter(String sheetId, String user, Integer days) {
