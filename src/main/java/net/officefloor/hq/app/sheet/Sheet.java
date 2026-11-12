@@ -5,8 +5,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 
 /** A sheet, chosen by its id. Everything else in the app is kept per sheet. */
 @Entity
@@ -41,6 +43,11 @@ public class Sheet {
     /** The number of days after a claim's date it is due by; a sheet starts at 14. */
     @Column(name = "terms", nullable = false)
     private int terms = 14;
+
+    /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue; a sheet
+     *  starts at 0.00. */
+    @Column(name = "late_pct", nullable = false)
+    private BigDecimal latePct = new BigDecimal("0.00");
 
     protected Sheet() {
     }
@@ -94,6 +101,26 @@ public class Sheet {
 
     public void setTerms(int terms) {
         this.terms = terms;
+    }
+
+    public BigDecimal getLatePct() {
+        return latePct;
+    }
+
+    public void setLatePct(BigDecimal latePct) {
+        this.latePct = latePct;
+    }
+
+    /** The late charge on an overdue claim's figure: the late percent of it for every full 30 days past its
+     *  due-by (its date plus the terms) on the sheet's today, rounded half to even to cents; 0.00 for no
+     *  figure (n/a). Only an OPEN claim is overdue, so the caller asks only for those. */
+    public BigDecimal lateCharge(BigDecimal figure, LocalDate date) {
+        long late = ChronoUnit.DAYS.between(date.plusDays(terms), today);
+        if (figure == null || late < 30) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+        return figure.multiply(latePct).multiply(BigDecimal.valueOf(late / 30)).movePointLeft(2)
+                .setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /** A live due as it counts: at least the floor; none (n/a) stays none. */

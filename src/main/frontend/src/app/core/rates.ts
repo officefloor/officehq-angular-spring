@@ -110,7 +110,7 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
 }
 
 /** A non-negative number divided by another, rounded half to even. */
-function halfEven(n: bigint, d: bigint): bigint {
+export function halfEven(n: bigint, d: bigint): bigint {
   const q = n / d;
   const twice = (n % d) * 2n;
   return twice > d || (twice === d && q % 2n === 1n) ? q + 1n : q;

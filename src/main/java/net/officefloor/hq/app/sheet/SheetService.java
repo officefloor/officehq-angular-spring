@@ -73,12 +73,27 @@ public class SheetService {
         return sheet;
     }
 
-    /** Change the sheet's terms: the number of days after a claim's date it is due by. */
+    /** Change the sheet's terms: the number of days after a claim's date it is due by, recording the figures
+     *  it moves (an overdue claim's late charge follows it). */
     @Transactional
     public Sheet setTerms(String id, String user, int terms) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(id);
         sheet.setTerms(terms);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
+        rollup.recordChanges(id, user, before);
+        return sheet;
+    }
+
+    /** Change the sheet's late percent, recording the figures it moves. */
+    @Transactional
+    public Sheet setLatePct(String id, String user, BigDecimal latePct) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(id);
+        sheet.setLatePct(latePct.setScale(2));
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=late-pct value="
+                + sheet.getLatePct().toPlainString());
+        rollup.recordChanges(id, user, before);
         return sheet;
     }
 

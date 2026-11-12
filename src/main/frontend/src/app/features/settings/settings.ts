@@ -3,7 +3,8 @@ import { ROLES, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
 // The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
-// floor (the least a claim's live due can be), the terms (the days after a claim's date it is due by), and
+// floor (the least a claim's live due can be), the terms (the days after a claim's date it is due by), the
+// late percent (what an overdue claim's due gains of its figure for every full 30 days), and
 // the role each user name has on the sheet (clerk unless given another).
 @Component({
   selector: 'app-settings',
@@ -38,6 +39,15 @@ import { Session } from '../../core/session';
           (input)="terms.set(value($event)); termsTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
+        <label for="setting-late-pct">Late percent (of an overdue claim's figure, per full 30 days)</label>
+        <input
+          id="setting-late-pct"
+          data-testid="setting-late-pct"
+          inputmode="decimal"
+          [value]="latePct()"
+          (input)="latePct.set(value($event)); latePctTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
         <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -91,6 +101,8 @@ export class SettingsPanel {
   protected readonly floorTouched = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTouched = signal(false);
+  protected readonly latePct = signal('');
+  protected readonly latePctTouched = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly user = signal('');
@@ -108,13 +120,15 @@ export class SettingsPanel {
     this.error.set(null);
     this.saving.set(true);
     try {
-      // Only the settings typed into since the last save change; with neither, the clerk limit is saved.
+      // Only the settings typed into since the last save change; with none, the clerk limit is saved.
       const floor = this.floorTouched();
       const terms = this.termsTouched();
-      const limit = this.limitTouched() || (!floor && !terms);
+      const latePct = this.latePctTouched();
+      const limit = this.limitTouched() || (!floor && !terms && !latePct);
       const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
         ?? (floor ? await this.session.setFloor(this.floor()) : null)
-        ?? (terms ? await this.session.setTerms(this.terms()) : null);
+        ?? (terms ? await this.session.setTerms(this.terms()) : null)
+        ?? (latePct ? await this.session.setLatePct(this.latePct()) : null);
       if (err) this.error.set(err);
       else {
         this.limit.set('');
@@ -123,6 +137,8 @@ export class SettingsPanel {
         this.floorTouched.set(false);
         this.terms.set('');
         this.termsTouched.set(false);
+        this.latePct.set('');
+        this.latePctTouched.set(false);
       }
     } finally {
       this.saving.set(false);

@@ -26,13 +26,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals) and its terms (days). */
-    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms) {
+     *  its floor (two decimals), its terms (days) and its late percent (two decimals). */
+    public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
-                    sheet.getFloor().toPlainString(), sheet.getTerms());
+                    sheet.getFloor().toPlainString(), sheet.getTerms(),
+                    sheet.getLatePct().toPlainString());
         }
     }
 
@@ -46,6 +47,10 @@ public class SheetController {
 
     /** The sheet's terms: the number of days after a claim's date it is due by. */
     public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer terms) {
+    }
+
+    /** The sheet's late percent: what an overdue claim's due gains of its figure for every full 30 days. */
+    public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal latePct) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -94,5 +99,13 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid TermsRequest request) {
         return SheetView.of(service.setTerms(id.trim(), user.trim(), request.terms()));
+    }
+
+    /** Change the sheet's late percent. */
+    @PutMapping("/{id}/settings/late-pct")
+    public SheetView setLatePct(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid LatePctRequest request) {
+        return SheetView.of(service.setLatePct(id.trim(), user.trim(), request.latePct()));
     }
 }

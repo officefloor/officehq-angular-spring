@@ -2,7 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { People, Person } from './people';
-import { Session, addDays, isDate } from './session';
+import { halfEven, hundredths } from './rates';
+import { Session, addDays, daysBetween, isDate } from './session';
 
 export interface Claim {
   id: number;
@@ -81,6 +82,16 @@ export class Claims {
   overdue(c: Claim): boolean {
     const today = this.session.today();
     return c.status === 'OPEN' && today !== null && this.dueBy(c) < today;
+  }
+
+  /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, the sheet's late
+   *  percent of the figure for every full 30 days past its due-by, rounded half to even to cents; none
+   *  otherwise. Never bound by a statement; frozen into the due when settled. */
+  lateCents(c: Claim, figureCents: bigint): bigint {
+    const today = this.session.today();
+    if (!this.overdue(c) || today === null) return 0n;
+    const periods = BigInt(Math.floor(daysBetween(this.dueBy(c), today) / 30));
+    return halfEven(figureCents * hundredths(this.session.latePct()) * periods, 10000n);
   }
 
   /** A person's claims, newest first. */

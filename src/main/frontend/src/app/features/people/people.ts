@@ -217,12 +217,14 @@ export class PeopleList {
   }
 
   /** A claim's figure: its settled due, else the figure its person's last statement bound it to,
-   *  else its live due at the rate in force on its date; nothing when it has no figure. */
+   *  else its live due at the rate in force on its date, an overdue claim's late charge on top;
+   *  nothing when it has no figure. */
   private figureCents(c: Claim, grade: string): bigint {
-    const kept = c.settledDue ?? (c.stated ? c.statedDue : null);
-    if (kept !== null) return hundredths(kept);
-    if (c.stated) return 0n;
-    return this.rates.dueCents(hundredths(c.amount), grade, c.date) ?? 0n;
+    if (c.settledDue !== null) return hundredths(c.settledDue);
+    const f = c.stated
+      ? (c.statedDue === null ? 0n : hundredths(c.statedDue))
+      : (this.rates.dueCents(hundredths(c.amount), grade, c.date) ?? 0n);
+    return f + this.claims.lateCents(c, f);
   }
 
   /** A person's claims that count live and are overdue. */

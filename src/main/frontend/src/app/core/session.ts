@@ -11,6 +11,8 @@ export interface SheetView {
   floor: string;
   /** The number of days after a claim's date it is due by. */
   terms: number;
+  /** The percent of its figure an overdue claim's due gains for every full 30 days, two decimals. */
+  latePct: string;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
@@ -29,6 +31,9 @@ export class Session {
   readonly floor = signal<string>('1.00');
   /** The sheet's terms: the number of days after a claim's date it is due by. */
   readonly terms = signal<number>(14);
+  /** The sheet's late percent (two decimals): what an overdue claim's due gains of its figure for every
+   *  full 30 days it is overdue. */
+  readonly latePct = signal<string>('0.00');
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -53,6 +58,7 @@ export class Session {
       this.clerkLimit.set(sheet.clerkLimit);
       this.floor.set(sheet.floor);
       this.terms.set(sheet.terms);
+      this.latePct.set(sheet.latePct);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -137,6 +143,33 @@ export class Session {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
   }
+
+  /** Change the sheet's late percent; an error message when refused. */
+  async setLatePct(pct: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const p = pct.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!/^\d{1,7}(\.\d{1,2})?$/.test(p)) return 'Enter a late percent of 0.00 or more, with up to two decimals.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/late-pct`, { latePct: p }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.latePct.set(sheet.latePct);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+}
+
+/** The number of days from one date (YYYY-MM-DD) to another, worked out on the calendar. */
+export function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  return dayNumber(ty, tm, td) - dayNumber(fy, fm, fd);
 }
 
 /** A date (YYYY-MM-DD) moved on a number of days, worked out on the calendar without the clock. */

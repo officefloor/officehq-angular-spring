@@ -102,7 +102,7 @@ public class ClaimService {
      *  or when the user settling it is the one who opened it, or is a clerk and its due is above the
      *  sheet's clerk limit (a due of n/a is within any limit). Settling fixes the
      *  claim's due at its grade's rate in force on its date (a claim bound by a statement at the figure it
-     *  bound); with no figure then, its due stays live. */
+     *  bound), its late charge on the sheet's today frozen in on top; with no figure then, its due stays live. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -122,7 +122,8 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (to == ClaimStatus.SETTLED) {
-            BigDecimal due = claim.isStated() ? claim.getStatedDue() : liveDue(claim, person);
+            BigDecimal figure = claim.isStated() ? claim.getStatedDue() : liveDue(claim, person);
+            BigDecimal due = figure == null ? null : charged(claim, figure);
             refuseOverLimit(sheetId, user, due);
             claim.setSettledDue(due);
         }
@@ -146,8 +147,10 @@ public class ClaimService {
     public record Stated(Person person, List<Statement> statements, List<Claim> claims) {
     }
 
-    /** Take a person's statement: record their due-total now and how many claims count, and bind each
-     *  claim that counts to the figure it has now; a claim that does not count is left unbound. */
+    /** Take a person's statement: record their due-total now (late charges included) and how many claims
+     *  count, and bind each claim that counts to the figure it has now, under its late charge (the charge is
+     *  never bound: it keeps following the sheet's today); a claim that does not count, or is OPEN while
+     *  its person is on hold, is left unbound. */
     @Transactional
     public Stated statement(String sheetId, String user, long personId) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
@@ -158,13 +161,13 @@ public class ClaimService {
         boolean figure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts()) {
+            if (!claim.getStatus().counts() || (person.isHeld() && claim.getStatus() == ClaimStatus.OPEN)) {
                 claim.setStated(false, null);
                 continue;
             }
             BigDecimal due = due(claim, person);
             if (due != null) {
-                total = total.add(due);
+                total = total.add(charged(claim, due));
                 figure |= claim.getSettledDue() != null || claim.isStated();
             }
             claim.setStated(true, due);
@@ -212,6 +215,11 @@ public class ClaimService {
             return claim.getSettledDue();
         }
         return claim.isStated() ? claim.getStatedDue() : liveDue(claim, person);
+    }
+
+    /** A claim's figure with its late charge on the sheet's today on top while it is OPEN. */
+    private BigDecimal charged(Claim claim, BigDecimal figure) {
+        return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, figure);
     }
 
     /** The claim's amount at its person's grade's rate in force on its date, at least the sheet's floor;

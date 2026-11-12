@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Claim, ClaimAction, Claims } from '../../core/claims';
 import { Periods } from '../../core/periods';
-import { NO_RATE, Rates } from '../../core/rates';
+import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 
 // A person's claims: one form adds a claim, or edits the one whose editor is open, and the list
 // shows the person's claims newest first.
@@ -105,11 +105,14 @@ export class PersonClaims {
    *  until the next action on that claim. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
-  /** The claim's due: fixed when settled, else as its person's last statement bound it, else live. */
+  /** The claim's due: fixed when settled, else as its person's last statement bound it, else live; an
+   *  overdue claim's late charge on top of the bound or live figure. */
   protected figure(c: Claim): string {
     if (c.settledDue !== null) return c.settledDue;
-    if (c.stated) return c.statedDue ?? NO_RATE;
-    return this.rates.due(c.amount, this.grade(), c.date);
+    const f = c.stated
+      ? (c.statedDue === null ? null : hundredths(c.statedDue))
+      : this.rates.dueCents(hundredths(c.amount), this.grade(), c.date);
+    return f === null ? NO_RATE : money(f + this.claims.lateCents(c, f));
   }
 
   protected fid(field: string): string {

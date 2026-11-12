@@ -79,14 +79,14 @@ public class Rollup {
                         : claim.isStated() ? claim.getStatedDue() : null;
                 if (kept != null) {
                     keptFigure = true;
-                    due = due.add(kept);
+                    due = due.add(charged(sheet, claim, kept));
                 } else if (!claim.isStated()) {
                     BigDecimal live = inForce(sheetRates, person.getGrade(), claim.getDate())
                             .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
                                     .setScale(2, RoundingMode.HALF_EVEN))
                             .map(d -> sheet.map(s -> s.floored(d)).orElse(d))
                             .orElse(ZERO);
-                    due = due.add(live);
+                    due = due.add(charged(sheet, claim, live));
                 }
             }
             boolean rated = today != null && inForce(sheetRates, person.getGrade(), today).isPresent();
@@ -102,7 +102,8 @@ public class Rollup {
 
     /** The due-total of the claims that count dated from one date to another, both inclusive, as the
      *  screen shows a period's: each claim's settled due, else the figure its statement bound, else its
-     *  live due, at least the floor (a claim with no figure adds nothing). */
+     *  live due, at least the floor, an overdue claim's late charge on top (a claim with no figure adds
+     *  nothing). */
     public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
@@ -133,7 +134,7 @@ public class Rollup {
                         .orElse(null);
             }
             if (due != null) {
-                total = total.add(due);
+                total = total.add(charged(sheet, claim, due));
             }
         }
         return total;
@@ -162,6 +163,15 @@ public class Rollup {
      *  person is on hold. */
     private static boolean countsLive(Claim claim, boolean held) {
         return claim.getStatus().counts() && !(held && claim.getStatus() == ClaimStatus.OPEN);
+    }
+
+    /** A figure with its late charge on top while its claim is OPEN (only an OPEN claim is overdue); a
+     *  settled claim's due already holds the charge frozen in when it was settled. */
+    public static BigDecimal charged(Optional<Sheet> sheet, Claim claim, BigDecimal figure) {
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            return figure;
+        }
+        return figure.add(sheet.map(s -> s.lateCharge(figure, claim.getDate())).orElse(ZERO));
     }
 
     private static boolean sameDue(BigDecimal a, BigDecimal b) {
