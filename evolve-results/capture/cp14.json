@@ -1,0 +1,64 @@
+{
+  "checkpoint": 14,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp14_edit-conflict",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "When a person is edited, the form remembers which version of the person it loaded. If someone\nelse has saved that person in the meantime, saving is refused with an error on the form, nothing\nis stored, and the form shows the current values; opening the editor again and saving works.\nSubmitting any form twice before the first submit has answered stores one record, not two.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a person is edited, the form remembers which version of the person it loaded. If someone\nelse has saved that person in the meantime, saving is refused with an error on the form, nothing\nis stored, and the form shows the current values; opening the editor again and saving works.\nSubmitting any form twice before the first submit has answered stores one record, not two.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5c7c4dce335b6224b7ff20f40fd567249b1dda3a",
+  "reset_sha": "",
+  "preagent_sha": "cefe6ba957c9907fac39b9e1661e31507090e72e",
+  "prev_sha": "cefe6ba957c9907fac39b9e1661e31507090e72e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5899144000000001,
+    "input_tokens": 30,
+    "output_tokens": 8237,
+    "cache_read_tokens": 502512,
+    "cache_creation_tokens": 40569,
+    "num_turns": 16,
+    "duration_ms": 213606,
+    "duration_api_ms": 80025,
+    "model": "claude-opus-5-5",
+    "session_id": "1bb333d1-a39b-4127-ae2a-a157d55ac182",
+    "stop_reason": "success",
+    "result_text": "I've added both parts of the change, and all 4 acceptance tests in `bin/e2e` pass.\n\n**Edit conflict**\n- **Stored data:** each person now has a version number (new migration `V12__person_version.sql`), which goes up by one every time the person is saved.\n- **Server:** when a person is saved, the server checks the version the editor loaded against the stored one. If they differ, the save is refused with HTTP 412 and nothing is stored or written to the audit file. The refusal sends back the person's current values. The check also covers two saves landing at the same instant.\n- **Front end:** the edit form remembers the version it loaded and sends it when saving. On a refusal it shows `person-form-error`, fills the form with the current values and updates the row. Opening the editor again and saving works.\n\nOne choice to flag: after a refusal, the form also takes on the current version. So pressing Save again right away, after seeing the other person's changes, also goes through, not only reopening the editor. If you'd rather a refused form stay refused until it's reopened, that's a one-line change.\n\n**Double submit**\nThe person, claim, rate and \"today\" forms now ignore a second submit while the first is still waiting for an answer. The disabled button alone didn't stop this, because a fast double-click gets in before the screen updates. A double-click on \"add claim\" now stores one claim and writes one audit line. This guard is only in the browser. The server doesn't reject duplicates sent by anything other than these forms.\n\nThe main changes are in `PersonService.java`, `PersonController.java`, `core/people.ts` and `features/people/people.ts`, plus the one-line guard in the claims, rates and home forms.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5899144000000001,
+        "num_turns": 16,
+        "duration_ms": 213606,
+        "duration_api_ms": 80025,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp14.agent.jsonl",
+  "agent_diff_file": "cp14.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
