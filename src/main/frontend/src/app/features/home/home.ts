@@ -9,11 +9,12 @@ import { PeopleList } from '../people/people';
 import { PeriodsPanel } from '../periods/periods';
 import { RatesPanel } from '../rates/rates';
 import { SettingsPanel } from '../settings/settings';
+import { SummaryPanel } from '../summary/summary';
 
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [PeopleList, PeriodsPanel, RatesPanel, SettingsPanel],
+  imports: [PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session" data-testid="session-bar">
@@ -55,6 +56,7 @@ import { SettingsPanel } from '../settings/settings';
         <app-rates />
         <app-periods />
         <app-people />
+        <app-summary />
       }
     } @else {
       <form aria-label="Sign in" (submit)="signIn($event)">

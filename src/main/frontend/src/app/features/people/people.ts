@@ -1,8 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Claim, Claims } from '../../core/claims';
-import { GRADES, People, Person, gradeOn } from '../../core/people';
-import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
-import { Session } from '../../core/session';
+import { Figures } from '../../core/figures';
+import { GRADES, People, Person } from '../../core/people';
+import { NO_RATE, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
 
 // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
@@ -187,8 +187,7 @@ import { PersonClaims } from '../claims/claims';
 export class PeopleList {
   protected readonly people = inject(People);
   protected readonly claims = inject(Claims);
-  private readonly rates = inject(Rates);
-  private readonly session = inject(Session);
+  private readonly figures = inject(Figures);
   protected readonly grades = GRADES;
   /** The people the list shows: everyone, or only those not retired unless show retired is on. */
   protected readonly shown = computed(() =>
@@ -245,39 +244,17 @@ export class PeopleList {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
   }
 
-  /** The sum of the figures of a person's claims that count live (not OPEN while they are on hold): a settled claim's frozen due, else the
-   *  figure their last statement bound it to, else its live due at the rate in force on its date (a
-   *  claim with no figure adds nothing). Null when the grade in force on the sheet's today has no rate
-   *  there and no claim has a figure. */
   private dueCents(p: Person): bigint | null {
-    let sum = 0n;
-    let keptFigure = false;
-    for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
-      if (c.settledDue !== null || (c.stated && c.statedDue !== null)) keptFigure = true;
-      // a claim priced at the grade in force on its date keeps a figure too
-      else if (!c.stated && this.rates.inForce(gradeOn(p.grades, c.date), c.date) !== undefined) keptFigure = true;
-      sum += this.figureCents(c, p);
-    }
-    const today = this.session.today();
-    const rated = today ? this.rates.inForce(gradeOn(p.grades, today), today) !== undefined : false;
-    return rated || keptFigure ? sum : null;
+    return this.figures.dueCents(p);
   }
 
-  /** A claim's figure: its settled due, else the figure its person's last statement bound it to,
-   *  else its live due at the rate in force on its date, an overdue claim's late charge on top;
-   *  nothing when it has no figure. */
   private figureCents(c: Claim, p: Person): bigint {
-    if (c.settledDue !== null) return hundredths(c.settledDue);
-    const f = c.stated
-      ? (c.statedDue === null ? 0n : hundredths(c.statedDue))
-      : (this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date) ?? 0n);
-    return f + this.claims.lateCents(c, f);
+    return this.figures.figureCents(c, p);
   }
 
   /** The grade in force on the sheet's today, the one the list shows. */
   protected gradeToday(p: Person): string {
-    const today = this.session.today();
-    return today ? gradeOn(p.grades, today) : p.grade;
+    return this.figures.gradeToday(p);
   }
 
   /** A person's claims that count live and are overdue. */
