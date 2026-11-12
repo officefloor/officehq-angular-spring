@@ -91,13 +91,23 @@ public class ClaimController {
     public record QuickAddView(PersonView person, boolean personAdded, ClaimView claim) {
     }
 
+    /** The paste box's lines of name,amount,date,note. */
+    public record PasteRequest(@NotNull @Size(max = 1000000) String text) {
+    }
+
+    /** How many a paste added, and the claims it added, in the order of their lines. */
+    public record PasteView(int added, List<ClaimView> claims) {
+    }
+
     private final ClaimService service;
     private final QuickAddService quickAdd;
+    private final PasteService paste;
     private final PersonService people;
 
-    public ClaimController(ClaimService service, QuickAddService quickAdd, PersonService people) {
+    public ClaimController(ClaimService service, QuickAddService quickAdd, PasteService paste, PersonService people) {
         this.service = service;
         this.quickAdd = quickAdd;
+        this.paste = paste;
         this.people = people;
     }
 
@@ -128,6 +138,15 @@ public class ClaimController {
         return new QuickAddView(PersonView.of(added.person(), people.today(sheetId.trim()), people.statementsOf(added.person().getId()),
                 people.patronsOf(added.person().getId())),
                 added.personAdded(), ClaimView.of(added.claim()));
+    }
+
+    /** Add a DRAFT claim for each pasted line, in order; one refused line refuses them all. */
+    @PostMapping("/claims/paste")
+    public PasteView paste(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid PasteRequest request) {
+        List<Claim> added = paste.paste(sheetId.trim(), user.trim(), request.text());
+        return new PasteView(added.size(), added.stream().map(ClaimView::of).toList());
     }
 
     /** Change a DRAFT claim's amount, date and note. */
@@ -263,6 +282,13 @@ public class ClaimController {
     @ExceptionHandler(PersonRetiredException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> retired(PersonRetiredException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A paste with a refused line is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimPasteException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> pasteRefused(ClaimPasteException e) {
         return Map.of("message", e.getMessage());
     }
 

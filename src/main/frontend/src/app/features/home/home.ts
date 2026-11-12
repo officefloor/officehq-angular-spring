@@ -7,6 +7,7 @@ import { Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 import { BulkOpen } from '../claims/bulk-open';
 import { BulkSettle } from '../claims/bulk-settle';
+import { PasteClaims } from '../claims/paste-claims';
 import { HeaderCounters } from '../header/header';
 import { PeopleList } from '../people/people';
 import { PeriodsPanel } from '../periods/periods';
@@ -17,7 +18,7 @@ import { SummaryPanel } from '../summary/summary';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [BulkOpen, BulkSettle, HeaderCounters, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
+  imports: [BulkOpen, BulkSettle, HeaderCounters, PasteClaims, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -62,6 +63,7 @@ import { SummaryPanel } from '../summary/summary';
         <app-rates />
         <app-periods />
         <app-people />
+        <app-paste-claims />
         <app-bulk-open />
         <app-bulk-settle />
         <app-summary />

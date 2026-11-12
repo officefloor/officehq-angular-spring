@@ -222,6 +222,29 @@ export class Claims {
     }
   }
 
+  /** Add a DRAFT claim for each pasted line of name,amount,date,note, in order, for the person on the
+   *  sheet with the name; how many were added, or an error message when any line is refused (then the
+   *  server adds none). */
+  async paste(text: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!text.trim()) return 'Paste at least one line of name,amount,date,note.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ added: number; claims: Claim[] }>(
+          `${this.url(sid)}/claims/paste`,
+          { text },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => [...[...done.claims].reverse(), ...cs]);
+      return done.added;
+    } catch (e) {
+      return failed('add', e).replace(' claim', ' claims');
+    }
+  }
+
   /** Change a DRAFT claim's amount, date and note; when refused, the reason and whether it is the
    *  claim itself that refused it (it is no longer a DRAFT) rather than the fields typed. */
   async update(id: number, f: ClaimFields): Promise<{ message: string; onClaim: boolean } | null> {
