@@ -130,6 +130,20 @@ public class PeriodController {
         return views(sheet, made);
     }
 
+    /** A calendar year to generate the quarters of, as yyyy. */
+    public record GenerateQuartersRequest(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+    }
+
+    /** Generate the four calendar quarters of the year as periods yyyy-Q1 to yyyy-Q4; the periods made. */
+    @PostMapping("/generate-quarters")
+    public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid GenerateQuartersRequest request) {
+        String sheet = sheetId.trim();
+        List<Period> made = service.generateQuarters(sheet, user.trim(), Integer.parseInt(request.year().trim()));
+        return views(sheet, made);
+    }
+
     private List<PeriodView> views(String sheetId, List<Period> periods) {
         Function<LocalDate, String> fiscalYears = service.fiscalYears(sheetId);
         return periods.stream().map(p -> PeriodView.of(p, fiscalYears)).toList();

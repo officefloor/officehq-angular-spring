@@ -116,6 +116,33 @@ public class PeriodService {
         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
     }
 
+    /**
+     * Generate the four calendar quarters of a year as periods named yyyy-Q1 to yyyy-Q4, each as the period form would
+     * add it; a quarter whose name is taken or whose days overlap a period on the sheet is left out. The periods made,
+     * in date order.
+     */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        if (sheets.lockById(sheetId) == 0) {
+            throw new SheetNotFoundException(sheetId);
+        }
+        List<Period> existing = new ArrayList<>(list(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            String name = year + "-Q" + quarter;
+            YearMonth start = YearMonth.of(year, quarter * 3 - 2);
+            LocalDate first = start.atDay(1);
+            LocalDate last = start.plusMonths(2).atEndOfMonth();
+            if (existing.stream().anyMatch(p -> p.getName().equals(name) || p.overlaps(first, last))) {
+                continue;
+            }
+            Period saved = add(sheetId, user, name, first, last, null);
+            existing.add(saved);
+            made.add(saved);
+        }
+        return made;
+    }
+
     /** The name (FYyyyy) of the fiscal year a date falls in on the sheet; by a January start when there is no such sheet. */
     public Function<LocalDate, String> fiscalYears(String sheetId) {
         int startMonth = sheets.findById(sheetId).map(Sheet::getFiscalStartMonth).orElse(1);

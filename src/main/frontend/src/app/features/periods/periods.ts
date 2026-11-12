@@ -110,6 +110,17 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
         />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
+      <form (submit)="generateQuarters($event)">
+        <label for="period-generate-quarters-year">Generate the quarters of</label>
+        <input
+          id="period-generate-quarters-year"
+          data-testid="period-generate-quarters-year"
+          inputmode="numeric"
+          [value]="generateQuartersYear()"
+          (input)="generateQuartersYear.set(value($event)); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
+      </form>
       @if (generated() !== null) {
         <p role="status">Made <span data-testid="period-generated">{{ generated() | fig }}</span> periods.</p>
       }
@@ -228,6 +239,8 @@ export class Periods {
   protected readonly generateTo = signal('');
   /** The fiscal year typed (yyyy) to generate the twelve monthly periods of. */
   protected readonly generateFyYear = signal('');
+  /** The calendar year typed (yyyy) to generate the four quarterly periods of. */
+  protected readonly generateQuartersYear = signal('');
   /** How many periods the last generate made; null while one runs or before the first. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -383,6 +396,39 @@ export class Periods {
       }
     } catch {
       this.generateError.set('The fiscal year could not be generated.');
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Generate the four calendar quarters of a year as periods yyyy-Q1 to yyyy-Q4. */
+  protected async generateQuarters(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.generating) return;
+    this.generated.set(null);
+    this.generateError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const year = this.generateQuartersYear().trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateError.set('Type the year as yyyy.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/periods/generate-quarters`,
+          { year },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() === sheet) {
+        this.generated.set(made.length);
+        for (const period of made) this.saved.emit(period);
+      }
+    } catch {
+      this.generateError.set('The quarters could not be generated.');
     } finally {
       this.generating = false;
     }
