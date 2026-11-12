@@ -37,7 +37,8 @@ public class PoolController {
     private static final BigDecimal HUNDRED = new BigDecimal("100.00");
 
     /** A member, a person or another pool (poolId set, never retired): a retired person (a retirement date set,
-     *  whatever the date) counts 0.00 toward the total. Its cut of the pool's pot (two decimals; 0.00 for a person
+     *  whatever the date) counts its share toward the total but is left out of the cuts (0.00, its share spread
+     *  over the others; none when every member is retired). Its cut of the pool's pot (two decimals; 0.00 for a person
      *  on hold on the sheet's today, whose share is spread over the others); none when the pool is unbalanced or
      *  has no pot. A member whose dates (from, to: optional) do not include the sheet's today is left out
      *  entirely: it counts 0.00 toward the total and has no cut. */
@@ -95,18 +96,20 @@ public class PoolController {
             boolean[] retired = new boolean[all.size()];
             boolean[] held = new boolean[all.size()];
             boolean[] active = new boolean[all.size()];
+            boolean allRetired = true;
             for (int i = 0; i < all.size(); i++) {
                 Long personId = all.get(i).getPersonId();
                 Person p = personId == null ? null : people.get(personId);
                 retired[i] = p != null && p.isRetired();
                 held[i] = p != null && today != null && p.heldOn(today);
                 active[i] = today == null || all.get(i).activeOn(today);
-                if (!retired[i] && active[i]) {
+                if (active[i]) {
                     total = total.add(all.get(i).getShare());
+                    allRetired &= retired[i];
                 }
             }
             boolean balanced = total.compareTo(HUNDRED) == 0;
-            BigDecimal[] cuts = balanced && pot != null ? cuts(all, retired, held, active, pot) : new BigDecimal[all.size()];
+            BigDecimal[] cuts = balanced && pot != null && !allRetired ? cuts(all, retired, held, active, pot) : new BigDecimal[all.size()];
             List<PoolMemberView> members = new ArrayList<>();
             for (int i = 0; i < all.size(); i++) {
                 PoolMember m = all.get(i);
@@ -127,7 +130,8 @@ public class PoolController {
         }
 
         /** Each member's cut of the pot: the pot times their share divided by the shares of the members with a
-         *  cut added up, rounded half to even to two decimals (0.00 for a retired one or one on hold); the
+         *  cut added up, rounded half to even to two decimals (0.00 for a retired one or one on hold, whose share is
+         *  spread over the others in proportion to theirs); the
          *  remainder, the pot minus the cuts added up, goes to the member with a cut with the largest share, the
          *  earliest added on a tie, so the cuts total exactly the pot. When no member has a cut, each is 0.00.
          *  A member not active on the sheet's today has none at all. */
