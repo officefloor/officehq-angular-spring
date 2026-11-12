@@ -42,11 +42,12 @@ public class ClaimController {
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
-     *  was soft-closed. */
+     *  was soft-closed, and the last day it was reminded (none when never). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
-            int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
+            int proofs, String splitFrom, String lockedBy, boolean lateEntry,
+            String remindedOn) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -58,7 +59,8 @@ public class ClaimController {
                     claim.getStatusLog().stream().map(StatusLine::of).toList(),
                     claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
-                    claim.isLateEntry());
+                    claim.isLateEntry(),
+                    claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString());
         }
     }
 
@@ -250,6 +252,14 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.addProof(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** Remind an OPEN or PENDING claim, once per sheet's today. */
+    @PostMapping("/claims/{claimId}/remind")
+    public ClaimView remind(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.remind(sheetId.trim(), user.trim(), claimId));
     }
 
     /** Re-settle a SETTLED claim at its figure today: a steward freezes it again. */
@@ -492,6 +502,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimResettleException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> resettleRefused(ClaimResettleException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A reminder that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimRemindException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> remindRefused(ClaimRemindException e) {
         return Map.of("message", e.getMessage());
     }
 }

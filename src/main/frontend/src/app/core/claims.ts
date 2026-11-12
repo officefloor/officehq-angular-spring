@@ -47,6 +47,8 @@ export interface Claim {
   lockedBy: string | null;
   /** Whether it was added while its period was soft-closed. */
   lateEntry: boolean;
+  /** The last day (YYYY-MM-DD) a reminder was written for it; null when never reminded. */
+  remindedOn: string | null;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -415,6 +417,22 @@ export class Claims {
       return null;
     } catch (e) {
       return failed('add a proof to', e);
+    }
+  }
+
+  /** Remind an OPEN or PENDING claim, once per sheet's today; an error message when refused. */
+  async remind(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/remind`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('remind', e);
     }
   }
 

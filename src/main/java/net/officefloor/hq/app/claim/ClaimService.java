@@ -279,6 +279,26 @@ public class ClaimService {
         return updated;
     }
 
+    /** Remind an OPEN or PENDING claim: write REMIND and mark it reminded on the sheet's today. Refused for
+     *  a claim in any other status, and a claim already reminded on the sheet's today. */
+    @Transactional
+    public Claim remind(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().isOpen()) {
+            throw new ClaimRemindException("Only an OPEN or PENDING claim can be reminded.");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (today.equals(claim.getRemindedOn())) {
+            throw new ClaimRemindException("The claim was already reminded today.");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setRemindedOn(today);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("REMIND", updated, person, user);
+        return updated;
+    }
+
     /** Re-settle a SETTLED claim: freeze it again at the figure it would have today as an OPEN claim bound by
      *  no statement (today's rates, grades and floor, the late charge on the sheet's today on top). Refused
      *  unless the claim is SETTLED and the user is a steward, and for a claim in a closed period. */

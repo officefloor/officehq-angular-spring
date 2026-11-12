@@ -103,6 +103,10 @@ public class Claim {
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 
+    /** The last day (the sheet's today then) a reminder was written for it; none when never reminded. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** Its status log: one line per status it has had, oldest first. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -286,6 +290,14 @@ public class Claim {
 
     public void setLateEntry(boolean lateEntry) {
         this.lateEntry = lateEntry;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    public void setRemindedOn(LocalDate remindedOn) {
+        this.remindedOn = remindedOn;
     }
 
     public List<StatusChange> getStatusLog() {

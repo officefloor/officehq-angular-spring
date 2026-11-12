@@ -76,6 +76,7 @@ import { Session } from '../../core/session';
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ claims.deferred(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
+          <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol data-testid="claim-log" aria-label="Status log">
             @for (l of c.statusLog; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? noRate }}</li>
@@ -100,6 +101,9 @@ import { Session } from '../../core/session';
           }
           <button type="button" data-testid="claim-proof" [disabled]="acting() === c.id" (click)="addProof(c)">
             Add proof<span class="visually-hidden"> to claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
+          <button type="button" data-testid="claim-remind" [disabled]="acting() === c.id" (click)="remind(c)">
+            Remind<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
           </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -331,6 +335,17 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.addProof(c.id);
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected async remind(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.remind(c.id);
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);
