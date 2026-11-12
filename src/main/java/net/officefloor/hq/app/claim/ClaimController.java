@@ -207,6 +207,15 @@ public class ClaimController {
         return service.tags(sheetId.trim());
     }
 
+    /**
+     * The duplicate claims, one line each: {@code <name> <date> <amount> x<count>}. It changes nothing.
+     */
+    @GetMapping("/claims/duplicates")
+    public List<String> duplicates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.duplicates(sheetId.trim());
+    }
+
     /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
     @GetMapping("/claims/{id}/timeline")
     public List<String> timeline(@PathVariable @NotBlank @Size(max = 100) String sheetId,
