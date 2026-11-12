@@ -78,7 +78,7 @@ export class Plans {
     if (this.session.sheet() === sheet) this.list.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
   }
 
-  /** Change the plan's amount for the claims generated from now on; throws when refused. */
+  /** Change the plan's amount for the claims generated from now on and its DRAFT claims; throws when refused. */
   async changeAmount(planId: number, amount: string): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) throw new Error('No sheet loaded.');

@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { FigurePipe } from '../../core/locale';
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { Plans } from '../../core/plans';
 
 /** An amount with at most two decimals, more than 0.00. */
@@ -107,6 +107,8 @@ export class PersonPlans {
 
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
+  /** A plan's amount was changed, which also changes its DRAFT claims. */
+  readonly amountChanged = output<void>();
 
   protected readonly plans = computed(() => this.store.list().filter((p) => p.personId === this.personId()));
   protected readonly amount = signal('');
@@ -154,6 +156,7 @@ export class PersonPlans {
     try {
       await this.store.changeAmount(planId, amount);
       this.newAmounts.update(({ [planId]: _, ...rest }) => rest);
+      this.amountChanged.emit();
     } catch (e) {
       const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
       this.rowErrors.update((errors) => ({ ...errors, [planId]: 'The plan\'s amount could not be changed.' + detail }));

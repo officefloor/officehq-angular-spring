@@ -397,6 +397,14 @@ public class ClaimService {
                 claim.getTags());
     }
 
+    /** Edit the claim's amount as {@link #editAmount} does when it is a DRAFT; a claim in any other status keeps its own. */
+    @Transactional
+    public Claim editDraftAmount(String sheetId, String user, Long id, BigDecimal amount) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        return claim.getStatus() == ClaimStatus.DRAFT ? editAmount(sheetId, user, id, amount) : claim;
+    }
+
     /**
      * Open the claim's editor for the user, locking the claim against other users' edits until it is saved or
      * cancelled, or the sheet's today changes. Refused, taking no lock, for a claim that cannot be edited: not a DRAFT,

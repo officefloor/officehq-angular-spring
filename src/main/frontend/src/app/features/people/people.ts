@@ -783,7 +783,7 @@ function csvField(value: string): string {
                     <p role="alert" data-testid="person-patron-error">{{ e.message | fig }}</p>
                   }
                 }
-                <app-person-plans [personId]="p.id" [personName]="p.name" />
+                <app-person-plans [personId]="p.id" [personName]="p.name" (amountChanged)="planAmountChanged()" />
               </td>
               <td
                 app-claims
@@ -1978,6 +1978,12 @@ export class People {
 
   /** Re-read once opening balances were imported, so the screen holds what the store does. */
   protected openingsImported(): void {
+    const sheet = this.session.sheet();
+    if (sheet) void this.read(sheet);
+  }
+
+  /** Re-read once a plan's amount was changed, so its DRAFT claims show their new amount. */
+  protected planAmountChanged(): void {
     const sheet = this.session.sheet();
     if (sheet) void this.read(sheet);
   }

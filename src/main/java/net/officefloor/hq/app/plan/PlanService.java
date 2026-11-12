@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
@@ -175,11 +176,26 @@ public class PlanService {
     }
 
     /**
-     * Change the plan's amount on the sheet's today: the claims generated from then on are of the new amount, those
-     * already generated keep theirs. An amount not more than 0.00 is refused.
+     * Change the plan's amount on the sheet's today: the claims generated from then on are of the new amount, and those
+     * already generated that are still DRAFT are changed to it, each as the claim form would edit it (one it refuses
+     * keeps its amount); those in any other status keep theirs. An amount not more than 0.00 is refused.
      */
-    @Transactional
     public Plan changeAmount(String sheetId, String user, Long planId, BigDecimal amount) {
+        Plan plan = each.execute(status -> change(sheetId, user, planId, amount));
+        String on = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
+        for (PlanDate made : dates.findByPlanIdAndSheetIdOrderByIdAsc(planId, sheetId)) {
+            if (made.getClaimId() != null) {
+                try {
+                    each.executeWithoutResult(status -> claims.editDraftAmount(on, user, made.getClaimId(), amount));
+                } catch (RuntimeException e) {
+                    // The claim form refuses the edit: the claim keeps its amount.
+                }
+            }
+        }
+        return plan;
+    }
+
+    private Plan change(String sheetId, String user, Long planId, BigDecimal amount) {
         Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
                 .orElseThrow(() -> new PlanNotFoundException(sheetId, planId));
         Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
@@ -243,8 +259,8 @@ public class PlanService {
         String on = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
         try {
             each.executeWithoutResult(status -> {
-                claims.add(on, user, personId, plan.getAmount(), date, "", null);
-                dates.saveAndFlush(new PlanDate(sheetId, plan.getId(), date));
+                Claim claim = claims.add(on, user, personId, plan.getAmount(), date, "", null);
+                dates.saveAndFlush(new PlanDate(sheetId, plan.getId(), date, claim.getId()));
             });
             return true;
         } catch (RuntimeException e) {

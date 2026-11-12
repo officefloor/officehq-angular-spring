@@ -155,7 +155,7 @@ public class PlanController {
                 service.nextDates(sheetId, plan), on, service.changes(sheetId, plan));
     }
 
-    /** Change the plan's amount for the claims generated from now on; refused when it is not more than 0.00. */
+    /** Change the plan's amount for the claims generated from now on and its DRAFT claims; refused when not more than 0.00. */
     @PostMapping("/plans/{planId}/amount")
     public PlanView changeAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long planId,
