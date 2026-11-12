@@ -472,6 +472,41 @@ public class RollupService {
     }
 
     /**
+     * Each person's open figure at the end of the date, by person id for every person on the sheet: the dues as shown
+     * now of their claims due by a date in one of the periods that were OPEN or PENDING at the end of the date by their
+     * status log and count then, skipping those with no due; 0.00 with none.
+     */
+    public Map<Long, BigDecimal> openAtEndOf(String sheetId, List<Period> periods, LocalDate end) {
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        List<List<Rate>> sheetRates = rateChain(sheetId);
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            byId.put(person.getId(), person);
+            totals.put(person.getId(), zero());
+        }
+        Map<Long, List<ClaimLog>> logOf = new LinkedHashMap<>();
+        for (ClaimLog line : logs.findBySheetIdOrderByIdAsc(sheetId)) {
+            logOf.computeIfAbsent(line.getClaimId(), id -> new ArrayList<>()).add(line);
+        }
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || claim.getDueBy() == null
+                    || periods.stream().noneMatch(p -> p.contains(claim.getDueBy()))) {
+                continue;
+            }
+            ClaimStatus status = statusOn(claim, logOf.getOrDefault(claim.getId(), List.of()), end);
+            if (status == null || !status.isOpen() || !person.countsAsOf(claim, status, today)) {
+                continue;
+            }
+            dueOf(sheet, sheetRates, person, claim).ifPresent(due -> totals.merge(person.getId(), due, BigDecimal::add));
+        }
+        totals.replaceAll((id, total) -> total.setScale(2, RoundingMode.HALF_EVEN));
+        return totals;
+    }
+
+    /**
      * Record, once the transaction commits, a ROLLUP line for each person whose figures moved since the snapshot (a
      * person new since then counting as moved), then a TOTALS line when any of the sheet's three totals moved.
      */

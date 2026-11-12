@@ -80,10 +80,12 @@ public class PeriodController {
 
     private final PeriodService service;
     private final OpeningImportService openings;
+    private final RolloverService rollovers;
 
-    public PeriodController(PeriodService service, OpeningImportService openings) {
+    public PeriodController(PeriodService service, OpeningImportService openings, RolloverService rollovers) {
         this.service = service;
         this.openings = openings;
+        this.rollovers = rollovers;
     }
 
     /** The sheet's periods in date order. */
@@ -127,6 +129,24 @@ public class PeriodController {
             @RequestBody @Valid GenerateFiscalYearRequest request) {
         String sheet = sheetId.trim();
         List<Period> made = service.generateFiscalYear(sheet, user.trim(), Integer.parseInt(request.year().trim()));
+        return views(sheet, made);
+    }
+
+    /** A fiscal year to roll over, as yyyy. */
+    public record RolloverRequest(@NotNull @Pattern(regexp = "\\s*\\d{4}\\s*") String year) {
+    }
+
+    /**
+     * Roll the fiscal year over: generate the next fiscal year's periods and carry each person's open figure at the
+     * old year's end into the new year's first period; the periods made. Refused for a non-steward or a year with no
+     * periods.
+     */
+    @PostMapping("/rollover")
+    public List<PeriodView> rollover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid RolloverRequest request) {
+        String sheet = sheetId.trim();
+        List<Period> made = rollovers.rollover(sheet, user.trim(), Integer.parseInt(request.year().trim()));
         return views(sheet, made);
     }
 

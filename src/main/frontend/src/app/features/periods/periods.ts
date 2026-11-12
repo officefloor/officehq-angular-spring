@@ -127,6 +127,23 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
       @if (generateError(); as message) {
         <p role="alert" data-testid="period-generate-error">{{ message | fig }}</p>
       }
+      <form aria-label="Roll the year over" (submit)="rollover($event)">
+        <label for="rollover-year">Roll over the fiscal year</label>
+        <input
+          id="rollover-year"
+          data-testid="rollover-year"
+          inputmode="numeric"
+          [value]="rolloverYear()"
+          (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
+        />
+        <button type="submit" data-testid="rollover">Roll over</button>
+        @if (rolloverMade() !== null) {
+          <p role="status">Made <span data-testid="rollover-made">{{ rolloverMade() | fig }}</span> periods.</p>
+        }
+        @if (rolloverError(); as message) {
+          <p role="alert" data-testid="rollover-error">{{ message | fig }}</p>
+        }
+      </form>
       <form aria-label="Import opening balances" (submit)="importOpenings($event)">
         <label for="opening-import">Opening balances, one per line: name,period,amount</label>
         <textarea
@@ -249,6 +266,13 @@ export class Periods {
   /** How many lines the last import of opening balances added; null while one runs or before the first. */
   protected readonly openingDone = signal<number | null>(null);
   protected readonly openingError = signal<string | null>(null);
+  /** The fiscal year typed (yyyy) to roll over into the next. */
+  protected readonly rolloverYear = signal('');
+  /** How many periods the last rollover made; null while one runs or before the first. */
+  protected readonly rolloverMade = signal<number | null>(null);
+  protected readonly rolloverError = signal<string | null>(null);
+  /** Whether a rollover is waiting for its answer: a second meanwhile is ignored. */
+  private rollingOver = false;
   /** Whether an import of opening balances is waiting for its answer: a second meanwhile is ignored. */
   private importingOpenings = false;
   /** Whether a generate is waiting for its answer: a second meanwhile is ignored. */
@@ -469,6 +493,43 @@ export class Periods {
       this.openingError.set('The opening balances could not be imported; none were.' + detail);
     } finally {
       this.importingOpenings = false;
+    }
+  }
+
+  /** Roll a fiscal year over: the store refuses a non-steward or a year with no periods. */
+  protected async rollover(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.rollingOver) return;
+    this.rolloverMade.set(null);
+    this.rolloverError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const year = this.rolloverYear().trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.rolloverError.set('Type the fiscal year to roll over as yyyy.');
+      return;
+    }
+    this.rollingOver = true;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/periods/rollover`,
+          { year },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.rolloverMade.set(made.length);
+      this.openingsImported.emit();
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can roll the year over.'
+          : `The fiscal year ${year} could not be rolled over: it has no periods.`;
+      this.rolloverError.set(message);
+    } finally {
+      this.rollingOver = false;
     }
   }
 
