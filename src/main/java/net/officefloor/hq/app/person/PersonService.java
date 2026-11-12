@@ -22,11 +22,13 @@ public class PersonService {
     private final PersonRepository people;
     private final SheetRepository sheets;
     private final StatementRepository statements;
+    private final PatronRepository patrons;
     private final Rollup rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
-            Rollup rollup, Audit audit) {
+            PatronRepository patrons, Rollup rollup, Audit audit) {
+        this.patrons = patrons;
         this.rollup = rollup;
         this.people = people;
         this.sheets = sheets;
@@ -51,6 +53,41 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Statement> statementsOf(long personId) {
         return statements.findByPersonIdOrderByIdAsc(personId);
+    }
+
+    /** The sheet's patrons: each person's patrons' ids, by person id. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<Long>> patrons(String sheetId) {
+        return patrons.findBySheetId(sheetId).stream().collect(Collectors.groupingBy(Patron::getPersonId,
+                Collectors.mapping(Patron::getPatronId, Collectors.toList())));
+    }
+
+    /** The ids of the person's patrons. */
+    @Transactional(readOnly = true)
+    public List<Long> patronsOf(long personId) {
+        return patrons.findByPersonId(personId).stream().map(Patron::getPatronId).toList();
+    }
+
+    /** Name another person on the sheet as the person's patron: not themselves, and not twice. */
+    @Transactional
+    public Person addPatron(String sheetId, String user, long personId, long patronId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        Person patron = people.findByIdAndSheetId(patronId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (person.getId().equals(patron.getId())) {
+            throw new PatronRefusedException("A person cannot be their own patron.");
+        }
+        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
+            throw new PatronRefusedException(patron.getName() + " is already a patron of " + person.getName() + ".");
+        }
+        try {
+            patrons.saveAndFlush(new Patron(sheetId, person.getId(), patron.getId()));
+        } catch (DataIntegrityViolationException e) {
+            // named by another user at the same moment
+            throw new PatronRefusedException(patron.getName() + " is already a patron of " + person.getName() + ".");
+        }
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " patron=" + patron.getName());
+        return person;
     }
 
     @Transactional

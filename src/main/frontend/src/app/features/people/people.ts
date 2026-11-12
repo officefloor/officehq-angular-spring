@@ -78,7 +78,7 @@ import { PersonClaims } from '../claims/claims';
       </label>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -99,6 +99,33 @@ import { PersonClaims } from '../claims/claims';
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
               <td><span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span></td>
+              <td>
+                <span data-testid="person-patrons">{{ patrons(p) }}</span>
+                <label [for]="'person-patron-select-' + p.id">Add patron<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <select
+                  [id]="'person-patron-select-' + p.id"
+                  data-testid="person-patron-select"
+                  [value]="patronChoices()[p.id] ?? ''"
+                  (change)="setPatronChoice(p.id, value($event))"
+                >
+                  <option value="" [selected]="!patronChoices()[p.id]">Choose…</option>
+                  @for (o of others(p); track o.id) {
+                    <option [value]="'' + o.id" [selected]="'' + o.id === patronChoices()[p.id]">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-patron-add"
+                  [disabled]="addingPatron() === p.id"
+                  (click)="addPatron(p)"
+                >
+                  Add<span class="visually-hidden"> patron for {{ p.name }}</span>
+                </button>
+                @if (patronError()?.id === p.id) {
+                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
+                }
+              </td>
+              <td data-testid="person-backing">{{ backing(p) }}</td>
               <td><app-person-claims [personId]="p.id" [grade]="p.grade" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
@@ -189,6 +216,12 @@ export class PeopleList {
   protected readonly quickSaving = signal(false);
   /** The id of the person whose statement is being taken. */
   protected readonly stating = signal<number | null>(null);
+  /** The patron chosen on each person's row (a person id), blank while none is. */
+  protected readonly patronChoices = signal<Record<number, string>>({});
+  /** The id of the person a patron is being added to. */
+  protected readonly addingPatron = signal<number | null>(null);
+  /** The last refused patron added to a person, shown on their row until the next action on it. */
+  protected readonly patronError = signal<{ id: number; message: string } | null>(null);
   /** The last refused action on a person, shown on their row until the next action on it. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
@@ -241,6 +274,48 @@ export class PeopleList {
     return money(this.overdueCents(p));
   }
 
+  /** The people a person may choose among as a patron: everyone else on the sheet. */
+  protected others(p: Person): Person[] {
+    return this.people.people().filter((o) => o.id !== p.id);
+  }
+
+  private patronsOf(p: Person): Person[] {
+    const ids = new Set(p.patronIds);
+    return this.people.people().filter((o) => ids.has(o.id));
+  }
+
+  /** A person's patrons' names, sorted, comma and space separated. */
+  protected patrons(p: Person): string {
+    return this.patronsOf(p).map((o) => o.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
+  }
+
+  /** A person's patrons' due-totals added up, skipping those that are n/a; 0.00 with no patrons. */
+  protected backing(p: Person): string {
+    return money(this.patronsOf(p).reduce((sum, o) => sum + (this.dueCents(o) ?? 0n), 0n));
+  }
+
+  protected setPatronChoice(id: number, choice: string): void {
+    this.clearActionError(id);
+    this.patronChoices.update((cs) => ({ ...cs, [id]: choice }));
+  }
+
+  protected async addPatron(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    const choice = this.patronChoices()[p.id] ?? '';
+    if (!choice) {
+      this.patronError.set({ id: p.id, message: 'Choose a patron.' });
+      return;
+    }
+    this.addingPatron.set(p.id);
+    try {
+      const err = await this.people.addPatron(p.id, Number(choice));
+      if (err) this.patronError.set({ id: p.id, message: err });
+      else this.patronChoices.update((cs) => ({ ...cs, [p.id]: '' }));
+    } finally {
+      this.addingPatron.set(null);
+    }
+  }
+
   protected due(p: Person): string {
     const d = this.dueCents(p);
     return d === null ? NO_RATE : money(d);
@@ -287,6 +362,7 @@ export class PeopleList {
 
   private clearActionError(id: number): void {
     if (this.actionError()?.id === id) this.actionError.set(null);
+    if (this.patronError()?.id === id) this.patronError.set(null);
   }
 
   protected edit(p: Person): void {

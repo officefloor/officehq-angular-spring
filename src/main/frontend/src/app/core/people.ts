@@ -24,6 +24,8 @@ export interface Person {
   retiredFrom: string | null;
   /** On hold: their OPEN claims count in no live total; their SETTLED ones still do. */
   held: boolean;
+  /** The ids of the other people on the sheet they have named as their patrons. */
+  patronIds: number[];
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -167,6 +169,27 @@ export class People {
       return null;
     } catch (e) {
       return failed('hold', e);
+    }
+  }
+
+  /** Name another person on the sheet as a person's patron; an error message when refused. */
+  async addPatron(id: number, patronId: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (patronId === id) return 'A person cannot be their own patron.';
+    try {
+      const person = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/patrons`, { patronId }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        const err: unknown = e.error;
+        if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') return err.message;
+      }
+      return failed('add patron to', e);
     }
   }
 

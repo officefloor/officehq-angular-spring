@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** The people on a sheet. The signed-in user's name comes in the X-User header. */
@@ -29,19 +30,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** A person as the screen shows it, with how many statements were taken of them and the last one's
-     *  due-total (n/a when it was) and date; none of either before their first statement. */
+     *  due-total (n/a when it was) and date; none of either before their first statement; and the ids
+     *  of their patrons. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
-            boolean held) {
+            boolean held, List<Long> patronIds) {
 
-        public static PersonView of(Person person, List<Statement> statements) {
+        public static PersonView of(Person person, List<Statement> statements, List<Long> patronIds) {
             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.size(),
                     last == null ? null : last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(),
                     last == null ? null : last.getTakenOn().toString(),
                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
-                    person.isHeld());
+                    person.isHeld(), patronIds);
         }
     }
 
@@ -55,6 +57,10 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @NotNull Long version) {
+    }
+
+    /** The person to name as a patron. */
+    public record PatronRequest(@NotNull Long patronId) {
     }
 
     /** The date a person is retired from; none takes the sheet's today. */
@@ -72,8 +78,11 @@ public class PersonController {
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         Map<Long, List<Statement>> statements = service.statements(sheetId.trim());
+        Map<Long, List<Long>> patrons = service.patrons(sheetId.trim());
         return service.list(sheetId.trim()).stream()
-                .map(p -> PersonView.of(p, statements.getOrDefault(p.getId(), List.of()))).toList();
+                .map(p -> PersonView.of(p, statements.getOrDefault(p.getId(), List.of()),
+                        patrons.getOrDefault(p.getId(), List.of())))
+                .toList();
     }
 
     /** Add a person to the sheet. */
@@ -81,7 +90,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()), List.of());
+        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()), List.of(), List.of());
     }
 
     /** Change a person's name and grade. */
@@ -93,7 +102,7 @@ public class PersonController {
         try {
             Person updated = service.update(sheetId.trim(), user.trim(), personId, request.version(),
                     request.name(), request.grade());
-            return PersonView.of(updated, service.statementsOf(updated.getId()));
+            return view(updated);
         } catch (ObjectOptimisticLockingFailureException e) {
             // saved by someone else between the version check and the write
             throw new PersonVersionConflictException(service.current(sheetId.trim(), personId));
@@ -107,7 +116,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody RetireRequest request) {
         Person retired = service.retire(sheetId.trim(), user.trim(), personId, request.from());
-        return PersonView.of(retired, service.statementsOf(retired.getId()));
+        return view(retired);
     }
 
     /** Put a person on hold, or take them off it. */
@@ -116,12 +125,32 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         Person toggled = service.toggleHold(sheetId.trim(), user.trim(), personId);
-        return PersonView.of(toggled, service.statementsOf(toggled.getId()));
+        return view(toggled);
+    }
+
+    /** Name another person on the sheet as the person's patron. */
+    @PostMapping("/{personId}/patrons")
+    public PersonView addPatron(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid PatronRequest request) {
+        return view(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()));
+    }
+
+    /** A patron the person cannot name is refused with the reason, for the screen to show. */
+    @ExceptionHandler(PatronRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> patronRefused(PatronRefusedException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    private PersonView view(Person person) {
+        return PersonView.of(person, service.statementsOf(person.getId()), service.patronsOf(person.getId()));
     }
 
     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */
     @ExceptionHandler(PersonVersionConflictException.class)
     public ResponseEntity<PersonView> conflict(PersonVersionConflictException e) {
-        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(PersonView.of(e.getCurrent(), service.statementsOf(e.getCurrent().getId())));
+        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(view(e.getCurrent()));
     }
 }
