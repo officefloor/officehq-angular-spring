@@ -1,0 +1,64 @@
+{
+  "checkpoint": 81,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp81_remind",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN or PENDING claim can be reminded (a button on the claim): REMIND is written, naming the\nclaim like every claim line, and the claim shows the sheet's today as its reminded date. A claim\ncan be reminded once per sheet-today: a second press on the same day, or a press on a claim in any\nother status, is refused with an error on the claim and writes nothing. The reminded date is the\nlast day a reminder was written, or nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN or PENDING claim can be reminded (a button on the claim): REMIND is written, naming the\nclaim like every claim line, and the claim shows the sheet's today as its reminded date. A claim\ncan be reminded once per sheet-today: a second press on the same day, or a press on a claim in any\nother status, is refused with an error on the claim and writes nothing. The reminded date is the\nlast day a reminder was written, or nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "898ed6f0fb15afd2a5ebea511f0b76d2959e3adb",
+  "reset_sha": "",
+  "preagent_sha": "11576e1dec5b0925b2a8c5c75e39984a38854fe5",
+  "prev_sha": "11576e1dec5b0925b2a8c5c75e39984a38854fe5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6733051999999999,
+    "input_tokens": 32,
+    "output_tokens": 6161,
+    "cache_read_tokens": 650066,
+    "cache_creation_tokens": 52493,
+    "num_turns": 18,
+    "duration_ms": 240493,
+    "duration_api_ms": 59085,
+    "model": "claude-opus-5-5",
+    "session_id": "8c13195d-7d9d-44bc-968d-e27b4ecf5cbd",
+    "stop_reason": "success",
+    "result_text": "I added claim reminders across the database, server and front end. All 4 tests in `bin/e2e` pass.\n\n**How it behaves**\n- Each claim row now has a **Remind** button (`claim-remind`) and shows its **Reminded** date (`claim-reminded`), which is blank until the claim has been reminded.\n- Reminding an OPEN or PENDING claim sets its reminded date to the sheet's today. It also writes `REMIND sheet=\u2026 by=\u2026 person=\u2026 amount=\u2026 date=\u2026 number=\u2026` to the audit file, in the same form as the other claim lines.\n- A second reminder on the same sheet-today, or a reminder on a claim in any other status, is refused. The claim shows its error and nothing is saved or written to the audit file. Viewers are already refused by the app's existing check on every change.\n\n**What changed**\n- **Database:** a new migration, `V51__claim_reminded.sql`, adds a `reminded_on` date column to claims.\n- **Server:**\n  - `Claim` holds the reminded date.\n  - `ClaimService.remind` makes the status and once-per-day checks, saves the date and writes the audit line.\n  - `ClaimController` adds `POST /claims/{id}/remind`, includes `remindedOn` in the claim data it returns, and turns a refusal (the new `ClaimRemindException`) into the error the screen shows.\n- **Front end:** `core/claims.ts` gets `remindedOn` and a `remind()` call. `features/claims/claims.ts` gets the button and the date, wired to the claim's existing error the same way as **Add proof**.\n\nThe request didn't say whether a claim in a closed period can be reminded, so I left that check out and those claims can still be reminded. The tests don't cover it, so it's easy to add if you want it blocked like proofs and deferrals are.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6733051999999999,
+        "num_turns": 18,
+        "duration_ms": 240493,
+        "duration_api_ms": 59085,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp81.agent.jsonl",
+  "agent_diff_file": "cp81.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
