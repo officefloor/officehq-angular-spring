@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -8,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -32,12 +34,14 @@ public class PersonController {
     /** A person as the screen shows it, with how many statements were taken of them and the last one's
      *  due-total (n/a when it was) and date; none of either before their first statement; and the ids
      *  of their patrons. Their grade is the one in force on the sheet's today; grades lists every grade
-     *  they were given, each with its from-date (YYYY-MM-DD, none for the first). */
+     *  they were given, each with its from-date (YYYY-MM-DD, none for the first); watched says whether
+     *  the signed-in user watches them. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
-            boolean held, List<HoldView> holds, List<Long> patronIds) {
+            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched) {
 
-        public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds) {
+        public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
+                boolean watched) {
             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
@@ -45,7 +49,8 @@ public class PersonController {
                     last == null ? null : last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(),
                     last == null ? null : last.getTakenOn().toString(),
                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
-                    person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds);
+                    person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
+                    watched);
         }
     }
 
@@ -90,6 +95,10 @@ public class PersonController {
     public record PatronRequest(@NotNull Long patronId) {
     }
 
+    /** Whether the signed-in user is to watch the person. */
+    public record WatchRequest(@NotNull Boolean watched) {
+    }
+
     /** The date a person is retired from; none takes the sheet's today. */
     public record RetireRequest(LocalDate from) {
     }
@@ -108,9 +117,10 @@ public class PersonController {
         Map<Long, List<Long>> patrons = service.patrons(sheetId.trim());
         List<Person> people = service.list(sheetId.trim());
         LocalDate today = service.today(sheetId.trim());
+        Set<Long> watched = service.watchedBy(sheetId.trim(), user.trim());
         return people.stream()
                 .map(p -> PersonView.of(p, today, statements.getOrDefault(p.getId(), List.of()),
-                        patrons.getOrDefault(p.getId(), List.of())))
+                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))
                 .toList();
     }
 
@@ -120,7 +130,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonRequest request) {
         Person added = service.add(sheetId.trim(), user.trim(), request.name(), request.grade());
-        return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of());
+        return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of(), false);
     }
 
     /** Change a person's name, and give them a grade from a date. */
@@ -132,7 +142,7 @@ public class PersonController {
         try {
             Person updated = service.update(sheetId.trim(), user.trim(), personId, request.version(),
                     request.name(), request.grade(), request.gradeFrom());
-            return view(updated);
+            return view(updated, user.trim());
         } catch (ObjectOptimisticLockingFailureException e) {
             // saved by someone else between the version check and the write
             throw new PersonVersionConflictException(service.current(sheetId.trim(), personId));
@@ -146,7 +156,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody RetireRequest request) {
         Person retired = service.retire(sheetId.trim(), user.trim(), personId, request.from());
-        return view(retired);
+        return view(retired, user.trim());
     }
 
     /** Put a person on hold from a date, to a date when one is given. */
@@ -156,7 +166,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody HoldRequest request) {
         Person held = service.hold(sheetId.trim(), user.trim(), personId, request.from(), request.to());
-        return view(held);
+        return view(held, user.trim());
     }
 
     /** A hold that cannot be put on is refused with the reason, for the screen to show. */
@@ -172,7 +182,23 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PatronRequest request) {
-        return view(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()));
+        return view(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()), user.trim());
+    }
+
+    /** Start or stop watching a person as the signed-in user. */
+    @PutMapping("/{personId}/watch")
+    public PersonView watch(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid WatchRequest request) {
+        return view(service.watch(sheetId.trim(), user.trim(), personId, request.watched()), user.trim());
+    }
+
+    /** A watch that cannot be started is refused with the reason, for the screen to show. */
+    @ExceptionHandler(WatchRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> watchRefused(WatchRefusedException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** A patron the person cannot name is refused with the reason, for the screen to show. */
@@ -182,13 +208,14 @@ public class PersonController {
         return Map.of("message", e.getMessage());
     }
 
-    private PersonView view(Person person) {
-        return PersonView.of(person, service.today(person.getSheetId()), service.statementsOf(person.getId()), service.patronsOf(person.getId()));
+    private PersonView view(Person person, String user) {
+        return PersonView.of(person, service.today(person.getSheetId()), service.statementsOf(person.getId()),
+                service.patronsOf(person.getId()), service.watching(person.getId(), user));
     }
 
     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */
     @ExceptionHandler(PersonVersionConflictException.class)
-    public ResponseEntity<PersonView> conflict(PersonVersionConflictException e) {
-        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(view(e.getCurrent()));
+    public ResponseEntity<PersonView> conflict(PersonVersionConflictException e, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(view(e.getCurrent(), request.getHeader("X-User").trim()));
     }
 }

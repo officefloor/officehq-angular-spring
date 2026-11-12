@@ -21,6 +21,8 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.Statement;
 import net.officefloor.hq.app.person.StatementRepository;
+import net.officefloor.hq.app.person.Watch;
+import net.officefloor.hq.app.person.WatchRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.role.ActionNotAllowedException;
@@ -45,11 +47,13 @@ public class ClaimService {
     private final StatementRepository statements;
     private final Rollup rollup;
     private final RoleService roles;
+    private final WatchRepository watches;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
             SheetRepository sheetRows, PeriodRepository periods, StatementRepository statements, Rollup rollup,
-            RoleService roles, Audit audit) {
+            RoleService roles, WatchRepository watches, Audit audit) {
+        this.watches = watches;
         this.roles = roles;
         this.sheetRows = sheetRows;
         this.periods = periods;
@@ -174,6 +178,9 @@ public class ClaimService {
             case DRAFT -> throw new IllegalStateException();
         };
         audit(event, updated, person, user, number, to == ClaimStatus.SETTLED ? dueField(updated) : "");
+        if (to == ClaimStatus.SETTLED) {
+            notifyWatchers(updated, person, user);
+        }
         rollup.recordChanges(sheetId, user, before);
         return updated;
     }
@@ -205,6 +212,7 @@ public class ClaimService {
         logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
         audit("CLAIM_APPROVED", updated, person, user, updated.getNumber(), dueField(updated));
+        notifyWatchers(updated, person, user);
         rollup.recordChanges(sheetId, user, before);
         return updated;
     }
@@ -252,6 +260,7 @@ public class ClaimService {
         Claim updated = claims.saveAndFlush(claim);
         audit("CLAIM_RESETTLED", updated, person, user, updated.getNumber(),
                 " old=" + show(old) + " new=" + show(due));
+        notifyWatchers(updated, person, user);
         rollup.recordChanges(sheetId, user, before);
         return updated;
     }
@@ -610,6 +619,14 @@ public class ClaimService {
     /** A due as an audit line shows it: n/a when there is none. */
     private static String show(BigDecimal due) {
         return due == null ? "n/a" : due.toPlainString();
+    }
+
+    /** Tell each user watching the claim's person, in the order they started watching. */
+    private void notifyWatchers(Claim claim, Person person, String user) {
+        for (Watch watch : watches.findByPersonIdOrderByIdAsc(person.getId())) {
+            audit.recordOnCommit("NOTIFY sheet=" + claim.getSheetId() + " by=" + user + " user=" + watch.getUser()
+                    + " person=" + person.getName() + " number=" + claim.getNumber());
+        }
     }
 
     /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */

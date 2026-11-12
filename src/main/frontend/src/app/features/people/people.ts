@@ -90,7 +90,7 @@ import { PersonClaims } from '../claims/claims';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -152,6 +152,18 @@ import { PersonClaims } from '../claims/claims';
                 }
               </td>
               <td data-testid="person-backing">{{ backing(p) }}</td>
+              <td>
+                <span data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</span>
+                <button
+                  type="button"
+                  data-testid="person-watch"
+                  [attr.aria-pressed]="p.watched"
+                  [disabled]="watching() === p.id"
+                  (click)="watch(p)"
+                >
+                  Watch<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+              </td>
               <td><app-person-claims [personId]="p.id" [grades]="p.grades" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
@@ -234,6 +246,8 @@ export class PeopleList {
   protected readonly holdDates = signal<Record<number, { from: string; to: string }>>({});
   /** The id of the person being put on hold. */
   protected readonly holding = signal<number | null>(null);
+  /** The id of the person whose watch is being toggled. */
+  protected readonly watching = signal<number | null>(null);
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = this.figures.dueTotal;
   /** Everyone's overdue claims that count, counted. */
@@ -411,6 +425,17 @@ export class PeopleList {
       else this.holdDates.update((ds) => ({ ...ds, [p.id]: { from: '', to: '' } }));
     } finally {
       this.holding.set(null);
+    }
+  }
+
+  protected async watch(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.watching.set(p.id);
+    try {
+      const err = await this.people.watch(p.id, !p.watched);
+      if (err) this.actionError.set({ id: p.id, message: err });
+    } finally {
+      this.watching.set(null);
     }
   }
 

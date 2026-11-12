@@ -139,7 +139,7 @@ public class ClaimController {
             @RequestBody @Valid QuickAddRequest request) {
         QuickAddService.Added added = quickAdd.add(sheetId.trim(), user.trim(), request.name(), request.amount());
         return new QuickAddView(PersonView.of(added.person(), people.today(sheetId.trim()), people.statementsOf(added.person().getId()),
-                people.patronsOf(added.person().getId())),
+                people.patronsOf(added.person().getId()), people.watching(added.person().getId(), user.trim())),
                 added.personAdded(), ClaimView.of(added.claim()));
     }
 
@@ -309,7 +309,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         ClaimService.Stated stated = service.statement(sheetId.trim(), user.trim(), personId);
         return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
-                people.patronsOf(stated.person().getId())),
+                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim())),
                 stated.claims().stream().map(ClaimView::of).toList());
     }
 

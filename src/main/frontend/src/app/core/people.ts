@@ -59,6 +59,8 @@ export interface Person {
   holds: Hold[];
   /** The ids of the other people on the sheet they have named as their patrons. */
   patronIds: number[];
+  /** Whether the signed-in user watches them. */
+  watched: boolean;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -232,6 +234,26 @@ export class People {
         if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') return err.message;
       }
       return failed('add patron to', e);
+    }
+  }
+
+  /** Start (on) or stop watching a person as the signed-in user; an error message when refused. */
+  async watch(id: number, on: boolean): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const person = await firstValueFrom(
+        this.http.put<Person>(`${this.url(sid)}/${id}/watch`, { watched: on }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        const err: unknown = e.error;
+        if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') return err.message;
+      }
+      return failed(on ? 'watch' : 'stop watching', e);
     }
   }
 

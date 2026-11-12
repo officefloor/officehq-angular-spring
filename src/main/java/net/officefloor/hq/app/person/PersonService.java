@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -23,11 +24,13 @@ public class PersonService {
     private final SheetRepository sheets;
     private final StatementRepository statements;
     private final PatronRepository patrons;
+    private final WatchRepository watches;
     private final Rollup rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
-            PatronRepository patrons, Rollup rollup, Audit audit) {
+            PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit) {
+        this.watches = watches;
         this.patrons = patrons;
         this.rollup = rollup;
         this.people = people;
@@ -87,6 +90,48 @@ public class PersonService {
         }
         audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " patron=" + patron.getName());
+        return person;
+    }
+
+    /** The ids of the people on the sheet the user watches. */
+    @Transactional(readOnly = true)
+    public Set<Long> watchedBy(String sheetId, String user) {
+        return watches.findBySheetIdAndUser(sheetId, user).stream().map(Watch::getPersonId)
+                .collect(Collectors.toSet());
+    }
+
+    /** Whether the user watches the person. */
+    @Transactional(readOnly = true)
+    public boolean watching(long personId, String user) {
+        return watches.findByPersonIdAndUser(personId, user).isPresent();
+    }
+
+    /** The users watching the person, in the order they started watching. */
+    @Transactional(readOnly = true)
+    public List<String> watchers(long personId) {
+        return watches.findByPersonIdOrderByIdAsc(personId).stream().map(Watch::getUser).toList();
+    }
+
+    /** Start (on) or stop watching a person as the user; asking for the state already held records nothing. */
+    @Transactional
+    public Person watch(String sheetId, String user, long personId, boolean on) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        var held = watches.findByPersonIdAndUser(person.getId(), user);
+        if (on == held.isPresent()) {
+            return person;
+        }
+        if (on) {
+            try {
+                watches.saveAndFlush(new Watch(sheetId, person.getId(), user));
+            } catch (DataIntegrityViolationException e) {
+                // started at the same moment in another window
+                throw new WatchRefusedException("You already watch " + person.getName() + ".");
+            }
+        } else {
+            watches.delete(held.get());
+        }
+        audit.recordOnCommit((on ? "PERSON_WATCHED" : "PERSON_UNWATCHED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName());
         return person;
     }
 
