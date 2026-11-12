@@ -1,0 +1,361 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index c319cd316..18a8961ed 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -35,6 +35,8 @@ interface SettingsView {
+   scoreMid: number | null;
+   /** The score at or above which a person is HIGH while both score thresholds are set; null: blank. */
+   scoreHigh: number | null;
++  /** Whether changing the sheet's today records each person's score on the day being left. */
++  scoreLog: boolean;
+   /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
+   proofThreshold: string | null;
+   /** The due above which a claim cannot be opened with an empty note, two decimals; null when there is none. */
+@@ -283,6 +285,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           (focus)="lastFocused = 'scoreHigh'"
+           (input)="scoreHigh.set(value($event)); scoreHighEdited = true; settingsError.set(null)"
+         />
++        <label for="setting-score-log">Score log (on, or blank: off)</label>
++        <input
++          id="setting-score-log"
++          data-testid="setting-score-log"
++          [value]="scoreLog()"
++          (focus)="lastFocused = 'scoreLog'"
++          (input)="scoreLog.set(value($event)); scoreLogEdited = true; settingsError.set(null)"
++        />
+         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
+         <input
+           id="setting-fiscal-start-month"
+@@ -475,6 +485,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' | fig }}</strong></p>
+       <p>Mid score threshold: <strong data-testid="setting-score-mid-current">{{ session.scoreMid() ?? '' | fig }}</strong></p>
+       <p>High score threshold: <strong data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' | fig }}</strong></p>
++      <p>Score log: <strong data-testid="setting-score-log-current">{{ scoreLogCurrent() ?? '' | fig }}</strong></p>
+       <p>Fiscal year start month: <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonthCurrent() ?? '' | fig }}</strong></p>
+       <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' | fig }}</strong></p>
+       <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ alertThresholdCurrent() ?? '' | fig }}</strong></p>
+@@ -617,6 +628,8 @@ export class Settings {
+   protected readonly reviewSla = signal('');
+   protected readonly scoreMid = signal('');
+   protected readonly scoreHigh = signal('');
++  protected readonly scoreLog = signal('');
++  protected readonly scoreLogCurrent = signal<string | null>(null);
+   protected readonly fiscalStartMonth = signal('');
+   protected readonly fiscalStartMonthCurrent = signal<string | null>(null);
+   protected readonly pot = signal('');
+@@ -647,6 +660,7 @@ export class Settings {
+   protected reviewSlaEdited = false;
+   protected scoreMidEdited = false;
+   protected scoreHighEdited = false;
++  protected scoreLogEdited = false;
+   protected fiscalStartMonthEdited = false;
+   protected potEdited = false;
+   protected alertThresholdEdited = false;
+@@ -659,7 +673,7 @@ export class Settings {
+   protected reviewThresholdEdited = false;
+   protected roundingEdited = false;
+   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
+-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'scoreMid' | 'scoreHigh' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'proofKinds' | 'defaultGrade' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
++  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'scoreMid' | 'scoreHigh' | 'scoreLog' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'proofKinds' | 'defaultGrade' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
+     null;
+   protected readonly settingsError = signal<string | null>(null);
+   protected readonly roleList = signal<RoleView[]>([]);
+@@ -691,6 +705,7 @@ export class Settings {
+         this.session.reviewSla.set(null);
+         this.session.scoreMid.set(null);
+         this.session.scoreHigh.set(null);
++        this.scoreLogCurrent.set(null);
+         this.fiscalStartMonthCurrent.set(null);
+         this.session.pot.set(null);
+         this.alertThresholdCurrent.set(null);
+@@ -771,7 +786,7 @@ export class Settings {
+     if (!sheet) return;
+     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
+     // nothing), else the clerk limit.
+-    const nothingTyped = !this.clerkLimitEdited && this.gradeClerkLimitEdited.size === 0 && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.proofKindsEdited && !this.defaultGradeEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
++    const nothingTyped = !this.clerkLimitEdited && this.gradeClerkLimitEdited.size === 0 && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.scoreLogEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.proofKindsEdited && !this.defaultGradeEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
+     if (nothingTyped) {
+       switch (this.lastFocused) {
+         case 'clerkLimit': this.clerkLimitEdited = true; break;
+@@ -786,6 +801,7 @@ export class Settings {
+         case 'reviewSla': this.reviewSlaEdited = true; break;
+         case 'scoreMid': this.scoreMidEdited = true; break;
+         case 'scoreHigh': this.scoreHighEdited = true; break;
++        case 'scoreLog': this.scoreLogEdited = true; break;
+         case 'fiscalStartMonth': this.fiscalStartMonthEdited = true; break;
+         case 'pot': this.potEdited = true; break;
+         case 'alertThreshold': this.alertThresholdEdited = true; break;
+@@ -816,6 +832,7 @@ export class Settings {
+     const saveReviewSla = this.reviewSlaEdited;
+     const saveScoreMid = this.scoreMidEdited;
+     const saveScoreHigh = this.scoreHighEdited;
++    const saveScoreLog = this.scoreLogEdited;
+     const saveFiscalStartMonth = this.fiscalStartMonthEdited;
+     const savePot = this.potEdited;
+     const saveAlertThreshold = this.alertThresholdEdited;
+@@ -840,6 +857,7 @@ export class Settings {
+     const reviewSla = this.reviewSla().trim();
+     const scoreMid = this.scoreMid().trim();
+     const scoreHigh = this.scoreHigh().trim();
++    const scoreLog = this.scoreLog().trim();
+     const fiscalStartMonth = this.fiscalStartMonth().trim();
+     const pot = this.pot().trim();
+     const alertThreshold = this.alertThreshold().trim();
+@@ -928,6 +946,10 @@ export class Settings {
+       this.settingsError.set('Type a high score threshold as a whole number, or leave it blank.');
+       return;
+     }
++    if (saveScoreLog && scoreLog !== '' && scoreLog !== 'on') {
++      this.settingsError.set('Type on for the score log, or leave it blank for off.');
++      return;
++    }
+     if (saveFiscalStartMonth && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
+       this.settingsError.set('Type a fiscal year start month from 1 to 12.');
+       return;
+@@ -1091,6 +1113,12 @@ export class Settings {
+         );
+         this.scoreHighEdited = false;
+       }
++      if (saveScoreLog) {
++        saved = await firstValueFrom(
++          this.http.put<SettingsView>(`${url}/score-log`, { scoreLog: scoreLog === '' ? null : scoreLog }, this.session.headers()),
++        );
++        this.scoreLogEdited = false;
++      }
+       if (saveFiscalStartMonth) {
+         saved = await firstValueFrom(
+           this.http.put<SettingsView>(`${url}/fiscal-start-month`, { fiscalStartMonth }, this.session.headers()),
+@@ -1335,6 +1363,8 @@ export class Settings {
+     this.scoreMid.set(settings.scoreMid === null ? '' : String(settings.scoreMid));
+     this.session.scoreHigh.set(settings.scoreHigh === null ? '' : String(settings.scoreHigh));
+     this.scoreHigh.set(settings.scoreHigh === null ? '' : String(settings.scoreHigh));
++    this.scoreLogCurrent.set(settings.scoreLog ? 'on' : '');
++    this.scoreLog.set(settings.scoreLog ? 'on' : '');
+     this.fiscalStartMonthCurrent.set(String(settings.fiscalStartMonth));
+     this.fiscalStartMonth.set(String(settings.fiscalStartMonth));
+     this.session.pot.set(settings.pot ?? '');
+@@ -1373,6 +1403,7 @@ export class Settings {
+     this.reviewSlaEdited = false;
+     this.scoreMidEdited = false;
+     this.scoreHighEdited = false;
++    this.scoreLogEdited = false;
+     this.fiscalStartMonthEdited = false;
+     this.potEdited = false;
+     this.alertThresholdEdited = false;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 14775b1a7..ca0576b0b 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -46,9 +46,10 @@ public class RollupService {
+     /**
+      * A person's figures as shown: claimed with two decimals, due-total (held down to the cap) with two decimals or
+      * n/a, and overdue-total (the dues of their overdue claims) with two decimals; and the grade in force on the
+-     * sheet's today, or null when the sheet has none.
++     * sheet's today, or null when the sheet has none; and the score: the dues of their settled claims divided by 100,
++     * less 5 for each of their overdue claims, rounded half to even to a whole number.
+      */
+-    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade) {
++    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade, String score) {
+     }
+ 
+     /** Everyone's figures, by person id in the order they were added, and the sheet's totals. */
+@@ -105,6 +106,8 @@ public class RollupService {
+             BigDecimal claimed = zero();
+             BigDecimal due = zero();
+             BigDecimal overdue = zero();
++            BigDecimal settled = zero();
++            int overdueCount = 0;
+             boolean anyDue = today != null && rateOn(sheetRates, person.gradeOn(today), today).isPresent();
+             for (Claim claim : theirs) {
+                 // A correction leaves claimed alone; only its due counts.
+@@ -119,8 +122,14 @@ public class RollupService {
+                     anyDue = true;
+                 }
+                 Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
++                if (isOverdue(sheet, person, claim, today)) {
++                    overdueCount++;
++                }
+                 if (claimDue.isPresent()) {
+                     due = due.add(claimDue.get());
++                    if (claim.getStatus() == ClaimStatus.SETTLED) {
++                        settled = settled.add(claimDue.get());
++                    }
+                     if (isOverdue(sheet, person, claim, today)) {
+                         overdue = overdue.add(claimDue.get());
+                     }
+@@ -139,7 +148,7 @@ public class RollupService {
+                 dues.add(due);
+             }
+             figures.put(person.getId(), new Figures(person.getName(), shown(claimed), anyDue ? shown(due) : "n/a",
+-                    shown(overdue), today == null ? null : person.gradeOn(today)));
++                    shown(overdue), today == null ? null : person.gradeOn(today), scoreOf(settled, overdueCount)));
+         }
+         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
+     }
+@@ -733,6 +742,12 @@ public class RollupService {
+                 .filter(r -> r.appliesOn(date));
+     }
+ 
++    /** The score of a settled figure and a count of overdue claims, as the screen shows it. */
++    private static String scoreOf(BigDecimal settled, int overdue) {
++        return settled.movePointLeft(2).subtract(BigDecimal.valueOf(5L * overdue))
++                .setScale(0, RoundingMode.HALF_EVEN).toPlainString();
++    }
++
+     private static BigDecimal zero() {
+         return BigDecimal.ZERO.setScale(2);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 92af037eb..3c4687406 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -33,7 +33,7 @@ public class SettingController {
+      * when there is none; the floor with two decimals; the terms in whole days; each grade's own terms in whole days,
+      * by grade (a grade without its own is left out); the late percent with two decimals; the policy date as
+      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
+-     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the fiscal year start month (1 to 12); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the review threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the alert threshold with two decimals, null when off; the parent sheet's id, null when there is none; the proof kinds, comma separated, null when there are none; the escalation gap in whole days, null when blank (off); the default grade, null when blank (A); the review SLA in whole days, null when blank (none); the mid and high score thresholds, whole numbers, null when blank;
++     * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the fiscal year start month (1 to 12); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the review threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the alert threshold with two decimals, null when off; the parent sheet's id, null when there is none; the proof kinds, comma separated, null when there are none; the escalation gap in whole days, null when blank (off); the default grade, null when blank (A); the review SLA in whole days, null when blank (none); the mid and high score thresholds, whole numbers, null when blank; whether the score log is on;
+      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
+      * separated, null when blank (the standing rule).
+      * Then every value recorded of each dated setting, by key (clerk-limit, clerk-limit-A, clerk-limit-B, clerk-limit-C, floor, terms, terms-A, terms-B, terms-C,
+@@ -41,7 +41,7 @@ public class SettingController {
+      */
+     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
+             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
+-            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, String proofKinds, Integer escalateAfter, String defaultGrade, Integer reviewSla, Integer scoreMid, Integer scoreHigh, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
++            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, String proofKinds, Integer escalateAfter, String defaultGrade, Integer reviewSla, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
+ 
+         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
+             LocalDate today = sheet.getToday();
+@@ -53,7 +53,7 @@ public class SettingController {
+             return new SettingsView(shown(sheet.getClerkLimit()), shown(sheet.floorOn(today)), sheet.termsOn(today),
+                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
+                     sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), sheet.getFiscalStartMonth(), shown(sheet.proofThresholdOn(today)),
+-                    shown(sheet.noteThresholdOn(today)), shown(sheet.reviewThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), sheet.getProofKinds(), sheet.getEscalateAfter(), sheet.getDefaultGrade(), sheet.getReviewSla(), sheet.getScoreMid(), sheet.getScoreHigh(), permissions,
++                    shown(sheet.noteThresholdOn(today)), shown(sheet.reviewThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), sheet.getProofKinds(), sheet.getEscalateAfter(), sheet.getDefaultGrade(), sheet.getReviewSla(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), permissions,
+                     dated);
+         }
+ 
+@@ -205,6 +205,14 @@ public class SettingController {
+         }
+     }
+ 
++    /** The score log switch: on, or blank or missing meaning off. */
++    public record ScoreLogRequest(@Pattern(regexp = "\\s*(on)?\\s*") String scoreLog) {
++
++        boolean on() {
++            return scoreLog != null && !scoreLog.isBlank();
++        }
++    }
++
+     /** A score threshold: a whole number, which may be negative; blank or missing means blank. */
+     public record ScoreThresholdRequest(@Pattern(regexp = "\\s*(-?\\d{1,5})?\\s*") String score) {
+ 
+@@ -387,6 +395,13 @@ public class SettingController {
+         return view(service.setScoreMid(sheetId.trim(), user.trim(), request.scoreValue()));
+     }
+ 
++    @PutMapping("/score-log")
++    public SettingsView setScoreLog(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid ScoreLogRequest request) {
++        return view(service.setScoreLog(sheetId.trim(), user.trim(), request.on()));
++    }
++
+     @PutMapping("/score-high")
+     public SettingsView setScoreHigh(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 2af20ae53..8c7b55ddf 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -275,6 +275,17 @@ public class SettingService {
+         return saved;
+     }
+ 
++    /** Switch the score log on or off (blank). Every save is recorded, even of the same value. */
++    @Transactional
++    public Sheet setScoreLog(String sheetId, String user, boolean on) {
++        Sheet sheet = get(sheetId);
++        sheet.setScoreLog(on);
++        Sheet saved = sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=score-log value="
++                + (on ? "on" : ""));
++        return saved;
++    }
++
+     /** Set the escalation gap in days; null means off. Every save is recorded, even of the same value. */
+     @Transactional
+     public Sheet setEscalateAfter(String sheetId, String user, Integer days) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index e6184405a..47b8fe4b3 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -113,6 +113,10 @@ public class Sheet {
+     @Column(name = "score_high")
+     private Integer scoreHigh;
+ 
++    /** Whether changing the sheet's today records each person's score on the day being left; false: blank. Not dated. */
++    @Column(name = "score_log")
++    private boolean scoreLog;
++
+     /** The month (1 to 12) the sheet's fiscal year starts in. Not dated. */
+     @Column(name = "fiscal_start_month", nullable = false)
+     private int fiscalStartMonth = 1;
+@@ -177,6 +181,7 @@ public class Sheet {
+         copy.reviewSla = reviewSla;
+         copy.scoreMid = scoreMid;
+         copy.scoreHigh = scoreHigh;
++        copy.scoreLog = scoreLog;
+         copy.fiscalStartMonth = fiscalStartMonth;
+         copy.pot = pot;
+         copy.alertThreshold = alertThreshold;
+@@ -440,6 +445,14 @@ public class Sheet {
+         this.scoreHigh = scoreHigh;
+     }
+ 
++    public boolean isScoreLog() {
++        return scoreLog;
++    }
++
++    public void setScoreLog(boolean scoreLog) {
++        this.scoreLog = scoreLog;
++    }
++
+     public int getFiscalStartMonth() {
+         return fiscalStartMonth;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 0272b5796..cba3c73af 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -110,7 +110,8 @@ public class SheetService {
+     }
+ 
+     /**
+-     * Change the sheet's today. A change first records a SNAPSHOT of each person's due-total on the day being left,
++     * Change the sheet's today. While the score log is on, a change first records a SCORE of each person's score on
++     * the day being left, in list order. A change then records a SNAPSHOT of each person's due-total on the day being left,
+      * in list order, and keeps it as one of the person's snapshot lines; every open period past its grace days on the new today then closes, before the figures it moved
+      * are recorded. A new today releases every claim editor's lock.
+      */
+@@ -121,6 +122,10 @@ public class SheetService {
+         boolean changed = !today.equals(sheet.getToday());
+         if (changed) {
+             LocalDate left = sheet.getToday();
++            if (sheet.isScoreLog()) {
++                before.people().values().forEach(person -> audit.recordOnCommit("SCORE sheet=" + id + " by=" + user
++                        + " name=" + person.name() + " score=" + person.score()));
++            }
+             before.people().forEach((personId, person) -> {
+                 snapshots.save(new PersonSnapshot(id, personId, left, person.dueTotal()));
+                 audit.recordOnCommit("SNAPSHOT sheet=" + id + " by=" + user
+diff --git a/src/main/resources/db/migration/V111__score_log.sql b/src/main/resources/db/migration/V111__score_log.sql
+new file mode 100644
+index 000000000..9fb01f8ce
+--- /dev/null
++++ b/src/main/resources/db/migration/V111__score_log.sql
+@@ -0,0 +1,3 @@
++-- The sheet's score log switch: while on, changing the sheet's today records each person's score on the day being left.
++-- Not dated; false means blank (off).
++ALTER TABLE sheet ADD COLUMN score_log BOOLEAN NOT NULL DEFAULT FALSE;
