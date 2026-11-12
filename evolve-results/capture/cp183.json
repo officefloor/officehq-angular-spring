@@ -1,0 +1,64 @@
+{
+  "checkpoint": 183,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp183_period-lock",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can lock and unlock a period (buttons on the period; PERIOD_LOCKED and PERIOD_UNLOCKED\nperiod=<name>; anyone else, or locking a locked period, is refused with an error on the period).\nA locked period cannot be reopened. Show locked yes/no.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can lock and unlock a period (buttons on the period; PERIOD_LOCKED and PERIOD_UNLOCKED\nperiod=<name>; anyone else, or locking a locked period, is refused with an error on the period).\nA locked period cannot be reopened. Show locked yes/no.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a94a394fd5aa834daf496be1a31775fcfe3d4094",
+  "reset_sha": "",
+  "preagent_sha": "4055b4b153f6fc668086047139767077c7bb29dc",
+  "prev_sha": "4055b4b153f6fc668086047139767077c7bb29dc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6614922,
+    "input_tokens": 30,
+    "output_tokens": 6366,
+    "cache_read_tokens": 592941,
+    "cache_creation_tokens": 51933,
+    "num_turns": 15,
+    "duration_ms": 293568,
+    "duration_api_ms": 59421,
+    "model": "claude-opus-5-5",
+    "session_id": "f6d5acf2-1d6e-48d1-8aee-3221cd333148",
+    "stop_reason": "success",
+    "result_text": "Stewards can now lock and unlock a period, and a locked period can't be reopened. All 4 acceptance tests pass with `bin/e2e`.\n\n- **Stored data:** a new migration, `V103__period_locked.sql`, adds a `locked` yes/no column to periods, defaulting to no.\n- **Server:**\n  - The new `lock` and `unlock` actions are allowed only for a steward on the sheet, including someone who is a steward through a delegation.\n  - Anyone else is refused. So is locking a period that's already locked, or unlocking one that isn't locked.\n  - When an action goes through it writes `PERIOD_LOCKED` or `PERIOD_UNLOCKED sheet=\u2026 by=\u2026 period=<name>` to the audit file. A refused one writes nothing.\n  - Reopening a locked period is refused with a message to unlock it first.\n  - The main changes are in `PeriodService.java` and `PeriodController.java`, plus two new error classes.\n- **Front end:** each period row has a \"Locked\" yes/no column (`period-locked`) and Lock / Unlock buttons (`period-lock`, `period-unlock`). A refusal shows in the period's existing error element (`period-error`).\n\nTwo choices the request left open:\n- **A period doesn't have to be closed to be locked.** One of the tests locks a soft-closed period, so I added no such check.\n- **Locking only blocks reopening.** A locked period can still be closed or soft-closed, and its claims can still change, because the request only mentions reopening. Say if a lock should freeze more than that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6614922,
+        "num_turns": 15,
+        "duration_ms": 293568,
+        "duration_api_ms": 59421,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp183.agent.jsonl",
+  "agent_diff_file": "cp183.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
