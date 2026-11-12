@@ -1,0 +1,64 @@
+{
+  "checkpoint": 241,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp241_as-of-roles",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "While an as-of date is set, the roles shown on the screen are those in force at the end of that\nday.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhile an as-of date is set, the roles shown on the screen are those in force at the end of that\nday.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a56716ce24db77af95486c2e8b88f9f697bee902",
+  "reset_sha": "",
+  "preagent_sha": "24c67828e2fa066808bb73a1542a751f31ee1d47",
+  "prev_sha": "24c67828e2fa066808bb73a1542a751f31ee1d47",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8183529999999998,
+    "input_tokens": 50,
+    "output_tokens": 7813,
+    "cache_read_tokens": 1066545,
+    "cache_creation_tokens": 56073,
+    "num_turns": 25,
+    "duration_ms": 567454,
+    "duration_api_ms": 89163,
+    "model": "claude-opus-5-5",
+    "session_id": "83e21b1f-77c3-4e6c-a5d0-203eab8e1f10",
+    "stop_reason": "success",
+    "result_text": "All 4 tests in `bin/e2e` now pass. The as-of roles behaviour needed no code change, though, and the one fix I made is to how a person edit is logged in the audit file.\n\n**Roles as of a date already worked.** I ran `bin/e2e` before changing anything, and the main \"as of roles\" test plus scenarios 1 and 2 passed. The app already saves a copy of every sheet table, `sheet_role` included, under the sheet's today after each change. Viewing a sheet as of a date (`AsOfFilter` / `SheetSnapshotService`) puts back the copy for the end of that day. So the roles screen already showed the roles in force at the end of the as-of date (vic as steward on 2026-03-01, clerk on 2026-03-05).\n\n**Scenario 3 failed on a person-edit audit line.** In it, Ada is given terms of 3 from 2026-03-01, then edited again with terms left blank and no from-date. The test expects that second edit to log `PERSON_EDITED \u2026 grade=B terms=3`, but the app logged no `terms=` field. The app was comparing the blank value with Ada's undated terms (also blank), so it saw no change. The test expects the comparison against the terms in force on the sheet's today, which are 3.\n\nI changed that one comparison in `PersonService.update` (`src/main/java/net/officefloor/hq/app/person/PersonService.java`), for edits with no terms from-date. This changes only when `terms=` is written to the audit file; the stored terms and what the screen shows are the same as before. Edits of people without dated terms, as in the other scenarios, log exactly as they did.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8183529999999998,
+        "num_turns": 25,
+        "duration_ms": 567454,
+        "duration_api_ms": 89163,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp241.agent.jsonl",
+  "agent_diff_file": "cp241.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
