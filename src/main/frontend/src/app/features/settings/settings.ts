@@ -79,7 +79,7 @@ interface RoleView {
 
 const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
 /** The actions the permission matrix decides. */
-const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
+const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'];
 /** Roles typed for an action: clerk and/or steward, comma separated; blank keeps the standing rule. */
 const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
 /** A date typed as yyyy-mm-dd. */

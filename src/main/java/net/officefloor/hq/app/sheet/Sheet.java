@@ -50,9 +50,9 @@ public class Sheet {
     /** The actions the permission matrix decides, each with the roles that may take it when its entry is blank. */
     public static final Map<String, String> STANDING_PERMISSIONS = Map.of("open", "clerk,steward", "settle",
             "clerk,steward", "void", "clerk,steward", "reassign", "steward", "close", "clerk,steward", "reopen",
-            "steward");
+            "steward", "today", "clerk,steward,restricted");
     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close",
-            "reopen");
+            "reopen", "today");
 
     /** The sheet's starting values, in force before a key's first from-date: none for a key not listed. */
     private static final Map<String, String> STARTING = Map.of(FLOOR, "1.00", TERMS, "14", LATE_PCT, "0.00");

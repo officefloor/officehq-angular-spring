@@ -118,6 +118,9 @@ public class SheetService {
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
+        if (!roles.may(id, user, "today")) {
+            throw new TodayForbiddenException(id, user);
+        }
         RollupService.Snapshot before = rollup.snapshot(id);
         boolean changed = !today.equals(sheet.getToday());
         if (changed) {
