@@ -6,7 +6,10 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.Person;
@@ -18,8 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The paste box: lines of name,amount,date,note (the note may hold commas and may be absent; a blank date
  * takes the sheet's entry date, its today when off), each a DRAFT claim for the person on the sheet with
- * the name (ignoring case), added in order. Blank lines are skipped. One change: every line is checked
- * with the claim form's rules, and a refused line refuses the paste, adding nothing and writing nothing.
+ * the name (ignoring case), added in order. A note ending in " #<reference>" gives the claim that external
+ * reference, which is not part of the note. Blank lines are skipped. One change: every line is checked
+ * with the claim form's rules (a reference used twice in the paste too, ignoring case), and a refused line
+ * refuses the paste, adding nothing and writing nothing.
  */
 @Service
 public class PasteService {
@@ -36,17 +41,23 @@ public class PasteService {
         this.claims = claims;
     }
 
-    private record Line(int number, Person person, BigDecimal amount, LocalDate date, String note) {
+    private record Line(int number, Person person, BigDecimal amount, LocalDate date, String note,
+            String ref) {
     }
 
     /** The claims added, in the order of their lines. */
     @Transactional
     public List<Claim> paste(String sheetId, String user, String text) {
         List<Line> lines = new ArrayList<>();
+        Set<String> refs = new HashSet<>();
         String[] raw = text == null ? new String[0] : text.split("\\r?\\n");
         for (int i = 0; i < raw.length; i++) {
             if (!raw[i].isBlank()) {
-                lines.add(parse(sheetId, i + 1, raw[i]));
+                Line line = parse(sheetId, i + 1, raw[i]);
+                if (line.ref() != null && !refs.add(line.ref().toLowerCase(Locale.ROOT))) {
+                    throw refused(line.number(), "the reference " + line.ref() + " is already in this paste.");
+                }
+                lines.add(line);
             }
         }
         if (lines.isEmpty()) {
@@ -56,8 +67,9 @@ public class PasteService {
         for (Line line : lines) {
             try {
                 added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(),
-                        null));
-            } catch (PeriodClosedException | PersonRetiredException | ClaimCorrectionException e) {
+                        null, line.ref()));
+            } catch (PeriodClosedException | PersonRetiredException | ClaimCorrectionException
+                    | ClaimRefException e) {
                 throw new ClaimPasteException("Line " + line.number() + ": " + e.getMessage());
             }
         }
@@ -86,10 +98,19 @@ public class PasteService {
             }
         }
         String note = f.length > 3 ? f[3].trim() : "";
+        String ref = null;
+        int hash = note.lastIndexOf(" #");
+        if (hash >= 0 && !note.substring(hash + 2).isBlank()) {
+            ref = note.substring(hash + 2).trim();
+            note = note.substring(0, hash).trim();
+        }
         if (note.length() > 1000) {
             throw refused(number, "the note is too long.");
         }
-        return new Line(number, person, new BigDecimal(amount), on, note);
+        if (ref != null && ref.length() > 200) {
+            throw refused(number, "the reference is too long.");
+        }
+        return new Line(number, person, new BigDecimal(amount), on, note, ref);
     }
 
     private static ClaimPasteException refused(int number, String why) {

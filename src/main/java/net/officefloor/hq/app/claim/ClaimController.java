@@ -42,12 +42,13 @@ public class ClaimController {
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
-     *  was soft-closed, and the last day it was reminded (none when never). */
+     *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
+     *  not given). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            String remindedOn) {
+            String remindedOn, String ref) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -60,7 +61,7 @@ public class ClaimController {
                     claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
                     claim.isLateEntry(),
-                    claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString());
+                    claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef());
         }
     }
 
@@ -80,10 +81,16 @@ public class ClaimController {
             @NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Size(max = 220) String corrects) {
+            @Size(max = 220) String corrects,
+            @Size(max = 200) String ref) {
 
         String noteOrEmpty() {
             return note == null ? "" : note.trim();
+        }
+
+        /** The external reference, trimmed; none when blank. */
+        String refOrNone() {
+            return ref == null || ref.isBlank() ? null : ref.trim();
         }
 
         /** The number a correction names, trimmed; none when blank. */
@@ -142,7 +149,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.date(),
-                request.noteOrEmpty(), request.correctsOrNone()));
+                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone()));
     }
 
     /** Add a DRAFT claim dated the sheet's today for the person with the name, adding them first when
@@ -173,7 +180,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amount(), request.date(),
-                request.noteOrEmpty(), request.correctsOrNone()));
+                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone()));
     }
 
     /** Open a DRAFT claim's editor, locking it for every other user. */
@@ -415,6 +422,13 @@ public class ClaimController {
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> pasteRefused(ClaimPasteException e) {
         return Map.of("message", e.getMessage());
+    }
+
+    /** A reference already used on the sheet is refused with the reason, for the form to show. */
+    @ExceptionHandler(ClaimRefException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> refUsed(ClaimRefException e) {
+        return Map.of("message", e.getMessage(), "field", "ref");
     }
 
     /** An edit of a claim that is not a DRAFT is refused with the reason, for the screen to show. */

@@ -42,6 +42,13 @@ import { Session } from '../../core/session';
         [value]="corrects()"
         (input)="corrects.set(value($event)); clearErrors()"
       />
+      <label [for]="fid('ref')">External reference</label>
+      <input
+        [id]="fid('ref')"
+        data-testid="claim-form-ref"
+        [value]="ref()"
+        (input)="ref.set(value($event)); clearErrors()"
+      />
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -62,6 +69,7 @@ import { Session } from '../../core/session';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Due <span data-testid="claim-due">{{ figure(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ claims.dueBy(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ claims.overdue(c) ? 'yes' : 'no' }}</span></span>
@@ -209,6 +217,7 @@ export class PersonClaims {
   protected readonly date = signal('');
   protected readonly note = signal('');
   protected readonly corrects = signal('');
+  protected readonly ref = signal('');
   /** The edit whose edit button was refused while no editor was open: the form's next submit is its save,
    *  refused on the claim again, until the next action on that claim or another editor opens. */
   private refusedEdit: { id: number; message: string } | null = null;
@@ -290,7 +299,7 @@ export class PersonClaims {
    *  shows on the claim and the form stays as it is. */
   protected edit(c: Claim): Promise<boolean> {
     this.clearActionError(c.id);
-    const typed = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
+    const typed = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
     const lock = (async () => {
       const err = await this.claims.lock(c.id);
       if (err) {
@@ -300,12 +309,13 @@ export class PersonClaims {
       }
       const was = this.editing();
       if (was !== null && was !== c.id) void this.claims.unlock(was);
-      const now = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
+      const now = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
       this.fill(this.list().find((o) => o.id === c.id) ?? c);
       if (now.amount !== typed.amount) this.amount.set(now.amount);
       if (now.date !== typed.date) this.date.set(now.date);
       if (now.note !== typed.note) this.note.set(now.note);
       if (now.corrects !== typed.corrects) this.corrects.set(now.corrects);
+      if (now.ref !== typed.ref) this.ref.set(now.ref);
       return true;
     })();
     this.locking = lock;
@@ -329,6 +339,7 @@ export class PersonClaims {
     this.date.set(c.date);
     this.note.set(c.note);
     this.corrects.set(c.corrects ?? '');
+    this.ref.set(c.ref ?? '');
     this.error.set(null);
   }
 
@@ -439,13 +450,19 @@ export class PersonClaims {
     this.inlineAmounts.update((a) => ({ ...a, [id]: amount }));
   }
 
-  /** Save the amount typed in the claim's row, keeping its date, note and correction: the claim form's
+  /** Save the amount typed in the claim's row, keeping its date, note, correction and reference: the claim form's
    *  save, refused on the claim for the same reasons. */
   protected async saveInline(c: Claim): Promise<void> {
     this.clearActionError(c.id);
     this.acting.set(c.id);
     try {
-      const f = { amount: this.inlineAmounts()[c.id] ?? '', date: c.date, note: c.note, corrects: c.corrects ?? '' };
+      const f = {
+        amount: this.inlineAmounts()[c.id] ?? '',
+        date: c.date,
+        note: c.note,
+        corrects: c.corrects ?? '',
+        ref: c.ref ?? '',
+      };
       const refused = await this.claims.update(c.id, f);
       if (refused) this.actionError.set({ id: c.id, message: refused.message });
       else this.inlineAmounts.update((a) => ({ ...a, [c.id]: '' }));
@@ -479,6 +496,7 @@ export class PersonClaims {
     this.date.set('');
     this.note.set('');
     this.corrects.set('');
+    this.ref.set('');
     this.error.set(null);
   }
 
@@ -495,7 +513,7 @@ export class PersonClaims {
         return;
       }
       this.clearErrors();
-      const f = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
+      const f = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
       const id = this.editing();
       if (id === null) {
         const err = await this.claims.add(this.personId(), f);

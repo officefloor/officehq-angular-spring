@@ -82,10 +82,11 @@ public class ClaimService {
     }
 
     /** Add a claim; a negative amount (a correction) must name a SETTLED claim of the person by number,
-     *  and a claim of 0.00 or more must name none. */
+     *  and a claim of 0.00 or more must name none. A reference (none: not given) already used on the sheet
+     *  is refused. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
         int terms = person.getTerms() != null ? person.getTerms()
@@ -94,13 +95,16 @@ public class ClaimService {
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
         refuseCorrection(sheetId, personId, amount, corrects);
+        refuseRefUsed(sheetId, ref, null);
         Rollup.Snapshot before = rollup.take(sheetId);
         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, dueBy, note, corrects);
+        claim.setRef(ref);
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         logStatus(claim, person, user);
         claim = claims.saveAndFlush(claim);
-        audit("CLAIM_ADDED", claim, person, user);
+        audit("CLAIM_ADDED", claim, person, user, claim.getNumber(),
+                claim.getRef() != null ? " ref=" + claim.getRef() : "");
         if (claim.isLateEntry()) {
             audit("LATE_ENTRY", claim, person, user);
         }
@@ -108,10 +112,11 @@ public class ClaimService {
         return claim;
     }
 
-    /** Change a DRAFT claim; a claim in any other status is refused, and a correction as when added. */
+    /** Change a DRAFT claim; a claim in any other status is refused, and a correction or a reference as when
+     *  added. */
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimNotDraftException(claim.getStatus());
@@ -122,11 +127,13 @@ public class ClaimService {
         refuseRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new), on);
         refuseCorrection(sheetId, claim.getPersonId(), amount, corrects);
+        refuseRefUsed(sheetId, ref, claim.getId());
         Rollup.Snapshot before = rollup.take(sheetId);
         claim.setAmount(amount.setScale(2));
         claim.setDate(on);
         claim.setNote(note);
         claim.setCorrects(corrects);
+        claim.setRef(ref);
         claim.setLockedBy(null);
         Claim updated = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
@@ -736,6 +743,14 @@ public class ClaimService {
                 .proofThresholdOn(claim.getDate());
         if (threshold != null && due != null && due.compareTo(threshold) > 0 && claim.getProofs() == 0) {
             throw new ClaimProofException("The claim's due is above the proof threshold: add a proof first.");
+        }
+    }
+
+    /** Refuse a reference (none: nothing to check) another claim on the sheet than the excluded one (none:
+     *  any claim) already has, compared without regard to case. */
+    private void refuseRefUsed(String sheetId, String ref, Long excluded) {
+        if (ref != null && claims.refUsed(sheetId, ref, excluded)) {
+            throw new ClaimRefException("The reference " + ref + " is already used on this sheet.");
         }
     }
 

@@ -49,6 +49,8 @@ export interface Claim {
   lateEntry: boolean;
   /** The last day (YYYY-MM-DD) a reminder was written for it; null when never reminded. */
   remindedOn: string | null;
+  /** Its external reference, unique on the sheet without regard to case; null when not given. */
+  ref: string | null;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -106,6 +108,8 @@ export interface ClaimFields {
   note: string;
   /** The number of the settled claim a negative amount corrects; blank for any other claim. */
   corrects: string;
+  /** The external reference, surrounding spaces removed; blank for none. */
+  ref: string;
 }
 
 // The people's claims on the active sheet, newest first, re-read from the server each time the
@@ -281,7 +285,7 @@ export class Claims {
   async quickAdd(name: string, amount: string): Promise<string | null> {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!name.trim()) return 'Enter a name.';
-    const refused = this.check({ amount, date: '', note: '', corrects: '' });
+    const refused = this.check({ amount, date: '', note: '', corrects: '', ref: '' });
     if (refused) return refused;
     const sid = this.session.sheetId()!;
     try {
@@ -345,7 +349,7 @@ export class Claims {
       return null;
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 409) {
-        return { message: message(e) ?? 'Only a DRAFT claim can be edited.', onClaim: true };
+        return { message: message(e) ?? 'Only a DRAFT claim can be edited.', onClaim: !onForm(e) };
       }
       return { message: failed('save', e), onClaim: false };
     }
@@ -598,19 +602,27 @@ export class Claims {
     if (f.date.trim() && !isDate(f.date.trim())) return 'Enter a date as YYYY-MM-DD.';
     const corrects = f.corrects.trim();
     if (corrects.length > 220) return 'Enter the number of the claim it corrects.';
+    if (f.ref.trim().length > 200) return 'Enter a reference of up to 200 characters.';
     if (f.amount.trim().startsWith('-') && !corrects) {
       return 'A negative amount is a correction: name the number of the settled claim it corrects.';
     }
     return null;
   }
 
-  private body(f: ClaimFields): { amount: string; date: string | null; note: string; corrects: string | null } {
+  private body(f: ClaimFields): {
+    amount: string;
+    date: string | null;
+    note: string;
+    corrects: string | null;
+    ref: string | null;
+  } {
     const corrects = f.corrects.trim();
     return {
       amount: f.amount.trim(),
       date: f.date.trim() || null,
       note: f.note.trim(),
       corrects: corrects || null,
+      ref: f.ref.trim() || null,
     };
   }
 
@@ -643,6 +655,12 @@ function message(e: HttpErrorResponse): string | null {
     return err.message;
   }
   return null;
+}
+
+/** Whether a refusal is of a field typed in the form (a reference already used) rather than of the claim. */
+function onForm(e: HttpErrorResponse): boolean {
+  const err: unknown = e.error;
+  return !!err && typeof err === 'object' && 'field' in err && err.field === 'ref';
 }
 
 function failed(what: string, e: unknown): string {

@@ -23,6 +23,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
+    /** Whether a claim on the sheet other than the one excluded (none: every claim) has the reference,
+     *  compared without regard to case. */
+    @Query("select count(c) > 0 from Claim c where c.sheetId = :sheetId and lower(c.ref) = lower(:ref)"
+            + " and (:excluded is null or c.id <> :excluded)")
+    boolean refUsed(@Param("sheetId") String sheetId, @Param("ref") String ref, @Param("excluded") Long excluded);
+
     boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
             ClaimStatus status);
 

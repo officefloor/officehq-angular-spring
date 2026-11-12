@@ -7,7 +7,7 @@ import { Claims } from '../../core/claims';
   selector: 'app-paste-claims',
   template: `
     <form (submit)="paste($event)" aria-label="Paste claims">
-      <label for="paste-claims">Paste claims (one per line: name,amount,date,note)</label>
+      <label for="paste-claims">Paste claims (one per line: name,amount,date,note, the note ending in " #reference" to give one)</label>
       <textarea
         id="paste-claims"
         data-testid="paste-claims"
