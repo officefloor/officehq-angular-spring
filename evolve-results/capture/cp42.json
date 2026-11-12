@@ -1,0 +1,64 @@
+{
+  "checkpoint": 42,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp42_rate-end-dates",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A rate may carry a to-date as well as a from-date (RATE_SET gains to=<date> at the end when one\nwas given; a to-date before the from-date is refused). A rate applies through its to-date; a claim\ndated after the to-date of the rate that would apply to it, with no later rate in force on the\nclaim's date, has due n/a, and everything that reads due follows (a total skips it, a statement\nbinds n/a, the late charge has nothing to add to).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA rate may carry a to-date as well as a from-date (RATE_SET gains to=<date> at the end when one\nwas given; a to-date before the from-date is refused). A rate applies through its to-date; a claim\ndated after the to-date of the rate that would apply to it, with no later rate in force on the\nclaim's date, has due n/a, and everything that reads due follows (a total skips it, a statement\nbinds n/a, the late charge has nothing to add to).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8ec2876b36ae23857684e24cf15f32769bb3c8bc",
+  "reset_sha": "",
+  "preagent_sha": "67794889caf662f208daee52db3827417599a35d",
+  "prev_sha": "67794889caf662f208daee52db3827417599a35d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5640746,
+    "input_tokens": 22,
+    "output_tokens": 8078,
+    "cache_read_tokens": 384173,
+    "cache_creation_tokens": 40699,
+    "num_turns": 12,
+    "duration_ms": 242793,
+    "duration_api_ms": 73394,
+    "model": "claude-opus-5-5",
+    "session_id": "8df88599-49f9-482d-9391-0062d14b87b7",
+    "stop_reason": "success",
+    "result_text": "Rates can now have an end date as well as a start date. All 4 acceptance tests in `bin/e2e` pass.\n\n**What changes for the user**\n- The rate form has a new \"To\" field (`rate-form-to`), and the rate list shows each rate's end date (`rate-to`).\n- A rate applies up to and including its end date. A claim dated after the end date of the rate that would apply to it shows due as n/a, unless a later rate has started by the claim's date.\n- Everything that uses due follows from that: totals skip the claim, a statement fixes it at n/a, and the late charge adds nothing to it.\n- An end date before the start date is refused. The form shows its error message and nothing is saved or written to the audit file.\n- `RATE_SET` audit records end with ` to=<date>` when an end date was given.\n\n**How it's done**\n- **Database:** a new migration, `V33__rate_to.sql`, adds an optional `to_date` column. It also adds a check that the end date is not before the start date.\n- **Server:**\n  - `Rate` gains the end date and a `coversThrough(date)` check.\n  - The two places that find which rate applies on a date (`RateRepository.findInForce` and `Rollup.inForce`) still pick the latest rate that has started, then return none if the date is past that rate's end. Every due calculation goes through one of these two.\n  - `RateService.set` refuses a bad end date with a new `RateRefusedException` (HTTP 422).\n  - Setting a rate again for a start date it already has replaces the old end date too, including clearing it if the new one is blank.\n- **Front end:** `core/rates.ts` makes the same end-date check when finding the rate that applies, and checks the end date's format and order before sending. `features/rates/rates.ts` has the new field and column.\n\nAn end date is also accepted on a rate with no start date (one that applies from the beginning of time). The spec doesn't test that case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5640746,
+        "num_turns": 12,
+        "duration_ms": 242793,
+        "duration_api_ms": 73394,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp42.agent.jsonl",
+  "agent_diff_file": "cp42.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
