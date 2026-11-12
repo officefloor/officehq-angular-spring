@@ -84,6 +84,8 @@ import { PersonClaims } from '../claims/claims';
       </form>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claims.total() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Settled total: <strong data-testid="rollup-settled-total">{{ figures.settledTotal() }}</strong></p>
+      <p>Open total: <strong data-testid="rollup-open-total">{{ figures.openTotal() }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <label>
@@ -128,7 +130,7 @@ import { PersonClaims } from '../claims/claims';
       </section>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -148,6 +150,8 @@ import { PersonClaims } from '../claims/claims';
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
+              <td data-testid="person-settled-total">{{ money(figures.settledCents(p)) }}</td>
+              <td data-testid="person-open-total">{{ money(figures.openCents(p)) }}</td>
               <td>
                 @for (period of periods.periods(); track period.id) {
                   <span class="person-period">{{ period.name }}:

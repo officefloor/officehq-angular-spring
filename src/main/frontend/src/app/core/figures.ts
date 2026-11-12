@@ -65,6 +65,32 @@ export class Figures {
     return rated || keptFigure ? sum : null;
   }
 
+  /** The due of a person's SETTLED claims that count live, at their frozen figures, corrections included. */
+  settledCents(p: Person): bigint {
+    return this.claims
+      .live()
+      .filter((c) => c.personId === p.id && c.status === 'SETTLED')
+      .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+  }
+
+  /** The due of a person's OPEN and PENDING claims that count live (not held, deferred or retired-and-excluded). */
+  openCents(p: Person): bigint {
+    return this.claims
+      .live()
+      .filter((c) => c.personId === p.id && isOpen(c))
+      .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+  }
+
+  /** Everyone's settled-total added up (not trimmed). */
+  readonly settledTotal = computed(() =>
+    money(this.people.people().reduce((sum, p) => sum + this.settledCents(p), 0n)),
+  );
+
+  /** Everyone's open-total added up (not trimmed). */
+  readonly openTotal = computed(() =>
+    money(this.people.people().reduce((sum, p) => sum + this.openCents(p), 0n)),
+  );
+
   /** Everyone's (capped) due-total added up, skipping those whose grade has no rate, trimmed. */
   readonly dueTotal = computed(() =>
     money(trimmed(this.people.people().map((p) => this.dueCents(p)).filter((d): d is bigint => d !== null))),
