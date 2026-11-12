@@ -95,5 +95,6 @@ export class People {
 }
 
 function failed(what: string, e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use.';
   return e instanceof HttpErrorResponse ? `Could not ${what} person (${e.status}).` : `Could not ${what} person.`;
 }
