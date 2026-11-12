@@ -1,0 +1,238 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 932e4022f..4fd7a717e 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -102,6 +102,8 @@ export class People {
+   readonly people = signal<Person[]>([]);
+   /** Whether the list shows retired people; belongs to the screen, so loading a sheet leaves it. */
+   readonly showRetired = signal(false);
++  /** The ids of the people chosen for a bulk grade. */
++  readonly selected = signal<ReadonlySet<number>>(new Set());
+   private loads = 0;
+ 
+   /** Re-read the active sheet's people from the server; an error message when that failed. */
+@@ -110,6 +112,7 @@ export class People {
+     const sid = this.session.sheetId();
+     const load = ++this.loads;
+     this.people.set([]);
++    this.selected.set(new Set());
+     if (!user || !sid) return null;
+     try {
+       const people = await firstValueFrom(
+@@ -166,6 +169,49 @@ export class People {
+     }
+   }
+ 
++  /** Choose a person for a bulk grade, or leave them out. */
++  select(id: number, on: boolean): void {
++    this.selected.update((s) => {
++      const next = new Set(s);
++      if (on) next.add(id);
++      else next.delete(id);
++      return next;
++    });
++  }
++
++  /** Give the chosen people a grade from a date (blank takes the sheet's today) together, the server
++   *  changing them in list order as the person form would; how many were changed, or an error message. */
++  async bulkGrade(grade: string, from: string): Promise<number | string> {
++    const sid = this.session.sheetId();
++    const user = this.session.user();
++    if (!user || !sid) return 'Load a sheet first.';
++    const personIds = [...this.selected()];
++    if (personIds.length === 0) return 'Select the people to grade.';
++    if (!(GRADES as readonly string[]).includes(grade)) return 'Choose a grade.';
++    const d = from.trim();
++    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
++    try {
++      const done = await firstValueFrom(
++        this.http.post<{ graded: number; people: Person[] }>(
++          `${this.url(sid)}/bulk-grade`,
++          { personIds, grade, from: d || null },
++          { headers: { 'X-User': user } },
++        ),
++      );
++      if (this.session.sheetId() === sid) {
++        const byId = new Map(done.people.map((p) => [p.id, p]));
++        this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
++        this.selected.set(new Set());
++      }
++      return done.graded;
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string') {
++        return e.error.message;
++      }
++      return e instanceof HttpErrorResponse ? `Could not grade people (${e.status}).` : 'Could not grade people.';
++    }
++  }
++
+   /** Take a person's statement, as of a date on or before the sheet's today (blank takes it now): the
+    *  person and their claims as it left them, or an error message when refused. */
+   async statement(id: number, asOf = ''): Promise<Statement | string> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b304bffd6..99f283901 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -96,13 +96,52 @@ import { PersonClaims } from '../claims/claims';
+         Show retired
+       </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
++      <section aria-label="Grade selected people">
++        <label for="bulk-grade">Grade selected people</label>
++        <select
++          id="bulk-grade"
++          data-testid="bulk-grade"
++          [value]="bulkGrade()"
++          (change)="bulkGrade.set(value($event)); bulkError.set(null)"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="g === bulkGrade()">{{ g }}</option>
++          }
++        </select>
++        <label for="bulk-grade-from">from</label>
++        <input
++          id="bulk-grade-from"
++          data-testid="bulk-grade-from"
++          placeholder="YYYY-MM-DD"
++          [value]="bulkFrom()"
++          (input)="bulkFrom.set(value($event)); bulkError.set(null)"
++        />
++        <button type="button" data-testid="bulk-grade-apply" [disabled]="bulkRunning()" (click)="applyBulkGrade()">
++          Grade selected
++        </button>
++        @if (bulkGraded() !== null) {
++          <p>Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span></p>
++        }
++        @if (bulkError(); as err) {
++          <p role="alert" data-testid="person-error">{{ err }}</p>
++        }
++      </section>
+       <table data-testid="person-list">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
++              <td>
++                <input
++                  type="checkbox"
++                  data-testid="person-select"
++                  [attr.aria-label]="'Select ' + p.name"
++                  [checked]="people.selected().has(p.id)"
++                  (change)="people.select(p.id, checked($event)); bulkError.set(null)"
++                />
++              </td>
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+               <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
+@@ -311,6 +350,29 @@ export class PeopleList {
+   /** The last refused action on a person, shown on their row until the next action on it. */
+   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
+ 
++  /** The grade the bulk grade gives the selected people. */
++  protected readonly bulkGrade = signal<string>('A');
++  /** The date the bulk grade applies from; blank takes the sheet's today. */
++  protected readonly bulkFrom = signal('');
++  protected readonly bulkRunning = signal(false);
++  /** How many the last bulk grade changed; gone while the next runs. */
++  protected readonly bulkGraded = signal<number | null>(null);
++  protected readonly bulkError = signal<string | null>(null);
++
++  protected async applyBulkGrade(): Promise<void> {
++    if (this.bulkRunning()) return;
++    this.bulkGraded.set(null);
++    this.bulkError.set(null);
++    this.bulkRunning.set(true);
++    try {
++      const done = await this.people.bulkGrade(this.bulkGrade(), this.bulkFrom());
++      if (typeof done === 'string') this.bulkError.set(done);
++      else this.bulkGraded.set(done);
++    } finally {
++      this.bulkRunning.set(false);
++    }
++  }
++
+   protected checked(e: Event): boolean {
+     return (e.target as HTMLInputElement).checked;
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index e15aa4b3c..d307a3544 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.server.ResponseStatusException;
+ 
+ /** The people on a sheet. The signed-in user's name comes in the X-User header. */
+ @RestController
+@@ -97,6 +98,18 @@ public class PersonController {
+             @NotNull Long version) {
+     }
+ 
++    /** The people to give a grade together, the grade, and the date it applies from (none: the sheet's
++     *  today). */
++    public record BulkGradeRequest(
++            @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> personIds,
++            @NotNull @Pattern(regexp = "[ABC]") String grade,
++            LocalDate from) {
++    }
++
++    /** How many a bulk grade changed, and the people it changed. */
++    public record BulkGradeView(int graded, List<PersonView> people) {
++    }
++
+     /** The person to name as a patron. */
+     public record PatronRequest(@NotNull Long patronId) {
+     }
+@@ -165,6 +178,21 @@ public class PersonController {
+         }
+     }
+ 
++    /** Give the chosen people a grade from a date together, in list order. */
++    @PostMapping("/bulk-grade")
++    public BulkGradeView bulkGrade(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid BulkGradeRequest request) {
++        try {
++            List<Person> graded = service.bulkGrade(sheetId.trim(), user.trim(), request.personIds(), request.grade(),
++                    request.from());
++            return new BulkGradeView(graded.size(), graded.stream().map(p -> view(p, user.trim())).toList());
++        } catch (ObjectOptimisticLockingFailureException e) {
++            // one of them was saved by someone else at the same moment
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone else changed one of them; try again.");
++        }
++    }
++
+     /** Retire a person from a date. */
+     @PostMapping("/{personId}/retire")
+     public PersonView retire(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 18b71656f..f41edd1e4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -174,6 +174,21 @@ public class PersonService {
+         return updated;
+     }
+ 
++    /** Give each of the chosen people the grade from a date, in list order, exactly as the person form
++     *  would with their name and terms left as they are; the people changed, in list order. */
++    @Transactional
++    public List<Person> bulkGrade(String sheetId, String user, List<Long> personIds, String grade, LocalDate from) {
++        requireSheet(sheetId);
++        Set<Long> chosen = Set.copyOf(personIds);
++        List<Person> picked = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(p -> chosen.contains(p.getId())).toList();
++        if (picked.size() != chosen.size()) {
++            throw new PersonNotFoundException();
++        }
++        return picked.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade, from,
++                p.getTerms())).toList();
++    }
++
+     /** Retire a person from a date, the sheet's today when none is given. */
+     @Transactional
+     public Person retire(String sheetId, String user, long personId, LocalDate from) {
