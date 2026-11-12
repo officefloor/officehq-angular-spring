@@ -21,14 +21,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /**
-     * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, and the
-     * number of its last bulk settle batch (null while there has been none).
+     * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, the
+     * number of its last bulk settle batch (null while there has been none), and whether the user is a steward of it
+     * (in their own right or by a delegation covering its today).
      */
-    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch) {
+    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch,
+            boolean steward) {
 
-        static SheetView of(Sheet sheet, boolean viewer) {
+        static SheetView of(Sheet sheet, boolean viewer, boolean steward) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer,
-                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
+                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), steward);
         }
     }
 
@@ -78,6 +80,6 @@ public class SheetController {
     }
 
     private SheetView view(Sheet sheet, String user) {
-        return SheetView.of(sheet, service.isViewer(sheet.getId(), user));
+        return SheetView.of(sheet, service.isViewer(sheet.getId(), user), service.isSteward(sheet.getId(), user));
     }
 }

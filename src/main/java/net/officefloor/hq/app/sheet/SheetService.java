@@ -56,6 +56,11 @@ public class SheetService {
         return roles.isViewer(id, user);
     }
 
+    /** Whether the user is a steward of the sheet, in their own right or by a delegation covering its today. */
+    public boolean isSteward(String id, String user) {
+        return roles.isSteward(id, user);
+    }
+
     public Sheet get(String id) {
         return sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
     }

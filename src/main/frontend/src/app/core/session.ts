@@ -17,6 +17,7 @@ interface SheetView {
   archived: boolean;
   viewer: boolean;
   lastSettleBatch: number | null;
+  steward: boolean;
 }
 
 // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
@@ -33,6 +34,9 @@ export class Session {
   readonly archived = signal(false);
   /** Whether the signed-in user is a viewer of the active sheet, as of its last load: they may change nothing. */
   readonly viewer = signal(false);
+  /** Whether the signed-in user is a steward of the active sheet (in their own right or by delegation), as of its last
+   *  load. */
+  readonly steward = signal(false);
   /** The number of the active sheet's last bulk settle batch; null while there has been none. */
   readonly lastSettleBatch = signal<number | null>(null);
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
@@ -207,6 +211,7 @@ export class Session {
     this.today.set(view.today);
     this.archived.set(view.archived);
     this.viewer.set(view.viewer);
+    this.steward.set(view.steward);
     this.lastSettleBatch.set(view.lastSettleBatch);
   }
 }

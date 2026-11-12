@@ -164,6 +164,17 @@ function csvField(value: string): string {
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | fig }}</dd>
       </dl>
     </section>
+    <section aria-labelledby="dashboard-heading">
+      <h2 id="dashboard-heading">Steward's dashboard</h2>
+      <dl>
+        <dt>Pending</dt>
+        <dd data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' | fig }}</dd>
+        <dt>In review</dt>
+        <dd data-testid="dash-review-count">{{ dashboard()?.review ?? '' | fig }}</dd>
+        <dt>Overdue</dt>
+        <dd data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' | fig }}</dd>
+      </dl>
+    </section>
     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
     <section aria-labelledby="people-heading">
@@ -1003,6 +1014,19 @@ export class People {
     const me = this.me();
     const led = me ? this.crewTotals().filter((c) => c.leadId === me.id) : [];
     return led.length ? sumDues(led.map((c) => c.dueTotal)) : '';
+  });
+  /**
+   * The steward's dashboard over the sheet: how many claims are PENDING, how many in REVIEW, and how many that count
+   * are overdue; none for a user who is not a steward (as of the as-of date, the role they had then).
+   */
+  protected readonly dashboard = computed(() => {
+    if (!this.session.steward()) return null;
+    const claims = this.claims();
+    return {
+      pending: claims.filter((c) => c.status === 'PENDING').length,
+      review: claims.filter((c) => c.status === 'REVIEW').length,
+      overdue: this.overdueCount(),
+    };
   });
   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
   private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);

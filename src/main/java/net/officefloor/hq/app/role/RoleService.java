@@ -41,6 +41,11 @@ public class RoleService {
         return roleOf(sheetId, user) == Role.VIEWER;
     }
 
+    /** Whether the user is a steward on the sheet, in their own right or by a delegation covering its today. */
+    public boolean isSteward(String sheetId, String user) {
+        return roleOf(sheetId, user) == Role.STEWARD;
+    }
+
     /** Whether the user's role may take the action (open, settle, void, reassign, close, reopen) on the sheet. */
     public boolean may(String sheetId, String user, String action) {
         return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId))
