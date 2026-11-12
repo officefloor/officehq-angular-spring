@@ -1,0 +1,94 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9511119be..6121e1c62 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -61,6 +61,8 @@ interface Person {
+   origin: string | null;
+   /** One line per SNAPSHOT written for the person, oldest first: the day being left, then the due-total. */
+   snapshotLines: string[];
++  /** One line per statement still standing, oldest first by its date: the date, then the due-total. */
++  statementLines: string[];
+ }
+ 
+ /** A hold of a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
+@@ -330,7 +332,7 @@ function csvField(value: string): string {
+               <th scope="col">Carried into {{ per.name }}</th>
+             }
+             @if (columns.shows('statement-count')) { <th scope="col">Statements</th> }@if (columns.shows('stated-total')) { <th scope="col">Last stated</th> }@if (columns.shows('statement-date')) { <th scope="col">Stated on</th> }
+-            @if (columns.shows('retired')) { <th scope="col">Retired</th> }<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th>@if (columns.shows('hold')) { <th scope="col">On hold</th> }<th scope="col">Active</th>
++            @if (columns.shows('retired')) { <th scope="col">Retired</th> }<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statement lines</th>@if (columns.shows('hold')) { <th scope="col">On hold</th> }<th scope="col">Active</th>
+             @if (columns.shows('overdue-count')) { <th scope="col">Overdue</th> }@if (columns.shows('overdue-total')) { <th scope="col">Overdue total</th> }
+             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
+             @if (columns.shows('patrons')) { <th scope="col">Patrons</th> }@if (columns.shows('backing')) { <th scope="col">Backing</th> }@if (columns.shows('excess')) { <th scope="col">Excess</th> }<th scope="col">Cut total</th><th scope="col">Watched</th>
+@@ -398,6 +400,11 @@ function csvField(value: string): string {
+                   <div data-testid="person-snapshot-line">{{ line | fig }}</div>
+                 }
+               </td>
++              <td>
++                @for (line of p.statementLines; track $index) {
++                  <div data-testid="person-statement-line-line">{{ line | fig }}</div>
++                }
++              </td>
+               @if (columns.shows('hold')) {
+                 <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' | fig }}</td>
+               }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 4047dc41a..0089a5109 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -50,7 +50,7 @@ public class PersonController {
+             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
+             List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
+             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
+-            List<String> snapshotLines) {
++            List<String> snapshotLines, List<String> statementLines) {
+ 
+         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
+                 boolean watched, List<String> aliases, Set<String> keysInTree, List<String> snapshotLines) {
+@@ -63,7 +63,7 @@ public class PersonController {
+                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
+                     watched, aliases, PersonService.clashing(person, aliases, keysInTree), person.getOriginSheet(),
+                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
+-                    snapshotLines);
++                    snapshotLines, statements.lines());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index a85f04f09..a55288865 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -1,13 +1,29 @@
+ package net.officefloor.hq.app.statement;
+ 
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
+ 
+-/** How many statements a person has had, and the due-total and date of the last one (null with none). */
+-public record StatementSummary(int count, String lastDueTotal, LocalDate lastDate) {
++/**
++ * How many statements a person has had, and the due-total and date of the last one (null with none), with one line
++ * per statement, oldest first by the date it was taken as of: the date, then the due-total.
++ */
++public record StatementSummary(int count, String lastDueTotal, LocalDate lastDate, List<Statement> statements) {
+ 
+-    public static final StatementSummary NONE = new StatementSummary(0, null, null);
++    public static final StatementSummary NONE = new StatementSummary(0, null, null, List.of());
+ 
+     StatementSummary then(Statement statement) {
+-        return new StatementSummary(count + 1, statement.getDueTotal(), statement.getTakenOn());
++        List<Statement> all = new ArrayList<>(statements);
++        all.add(statement);
++        return new StatementSummary(count + 1, statement.getDueTotal(), statement.getTakenOn(), all);
++    }
++
++    /** One line per statement, oldest first (statements of the same date in their order): date, then due-total. */
++    public List<String> lines() {
++        return statements.stream()
++                .sorted(Comparator.comparing(Statement::getTakenOn))
++                .map(s -> s.getTakenOn() + " " + s.getDueTotal())
++                .toList();
+     }
+ }

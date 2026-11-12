@@ -1,0 +1,64 @@
+{
+  "checkpoint": 163,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp163_statement-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "020eba53dc0b48ef0a5b79c2324c7d85c4d267ab",
+  "reset_sha": "",
+  "preagent_sha": "e061674ffc963cb52f1d6308ec0fce26bc518c33",
+  "prev_sha": "e061674ffc963cb52f1d6308ec0fce26bc518c33",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9322906,
+    "input_tokens": 54,
+    "output_tokens": 9485,
+    "cache_read_tokens": 1270553,
+    "cache_creation_tokens": 61033,
+    "num_turns": 27,
+    "duration_ms": 519754,
+    "duration_api_ms": 105875,
+    "model": "claude-opus-5-5",
+    "session_id": "ee9f2964-ed55-4d06-8239-b63b04797374",
+    "stop_reason": "success",
+    "result_text": "I've added the statement lines to each person, but only 3 of the 4 tests pass as the code stands. Scenario 2 fails because of the real calendar date, not because of the new lines.\n\n**What changed**\n- **Server:** `StatementSummary.java` now keeps the person's remaining statements and turns them into lines like `2026-03-11 2.00`, sorted oldest first by statement date. Two on the same date stay in the order they were taken. `PersonController.java` sends these lines with each person as `statementLines`.\n- **Cancelled and moved statements:** cancelling a statement already deletes it, so it drops off the list. A merge or transfer already moves the statements to the receiving person, so they show among that person's own, by date.\n- **Front end:** `people.ts` adds a \"Statement lines\" column with one `data-testid=\"person-statement-line-line\"` per line.\n- No database change was needed.\n\n**Why scenario 2 fails**\n- At line 800 the test reads a claim's due while viewing the sheet as of 2026-03-20. It expects `1.29`; the app shows `n/a`.\n- The cause is that a sheet the test hasn't dated yet starts on the real date (`LocalDate.now()` in `SheetService.java:207`). The test never sets a date on the parent sheet, so its rates are recorded as set on 2026-11-12. In a view as of 2026-03-20 those rates didn't exist yet, so there's no rate to fall back on.\n- The expected `1.29` only comes out when the real date is on or before 2026-03-20, so the test was probably generated before then.\n- To confirm, I temporarily fixed that start date at 2026-03-01: all 4 tests passed. I then put `LocalDate.now()` back.\n\nI didn't change how dated views pick rates just to match this one test. That would change app behaviour well beyond this request, and the test can't pass on today's date without it. To get it passing, either run it with the system clock set before 2026-03-20, or regenerate the test so it sets a date on the parent sheet too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9322906,
+        "num_turns": 27,
+        "duration_ms": 519754,
+        "duration_api_ms": 105875,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp163.agent.jsonl",
+  "agent_diff_file": "cp163.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
