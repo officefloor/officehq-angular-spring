@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,10 +17,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetRepository sheets) {
+    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -29,19 +32,28 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade) {
         requireSheet(sheetId);
         requireFreeName(sheetId, name.trim(), null);
-        return saved(new Person(sheetId, name.trim(), grade));
+        Person person = saved(new Person(sheetId, name.trim(), grade));
+        audit("PERSON_ADDED", person, user);
+        return person;
     }
 
     @Transactional
-    public Person update(String sheetId, long personId, String name, String grade) {
+    public Person update(String sheetId, String user, long personId, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         requireFreeName(sheetId, name.trim(), person.getId());
         person.setName(name.trim());
         person.setGrade(grade);
-        return saved(person);
+        Person updated = saved(person);
+        audit("PERSON_EDITED", updated, user);
+        return updated;
+    }
+
+    private void audit(String event, Person person, String user) {
+        audit.recordOnCommit(event + " sheet=" + person.getSheetId() + " by=" + user
+                + " name=" + person.getName() + " grade=" + person.getGrade());
     }
 
     private void requireFreeName(String sheetId, String name, Long exceptId) {

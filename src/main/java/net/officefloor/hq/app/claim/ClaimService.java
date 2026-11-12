@@ -3,6 +3,8 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -16,11 +18,13 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     /** The sheet's claims, newest first. */
@@ -31,18 +35,31 @@ public class ClaimService {
     }
 
     @Transactional
-    public Claim add(String sheetId, long personId, BigDecimal amount, LocalDate date, String note) {
-        people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.today(sheetId);
-        return claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note));
+        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note));
+        audit("CLAIM_ADDED", claim, person, user);
+        return claim;
     }
 
     @Transactional
-    public Claim update(String sheetId, long claimId, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         claim.setAmount(amount.setScale(2));
         claim.setDate(date != null ? date : sheets.today(sheetId));
         claim.setNote(note);
-        return claims.saveAndFlush(claim);
+        Claim updated = claims.saveAndFlush(claim);
+        Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        audit("CLAIM_EDITED", updated, person, user);
+        return updated;
+    }
+
+    /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */
+    private void audit(String event, Claim claim, Person person, String user) {
+        audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
+                + " person=" + person.getName() + " amount=" + claim.getAmount().toPlainString()
+                + " date=" + claim.getDate());
     }
 }

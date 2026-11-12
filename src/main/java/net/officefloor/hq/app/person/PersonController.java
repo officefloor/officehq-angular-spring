@@ -52,7 +52,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.add(sheetId.trim(), request.name(), request.grade()));
+        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
     }
 
     /** Change a person's name and grade. */
@@ -61,6 +61,6 @@ public class PersonController {
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.update(sheetId.trim(), personId, request.name(), request.grade()));
+        return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.name(), request.grade()));
     }
 }
