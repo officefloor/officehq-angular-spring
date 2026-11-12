@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
+import net.officefloor.hq.app.role.RoleService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -87,8 +88,11 @@ public class PeriodController {
     private final PeriodService service;
     private final OpeningImportService openings;
     private final RolloverService rollovers;
+    private final RoleService roles;
 
-    public PeriodController(PeriodService service, OpeningImportService openings, RolloverService rollovers) {
+    public PeriodController(PeriodService service, OpeningImportService openings, RolloverService rollovers,
+            RoleService roles) {
+        this.roles = roles;
         this.service = service;
         this.openings = openings;
         this.rollovers = rollovers;
@@ -115,11 +119,17 @@ public class PeriodController {
             @NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String to) {
     }
 
-    /** Generate a period per calendar month between the dates; the periods made. Refused when to is before from. */
+    /**
+     * Generate a period per calendar month between the dates; the periods made, none for a viewer. Refused when to is
+     * before from.
+     */
     @PostMapping("/generate")
     public List<PeriodView> generate(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GenerateRequest request) {
+        if (roles.isViewer(sheetId.trim(), user.trim())) {
+            return List.of();
+        }
         return views(sheetId.trim(), service.generate(sheetId.trim(), user.trim(), PeriodRequest.date(request.from()),
                 PeriodRequest.date(request.to())));
     }
@@ -154,6 +164,15 @@ public class PeriodController {
         String sheet = sheetId.trim();
         List<Period> made = rollovers.rollover(sheet, user.trim(), Integer.parseInt(request.year().trim()));
         return views(sheet, made);
+    }
+
+    /** Undo the sheet's last rollover; the sheet's periods as they now are. Refused as {@link RolloverService#undo} says. */
+    @PostMapping("/rollover/undo")
+    public List<PeriodView> rolloverUndo(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        String sheet = sheetId.trim();
+        rollovers.undo(sheet, user.trim());
+        return views(sheet, service.list(sheet));
     }
 
     /** A calendar year to generate the quarters of, as yyyy. */

@@ -12,7 +12,7 @@ import org.springframework.web.servlet.HandlerMapping;
 /**
  * Refuses every change a viewer asks of a sheet: any request but a read, except loading the sheet, the bulk
  * actions, which go through for a viewer with nothing done and every selected item refused, and generating plan
- * claims, which goes through for a viewer with none made.
+ * claims or monthly periods, which go through for a viewer with none made.
  */
 @Component
 public class ViewerInterceptor implements HandlerInterceptor {
@@ -20,7 +20,7 @@ public class ViewerInterceptor implements HandlerInterceptor {
     /** The changing requests a viewer may still make: their handlers decide what a viewer gets. */
     private static final Set<String> LET_THROUGH = Set.of("/load", "/claims/bulk-open", "/claims/bulk-settle",
             "/claims/bulk-reassign", "/claims/bulk-redate", "/claims/bulk-void",
-            "/people/bulk-grade", "/people/bulk-retire", "/plans/generate");
+            "/people/bulk-grade", "/people/bulk-retire", "/plans/generate", "/periods/generate");
 
     private final RoleService roles;
 

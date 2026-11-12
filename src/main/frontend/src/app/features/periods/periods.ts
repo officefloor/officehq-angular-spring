@@ -139,6 +139,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
           (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
         />
         <button type="submit" data-testid="rollover">Roll over</button>
+        <button type="button" data-testid="rollover-undo" (click)="rolloverUndo()">Undo the last rollover</button>
         @if (rolloverMade() !== null) {
           <p role="status">Made <span data-testid="rollover-made">{{ rolloverMade() | fig }}</span> periods.</p>
         }
@@ -273,7 +274,7 @@ export class Periods {
   /** How many periods the last rollover made; null while one runs or before the first. */
   protected readonly rolloverMade = signal<number | null>(null);
   protected readonly rolloverError = signal<string | null>(null);
-  /** Whether a rollover is waiting for its answer: a second meanwhile is ignored. */
+  /** Whether a rollover or its undo is waiting for its answer: a second meanwhile is ignored. */
   private rollingOver = false;
   /** Whether an import of opening balances is waiting for its answer: a second meanwhile is ignored. */
   private importingOpenings = false;
@@ -530,6 +531,33 @@ export class Periods {
           ? 'Only a steward can roll the year over.'
           : `The fiscal year ${year} could not be rolled over: it has no periods.`;
       this.rolloverError.set(message);
+    } finally {
+      this.rollingOver = false;
+    }
+  }
+
+  /** Undo the last rollover: the store refuses anyone but its steward, a later day, or a period a claim now belongs to. */
+  protected async rolloverUndo(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolloverMade.set(null);
+    this.rolloverError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.rollingOver = true;
+    try {
+      await firstValueFrom(
+        this.http.post<Period[]>(
+          `/api/sheets/${encodeURIComponent(sheet)}/periods/rollover/undo`,
+          {},
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.openingsImported.emit();
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+      this.rolloverError.set('The last rollover could not be undone.' + detail);
     } finally {
       this.rollingOver = false;
     }

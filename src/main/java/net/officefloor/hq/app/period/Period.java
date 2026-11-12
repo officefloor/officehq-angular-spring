@@ -165,6 +165,16 @@ public class Period {
         personOpenings.merge(personId, amount, BigDecimal::add);
     }
 
+    /** Take the amount back off the person's opening balance for the period, dropping it once it comes to zero. */
+    public void takeOpening(Long personId, BigDecimal amount) {
+        BigDecimal left = personOpenings.getOrDefault(personId, BigDecimal.ZERO).subtract(amount);
+        if (left.signum() == 0) {
+            personOpenings.remove(personId);
+        } else {
+            personOpenings.put(personId, left);
+        }
+    }
+
     /**
      * Close the period, fixing each person's due-total and carried figure for it, its own due-total, their sum, and each
      * pool member's cut.
