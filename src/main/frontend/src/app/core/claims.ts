@@ -644,6 +644,36 @@ export class Claims {
     }
   }
 
+  /** Move the chosen claims to a person together, the server moving them in list order as a single reassign
+   *  would and leaving each that cannot be moved as it is; how many were moved and refused, or an error
+   *  message. */
+  async bulkReassign(personId: number | null): Promise<{ reassigned: number; refused: number } | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const claimIds = [...this.selected()];
+    if (claimIds.length === 0) return 'Select the claims to move.';
+    if (personId === null) return 'Choose the person to move the claims to.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ reassigned: number; refused: number; claims: Claim[] }>(
+          `${this.url(sid)}/claims/bulk-reassign`,
+          { claimIds, personId },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        // each moved claim became the sheet's newest in turn, so the last moved is listed first
+        const moved = new Set(done.claims.map((c) => c.id));
+        this.claims.update((cs) => [...done.claims].reverse().concat(cs.filter((c) => !moved.has(c.id))));
+        this.selected.set(new Set());
+      }
+      return { reassigned: done.reassigned, refused: done.refused };
+    } catch (e) {
+      return failed('reassign', e).replace(' claim', ' claims');
+    }
+  }
+
   private check(f: ClaimFields): string | null {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!/^-?\d+(\.\d{1,2})?$/.test(f.amount.trim())) return 'Enter an amount with up to two decimals.';

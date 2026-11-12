@@ -483,6 +483,11 @@ public class ClaimService {
      *  voided claim, a claim in a closed period, the claim's own person, or a person retired on its date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long toPersonId) {
+        return move(sheetId, user, claimId, toPersonId, true);
+    }
+
+    /** Move a claim as a reassign does; one already the person's is refused only when {@code refuseOwn}. */
+    private Claim move(String sheetId, String user, long claimId, long toPersonId, boolean refuseOwn) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDueBy());
         if (!roles.allows(sheetId, user, "reassign")) {
@@ -494,7 +499,7 @@ public class ClaimService {
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         Person to = people.findByIdAndSheetId(toPersonId, sheetId).orElseThrow(PersonNotFoundException::new);
-        if (from.getId().equals(to.getId())) {
+        if (refuseOwn && from.getId().equals(to.getId())) {
             throw new ClaimReassignException("The claim is already " + to.getName() + "'s.");
         }
         refuseRetired(to, claim.getDate());
@@ -613,6 +618,31 @@ public class ClaimService {
             }
         }
         return new BulkSettled(settled.size(), chosen.size() - settled.size(), settled);
+    }
+
+    /** What a bulk reassign did: how many it moved and refused, and the claims it moved, in the order moved. */
+    public record BulkReassigned(int reassigned, int refused, List<Claim> claims) {
+    }
+
+    /** Move the chosen claims to a person together in list order (people in the order they were added, each
+     *  person's claims newest first), each as a single reassign by the user would; one that cannot be moved is
+     *  left as it is and counted as refused, as is one not on the sheet. */
+    @Transactional
+    public BulkReassigned bulkReassign(String sheetId, String user, Collection<Long> claimIds, long toPersonId) {
+        Set<Long> chosen = new HashSet<>(claimIds);
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+            return new BulkReassigned(0, chosen.size(), List.of());
+        }
+        List<Claim> moved = new ArrayList<>();
+        for (Claim claim : inListOrder(sheetId, chosen)) {
+            try {
+                moved.add(move(sheetId, user, claim.getId(), toPersonId, false));
+            } catch (ClaimReassignException | PersonRetiredException | PersonNotFoundException
+                    | PeriodClosedException | ClaimNotFoundException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkReassigned(moved.size(), chosen.size() - moved.size(), moved);
     }
 
     /** The sheet's chosen claims in list order: people in the order they were added, each person's claims

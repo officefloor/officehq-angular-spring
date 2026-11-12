@@ -8,6 +8,7 @@ import { Roles } from '../../core/roles';
 import { Session, isDate } from '../../core/session';
 import { VoidReasons } from '../../core/void-reasons';
 import { BulkOpen } from '../claims/bulk-open';
+import { BulkReassign } from '../claims/bulk-reassign';
 import { BulkSettle } from '../claims/bulk-settle';
 import { PasteClaims } from '../claims/paste-claims';
 import { HeaderCounters } from '../header/header';
@@ -22,7 +23,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [BulkOpen, BulkSettle, HeaderCounters, HolidaysPanel, PasteClaims, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [BulkOpen, BulkReassign, BulkSettle, HeaderCounters, HolidaysPanel, PasteClaims, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -90,6 +91,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-paste-claims />
         <app-bulk-open />
         <app-bulk-settle />
+        <app-bulk-reassign />
         <app-summary />
       }
     } @else {

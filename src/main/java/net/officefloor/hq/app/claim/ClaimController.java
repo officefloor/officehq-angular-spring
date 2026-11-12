@@ -265,6 +265,26 @@ public class ClaimController {
         return new BulkSettleView(done.settled(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
     }
 
+    /** The claims chosen to move together, and the person they are moved to. */
+    public record BulkReassignRequest(@NotNull @Size(max = 10000) List<@NotNull Long> claimIds,
+            @NotNull Long personId) {
+    }
+
+    /** How many a bulk reassign moved and refused, and the claims it moved. */
+    public record BulkReassignView(int reassigned, int refused, List<ClaimView> claims) {
+    }
+
+    /** Move the chosen claims to a person together, in list order; each that cannot be moved is left as it is. */
+    @PostMapping("/claims/bulk-reassign")
+    public BulkReassignView bulkReassign(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkReassignRequest request) {
+        ClaimService.BulkReassigned done = service.bulkReassign(sheetId.trim(), user.trim(), request.claimIds(),
+                request.personId());
+        return new BulkReassignView(done.reassigned(), done.refused(),
+                done.claims().stream().map(ClaimView::of).toList());
+    }
+
     /** Settle an OPEN claim; a clerk settling a due above the clerk limit puts it PENDING instead. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
