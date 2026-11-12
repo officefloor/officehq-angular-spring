@@ -59,7 +59,7 @@ public class Claim {
     @Column(name = "stated", nullable = false)
     private boolean stated;
 
-    /** The due the claim was bound to by its person's last statement; null when it had none (n/a). */
+    /** The due (as shown, late charge included) the claim was bound to by its person's last statement; null when it had none (n/a). */
     @Column(name = "stated_due", precision = 14, scale = 2)
     private BigDecimal statedDue;
 
