@@ -1,0 +1,206 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index bcc498ec6..582e54b66 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -318,6 +318,34 @@ export class Claims {
+     }
+   }
+ 
++  /** Settle the chosen claims together, the server settling them in list order as a single settle would
++   *  (one a clerk puts PENDING counts as settled) and leaving each that cannot be settled as it is; how
++   *  many were settled and refused, or an error message. */
++  async bulkSettle(): Promise<{ settled: number; refused: number } | string> {
++    const sid = this.session.sheetId();
++    const user = this.session.user();
++    if (!user || !sid) return 'Load a sheet first.';
++    const claimIds = [...this.selected()];
++    if (claimIds.length === 0) return 'Select the claims to settle.';
++    try {
++      const done = await firstValueFrom(
++        this.http.post<{ settled: number; refused: number; claims: Claim[] }>(
++          `${this.url(sid)}/claims/bulk-settle`,
++          { claimIds },
++          { headers: { 'X-User': user } },
++        ),
++      );
++      if (this.session.sheetId() === sid) {
++        const byId = new Map(done.claims.map((c) => [c.id, c]));
++        this.claims.update((cs) => cs.map((c) => byId.get(c.id) ?? c));
++        this.selected.set(new Set());
++      }
++      return { settled: done.settled, refused: done.refused };
++    } catch (e) {
++      return failed('settle', e).replace(' claim', ' claims');
++    }
++  }
++
+   private check(f: ClaimFields): string | null {
+     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
+     if (!/^-?\d+(\.\d{1,2})?$/.test(f.amount.trim())) return 'Enter an amount with up to two decimals.';
+diff --git a/src/main/frontend/src/app/features/claims/bulk-settle.ts b/src/main/frontend/src/app/features/claims/bulk-settle.ts
+new file mode 100644
+index 000000000..2336d1856
+--- /dev/null
++++ b/src/main/frontend/src/app/features/claims/bulk-settle.ts
+@@ -0,0 +1,43 @@
++import { Component, inject, signal } from '@angular/core';
++import { Claims } from '../../core/claims';
++
++// Settles the claims chosen by their checkboxes together, and reports how many were settled and refused.
++@Component({
++  selector: 'app-bulk-settle',
++  template: `
++    <section aria-label="Settle selected claims">
++      <button type="button" data-testid="bulk-settle" [disabled]="running()" (click)="settle()">
++        Settle selected claims
++      </button>
++      @if (result(); as r) {
++        <p>
++          Settled <span data-testid="bulk-settled">{{ r.settled }}</span>, refused
++          <span data-testid="bulk-settle-refused">{{ r.refused }}</span>
++        </p>
++      }
++      @if (error(); as err) {
++        <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
++      }
++    </section>
++  `,
++})
++export class BulkSettle {
++  protected readonly claims = inject(Claims);
++  protected readonly running = signal(false);
++  protected readonly result = signal<{ settled: number; refused: number } | null>(null);
++  protected readonly error = signal<string | null>(null);
++
++  protected async settle(): Promise<void> {
++    if (this.running()) return;
++    this.result.set(null);
++    this.error.set(null);
++    this.running.set(true);
++    try {
++      const done = await this.claims.bulkSettle();
++      if (typeof done === 'string') this.error.set(done);
++      else this.result.set(done);
++    } finally {
++      this.running.set(false);
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 0c5dc5ec5..8c310e091 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -6,6 +6,7 @@ import { Rates } from '../../core/rates';
+ import { Roles } from '../../core/roles';
+ import { Session } from '../../core/session';
+ import { BulkOpen } from '../claims/bulk-open';
++import { BulkSettle } from '../claims/bulk-settle';
+ import { HeaderCounters } from '../header/header';
+ import { PeopleList } from '../people/people';
+ import { PeriodsPanel } from '../periods/periods';
+@@ -16,7 +17,7 @@ import { SummaryPanel } from '../summary/summary';
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [BulkOpen, HeaderCounters, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
++  imports: [BulkOpen, BulkSettle, HeaderCounters, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
+   template: `
+     @if (session.user(); as user) {
+       @if (session.sheetId()) {
+@@ -62,6 +63,7 @@ import { SummaryPanel } from '../summary/summary';
+         <app-periods />
+         <app-people />
+         <app-bulk-open />
++        <app-bulk-settle />
+         <app-summary />
+       }
+     } @else {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 5bcd45d86..ebaff0e92 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -165,6 +165,19 @@ public class ClaimController {
+         return new BulkOpenView(done.opened(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
+     }
+ 
++    /** How many a bulk settle settled (PENDING included) and refused, and the claims it changed. */
++    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
++    }
++
++    /** Settle the chosen claims together, in list order; each that cannot be settled is left as it is. */
++    @PostMapping("/claims/bulk-settle")
++    public BulkSettleView bulkSettle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid BulkRequest request) {
++        ClaimService.BulkSettled done = service.bulkSettle(sheetId.trim(), user.trim(), request.claimIds());
++        return new BulkSettleView(done.settled(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
++    }
++
+     /** Settle an OPEN claim; a clerk settling a due above the clerk limit puts it PENDING instead. */
+     @PostMapping("/claims/{claimId}/settle")
+     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 7289dd9f3..f67dbd5e5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -264,16 +264,8 @@ public class ClaimService {
+     @Transactional
+     public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> claimIds) {
+         Set<Long> chosen = new HashSet<>(claimIds);
+-        Map<Long, Integer> personOrder = new HashMap<>();
+-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+-            personOrder.put(person.getId(), personOrder.size());
+-        }
+-        List<Claim> inOrder = claims.findBySheetIdOrderByListOrderDesc(sheetId).stream()
+-                .filter(c -> chosen.contains(c.getId()))
+-                .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
+-                .toList();
+         List<Claim> opened = new ArrayList<>();
+-        for (Claim claim : inOrder) {
++        for (Claim claim : inListOrder(sheetId, chosen)) {
+             try {
+                 opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
+             } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException e) {
+@@ -283,6 +275,42 @@ public class ClaimService {
+         return new BulkOpened(opened.size(), chosen.size() - opened.size(), opened);
+     }
+ 
++    /** What a bulk settle did: how many it settled (PENDING included) and refused, and the claims it changed. */
++    public record BulkSettled(int settled, int refused, List<Claim> claims) {
++    }
++
++    /** Settle the chosen claims together in list order (people in the order they were added, each person's
++     *  claims newest first), each as a single settle by the user would: one a clerk puts PENDING counts as
++     *  settled, and one that cannot be settled is left as it is and counted as refused, as is one not on
++     *  the sheet. */
++    @Transactional
++    public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> claimIds) {
++        Set<Long> chosen = new HashSet<>(claimIds);
++        List<Claim> settled = new ArrayList<>();
++        for (Claim claim : inListOrder(sheetId, chosen)) {
++            try {
++                settled.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
++            } catch (ClaimStatusException | ClaimSettlerException | PeriodClosedException
++                    | ClaimNotFoundException e) {
++                // refused: left as it is
++            }
++        }
++        return new BulkSettled(settled.size(), chosen.size() - settled.size(), settled);
++    }
++
++    /** The sheet's chosen claims in list order: people in the order they were added, each person's claims
++     *  newest first. */
++    private List<Claim> inListOrder(String sheetId, Set<Long> chosen) {
++        Map<Long, Integer> personOrder = new HashMap<>();
++        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++            personOrder.put(person.getId(), personOrder.size());
++        }
++        return claims.findBySheetIdOrderByListOrderDesc(sheetId).stream()
++                .filter(c -> chosen.contains(c.getId()))
++                .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
++                .toList();
++    }
++
+     /** A person, their statements in the order taken, and their claims newest first. */
+     public record Stated(Person person, List<Statement> statements, List<Claim> claims) {
+     }
