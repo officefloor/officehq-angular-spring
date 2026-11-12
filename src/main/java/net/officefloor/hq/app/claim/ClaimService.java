@@ -72,7 +72,7 @@ public class ClaimService {
      *  and a claim of 0.00 or more must name none. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
@@ -88,7 +88,7 @@ public class ClaimService {
     /** Change a DRAFT claim; a claim in any other status is refused, and a correction as when added. */
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimNotDraftException(claim.getStatus());
@@ -128,9 +128,9 @@ public class ClaimService {
             throw new ClaimSettlerException();
         }
         Rollup.Snapshot before = rollup.take(sheetId);
-        Integer number = claim.getNumber();
+        String number = claim.getNumber();
         if (to == ClaimStatus.OPEN) {
-            number = sheets.nextClaimNumber(sheetId);
+            number = sheets.nextClaimNumber(sheetId, claim.getDate());
             claim.setOpenedBy(user);
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
@@ -246,7 +246,7 @@ public class ClaimService {
 
     /** Refuse a negative amount that does not name a SETTLED claim of the person by number, and a claim of
      *  0.00 or more that names one. */
-    private void refuseCorrection(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private void refuseCorrection(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ClaimCorrectionException("Only a negative amount corrects a claim.");
@@ -314,7 +314,7 @@ public class ClaimService {
     }
 
     /** A claim with a number (a voided claim keeps its own) follows its date with number=, then any extra fields. */
-    private void audit(String event, Claim claim, Person person, String user, Integer number, String extra) {
+    private void audit(String event, Claim claim, Person person, String user, String number, String extra) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
                 + " person=" + person.getName() + " amount=" + claim.getAmount().toPlainString()
                 + " date=" + claim.getDate() + (number != null ? " number=" + number : "") + extra);

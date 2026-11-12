@@ -42,11 +42,11 @@ public class Claim {
 
     /** A correction's: the number of the SETTLED claim of the same person it corrects; none otherwise. */
     @Column(name = "corrects_number")
-    private Integer corrects;
+    private String corrects;
 
     /** Given when the claim is opened; none while a draft or once voided. */
     @Column(name = "claim_number")
-    private Integer number;
+    private String number;
 
     /** Fixed when the claim is settled, if its grade had a rate then; none otherwise. */
     @Column(name = "settled_due")
@@ -67,7 +67,7 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -96,11 +96,11 @@ public class Claim {
         this.amount = amount;
     }
 
-    public Integer getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Integer corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 
@@ -133,11 +133,11 @@ public class Claim {
         this.status = status;
     }
 
-    public Integer getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Integer number) {
+    public void setNumber(String number) {
         this.number = number;
     }
 

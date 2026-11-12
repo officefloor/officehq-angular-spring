@@ -13,8 +13,9 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** Given when opened, the next on the sheet; null while a draft or once voided. */
-  number: number | null;
+  /** Given when opened: the next on the sheet (1, 2, ...), or while numbering by period the next in its
+   *  period (<period name>-1, ...) or in no period (X-1, ...); null while a draft. */
+  number: string | null;
   /** The due fixed when it was settled, two decimals; null while its due is live (not settled, or
    *  settled while its grade had no rate). */
   settledDue: string | null;
@@ -26,7 +27,7 @@ export interface Claim {
   statedDue: string | null;
   /** A correction's (a negative amount): the number of the SETTLED claim of the same person it
    *  corrects; null otherwise. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT or OPEN -> VOID. */
@@ -273,20 +274,20 @@ export class Claims {
     if (!/^-?\d+(\.\d{1,2})?$/.test(f.amount.trim())) return 'Enter an amount with up to two decimals.';
     if (f.date.trim() && !isDate(f.date.trim())) return 'Enter a date as YYYY-MM-DD.';
     const corrects = f.corrects.trim();
-    if (corrects && !/^[1-9]\d{0,8}$/.test(corrects)) return 'Enter the number of the claim it corrects.';
+    if (corrects.length > 220) return 'Enter the number of the claim it corrects.';
     if (f.amount.trim().startsWith('-') && !corrects) {
       return 'A negative amount is a correction: name the number of the settled claim it corrects.';
     }
     return null;
   }
 
-  private body(f: ClaimFields): { amount: string; date: string | null; note: string; corrects: number | null } {
+  private body(f: ClaimFields): { amount: string; date: string | null; note: string; corrects: string | null } {
     const corrects = f.corrects.trim();
     return {
       amount: f.amount.trim(),
       date: f.date.trim() || null,
       note: f.note.trim(),
-      corrects: corrects ? Number(corrects) : null,
+      corrects: corrects || null,
     };
   }
 

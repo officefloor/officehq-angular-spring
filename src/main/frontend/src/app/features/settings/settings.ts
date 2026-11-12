@@ -5,7 +5,9 @@ import { Session } from '../../core/session';
 // The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
 // floor (the least a claim's live due can be), the terms (the days after a claim's date it is due by), the
 // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
-// date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), and
+// date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), the
+// period numbering from-date (while the sheet's today is on or after it, a claim opened is numbered within its
+// period; blank for off), and
 // the role each user name has on the sheet (clerk unless given another).
 @Component({
   selector: 'app-settings',
@@ -57,6 +59,14 @@ import { Session } from '../../core/session';
           (input)="policyDate.set(value($event)); policyDateTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
+        <label for="setting-period-numbering-from">Period numbering from (YYYY-MM-DD; blank for off)</label>
+        <input
+          id="setting-period-numbering-from"
+          data-testid="setting-period-numbering-from"
+          [value]="numberingFrom()"
+          (input)="numberingFrom.set(value($event)); numberingFromTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-period-numbering-from-current">{{ session.periodNumberingFrom() ?? '' }}</strong></p>
         <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -114,6 +124,8 @@ export class SettingsPanel {
   protected readonly latePctTouched = signal(false);
   protected readonly policyDate = signal('');
   protected readonly policyDateTouched = signal(false);
+  protected readonly numberingFrom = signal('');
+  protected readonly numberingFromTouched = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly user = signal('');
@@ -134,19 +146,22 @@ export class SettingsPanel {
       // Only the settings typed into since the last save change. With none, the settings that may be blank
       // are saved where they differ from the value in force (a blank field clears one), else the clerk limit.
       const untouched = !this.limitTouched() && !this.floorTouched() && !this.termsTouched()
-        && !this.latePctTouched() && !this.policyDateTouched();
+        && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched();
       const floor = this.floorTouched();
       const terms = this.termsTouched();
       const latePct = this.latePctTouched();
       const policyDate = this.policyDateTouched()
         || (untouched && this.policyDate().trim() !== (this.session.policyDate() ?? ''));
-      const limit = this.limitTouched() || (untouched && !policyDate)
+      const numberingFrom = this.numberingFromTouched()
+        || (untouched && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
+      const limit = this.limitTouched() || (untouched && !policyDate && !numberingFrom)
         || (untouched && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
         ?? (floor ? await this.session.setFloor(this.floor()) : null)
         ?? (terms ? await this.session.setTerms(this.terms()) : null)
         ?? (latePct ? await this.session.setLatePct(this.latePct()) : null)
-        ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null);
+        ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
+        ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null);
       if (err) this.error.set(err);
       else {
         this.limit.set('');
@@ -159,6 +174,8 @@ export class SettingsPanel {
         this.latePctTouched.set(false);
         this.policyDate.set('');
         this.policyDateTouched.set(false);
+        this.numberingFrom.set('');
+        this.numberingFromTouched.set(false);
       }
     } finally {
       this.saving.set(false);

@@ -15,6 +15,8 @@ export interface SheetView {
   latePct: string;
   /** The policy date (YYYY-MM-DD); null when it is the sheet's today. */
   policyDate: string | null;
+  /** The period numbering from-date (YYYY-MM-DD); null when off. */
+  periodNumberingFrom: string | null;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
@@ -39,6 +41,9 @@ export class Session {
   /** The sheet's policy date (YYYY-MM-DD); null when it is the sheet's today. A claim dated before it
    *  rounds half up, one dated on or after it half to even. */
   readonly policyDate = signal<string | null>(null);
+  /** The sheet's period numbering from-date (YYYY-MM-DD); null when off. While the sheet's today is on or
+   *  after it, a claim opened is numbered within its period. */
+  readonly periodNumberingFrom = signal<string | null>(null);
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -65,6 +70,7 @@ export class Session {
       this.terms.set(sheet.terms);
       this.latePct.set(sheet.latePct);
       this.policyDate.set(sheet.policyDate);
+      this.periodNumberingFrom.set(sheet.periodNumberingFrom);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -171,6 +177,25 @@ export class Session {
         }),
       );
       if (this.sheetId() === sheet.id) this.policyDate.set(sheet.policyDate);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's period numbering from-date (blank: off); an error message when refused. */
+  async setPeriodNumberingFrom(date: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const d = date.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (d && !isDate(d)) return 'Enter a period numbering date as YYYY-MM-DD, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/period-numbering-from`,
+          { periodNumberingFrom: d || null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.periodNumberingFrom.set(sheet.periodNumberingFrom);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

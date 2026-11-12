@@ -13,11 +13,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
-    boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, Integer number,
+    boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
             ClaimStatus status);
 
     /** A person's claim by its number. */
-    Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, Integer number);
+    Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 
     /** The claim, locked until the transaction ends, so two users' changes to it go one after the other. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

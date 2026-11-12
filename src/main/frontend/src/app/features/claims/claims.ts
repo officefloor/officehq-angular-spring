@@ -151,7 +151,7 @@ export class PersonClaims {
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
-    this.corrects.set(c.corrects === null ? '' : String(c.corrects));
+    this.corrects.set(c.corrects ?? '');
     this.error.set(null);
   }
 

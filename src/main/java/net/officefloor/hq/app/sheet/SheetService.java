@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -14,11 +16,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final ClaimSequenceRepository sequences;
+    private final PeriodRepository periods;
     private final Rollup rollup;
     private final Audit audit;
 
-    public SheetService(SheetRepository sheets, Rollup rollup, Audit audit) {
+    public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences, PeriodRepository periods,
+            Rollup rollup, Audit audit) {
         this.sheets = sheets;
+        this.sequences = sequences;
+        this.periods = periods;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -109,9 +116,31 @@ public class SheetService {
         return sheet;
     }
 
-    /** The sheet's next claim number: 1 for the first, then 2, and so on, never given twice. */
+    /** Change the sheet's period numbering from-date (none: off). */
     @Transactional
-    public int nextClaimNumber(String id) {
-        return sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new).nextClaimNumber();
+    public Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setPeriodNumberingFrom(from);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=period-numbering-from value="
+                + (from == null ? "" : from.toString()));
+        return sheet;
+    }
+
+    /** The next number for a claim dated on a date: while the sheet numbers by period, the next in the
+     *  sequence of the period containing the date (<period name>-1, -2, ...), or of no period (X-1, ...);
+     *  otherwise the sheet-wide one (1, 2, ...). None is ever given twice. */
+    @Transactional
+    public String nextClaimNumber(String id, LocalDate date) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        if (!sheet.numbersByPeriod()) {
+            return sheet.nextClaimNumber();
+        }
+        String prefix = periods.findBySheetIdOrderByFromDateAsc(id).stream()
+                .filter(p -> p.contains(date)).findFirst().map(Period::getName).orElse("X");
+        ClaimSequence sequence = sequences.findBySheetIdAndPrefix(id, prefix)
+                .orElseGet(() -> new ClaimSequence(id, prefix));
+        String number = sequence.nextClaimNumber();
+        sequences.save(sequence);
+        return number;
     }
 }

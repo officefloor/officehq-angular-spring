@@ -5,7 +5,6 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -40,8 +39,8 @@ public class ClaimController {
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
      *  otherwise). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
-            ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
-            String statedDue, Integer corrects) {
+            ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+            String statedDue, String corrects) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -59,10 +58,15 @@ public class ClaimController {
             @NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Positive Integer corrects) {
+            @Size(max = 220) String corrects) {
 
         String noteOrEmpty() {
             return note == null ? "" : note.trim();
+        }
+
+        /** The number a correction names, trimmed; none when blank. */
+        String correctsOrNone() {
+            return corrects == null || corrects.isBlank() ? null : corrects.trim();
         }
     }
 
@@ -100,7 +104,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.date(),
-                request.noteOrEmpty(), request.corrects()));
+                request.noteOrEmpty(), request.correctsOrNone()));
     }
 
     /** Add a DRAFT claim dated the sheet's today for the person with the name, adding them first when
@@ -122,7 +126,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amount(), request.date(),
-                request.noteOrEmpty(), request.corrects()));
+                request.noteOrEmpty(), request.correctsOrNone()));
     }
 
     /** Open a DRAFT claim. */

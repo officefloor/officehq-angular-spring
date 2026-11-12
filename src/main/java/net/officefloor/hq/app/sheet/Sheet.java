@@ -54,6 +54,11 @@ public class Sheet {
     @Column(name = "policy_date")
     private LocalDate policyDate;
 
+    /** Period numbering from this date: while the sheet's today is on or after it, a claim opened is numbered
+     *  within its period; none means off. */
+    @Column(name = "period_numbering_from")
+    private LocalDate periodNumberingFrom;
+
     protected Sheet() {
     }
 
@@ -124,6 +129,20 @@ public class Sheet {
         this.policyDate = policyDate;
     }
 
+    public LocalDate getPeriodNumberingFrom() {
+        return periodNumberingFrom;
+    }
+
+    public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
+        this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    /** Whether a claim opened now is numbered within its period: the setting is a date and today is on or
+     *  after it. */
+    public boolean numbersByPeriod() {
+        return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
+    }
+
     /** How a claim dated on a date rounds its figures: half up before the policy date (the sheet's today
      *  when it has none), half to even on or after it. */
     public RoundingMode rounding(LocalDate date) {
@@ -149,7 +168,7 @@ public class Sheet {
     }
 
     /** Give out the sheet's next claim number. */
-    public int nextClaimNumber() {
-        return ++lastClaimNumber;
+    public String nextClaimNumber() {
+        return String.valueOf(++lastClaimNumber);
     }
 }
