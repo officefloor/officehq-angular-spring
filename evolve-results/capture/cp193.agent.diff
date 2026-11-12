@@ -1,0 +1,27 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8e8f55004..f73d09cce 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -862,6 +862,10 @@ function csvField(value: string): string {
+       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() | fig }}</strong></p>
+       <p>Overdue total <strong data-testid="rollup-overdue-total">{{ overdueTotal() | fig }}</strong></p>
+       <p>Cut total <strong data-testid="rollup-cut-total">{{ cutTotal() | fig }}</strong></p>
++      @let sheetAged = agedTotals();
++      <p>Due aged 0–30 <strong data-testid="rollup-aged-0-30">{{ sheetAged[0] | fig }}</strong></p>
++      <p>Due aged 31–60 <strong data-testid="rollup-aged-31-60">{{ sheetAged[1] | fig }}</strong></p>
++      <p>Due aged 61+ <strong data-testid="rollup-aged-61">{{ sheetAged[2] | fig }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <table>
+           <caption>Due total by tag</caption>
+@@ -1046,6 +1050,11 @@ export class People {
+   protected readonly settledTotal = computed(() => sumDues(this.people().map((p) => this.settledTotalOf(p))));
+   /** Everyone's open-total added up, not trimmed. */
+   protected readonly openTotal = computed(() => sumDues(this.people().map((p) => this.openTotalOf(p))));
++  /** Everyone's age buckets added up, bucket by bucket (0 to 30, 31 to 60, 61 or more days), not trimmed. */
++  protected readonly agedTotals = computed<[string, string, string]>(() => {
++    const aged = this.people().map((p) => this.agedOf(p));
++    return [0, 1, 2].map((i) => sumDues(aged.map((a) => a[i]))) as [string, string, string];
++  });
+   /** How many of everyone's counted claims are overdue. */
+   protected readonly overdueCount = computed(() =>
+     this.people().reduce((total, p) => total + this.overdueOf(p).length, 0),
