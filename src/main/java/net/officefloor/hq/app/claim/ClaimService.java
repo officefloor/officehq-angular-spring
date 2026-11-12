@@ -36,7 +36,8 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the people's claims on each sheet. A claim with no date is dated the sheet's today. */
+/** Keeps the people's claims on each sheet. A new claim with no date is dated the sheet's entry date while
+ *  set, else its today. */
 @Service
 public class ClaimService {
 
@@ -83,7 +84,7 @@ public class ClaimService {
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
-        LocalDate on = date != null ? date : sheets.today(sheetId);
+        LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
         refuseCorrection(sheetId, personId, amount, corrects);

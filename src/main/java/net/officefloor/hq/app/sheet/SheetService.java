@@ -92,6 +92,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
     }
 
+    /** The default date of a new claim: the sheet's entry date while set, else its today. */
+    @Transactional(readOnly = true)
+    public LocalDate entryDefault(String id) {
+        return sheets.findById(id).map(sheet -> sheet.getEntryDate() != null ? sheet.getEntryDate() : sheet.getToday()).orElseThrow(SheetNotFoundException::new);
+    }
+
     /** Change the sheet's today, closing the periods past their grace days and recording the figures it
      *  moves; a new today first records a SNAPSHOT line of each person's due-total on the day being left, in
      *  list order, and releases every claim's lock (their editors close). */
@@ -218,6 +224,16 @@ public class SheetService {
         sheet.setGraceDays(graceDays);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=grace-days value="
                 + (graceDays == null ? "" : graceDays.toString()));
+        return sheet;
+    }
+
+    /** Change the sheet's entry date (none: off, a new claim takes the sheet's today). Not dated. */
+    @Transactional
+    public Sheet setEntryDate(String id, String user, LocalDate entryDate) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setEntryDate(entryDate);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=entry-date value="
+                + (entryDate == null ? "" : entryDate.toString()));
         return sheet;
     }
 

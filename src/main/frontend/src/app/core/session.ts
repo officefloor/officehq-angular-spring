@@ -35,6 +35,9 @@ export interface SheetView {
   graceDays: number | null;
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   archived: boolean;
+  /** The entry date (YYYY-MM-DD): the default date of a new claim in place of the sheet's today; null when
+   *  off. */
+  entryDate: string | null;
 }
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
@@ -105,6 +108,9 @@ export class Session {
   /** The sheet's grace days; null when off. A today change closes each open period whose to-date plus these
    *  days is before the new today. */
   readonly graceDays = signal<number | null>(null);
+  /** The sheet's entry date (YYYY-MM-DD); null when off. While set, it is the default date of a new claim
+   *  in place of the sheet's today. */
+  readonly entryDate = signal<string | null>(null);
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** The date (YYYY-MM-DD) this user's screen shows the sheet as of, while set: every figure as it stood at
@@ -137,6 +143,7 @@ export class Session {
       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
       this.permissions.set(sheet.permissions);
       this.graceDays.set(sheet.graceDays);
+      this.entryDate.set(sheet.entryDate);
       this.archived.set(sheet.archived);
       return null;
     } catch (e) {
@@ -394,6 +401,26 @@ export class Session {
         }),
       );
       if (this.sheetId() === sheet.id) this.policyDate.set(sheet.policyDate);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's entry date (blank: off); an error message when refused. */
+  async setEntryDate(date: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const d = date.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (d && !isDate(d)) return 'Enter an entry date as YYYY-MM-DD, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/entry-date`, { entryDate: d || null }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.entryDate.set(sheet.entryDate);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

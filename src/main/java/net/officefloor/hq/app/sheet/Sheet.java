@@ -93,6 +93,11 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The entry date: while set, the default date of a new claim in place of the sheet's today; none means
+     *  off. Not dated. */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** Whether the sheet is archived: everything stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -290,6 +295,14 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
     }
 
     public Integer getGraceDays() {

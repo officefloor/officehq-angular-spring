@@ -12,7 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 /**
  * A viewer sees the sheet and changes nothing: every change to a sheet by a viewer is refused before it
  * reaches its handler. Loading the sheet is not a change, and a bulk action goes through with nothing done
- * (each claim refused), so those are left to their handlers.
+ * (each claim refused, no one graded), so those are left to their handlers.
  */
 @Configuration
 public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
@@ -27,7 +27,8 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(this)
                 .addPathPatterns("/api/sheets/*/**")
-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*");
+                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
+                        "/api/sheets/*/people/bulk-grade");
     }
 
     @Override

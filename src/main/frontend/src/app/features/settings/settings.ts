@@ -15,7 +15,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // period numbering from-date (while the sheet's today is on or after it, a claim opened is numbered within its
 // period; blank for off), the grace days (a today change closes each open period whose to-date plus these days
 // is before the new today; blank for off; not dated), the permission matrix (for each action, the roles that may take it, comma separated;
-// blank keeps the standing rule; not dated), and
+// blank keeps the standing rule; not dated), the entry date (while set, the default date of a new claim in
+// place of the sheet's today; blank for off; not dated), and
 // the role each user name has on the sheet (clerk unless given another), and the delegations of the steward role
 // (a steward gives a user the role from a date to a date, inclusive, by the sheet's today).
 @Component({
@@ -178,6 +179,17 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="policyDateTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
+        <label for="setting-entry-date">Entry date (YYYY-MM-DD; a new claim's default date; blank for the sheet's today)</label>
+        <input
+          id="setting-entry-date"
+          data-testid="setting-entry-date"
+          [value]="entryDate()"
+          (input)="entryDate.set(value($event)); entryDateTouched.set(true); error.set(null)"
+          (focus)="focused.set('entry-date')"
+          (keydown.delete)="entryDateTouched.set(true); error.set(null)"
+          (keydown.backspace)="entryDateTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' }}</strong></p>
         <label for="setting-period-numbering-from">Period numbering from (YYYY-MM-DD; blank for off)</label>
         <input
           id="setting-period-numbering-from"
@@ -324,6 +336,8 @@ export class SettingsPanel {
   protected readonly numberingFromTouched = signal(false);
   protected readonly graceDays = signal('');
   protected readonly graceDaysTouched = signal(false);
+  protected readonly entryDate = signal('');
+  protected readonly entryDateTouched = signal(false);
   /** The setting that may be blank whose field was focused last: an untouched save (a blank typed into a
    *  blank field fires no input) saves that one. */
   protected readonly focused = signal<string | null>(null);
@@ -386,7 +400,7 @@ export class SettingsPanel {
         && !this.noteThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
-        && !this.graceDaysTouched()
+        && !this.graceDaysTouched() && !this.entryDateTouched()
         && this.gradeTermsTouched().size === 0 && this.permsTouched().size === 0;
       const pick = untouched ? this.focused() : null;
       if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
@@ -407,8 +421,11 @@ export class SettingsPanel {
         || (guess && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
       const graceDays = this.graceDaysTouched() || pick === 'grace-days'
         || (guess && this.graceDays().trim() !== (this.session.graceDays()?.toString() ?? ''));
+      const entryDate = this.entryDateTouched() || pick === 'entry-date'
+        || (guess && this.entryDate().trim() !== (this.session.entryDate() ?? ''));
       const limit = this.limitTouched() || pick === 'limit'
-        || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays)
+        || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
+          && !entryDate)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
@@ -425,7 +442,8 @@ export class SettingsPanel {
         ?? (latePct ? await this.session.setLatePct(this.latePct(), this.fromOf('late-pct')) : null)
         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null)
-        ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null);
+        ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null)
+        ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null);
       if (err) this.error.set(err);
       else {
         this.limit.set('');
@@ -453,6 +471,8 @@ export class SettingsPanel {
         this.numberingFromTouched.set(false);
         this.graceDays.set('');
         this.graceDaysTouched.set(false);
+        this.entryDate.set('');
+        this.entryDateTouched.set(false);
         this.focused.set(null);
       }
     } finally {

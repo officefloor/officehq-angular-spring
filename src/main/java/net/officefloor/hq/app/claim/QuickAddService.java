@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The quick-add bar: a DRAFT claim dated the sheet's today, with an empty note, for the person with
+ * The quick-add bar: a DRAFT claim dated the sheet's entry date (its today when off), with an empty note, for the person with
  * the name (ignoring case), adding them with grade A first when the sheet has no one by that name.
  * One change: a refused claim rolls back the person it added, and writes nothing.
  */

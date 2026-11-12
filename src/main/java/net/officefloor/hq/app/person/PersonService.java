@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -26,11 +27,13 @@ public class PersonService {
     private final StatementRepository statements;
     private final PatronRepository patrons;
     private final WatchRepository watches;
+    private final RoleService roles;
     private final Rollup rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
-            PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit) {
+            PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles) {
+        this.roles = roles;
         this.watches = watches;
         this.patrons = patrons;
         this.rollup = rollup;
@@ -175,10 +178,14 @@ public class PersonService {
     }
 
     /** Give each of the chosen people the grade from a date, in list order, exactly as the person form
-     *  would with their name and terms left as they are; the people changed, in list order. */
+     *  would with their name and terms left as they are; the people changed, in list order. A viewer's goes
+     *  through with no one changed. */
     @Transactional
     public List<Person> bulkGrade(String sheetId, String user, List<Long> personIds, String grade, LocalDate from) {
         requireSheet(sheetId);
+        if (roles.isViewer(sheetId, user)) {
+            return List.of();
+        }
         Set<Long> chosen = Set.copyOf(personIds);
         List<Person> picked = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(p -> chosen.contains(p.getId())).toList();

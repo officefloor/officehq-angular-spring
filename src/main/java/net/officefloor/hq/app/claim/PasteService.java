@@ -17,9 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The paste box: lines of name,amount,date,note (the note may hold commas and may be absent; a blank date
- * takes the sheet's today), each a DRAFT claim for the person on the sheet with the name (ignoring case),
- * added in order. Blank lines are skipped. One change: every line is checked with the claim form's rules,
- * and a refused line refuses the paste, adding nothing and writing nothing.
+ * takes the sheet's entry date, its today when off), each a DRAFT claim for the person on the sheet with
+ * the name (ignoring case), added in order. Blank lines are skipped. One change: every line is checked
+ * with the claim form's rules, and a refused line refuses the paste, adding nothing and writing nothing.
  */
 @Service
 public class PasteService {
