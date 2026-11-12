@@ -1,5 +1,5 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { Claim, Claims } from './claims';
+import { Claim, Claims, bound } from './claims';
 import { People, Person, gradeOn } from './people';
 import { Periods } from './periods';
 import { Rates, hundredths, money } from './rates';
@@ -23,9 +23,9 @@ export class Figures {
     let sum = 0n;
     let keptFigure = false;
     for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
-      if (c.settledDue !== null || (c.stated && c.statedDue !== null)) keptFigure = true;
+      if (c.settledDue !== null || (bound(c) && c.statedDue !== null)) keptFigure = true;
       // a claim priced at the grade in force on its date keeps a figure too
-      else if (!c.stated && this.rates.inForce(gradeOn(p.grades, c.date), c.date) !== undefined) keptFigure = true;
+      else if (!bound(c) && this.rates.inForce(gradeOn(p.grades, c.date), c.date) !== undefined) keptFigure = true;
       sum += this.figureCents(c, p);
     }
     const today = this.session.today();
@@ -33,12 +33,12 @@ export class Figures {
     return rated || keptFigure ? sum : null;
   }
 
-  /** A claim's figure: its settled due, else the figure its person's last statement bound it to,
-   *  else its live due at the rate in force on its date, an overdue claim's late charge on top;
+  /** A claim's figure: its settled due, else the figure its person's last statement bound it to (not
+   *  while PENDING), else its live due at the rate in force on its date, an overdue claim's late charge on top;
    *  nothing when it has no figure. */
   figureCents(c: Claim, p: Person): bigint {
     if (c.settledDue !== null) return hundredths(c.settledDue);
-    const f = c.stated
+    const f = bound(c)
       ? (c.statedDue === null ? 0n : hundredths(c.statedDue))
       : (this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c)) ?? 0n);
     return f + this.claims.lateCents(c, f);
@@ -62,7 +62,7 @@ export class Figures {
       if (!period) continue;
       let due: bigint | null;
       if (c.settledDue !== null) due = hundredths(c.settledDue);
-      else if (c.stated) due = c.statedDue === null ? null : hundredths(c.statedDue);
+      else if (bound(c)) due = c.statedDue === null ? null : hundredths(c.statedDue);
       else {
         const grade = grades.get(c.personId);
         due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date, this.claims.roundingDate(c));

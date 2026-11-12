@@ -14,7 +14,6 @@ import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
-import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -76,11 +75,11 @@ public class Rollup {
                 }
                 claimed = claimed.add(claim.getAmount());
                 BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
-                        : claim.isStated() ? claim.getStatedDue() : null;
+                        : claim.isBound() ? claim.getStatedDue() : null;
                 if (kept != null) {
                     keptFigure = true;
                     due = due.add(charged(sheet, claim, kept));
-                } else if (!claim.isStated()) {
+                } else if (!claim.isBound()) {
                     // a claim priced at the grade in force on its date keeps a figure too
                     BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                             .map(rate -> rated(sheet, claim, sheetClaims, rate))
@@ -127,7 +126,7 @@ public class Rollup {
             BigDecimal due;
             if (claim.getSettledDue() != null) {
                 due = claim.getSettledDue();
-            } else if (claim.isStated()) {
+            } else if (claim.isBound()) {
                 due = claim.getStatedDue();
             } else {
                 Person person = byId.get(claim.getPersonId());
@@ -162,10 +161,10 @@ public class Rollup {
         }
     }
 
-    /** Whether a claim counts in the live totals: its status counts, and it is not OPEN while its
-     *  person is on hold. */
+    /** Whether a claim counts in the live totals: its status counts, and it is not OPEN or PENDING while
+     *  its person is on hold. */
     private static boolean countsLive(Claim claim, boolean held) {
-        return claim.getStatus().counts() && !(held && claim.getStatus() == ClaimStatus.OPEN);
+        return claim.getStatus().counts() && !(held && claim.getStatus().isOpen());
     }
 
     /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on
@@ -192,11 +191,11 @@ public class Rollup {
         return claim.isCorrection() ? due : sheet.map(s -> s.floored(due)).orElse(due);
     }
 
-    /** A figure with its late charge on top while its claim is OPEN (only an OPEN claim is overdue); a
+    /** A figure with its late charge on top while its claim is OPEN or PENDING (only those go overdue); a
      *  settled claim's due already holds the charge frozen in when it was settled. A correction has no
      *  late charge. */
     public static BigDecimal charged(Optional<Sheet> sheet, Claim claim, BigDecimal figure) {
-        if (claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
+        if (!claim.getStatus().isOpen() || claim.isCorrection()) {
             return figure;
         }
         return figure.add(sheet.map(s -> s.lateCharge(figure, claim.getDate())).orElse(ZERO));

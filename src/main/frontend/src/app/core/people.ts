@@ -40,7 +40,7 @@ export interface Person {
   retired: boolean;
   /** The date they are retired from (YYYY-MM-DD); null while not retired. */
   retiredFrom: string | null;
-  /** On hold: their OPEN claims count in no live total; their SETTLED ones still do. */
+  /** On hold: their OPEN and PENDING claims count in no live total; their SETTLED ones still do. */
   held: boolean;
   /** The ids of the other people on the sheet they have named as their patrons. */
   patronIds: number[];

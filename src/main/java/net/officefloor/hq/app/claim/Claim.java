@@ -161,6 +161,12 @@ public class Claim {
         return stated;
     }
 
+    /** Bound by its person's last statement now: stated, and not PENDING (a PENDING claim shows and totals
+     *  its live figure; rejected back to OPEN, it is bound again). */
+    public boolean isBound() {
+        return stated && status != ClaimStatus.PENDING;
+    }
+
     public BigDecimal getStatedDue() {
         return statedDue;
     }

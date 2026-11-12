@@ -21,7 +21,8 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened it; null while a draft. That user cannot settle it. */
   openedBy: string | null;
-  /** Bound by its person's last statement, which counted it: it shows and totals `statedDue`. */
+  /** Bound by its person's last statement, which counted it: it shows and totals `statedDue` (not while
+   *  PENDING, see `bound`). */
   stated: boolean;
   /** The figure the last statement bound, two decimals; null while unbound, or when that was n/a. */
   statedDue: string | null;
@@ -30,15 +31,28 @@ export interface Claim {
   corrects: string | null;
 }
 
-/** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT or OPEN -> VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT, OPEN or PENDING -> VOID. A clerk settling a
+ *  due above the clerk limit makes it PENDING: a steward approves it (SETTLED) or rejects it (OPEN). */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change a claim's buttons ask for. */
-export type ClaimAction = 'open' | 'settle' | 'void';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
 
 /** Whether a claim in this status counts toward claimed, due-total and every total. */
 export function counts(c: Claim): boolean {
-  return c.status === 'OPEN' || c.status === 'SETTLED';
+  return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
+}
+
+/** Whether a claim is still open (OPEN or PENDING): it goes overdue, and a hold takes it out of the
+ *  live totals. */
+export function isOpen(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'PENDING';
+}
+
+/** Whether a claim is bound by its person's last statement now: a PENDING claim shows and totals its
+ *  live figure until rejected back to OPEN. */
+export function bound(c: Claim): boolean {
+  return c.stated && c.status !== 'PENDING';
 }
 
 export interface ClaimFields {
@@ -51,8 +65,8 @@ export interface ClaimFields {
 }
 
 // The people's claims on the active sheet, newest first, re-read from the server each time the
-// sheet is loaded. Sums are kept in whole cents so they add up exactly, and count only OPEN and
-// SETTLED claims.
+// sheet is loaded. Sums are kept in whole cents so they add up exactly, and count only OPEN, PENDING
+// and SETTLED claims.
 @Injectable({ providedIn: 'root' })
 export class Claims {
   private readonly http = inject(HttpClient);
@@ -64,11 +78,11 @@ export class Claims {
   readonly selected = signal<ReadonlySet<number>>(new Set());
   private loads = 0;
 
-  /** The claims that count in the live totals: those that count, less the OPEN claims of a person
-   *  on hold. */
+  /** The claims that count in the live totals: those that count, less the OPEN and PENDING claims of a
+   *  person on hold. */
   readonly live = computed(() => {
     const held = new Set(this.people.people().filter((p) => p.held).map((p) => p.id));
-    return this.claims().filter((c) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId)));
+    return this.claims().filter((c) => counts(c) && !(isOpen(c) && held.has(c.personId)));
   });
 
   /** Each person's claimed, in cents, by person id. */
@@ -86,10 +100,10 @@ export class Claims {
     return addDays(c.date, this.session.terms());
   }
 
-  /** Whether a claim is overdue: OPEN, with its due-by before the sheet's today. */
+  /** Whether a claim is overdue: OPEN or PENDING, with its due-by before the sheet's today. */
   overdue(c: Claim): boolean {
     const today = this.session.today();
-    return c.status === 'OPEN' && today !== null && this.dueBy(c) < today;
+    return isOpen(c) && today !== null && this.dueBy(c) < today;
   }
 
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, the sheet's late
@@ -215,14 +229,17 @@ export class Claims {
     }
   }
 
-  /** Open, settle or void a claim; an error message when refused. */
-  async act(id: number, action: ClaimAction): Promise<string | null> {
+  /** Open, settle, void, approve or reject a claim (a rejection with its reason); an error message
+   *  when refused. */
+  async act(id: number, action: ClaimAction, reason = ''): Promise<string | null> {
     const sid = this.session.sheetId();
     const user = this.session.user();
     if (!user || !sid) return 'Load a sheet first.';
+    if (action === 'reject' && !reason.trim()) return 'Give a reason to reject the claim.';
     try {
+      const body = action === 'reject' ? { reason: reason.trim() } : null;
       const claim = await firstValueFrom(
-        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/${action}`, null, { headers: { 'X-User': user } }),
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
       );
       if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
       return null;

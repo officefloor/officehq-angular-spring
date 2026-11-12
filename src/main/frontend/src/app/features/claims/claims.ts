@@ -1,5 +1,5 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
-import { Claim, ClaimAction, Claims } from '../../core/claims';
+import { Claim, ClaimAction, Claims, bound, isOpen } from '../../core/claims';
 import { Periods } from '../../core/periods';
 import { GradeFrom, gradeOn } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
@@ -87,6 +87,25 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
             </button>
           }
+          @if (isOpen(c)) {
+            <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+            <input
+              [id]="'claim-reject-reason-' + c.id"
+              data-testid="claim-reject-reason"
+              [value]="rejectReasons()[c.id] ?? ''"
+              (input)="setRejectReason(c.id, value($event))"
+            />
+            @for (a of reviews; track a.action) {
+              <button
+                type="button"
+                [attr.data-testid]="'claim-' + a.action"
+                [disabled]="acting() === c.id"
+                (click)="act(c, a.action)"
+              >
+                {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+              </button>
+            }
+          }
           @if (actionError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ actionError()?.message }}</p>
           }
@@ -117,17 +136,27 @@ export class PersonClaims {
     { action: 'settle', label: 'Settle' },
     { action: 'void', label: 'Void' },
   ];
+  /** A steward's review of a PENDING claim, offered on every open claim (the server refuses it unless
+   *  PENDING). */
+  protected readonly reviews: { action: ClaimAction; label: string }[] = [
+    { action: 'approve', label: 'Approve' },
+    { action: 'reject', label: 'Reject' },
+  ];
+  /** The reason typed to reject each claim, by claim id. */
+  protected readonly rejectReasons = signal<Record<number, string>>({});
+  protected readonly isOpen = isOpen;
   /** The id of the claim whose status change is under way. */
   protected readonly acting = signal<number | null>(null);
   /** The last refused status change, or edit of a claim that is no longer a DRAFT, shown on its claim
    *  until the next action on that claim. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
-  /** The claim's due: fixed when settled, else as its person's last statement bound it, else live; an
+  /** The claim's due: fixed when settled, else as its person's last statement bound it (not while
+   *  PENDING), else live; an
    *  overdue claim's late charge on top of the bound or live figure. */
   protected figure(c: Claim): string {
     if (c.settledDue !== null) return c.settledDue;
-    const f = c.stated
+    const f = bound(c)
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
       : this.rates.dueCents(hundredths(c.amount), gradeOn(this.grades(), c.date), c.date, this.claims.roundingDate(c));
     return f === null ? NO_RATE : money(f + this.claims.lateCents(c, f));
@@ -159,11 +188,16 @@ export class PersonClaims {
     this.clearActionError(c.id);
     this.acting.set(c.id);
     try {
-      const err = await this.claims.act(c.id, action);
+      const err = await this.claims.act(c.id, action, this.rejectReasons()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);
     }
+  }
+
+  protected setRejectReason(id: number, reason: string): void {
+    this.clearActionError(id);
+    this.rejectReasons.update((r) => ({ ...r, [id]: reason }));
   }
 
   private clearActionError(id: number): void {

@@ -57,6 +57,8 @@ import { Session } from '../../core/session';
           data-testid="setting-policy-date"
           [value]="policyDate()"
           (input)="policyDate.set(value($event)); policyDateTouched.set(true); error.set(null)"
+          (keydown.delete)="policyDateTouched.set(true); error.set(null)"
+          (keydown.backspace)="policyDateTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
         <label for="setting-period-numbering-from">Period numbering from (YYYY-MM-DD; blank for off)</label>
@@ -65,6 +67,8 @@ import { Session } from '../../core/session';
           data-testid="setting-period-numbering-from"
           [value]="numberingFrom()"
           (input)="numberingFrom.set(value($event)); numberingFromTouched.set(true); error.set(null)"
+          (keydown.delete)="numberingFromTouched.set(true); error.set(null)"
+          (keydown.backspace)="numberingFromTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-period-numbering-from-current">{{ session.periodNumberingFrom() ?? '' }}</strong></p>
         <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
@@ -143,7 +147,8 @@ export class SettingsPanel {
     this.error.set(null);
     this.saving.set(true);
     try {
-      // Only the settings typed into since the last save change. With none, the settings that may be blank
+      // Only the settings typed into since the last save change (a delete in a blank field that may be blank
+      // counts: it saves the blank). With none, the settings that may be blank
       // are saved where they differ from the value in force (a blank field clears one), else the clerk limit.
       const untouched = !this.limitTouched() && !this.floorTouched() && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched();

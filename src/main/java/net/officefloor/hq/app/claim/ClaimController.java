@@ -154,7 +154,7 @@ public class ClaimController {
         return new BulkOpenView(done.opened(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
     }
 
-    /** Settle an OPEN claim. */
+    /** Settle an OPEN claim; a clerk settling a due above the clerk limit puts it PENDING instead. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long claimId,
@@ -162,7 +162,29 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
     }
 
-    /** Void a DRAFT or OPEN claim. */
+    /** Approve a PENDING claim: a steward other than its opener settles it. */
+    @PostMapping("/claims/{claimId}/approve")
+    public ClaimView approve(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** Why a PENDING claim is rejected. */
+    public record RejectRequest(@Size(max = 1000) String reason) {
+    }
+
+    /** Reject a PENDING claim with a reason: a steward sends it back to OPEN. */
+    @PostMapping("/claims/{claimId}/reject")
+    public ClaimView reject(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid RejectRequest request) {
+        return ClaimView.of(service.reject(sheetId.trim(), user.trim(), claimId,
+                request.reason() == null ? "" : request.reason().trim()));
+    }
+
+    /** Void a DRAFT, OPEN or PENDING claim. */
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long claimId,
@@ -221,10 +243,10 @@ public class ClaimController {
         return Map.of("message", e.getMessage());
     }
 
-    /** A settle by a clerk of a due above the clerk limit is refused with the reason, for the screen to show. */
-    @ExceptionHandler(ClaimLimitException.class)
+    /** An approval or rejection that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimApprovalException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
-    public Map<String, String> overLimit(ClaimLimitException e) {
+    public Map<String, String> approvalRefused(ClaimApprovalException e) {
         return Map.of("message", e.getMessage());
     }
 }

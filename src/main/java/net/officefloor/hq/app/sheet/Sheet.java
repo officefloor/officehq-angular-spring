@@ -152,7 +152,7 @@ public class Sheet {
 
     /** The late charge on an overdue claim's figure: the late percent of it for every full 30 days past its
      *  due-by (its date plus the terms) on the sheet's today, rounded to cents as its date rounds; 0.00 for no
-     *  figure (n/a). Only an OPEN claim is overdue, so the caller asks only for those. */
+     *  figure (n/a). Only an OPEN or PENDING claim is overdue, so the caller asks only for those. */
     public BigDecimal lateCharge(BigDecimal figure, LocalDate date) {
         long late = ChronoUnit.DAYS.between(date.plusDays(terms), today);
         if (figure == null || late < 30) {
