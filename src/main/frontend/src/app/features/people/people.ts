@@ -250,6 +250,11 @@ import { PersonClaims } from '../claims/claims';
               <td>
                 <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                <ul class="holds">
+                  @for (r of p.retirements; track $index) {
+                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
               </td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
@@ -358,6 +363,14 @@ import { PersonClaims } from '../claims/claims';
                   (click)="retire(p)"
                 >
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-unretire"
+                  [disabled]="retiring() === p.id"
+                  (click)="unretire(p)"
+                >
+                  Unretire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 <label [for]="'person-hold-from-' + p.id">Hold from<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
@@ -740,6 +753,17 @@ export class PeopleList {
     this.retiring.set(p.id);
     try {
       const err = await this.people.retire(p.id, this.retireDates()[p.id] ?? '');
+      if (err) this.actionError.set({ id: p.id, message: err });
+    } finally {
+      this.retiring.set(null);
+    }
+  }
+
+  protected async unretire(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.retiring.set(p.id);
+    try {
+      const err = await this.people.unretire(p.id);
       if (err) this.actionError.set({ id: p.id, message: err });
     } finally {
       this.retiring.set(null);

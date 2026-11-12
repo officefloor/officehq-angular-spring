@@ -28,6 +28,12 @@ export interface Hold {
   to: string | null;
 }
 
+/** A past retirement of a person: from the date they were retired from to the day they were unretired. */
+export interface Retirement {
+  from: string;
+  to: string;
+}
+
 /** Whether one of the holds covers a date (YYYY-MM-DD). */
 export function heldOn(holds: Hold[], date: string): boolean {
   return holds.some((h) => (h.from === null || h.from <= date) && (h.to === null || date <= h.to));
@@ -58,6 +64,8 @@ export interface Person {
   retired: boolean;
   /** The date they are retired from (YYYY-MM-DD); null while not retired. */
   retiredFrom: string | null;
+  /** Their past retirements, by from-date. */
+  retirements: Retirement[];
   /** Whether they have any hold at all. */
   held: boolean;
   /** Their holds, by from-date: an OPEN or PENDING claim dated within one, and bound by no statement,
@@ -341,6 +349,22 @@ export class People {
       return null;
     } catch (e) {
       return failed('retire', e);
+    }
+  }
+
+  /** Unretire a retired person on the sheet's today; an error message when refused (anyone not retired). */
+  async unretire(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const person = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/unretire`, {}, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+      return null;
+    } catch (e) {
+      return failed('unretire', e);
     }
   }
 

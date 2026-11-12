@@ -12,9 +12,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.history.AsOf;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -175,19 +177,29 @@ public class PoolController {
     private final PoolService service;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final AsOf asOf;
 
-    public PoolController(PoolService service, PersonRepository people, SheetService sheets) {
+    public PoolController(PoolService service, PersonRepository people, SheetService sheets, AsOf asOf) {
         this.service = service;
         this.people = people;
         this.sheets = sheets;
+        this.asOf = asOf;
     }
 
-    /** The sheet's pools, in the order they were added. */
+    /** The sheet's pools, in the order they were added; reckoned on the date, with its people as they stood then,
+     *  when the screen views the sheet as of one. */
     @GetMapping
     @Transactional(readOnly = true)
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return views(sheetId.trim());
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        String sid = sheetId.trim();
+        if (asOf == null) {
+            return views(sid);
+        }
+        Map<Long, Person> then = this.asOf.people(sid, asOf).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        return PoolView.of(service.list(sid), then, sheets.pot(sid), asOf);
     }
 
     /** Add a pool to the sheet. */

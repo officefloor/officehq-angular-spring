@@ -60,6 +60,11 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonHold> holds = new ArrayList<>();
 
+    /** Their past retirements, each from the date they were retired from to the day they were unretired. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private List<PersonRetirement> retirements = new ArrayList<>();
+
     /** The other names they go by. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "person_id", nullable = false)
@@ -164,9 +169,25 @@ public class Person {
         return retiredFrom != null;
     }
 
-    /** Whether a claim on this date is refused: it is after their retirement date. */
+    /** Whether a claim on this date is refused: it is after their retirement date, or after the from and
+     *  before the to of one of their past retirements. */
     public boolean retiredOn(LocalDate date) {
-        return retiredFrom != null && date.isAfter(retiredFrom);
+        return (retiredFrom != null && date.isAfter(retiredFrom))
+                || retirements.stream().anyMatch(r -> r.refuses(date));
+    }
+
+    /** Their past retirements, by from-date. */
+    public List<PersonRetirement> getRetirements() {
+        return retirements.stream()
+                .sorted(Comparator.comparing(PersonRetirement::getFromDate).thenComparing(PersonRetirement::getToDate))
+                .toList();
+    }
+
+    /** Unretire them on a day (the sheet's today): no longer retired, their retirement kept as a past one
+     *  from its date to that day. */
+    public void unretire(LocalDate on) {
+        retirements.add(new PersonRetirement(retiredFrom, on));
+        retiredFrom = null;
     }
 
     /** Whether their retirement date is reached on a day (the sheet's today): it is on or before it. */

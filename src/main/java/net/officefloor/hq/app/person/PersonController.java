@@ -44,6 +44,7 @@ public class PersonController {
      *  of the sheet's tree; origin is the sheet they were transferred from, null for anyone else. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
+            List<RetirementView> retirements,
             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
             List<String> aliases, boolean clashing, String origin) {
 
@@ -56,6 +57,7 @@ public class PersonController {
                     last == null ? null : last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(),
                     last == null ? null : last.getTakenOn().toString(),
                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
+                    person.getRetirements().stream().map(RetirementView::of).toList(),
                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
                     person.getOriginSheet());
@@ -67,6 +69,14 @@ public class PersonController {
 
         static GradeView of(PersonGrade grade) {
             return new GradeView(grade.getGrade(), grade.getFromDate() == null ? null : grade.getFromDate().toString());
+        }
+    }
+
+    /** A past retirement of a person: the date they were retired from and the day they were unretired. */
+    public record RetirementView(String from, String to) {
+
+        static RetirementView of(PersonRetirement retirement) {
+            return new RetirementView(retirement.getFromDate().toString(), retirement.getToDate().toString());
         }
     }
 
@@ -267,6 +277,22 @@ public class PersonController {
             @RequestBody RetireRequest request) {
         Person retired = service.retire(sheetId.trim(), user.trim(), personId, request.from());
         return view(retired, user.trim());
+    }
+
+    /** Unretire a retired person on the sheet's today. */
+    @PostMapping("/{personId}/unretire")
+    public PersonView unretire(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        Person unretired = service.unretire(sheetId.trim(), user.trim(), personId);
+        return view(unretired, user.trim());
+    }
+
+    /** An unretire of someone not retired is refused with the reason, for the screen to show. */
+    @ExceptionHandler(UnretireRefusedException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public Map<String, String> unretireRefused(UnretireRefusedException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** Put a person on hold from a date, to a date when one is given. */
