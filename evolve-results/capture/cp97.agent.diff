@@ -1,0 +1,53 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index d36c5ef3b..6ba33b6e2 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -115,6 +115,21 @@ export class Figures {
+     return [...sums].map(([tag, cents]) => ({ tag, dueTotal: money(cents) }));
+   });
+ 
++  /** Each calendar month (yyyy-mm) any claim on the sheet is dated in, in order, with the due of the
++   *  claims dated in it that count live, not capped or trimmed. */
++  readonly monthTotals = computed(() => {
++    const byId = new Map(this.people.people().map((p) => [p.id, p]));
++    const months = [...new Set(this.claims.claims().map((c) => c.date.slice(0, 7)))].sort();
++    const sums = new Map<string, bigint>(months.map((m) => [m, 0n]));
++    for (const c of this.claims.live()) {
++      const p = byId.get(c.personId);
++      const month = c.date.slice(0, 7);
++      if (!p || !sums.has(month)) continue;
++      sums.set(month, sums.get(month)! + this.figureCents(c, p));
++    }
++    return [...sums].map(([month, cents]) => ({ month, dueTotal: money(cents) }));
++  });
++
+   /** The number of claims in each status, in the order of STATUSES. */
+   readonly statusCounts = computed(() => {
+     const claims = this.claims.claims();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c8f5b7ed2..0930eb506 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -104,6 +104,22 @@ import { PersonClaims } from '../claims/claims';
+           </tbody>
+         </table>
+       }
++      @if (figures.monthTotals().length > 0) {
++        <table data-testid="month-totals">
++          <caption>Due total by month</caption>
++          <thead>
++            <tr><th scope="col">Month</th><th scope="col">Due total</th></tr>
++          </thead>
++          <tbody>
++            @for (m of figures.monthTotals(); track m.month) {
++              <tr>
++                <th scope="row">{{ m.month }}</th>
++                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
+       <label>
+         <input
+           type="checkbox"
