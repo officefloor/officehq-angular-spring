@@ -45,7 +45,7 @@ public class ClaimService {
 
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
-        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         claim.setAmount(amount.setScale(2));
         claim.setDate(date != null ? date : sheets.today(sheetId));
         claim.setNote(note);
@@ -53,6 +53,26 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         audit("CLAIM_EDITED", updated, person, user);
+        return updated;
+    }
+
+    /** Move a claim to another status; refused when its current status does not allow it. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().canBecome(to)) {
+            throw new ClaimStatusException(claim.getStatus(), to);
+        }
+        claim.setStatus(to);
+        Claim updated = claims.saveAndFlush(claim);
+        Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        audit(switch (to) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException();
+        }, updated, person, user);
         return updated;
     }
 

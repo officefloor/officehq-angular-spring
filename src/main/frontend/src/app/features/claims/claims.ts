@@ -1,5 +1,5 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
-import { Claim, Claims } from '../../core/claims';
+import { Claim, ClaimAction, Claims } from '../../core/claims';
 import { Rates } from '../../core/rates';
 
 // A person's claims: one form adds a claim, or edits the one whose editor is open, and the list
@@ -45,12 +45,26 @@ import { Rates } from '../../core/rates';
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ rates.due(c.amount, grade()) }}</span></span>
+          <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           @if (editing() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
           } @else {
             <button type="button" data-testid="claim-edit" (click)="edit(c)">
               Edit<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
             </button>
+          }
+          @for (a of actions; track a.action) {
+            <button
+              type="button"
+              [attr.data-testid]="'claim-' + a.action"
+              [disabled]="acting() === c.id"
+              (click)="act(c, a.action)"
+            >
+              {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+            </button>
+          }
+          @if (actionError()?.id === c.id) {
+            <p role="alert" data-testid="claim-error">{{ actionError()?.message }}</p>
           }
         </li>
       }
@@ -71,6 +85,15 @@ export class PersonClaims {
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  protected readonly actions: { action: ClaimAction; label: string }[] = [
+    { action: 'open', label: 'Open' },
+    { action: 'settle', label: 'Settle' },
+    { action: 'void', label: 'Void' },
+  ];
+  /** The id of the claim whose status change is under way. */
+  protected readonly acting = signal<number | null>(null);
+  /** The last refused status change, shown on its claim until the next action on that claim. */
+  protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
   protected fid(field: string): string {
     return `claim-form-${field}-${this.personId()}`;
@@ -81,11 +104,27 @@ export class PersonClaims {
   }
 
   protected edit(c: Claim): void {
+    this.clearActionError(c.id);
     this.editing.set(c.id);
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
     this.error.set(null);
+  }
+
+  protected async act(c: Claim, action: ClaimAction): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.act(c.id, action);
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  private clearActionError(id: number): void {
+    if (this.actionError()?.id === id) this.actionError.set(null);
   }
 
   protected reset(): void {

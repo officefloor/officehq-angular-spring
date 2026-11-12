@@ -26,11 +26,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD. */
-    public record ClaimView(long id, long personId, String amount, String date, String note) {
+    public record ClaimView(long id, long personId, String amount, String date, String note,
+            ClaimStatus status) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate().toString(), claim.getNote());
+                    claim.getDate().toString(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -76,5 +77,29 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amount(), request.date(),
                 request.noteOrEmpty()));
+    }
+
+    /** Open a DRAFT claim. */
+    @PostMapping("/claims/{claimId}/open")
+    public ClaimView open(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.OPEN));
+    }
+
+    /** Settle an OPEN claim. */
+    @PostMapping("/claims/{claimId}/settle")
+    public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+    }
+
+    /** Void a DRAFT or OPEN claim. */
+    @PostMapping("/claims/{claimId}/void")
+    public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
     }
 }
