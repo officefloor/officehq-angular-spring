@@ -46,6 +46,10 @@ public class Rollup {
             BigDecimal overdueTotal) {
     }
 
+    /** Figures added up over sheets: the number of people, and each sheet's due- and overdue-total. */
+    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    }
+
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final RateRepository rates;
@@ -114,6 +118,29 @@ public class Rollup {
             }
         }
         return new Snapshot(figures, claimedTotal, trimmed(dues), trimmed(overdues));
+    }
+
+    /** The figures of every descendant of a sheet (its children, their children and so on; the sheet itself
+     *  left out), each sheet's due- and overdue-total as that sheet shows it, added up. */
+    public Consolidated descendants(String sheetId) {
+        Set<String> seen = new LinkedHashSet<>(List.of(sheetId));
+        List<String> todo = new ArrayList<>(List.of(sheetId));
+        int peopleCount = 0;
+        BigDecimal due = ZERO;
+        BigDecimal overdue = ZERO;
+        while (!todo.isEmpty()) {
+            for (Sheet child : sheets.findByParentOrderByIdAsc(todo.remove(0))) {
+                if (!seen.add(child.getId())) {
+                    continue;
+                }
+                todo.add(child.getId());
+                Snapshot snapshot = take(child.getId());
+                peopleCount += snapshot.people().size();
+                due = due.add(snapshot.dueTotal());
+                overdue = overdue.add(snapshot.overdueTotal());
+            }
+        }
+        return new Consolidated(peopleCount, due, overdue);
     }
 
     /** People's figures added up, leaving out the single highest and the single lowest when there are three

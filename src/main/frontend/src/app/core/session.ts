@@ -46,6 +46,18 @@ export interface SheetView {
   parent: string | null;
 }
 
+/** The figures of a sheet's descendants (its children, their children and so on), each sheet's as that
+ *  sheet shows them, added up. */
+export interface DescendantFigures {
+  peopleCount: number;
+  /** Two decimals. */
+  dueTotal: string;
+  /** Two decimals. */
+  overdueTotal: string;
+}
+
+const NO_DESCENDANTS: DescendantFigures = { peopleCount: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
  *  clerk and steward; reassign and reopen by steward. */
 export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
@@ -146,6 +158,8 @@ export class Session {
   readonly parent = signal<string | null>(null);
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
+  /** The figures of the sheet's descendants as the store held them when the sheet was loaded. */
+  readonly descendants = signal<DescendantFigures>(NO_DESCENDANTS);
   /** The number of the sheet's last bulk settle batch; null before the first. */
   readonly lastSettleBatch = signal<number | null>(null);
   /** The date (YYYY-MM-DD) this user's screen shows the sheet as of, while set: every figure as it stood at
@@ -171,7 +185,13 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
+      const descendants = await firstValueFrom(
+        this.http.get<DescendantFigures>(`/api/sheets/${encodeURIComponent(sid)}/descendants`, {
+          headers: { 'X-User': user },
+        }),
+      );
       this.sheetId.set(sheet.id);
+      this.descendants.set(descendants);
       this.today.set(sheet.today);
       this.settings.set(sheet.settings);
       this.policyDate.set(sheet.policyDate);

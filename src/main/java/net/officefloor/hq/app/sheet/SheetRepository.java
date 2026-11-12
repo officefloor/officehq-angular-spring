@@ -15,6 +15,9 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     @Query("select s from Sheet s where s.id = :id")
     Optional<Sheet> findForUpdateById(String id);
 
+    /** The sheets naming this one as their parent: its children. */
+    List<Sheet> findByParentOrderByIdAsc(String parent);
+
     /** How many levels up a sheet's rates are taken from its ancestors. */
     int ANCESTOR_LEVELS = 3;
 
