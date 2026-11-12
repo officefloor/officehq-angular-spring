@@ -73,6 +73,15 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's terms: the number of days after a claim's date it is due by. */
+    @Transactional
+    public Sheet setTerms(String id, String user, int terms) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setTerms(terms);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
+        return sheet;
+    }
+
     /** The sheet's next claim number: 1 for the first, then 2, and so on, never given twice. */
     @Transactional
     public int nextClaimNumber(String id) {

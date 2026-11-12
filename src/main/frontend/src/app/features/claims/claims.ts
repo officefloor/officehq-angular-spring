@@ -46,6 +46,8 @@ import { NO_RATE, Rates } from '../../core/rates';
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ figure(c) }}</span></span>
+          <span>Due by <span data-testid="claim-due-by">{{ claims.dueBy(c) }}</span></span>
+          <span>Overdue <span data-testid="claim-overdue">{{ claims.overdue(c) ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periods.of(c.date)?.name ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
@@ -77,7 +79,7 @@ import { NO_RATE, Rates } from '../../core/rates';
   `,
 })
 export class PersonClaims {
-  private readonly claims = inject(Claims);
+  protected readonly claims = inject(Claims);
   private readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);
   readonly personId = input.required<number>();

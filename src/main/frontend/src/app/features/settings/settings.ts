@@ -3,7 +3,7 @@ import { ROLES, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
 // The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
-// floor (the least a claim's live due can be), and
+// floor (the least a claim's live due can be), the terms (the days after a claim's date it is due by), and
 // the role each user name has on the sheet (clerk unless given another).
 @Component({
   selector: 'app-settings',
@@ -29,6 +29,15 @@ import { Session } from '../../core/session';
           (input)="floor.set(value($event)); floorTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
+        <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
+        <input
+          id="setting-terms"
+          data-testid="setting-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); termsTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
         <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -80,6 +89,8 @@ export class SettingsPanel {
   protected readonly limitTouched = signal(false);
   protected readonly floor = signal('');
   protected readonly floorTouched = signal(false);
+  protected readonly terms = signal('');
+  protected readonly termsTouched = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly user = signal('');
@@ -99,15 +110,19 @@ export class SettingsPanel {
     try {
       // Only the settings typed into since the last save change; with neither, the clerk limit is saved.
       const floor = this.floorTouched();
-      const limit = this.limitTouched() || !floor;
+      const terms = this.termsTouched();
+      const limit = this.limitTouched() || (!floor && !terms);
       const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
-        ?? (floor ? await this.session.setFloor(this.floor()) : null);
+        ?? (floor ? await this.session.setFloor(this.floor()) : null)
+        ?? (terms ? await this.session.setTerms(this.terms()) : null);
       if (err) this.error.set(err);
       else {
         this.limit.set('');
         this.limitTouched.set(false);
         this.floor.set('');
         this.floorTouched.set(false);
+        this.terms.set('');
+        this.termsTouched.set(false);
       }
     } finally {
       this.saving.set(false);

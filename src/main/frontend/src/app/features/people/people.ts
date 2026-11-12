@@ -1,5 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { Claims } from '../../core/claims';
+import { Claim, Claims } from '../../core/claims';
 import { GRADES, People, Person } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -65,6 +65,8 @@ import { PersonClaims } from '../claims/claims';
       </form>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claims.total() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+      <p>Overdue total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <label>
         <input
           type="checkbox"
@@ -76,7 +78,7 @@ import { PersonClaims } from '../claims/claims';
       </label>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -85,6 +87,8 @@ import { PersonClaims } from '../claims/claims';
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
+              <td data-testid="person-overdue-count">{{ overdue(p).length }}</td>
+              <td data-testid="person-overdue-total">{{ overdueDue(p) }}</td>
               <td>
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</span></span>
@@ -163,6 +167,14 @@ export class PeopleList {
   protected readonly dueTotal = computed(() =>
     money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
   );
+  /** Everyone's overdue claims that count, counted. */
+  protected readonly overdueCount = computed(() =>
+    this.people.people().reduce((n, p) => n + this.overdue(p).length, 0),
+  );
+  /** The due of everyone's overdue claims that count, added up. */
+  protected readonly overdueTotal = computed(() =>
+    money(this.people.people().reduce((sum, p) => sum + this.overdueCents(p), 0n)),
+  );
   protected readonly name = signal('');
   protected readonly grade = signal<string>('A');
   /** The id of the person whose editor is open, or null when the form adds. */
@@ -196,17 +208,35 @@ export class PeopleList {
     let sum = 0n;
     let keptFigure = false;
     for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
-      const kept = c.settledDue ?? (c.stated ? c.statedDue : null);
-      if (kept !== null) {
-        keptFigure = true;
-        sum += hundredths(kept);
-      } else if (!c.stated) {
-        sum += this.rates.dueCents(hundredths(c.amount), p.grade, c.date) ?? 0n;
-      }
+      if (c.settledDue !== null || (c.stated && c.statedDue !== null)) keptFigure = true;
+      sum += this.figureCents(c, p.grade);
     }
     const today = this.session.today();
     const rated = today ? this.rates.inForce(p.grade, today) !== undefined : false;
     return rated || keptFigure ? sum : null;
+  }
+
+  /** A claim's figure: its settled due, else the figure its person's last statement bound it to,
+   *  else its live due at the rate in force on its date; nothing when it has no figure. */
+  private figureCents(c: Claim, grade: string): bigint {
+    const kept = c.settledDue ?? (c.stated ? c.statedDue : null);
+    if (kept !== null) return hundredths(kept);
+    if (c.stated) return 0n;
+    return this.rates.dueCents(hundredths(c.amount), grade, c.date) ?? 0n;
+  }
+
+  /** A person's claims that count live and are overdue. */
+  protected overdue(p: Person): Claim[] {
+    return this.claims.live().filter((c) => c.personId === p.id && this.claims.overdue(c));
+  }
+
+  /** The due of a person's overdue claims that count, added up. */
+  private overdueCents(p: Person): bigint {
+    return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p.grade), 0n);
+  }
+
+  protected overdueDue(p: Person): string {
+    return money(this.overdueCents(p));
   }
 
   protected due(p: Person): string {

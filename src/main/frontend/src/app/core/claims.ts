@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { People, Person } from './people';
-import { Session, isDate } from './session';
+import { Session, addDays, isDate } from './session';
 
 export interface Claim {
   id: number;
@@ -71,6 +71,17 @@ export class Claims {
 
   /** Everyone's claimed added up, with two decimals. */
   readonly total = computed(() => money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)));
+
+  /** The date a claim is due by: its date plus the sheet's terms. */
+  dueBy(c: Claim): string {
+    return addDays(c.date, this.session.terms());
+  }
+
+  /** Whether a claim is overdue: OPEN, with its due-by before the sheet's today. */
+  overdue(c: Claim): boolean {
+    const today = this.session.today();
+    return c.status === 'OPEN' && today !== null && this.dueBy(c) < today;
+  }
 
   /** A person's claims, newest first. */
   of(personId: number): Claim[] {

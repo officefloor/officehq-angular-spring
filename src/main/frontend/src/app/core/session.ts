@@ -9,6 +9,8 @@ export interface SheetView {
   clerkLimit: string | null;
   /** The least a claim's live due can be, two decimals. */
   floor: string;
+  /** The number of days after a claim's date it is due by. */
+  terms: number;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
@@ -25,6 +27,8 @@ export class Session {
   readonly clerkLimit = signal<string | null>(null);
   /** The sheet's floor (two decimals): the least a claim's live due can be. */
   readonly floor = signal<string>('1.00');
+  /** The sheet's terms: the number of days after a claim's date it is due by. */
+  readonly terms = signal<number>(14);
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -48,6 +52,7 @@ export class Session {
       this.today.set(sheet.today);
       this.clerkLimit.set(sheet.clerkLimit);
       this.floor.set(sheet.floor);
+      this.terms.set(sheet.terms);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -112,6 +117,56 @@ export class Session {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
   }
+
+  /** Change the sheet's terms (whole days); an error message when refused. */
+  async setTerms(terms: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const t = terms.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!/^\d{1,5}$/.test(t) || Number(t) > 36500) return 'Enter terms as a whole number of days, 0 or more.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms`, { terms: Number(t) }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.terms.set(sheet.terms);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+}
+
+/** A date (YYYY-MM-DD) moved on a number of days, worked out on the calendar without the clock. */
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return fromDayNumber(dayNumber(y, m, d) + days);
+}
+
+/** Days since 1970-01-01 of a calendar date. */
+function dayNumber(y: number, m: number, d: number): number {
+  const yy = m <= 2 ? y - 1 : y;
+  const era = Math.floor(yy / 400);
+  const yoe = yy - era * 400;
+  const doy = Math.floor((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1;
+  const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
+  return era * 146097 + doe - 719468;
+}
+
+/** The calendar date (YYYY-MM-DD) of a number of days since 1970-01-01. */
+function fromDayNumber(n: number): string {
+  const z = n + 719468;
+  const era = Math.floor(z / 146097);
+  const doe = z - era * 146097;
+  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
+  const mp = Math.floor((5 * doy + 2) / 153);
+  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
+  const m = mp < 10 ? mp + 3 : mp - 9;
+  const y = yoe + era * 400 + (m <= 2 ? 1 : 0);
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 /** A real calendar date written YYYY-MM-DD. */
