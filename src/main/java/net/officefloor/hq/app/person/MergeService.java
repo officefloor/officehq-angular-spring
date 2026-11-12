@@ -18,6 +18,7 @@ import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolMember;
+import net.officefloor.hq.app.plan.PlanRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.Role;
 import net.officefloor.hq.app.role.RoleService;
@@ -34,7 +35,11 @@ import org.springframework.transaction.annotation.Transactional;
  * the other's and anyone naming them as patron names the other instead (never themselves, never twice); their pool
  * memberships move to the other (shares added where the other is a member already); their statements are counted
  * with the other's, whose last statement stays theirs (or, having none, becomes the merged person's last). Their
- * holds, watchers and contact are dropped, and the merged person is removed.
+ * holds, watchers, plans and contact are dropped, and the merged person is kept aside, off the sheet.
+ *
+ * <p>The last merge into a person can be undone by the steward who made it, on the sheet's today it was made: the
+ * merged person is back at the end of the list with the claims that came from them (as they are now, in their places
+ * before) and their own aliases, which leave the other's; patron, pool and crew changes stay.
  */
 @Service
 public class MergeService {
@@ -53,12 +58,16 @@ public class MergeService {
     private final RollupService rollup;
     private final Audit audit;
     private final ClaimShareRepository shares;
+    private final PersonMergeRepository merges;
+    private final PlanRepository plans;
 
     public MergeService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, StatementRepository statements,
             PoolRepository pools, PeriodRepository periods, RoleService roles, SheetService sheets,
             RollupService rollup, Audit audit, CrewRepository crews,
-            ClaimShareRepository shares) {
+            ClaimShareRepository shares, PersonMergeRepository merges, PlanRepository plans) {
+        this.merges = merges;
+        this.plans = plans;
         this.shares = shares;
         this.crews = crews;
         this.people = people;
@@ -92,12 +101,14 @@ public class MergeService {
             throw new PersonMergeRefusedException("A retired person cannot be merged");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        PersonMerge record = new PersonMerge(sheetId, from.getId(), into.getId(), user, sheets.today(sheetId));
 
         // The claims, listed after the other's in the order they were added, each keeping any figure a statement bound.
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()).stream()
                 .sorted(Comparator.comparingLong(Claim::getListed).thenComparing(Claim::getId))
                 .toList();
         for (Claim claim : theirs) {
+            record.getClaims().add(new PersonMerge.MovedClaim(claim.getId(), claim.getListed()));
             claim.setPersonId(into.getId());
             claim.setListed(sheets.nextListed(sheetId));
         }
@@ -131,6 +142,7 @@ public class MergeService {
         // The name and aliases become the other's aliases; the name is free once the person is removed.
         List<PersonAlias> theirAliases = aliases.findByPersonId(from.getId());
         theirAliases.forEach(a -> a.setPersonId(into.getId()));
+        theirAliases.forEach(a -> record.getAliasIds().add(a.getId()));
         aliases.saveAll(theirAliases);
 
         // Patrons: the merged person's are added to the other's, and those naming them name the other instead.
@@ -218,17 +230,81 @@ public class MergeService {
         }
 
         // Statements are counted with the other's (whose last stays theirs, or with none becomes the merged one's);
-        // watchers, holds and contact go with the person.
+        // watchers, plans, holds and contact go with the person, who is kept aside.
         statements.follow(from, into);
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         claims.flush();
-        people.delete(from);
-        people.flush();
-        aliases.saveAndFlush(new PersonAlias(sheetId, into.getId(), from.getName()));
+        plans.deleteByPersonId(from.getId());
+        from.mergeAway();
+        people.saveAndFlush(from);
+        record.setNameAliasId(aliases.saveAndFlush(new PersonAlias(sheetId, into.getId(), from.getName())).getId());
+        merges.save(record);
 
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user
                 + " from=" + from.getName() + " into=" + into.getName());
         rollup.recordChanges(sheetId, user, before);
         return into;
+    }
+
+    /** Undo the last merge into the person; the person merged, back on the sheet. */
+    @Transactional
+    public Person undo(String sheetId, String user, Long intoId) {
+        Person into = people.findForUpdate(intoId, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, intoId));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PersonMergeRefusedException("Only a steward can undo a merge");
+        }
+        PersonMerge merge = merges.findFirstBySheetIdAndIntoIdOrderByIdDesc(sheetId, into.getId())
+                .orElseThrow(() -> new PersonMergeRefusedException("No one was merged into " + into.getName()));
+        if (!merge.getMergedBy().equals(user)) {
+            throw new PersonMergeRefusedException("Only " + merge.getMergedBy() + " can undo that merge");
+        }
+        if (!merge.getMergedOn().equals(sheets.today(sheetId))) {
+            throw new PersonMergeRefusedException("A merge can only be undone on the day it was made");
+        }
+        String name = people.findMergedAwayName(merge.getFromId(), sheetId)
+                .orElseThrow(() -> new PersonMergeRefusedException("The merged person is no longer kept"));
+        String key = Person.key(name);
+        if (people.existsBySheetIdAndNameKey(sheetId, key)) {
+            throw new PersonMergeRefusedException("Someone on the sheet is named " + name + " now");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+
+        // The claims that came from them and are still the other's go back, to their places before.
+        for (PersonMerge.MovedClaim moved : merge.getClaims()) {
+            claims.findById(moved.claimId())
+                    .filter(c -> sheetId.equals(c.getSheetId()) && into.getId().equals(c.getPersonId()))
+                    .ifPresent(c -> {
+                        c.setPersonId(merge.getFromId());
+                        c.setListed(moved.listed());
+                        claims.save(c);
+                    });
+        }
+        claims.flush();
+
+        // Their own aliases leave the other's, and the alias their name became is removed.
+        if (merge.getNameAliasId() != null) {
+            aliases.findById(merge.getNameAliasId()).ifPresent(aliases::delete);
+        }
+        for (PersonAlias alias : aliases.findAllById(merge.getAliasIds())) {
+            if (into.getId().equals(alias.getPersonId())) {
+                alias.setPersonId(merge.getFromId());
+            }
+        }
+        aliases.flush();
+        if (aliases.existsBySheetIdInAndAliasKeyAndPersonIdNot(List.of(sheetId), key, merge.getFromId())) {
+            throw new PersonMergeRefusedException("Someone on the sheet goes by " + name + " now");
+        }
+
+        merges.delete(merge);
+        merges.flush();
+        people.bringBack(merge.getFromId(), sheetId, key, people.maxPosition(sheetId) + 1);
+        Person restored = people.findByIdAndSheetId(merge.getFromId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, merge.getFromId()));
+
+        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + user
+                + " name=" + restored.getName() + " from=" + into.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return restored;
     }
 }

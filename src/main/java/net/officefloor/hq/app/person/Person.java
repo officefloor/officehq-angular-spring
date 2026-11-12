@@ -19,10 +19,12 @@ import java.util.Locale;
 import java.util.Objects;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
+import org.hibernate.annotations.SQLRestriction;
 
-/** A person on a sheet. */
+/** A person on a sheet; one merged into another is kept aside, off the sheet, until the merge is undone. */
 @Entity
 @Table(name = "person")
+@SQLRestriction("merged_away = false")
 public class Person {
 
     @Id
@@ -106,6 +108,10 @@ public class Person {
     /** Where the person stands in the list: listed by it, then by id. */
     @Column(name = "position", nullable = false)
     private long position;
+
+    /** Whether the person was merged into another: kept aside, with their name freed, so the merge can be undone. */
+    @Column(name = "merged_away", nullable = false)
+    private boolean mergedAway;
 
     /** Raised by one on each save; a save of an older version is refused. */
     @Version
@@ -291,6 +297,17 @@ public class Person {
 
     public void setAddedOn(LocalDate addedOn) {
         this.addedOn = addedOn;
+    }
+
+    /**
+     * Keep the person aside, merged into another: off the sheet, their name free for others; their holds and contact
+     * are dropped. Bring them back with {@link PersonRepository#bringBack}.
+     */
+    public void mergeAway() {
+        this.mergedAway = true;
+        this.nameKey = "#merged#" + id;
+        this.contact = null;
+        this.holds.clear();
     }
 
     /** Record the retirement from the date, recorded while the sheet's today was {@code on}. */

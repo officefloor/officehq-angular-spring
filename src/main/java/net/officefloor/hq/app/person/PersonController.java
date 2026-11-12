@@ -383,6 +383,14 @@ public class PersonController {
         return view(merges.merge(sheetId.trim(), user.trim(), id, request.intoId()), user.trim());
     }
 
+    /** Undo the last merge into the person (by the steward who made it, on the day it was made): the merged person is back. */
+    @PostMapping("/{id}/merge-undo")
+    public PersonView mergeUndo(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(merges.undo(sheetId.trim(), user.trim(), id), user.trim());
+    }
+
     /** Transfer the person to another sheet (a steward only): the person leaves this sheet; as they arrived is returned. */
     @PostMapping("/{id}/transfer")
     public PersonView transfer(@PathVariable @NotBlank @Size(max = 100) String sheetId,

@@ -6,6 +6,7 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
@@ -42,4 +43,14 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     /** The name keys of the people on the sheets. */
     @Query("select p.nameKey from Person p where p.sheetId in :sheetIds")
     List<String> findNameKeysBySheetIdIn(Collection<String> sheetIds);
+
+    /** Bring a person kept aside by a merge back onto their sheet, at the position, under their own name again. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "UPDATE person SET merged_away = FALSE, name_key = :nameKey, position = :position,"
+            + " version = version + 1 WHERE id = :id AND sheet_id = :sheetId AND merged_away", nativeQuery = true)
+    int bringBack(Long id, String sheetId, String nameKey, long position);
+
+    /** The name of a person kept aside by a merge; empty when there is no such person. */
+    @Query(value = "SELECT name FROM person WHERE id = :id AND sheet_id = :sheetId AND merged_away", nativeQuery = true)
+    Optional<String> findMergedAwayName(Long id, String sheetId);
 }

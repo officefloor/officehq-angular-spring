@@ -644,6 +644,14 @@ function csvField(value: string): string {
                 >
                   Merge
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-merge-undo"
+                  [attr.aria-label]="'Undo the last merge into ' + p.name"
+                  (click)="mergeUndo(p)"
+                >
+                  Undo merge
+                </button>
                 <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
                 <input
                   [id]="'person-transfer-to-' + p.id"
@@ -1611,6 +1619,21 @@ export class People {
     } catch {
       const into = this.byId().get(intoId)?.name ?? 'that person';
       this.rowError.set({ id: person.id, message: `${person.name} could not be merged into ${into}.` });
+    }
+  }
+
+  /** Undo the last merge into the person: the person merged is back at the end of the list. */
+  protected async mergeUndo(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/merge-undo`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, {}, this.session.headers()));
+      if (this.session.sheet() === sheet) void this.read(sheet);
+    } catch {
+      this.rowError.set({ id: person.id, message: `The last merge into ${person.name} could not be undone.` });
     }
   }
 
