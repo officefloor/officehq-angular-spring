@@ -1,0 +1,58 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index b1a395273..7a6b6051c 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -194,7 +194,7 @@ export class Claims {
+ 
+   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, for each full 30 days
+    *  past its due-by plus its grace (see lateFrom), the sheet's late percent in force on that boundary date
+-   *  (that date plus 30, 60, 90 ... days) of the figure, rounded to cents as its date rounds, the charges added up; none otherwise, and none
++   *  (that date plus 30, 60, 90 ... days) of the figure plus the charges of the boundaries before it, rounded to cents as its date rounds, the charges added up; none otherwise, and none
+    *  on a correction. Never bound by a statement; frozen into the due when settled. */
+   lateCents(c: Claim, figureCents: bigint): bigint {
+     const today = this.session.today();
+@@ -204,7 +204,7 @@ export class Claims {
+     const halfUp = this.session.roundsHalfUp(c.date);
+     let total = 0n;
+     for (let k = 1; k <= periods; k++) {
+-      total += rounded(figureCents * hundredths(this.session.latePctOn(addDays(from, 30 * k))), 10000n, halfUp);
++      total += rounded((figureCents + total) * hundredths(this.session.latePctOn(addDays(from, 30 * k))), 10000n, halfUp);
+     }
+     return total;
+   }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 80d578621..0ffd8ab61 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -174,7 +174,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
+           />
+           <p>In force: <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ session.gradeGrace()[g] ?? '' }}</strong></p>
+         }
+-        <label for="setting-late-pct">Late percent (of an overdue claim's figure, per full 30 days)</label>
++        <label for="setting-late-pct">Late percent (of an overdue claim's figure plus earlier charges, per full 30 days)</label>
+         <input
+           id="setting-late-pct"
+           data-testid="setting-late-pct"
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 14b8d1a5b..f068faf8c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -344,7 +344,8 @@ public class Sheet {
+     /** The late charge on an overdue claim's figure: for each full 30 days past the date its lateness runs
+      *  from (its due-by plus any grace, see lateFrom) on the sheet's today, the late percent in force on that
+      *  boundary date (that date plus 30, 60, 90 ... days) of the
+-     *  figure, rounded to cents as its date rounds, the charges added up (a boundary at 0.00 adds nothing);
++     *  figure plus the charges of the boundaries before it (compounding), rounded to cents as its date
++     *  rounds, the charges added up (a boundary at 0.00 adds nothing);
+      *  0.00 for no figure (n/a). Only an OPEN or PENDING claim is overdue, so the caller asks only for those. */
+     public BigDecimal lateCharge(BigDecimal figure, LocalDate lateFrom, LocalDate date) {
+         BigDecimal charge = BigDecimal.ZERO.setScale(2);
+@@ -354,7 +355,7 @@ public class Sheet {
+         long boundaries = ChronoUnit.DAYS.between(lateFrom, today) / 30;
+         RoundingMode rounding = rounding(date);
+         for (long k = 1; k <= boundaries; k++) {
+-            charge = charge.add(figure.multiply(latePctOn(lateFrom.plusDays(30 * k))).movePointLeft(2)
++            charge = charge.add(figure.add(charge).multiply(latePctOn(lateFrom.plusDays(30 * k))).movePointLeft(2)
+                     .setScale(2, rounding));
+         }
+         return charge;
