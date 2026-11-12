@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,8 +67,8 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
-        BigDecimal dueTotal = ZERO;
-        BigDecimal overdueTotal = ZERO;
+        List<BigDecimal> dues = new ArrayList<>();
+        List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
@@ -106,12 +107,24 @@ public class Rollup {
             BigDecimal personDue = rated || keptFigure ? capped(sheet, due) : null;
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
             claimedTotal = claimedTotal.add(claimed);
-            overdueTotal = overdueTotal.add(overdue);
+            overdues.add(overdue);
             if (personDue != null) {
-                dueTotal = dueTotal.add(personDue);
+                dues.add(personDue);
             }
         }
-        return new Snapshot(figures, claimedTotal, dueTotal, overdueTotal);
+        return new Snapshot(figures, claimedTotal, trimmed(dues), trimmed(overdues));
+    }
+
+    /** People's figures added up, leaving out the single highest and the single lowest when there are three
+     *  or more. */
+    static BigDecimal trimmed(List<BigDecimal> figures) {
+        BigDecimal sum = figures.stream().reduce(ZERO, BigDecimal::add);
+        if (figures.size() < 3) {
+            return sum;
+        }
+        BigDecimal max = figures.stream().max(BigDecimal::compareTo).orElseThrow();
+        BigDecimal min = figures.stream().min(BigDecimal::compareTo).orElseThrow();
+        return sum.subtract(max).subtract(min);
     }
 
     /** Each person's due-total of their claims dated from one date to another, both inclusive, by person

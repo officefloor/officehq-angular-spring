@@ -8,6 +8,16 @@ import { Session } from './session';
 /** The statuses claims are counted by, in the order the screen shows them. */
 export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
+/** People's figures added up, leaving out the single highest and the single lowest when there are
+ *  three or more. */
+function trimmed(figures: bigint[]): bigint {
+  const sum = figures.reduce((s, f) => s + f, 0n);
+  if (figures.length < 3) return sum;
+  const max = figures.reduce((m, f) => (f > m ? f : m));
+  const min = figures.reduce((m, f) => (f < m ? f : m));
+  return sum - max - min;
+}
+
 // The due figures the screen shows, worked out in one place so the people list, the periods list,
 // the summary and the header always agree.
 @Injectable({ providedIn: 'root' })
@@ -55,14 +65,14 @@ export class Figures {
     return rated || keptFigure ? sum : null;
   }
 
-  /** Everyone's (capped) due-total added up, skipping those whose grade has no rate. */
+  /** Everyone's (capped) due-total added up, skipping those whose grade has no rate, trimmed. */
   readonly dueTotal = computed(() =>
-    money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
+    money(trimmed(this.people.people().map((p) => this.dueCents(p)).filter((d): d is bigint => d !== null))),
   );
 
-  /** The due of everyone's overdue claims that count, added up. */
+  /** The due of everyone's overdue claims that count, added up, trimmed. */
   readonly overdueTotal = computed(() =>
-    money(this.people.people().reduce((sum, p) => sum + this.overdueCents(p), 0n)),
+    money(trimmed(this.people.people().map((p) => this.overdueCents(p)))),
   );
 
   /** The number of claims in each status, in the order of STATUSES. */
