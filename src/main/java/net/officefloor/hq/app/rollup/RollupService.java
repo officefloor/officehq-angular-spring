@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import net.officefloor.hq.app.setting.SettingService;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -235,6 +236,22 @@ public class RollupService {
         List<BigDecimal> overdues = members.stream().map(Member::overdueTotal).map(BigDecimal::new).toList();
         return new Consolidated(distinctPeople(members), shown(trimmedSum(dues)), shown(trimmedSum(overdues)),
                 shownAll(gradeDues), statuses, members);
+    }
+
+    /**
+     * This sheet compared with another, one line per grade of this sheet: {@code <grade> <this sheet's due-total>
+     * <the other sheet's>}, each the summary's due-total for the grade (0.00 for a grade with no one on it); no lines
+     * when the other sheet does not exist. It changes nothing.
+     */
+    public List<String> compare(String sheetId, String otherId) {
+        if (otherId.isBlank() || !sheets.existsById(otherId)) {
+            return List.of();
+        }
+        Map<String, String> ours = figuresOf(List.of(sheetId)).gradeDueTotals();
+        Map<String, String> theirs = figuresOf(List.of(otherId)).gradeDueTotals();
+        return SettingService.GRADES.stream()
+                .map(grade -> grade + " " + ours.getOrDefault(grade, "0.00") + " " + theirs.getOrDefault(grade, "0.00"))
+                .toList();
     }
 
     /** How many people the members are, those whose names or aliases match (as names are compared) being one. */

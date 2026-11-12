@@ -11,12 +11,13 @@ import { Settings } from '../settings/settings';
 import { SnapshotCompare } from '../snapshot-compare/snapshot-compare';
 import { TemplatesList } from '../templates/templates';
 import { TreeSearch } from '../tree-search/tree-search';
+import { SheetCompare } from '../sheet-compare/sheet-compare';
 import { VoidReasonsList } from '../void-reasons/void-reasons';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [Activity, AuditViewer, Duplicates, Holidays, NotesList, People, Settings, SnapshotCompare, TemplatesList, TreeSearch, VoidReasonsList],
+  imports: [Activity, AuditViewer, Duplicates, Holidays, NotesList, People, Settings, SheetCompare, SnapshotCompare, TemplatesList, TreeSearch, VoidReasonsList],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -103,6 +104,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
         <app-duplicates />
         <app-snapshot-compare />
         <app-tree-search />
+        <app-sheet-compare />
         <app-audit-viewer />
         <app-activity />
       }

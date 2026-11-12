@@ -52,4 +52,15 @@ public class ConsolidatedController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return rollups.search(sheetId.trim(), name);
     }
+
+    /**
+     * This sheet compared with another, one line per grade: {@code <grade> <this sheet's due-total> <the other's>};
+     * no lines when the other sheet does not exist. It changes nothing.
+     */
+    @GetMapping("/api/sheets/{sheetId}/compare")
+    public List<String> compare(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestParam(defaultValue = "") @Size(max = 100) String other,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return rollups.compare(sheetId.trim(), other.trim());
+    }
 }
