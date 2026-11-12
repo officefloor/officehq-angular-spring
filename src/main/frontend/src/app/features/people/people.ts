@@ -929,6 +929,28 @@ function csvField(value: string): string {
           Retired <strong data-testid="bulk-retired">{{ bulkRetired() | fig }}</strong>
         }
       </p>
+      <p>
+        <label for="bulk-hold-from">Hold selected people from (blank: today)</label>
+        <input
+          id="bulk-hold-from"
+          data-testid="bulk-hold-from"
+          type="date"
+          [value]="bulkHoldFrom()"
+          (input)="bulkHoldFrom.set(value($event)); clearBulkGradeError()"
+        />
+        <label for="bulk-hold-to">To (blank: no end)</label>
+        <input
+          id="bulk-hold-to"
+          data-testid="bulk-hold-to"
+          type="date"
+          [value]="bulkHoldTo()"
+          (input)="bulkHoldTo.set(value($event)); clearBulkGradeError()"
+        />
+        <button type="button" data-testid="bulk-hold" (click)="bulkHold()">Hold selected people</button>
+        @if (bulkHeld() !== null) {
+          Held <strong data-testid="bulk-held">{{ bulkHeld() | fig }}</strong>
+        }
+      </p>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
@@ -1403,6 +1425,11 @@ export class People {
   protected readonly bulkRetireFrom = signal('');
   /** How many people the last bulk retire retired; null while it runs and before the first. */
   protected readonly bulkRetired = signal<number | null>(null);
+  /** The dates to hold the ticked people from (blank: the sheet's today) and to (blank: no end). */
+  protected readonly bulkHoldFrom = signal('');
+  protected readonly bulkHoldTo = signal('');
+  /** How many people the last bulk hold held; null while it runs and before the first. */
+  protected readonly bulkHeld = signal<number | null>(null);
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
   private reads = 0;
 
@@ -1451,6 +1478,9 @@ export class People {
         this.bulkGraded.set(null);
         this.bulkRetireFrom.set('');
         this.bulkRetired.set(null);
+        this.bulkHoldFrom.set('');
+        this.bulkHoldTo.set('');
+        this.bulkHeld.set(null);
         this.bulkOpenResult.set(null);
         this.bulkOpenError.set(null);
         this.bulkSettleResult.set(null);
@@ -2130,6 +2160,45 @@ export class People {
     } catch {
       if (this.session.sheet() === sheet && first !== null) {
         this.rowError.set({ id: first, message: 'The selected people could not be retired.' });
+      }
+    }
+  }
+
+  /**
+   * Hold the ticked people over the typed dates (from blank: the sheet's today; to blank: no end), in list order, each
+   * as the row's hold would; then re-read so the totals show what the store holds.
+   */
+  protected async bulkHold(): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.rowError.set(null);
+    this.patronError.set(null);
+    this.bulkHeld.set(null);
+    const ids = this.people()
+      .filter((p) => this.selectedPeople().has(p.id))
+      .map((p) => p.id);
+    const first = ids.length > 0 ? ids[0] : null;
+    const from = this.bulkHoldFrom().trim();
+    const to = this.bulkHoldTo().trim();
+    if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
+      if (first !== null) this.rowError.set({ id: first, message: 'Pick the dates to hold over, or leave them blank.' });
+      return;
+    }
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ held: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/bulk-hold`,
+          { ids, from: from || null, to: to || null },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.selectedPeople.set(new Set());
+      this.bulkHeld.set(result.held);
+      await this.read(sheet);
+    } catch {
+      if (this.session.sheet() === sheet && first !== null) {
+        this.rowError.set({ id: first, message: 'The selected people could not be held.' });
       }
     }
   }

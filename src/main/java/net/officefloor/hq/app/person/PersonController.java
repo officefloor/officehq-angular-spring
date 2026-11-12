@@ -104,6 +104,13 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** The people to hold together, and the dates the hold runs from (null: the sheet's today) and to (null: it does not end). */
+    public record BulkHoldRequest(
+            @NotNull @Size(max = 10000) List<@NotNull Long> ids,
+            LocalDate from,
+            LocalDate to) {
+    }
+
     /** Which way to move a person in the list. */
     public record MoveRequest(@NotNull @Pattern(regexp = "up|down") String direction) {
     }
@@ -158,6 +165,7 @@ public class PersonController {
     private final WatchService watches;
     private final BulkGradeService bulkGrade;
     private final BulkRetireService bulkRetire;
+    private final BulkHoldService bulkHold;
     private final GradeMergeService gradeMerge;
     private final MergeService merges;
     private final TransferService transfers;
@@ -167,7 +175,8 @@ public class PersonController {
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
             WatchService watches, BulkGradeService bulkGrade, BulkRetireService bulkRetire, MergeService merges,
             TransferService transfers, ImportPeopleService imports, SnapshotCompareService snapshotCompare,
-            GradeMergeService gradeMerge) {
+            GradeMergeService gradeMerge, BulkHoldService bulkHold) {
+        this.bulkHold = bulkHold;
         this.gradeMerge = gradeMerge;
         this.snapshotCompare = snapshotCompare;
         this.imports = imports;
@@ -262,6 +271,14 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid BulkRetireRequest request) {
         return bulkRetire.retire(sheetId.trim(), user.trim(), request.ids(), request.from());
+    }
+
+    /** Hold the selected people over dates, in list order, each as the row's hold would. */
+    @PostMapping("/bulk-hold")
+    public BulkHoldService.Result bulkHold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkHoldRequest request) {
+        return bulkHold.hold(sheetId.trim(), user.trim(), request.ids(), request.from(), request.to());
     }
 
     /**
