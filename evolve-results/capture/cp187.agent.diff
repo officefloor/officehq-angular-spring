@@ -1,0 +1,291 @@
+diff --git a/src/main/frontend/src/app/core/as-of.interceptor.ts b/src/main/frontend/src/app/core/as-of.interceptor.ts
+index 57515df1e..a6110d632 100644
+--- a/src/main/frontend/src/app/core/as-of.interceptor.ts
++++ b/src/main/frontend/src/app/core/as-of.interceptor.ts
+@@ -2,8 +2,11 @@ import { HttpInterceptorFn } from '@angular/common/http';
+ import { inject } from '@angular/core';
+ import { Session } from './session';
+ 
+-/** Sends the screen's as-of date with every request, so the sheet is read as it stood then and nothing is changed. */
++/**
++ * Sends the screen's as-of date with every request, so the sheet is read as it stood then and nothing is changed. A
++ * request that names its own as-of date (a read of how the sheet stood at an earlier day) keeps it.
++ */
+ export const asOfInterceptor: HttpInterceptorFn = (req, next) => {
+   const asOf = inject(Session).asOf();
+-  return next(asOf === null ? req : req.clone({ setHeaders: { 'X-As-Of': asOf } }));
++  return next(asOf === null || req.headers.has('X-As-Of') ? req : req.clone({ setHeaders: { 'X-As-Of': asOf } }));
+ };
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 6c9fb1ad3..1fb81f701 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -59,6 +59,19 @@ export interface PoolPerson {
+   holds: PoolHold[];
+ }
+ 
++/** A period of the sheet: its name and its last day (yyyy-mm-dd). */
++interface PoolPeriod {
++  name: string;
++  to: string;
++}
++
++/** The pools as they stood at the end of a period, with that day as the sheet's today, and their figures then. */
++interface PastPools {
++  period: string;
++  pools: PoolView[];
++  figures: Map<number, Figures>;
++}
++
+ /** A share: more than 0.00 and at most 100.00, with at most two decimals. */
+ const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+ 
+@@ -111,6 +124,76 @@ function cuts(pot: number, members: { share: number; excluded: boolean }[]): num
+   return out;
+ }
+ 
++/** Whether the membership's dates include the sheet's today (always, with no today or no dates). */
++function dated(m: PoolMemberView, today: string | null): boolean {
++  return today === null || ((m.from === null || m.from <= today) && (m.to === null || today <= m.to));
++}
++
++/**
++ * Each pool's total share (a member whose dates leave out the sheet's today counting as 0.00), whether it is balanced, and, in a balanced pool
++ * with a pot, each member's cut (in cents, in member order); null cuts for an unbalanced pool or one with no pot. A
++ * pool that is a member of none has the sheet's pot; one that is a member of another has its cut there as its pot.
++ */
++function poolFigures(pools: PoolView[], people: PoolPerson[], potText: string | null, today: string | null): Map<number, Figures> {
++  const byId = new Map(people.map((p) => [p.id, p]));
++  const poolsById = new Map(pools.map((p) => [p.id, p]));
++  const sheetPot = potText ? cents(potText) : null;
++  const above = new Map<number, number>();
++  for (const pool of pools) {
++    for (const m of pool.members) if (m.poolId !== null) above.set(m.poolId, pool.id);
++  }
++  const figures = new Map<number, Figures>();
++  // A pool's figures, its pot coming from the pool above (a chain is at most three deep, never a loop).
++  const figuresOf = (pool: PoolView, depth: number): Figures => {
++    const known = figures.get(pool.id);
++    if (known) return known;
++    // A member whose membership dates leave out the sheet's today is left out entirely: no share, no cut.
++    const outside = pool.members.map((m) => !dated(m, today));
++    const total = pool.members.reduce((sum, m, i) => sum + (outside[i] ? 0 : cents(m.share)), 0);
++    const balanced = total === 10000;
++    // A retired person gets no cut; their share is spread over the members with a cut, as a held one's is.
++    const retired = pool.members.map((m) => (m.personId !== null ? (byId.get(m.personId)?.retired ?? false) : false));
++    // A pool whose every member is retired shows no cuts.
++    const allRetired = pool.members.some((_, i) => !outside[i]) && pool.members.every((_, i) => outside[i] || retired[i]);
++    // A person on hold on the sheet's today gets no cut; their share is spread over the members with a cut.
++    const held = pool.members.map((m) => {
++      const holds = m.personId !== null ? (byId.get(m.personId)?.holds ?? []) : [];
++      return today !== null && holds.some((h) => h.from <= today && (h.to === null || today <= h.to));
++    });
++    let pot: number | null = sheetPot;
++    const parent = above.has(pool.id) ? poolsById.get(above.get(pool.id)!) : undefined;
++    if (parent && depth < 10) {
++      const up = figuresOf(parent, depth + 1);
++      const i = parent.members.findIndex((m) => m.poolId === pool.id);
++      pot = up.cuts ? up.cuts[i] : null;
++    }
++    const result = {
++      total,
++      balanced,
++      outside,
++      cuts:
++        balanced && pot !== null && !allRetired
++          ? cuts(pot, pool.members.map((m, i) => ({ share: cents(m.share), excluded: outside[i] || retired[i] || held[i] })))
++          : null,
++    };
++    figures.set(pool.id, result);
++    return result;
++  };
++  for (const pool of pools) figuresOf(pool, 0);
++  return figures;
++}
++
++/** The member's cut (two decimals) in the pool as it stood at the end of the period; blank when there was none. */
++function pastCut(past: PastPools, poolId: number, member: PoolMemberView): string {
++  const pool = past.pools.find((p) => p.id === poolId);
++  const f = past.figures.get(poolId);
++  if (!pool || !f?.cuts) return '';
++  const i = pool.members.findIndex((m) =>
++    member.poolId !== null ? m.poolId === member.poolId : m.personId === member.personId,
++  );
++  return i >= 0 && !f.outside[i] ? fromCents(f.cuts[i]) : '';
++}
++
+ /** A CSV field, quoted when it holds a comma, a quote or a line break. */
+ function csvField(value: string): string {
+   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+@@ -150,6 +233,9 @@ function csvField(value: string): string {
+               <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.key">
+                 {{ m.name }}: <span data-testid="pool-share">{{ m.share | fig }}</span>
+                 Cut <span data-testid="pool-cut">{{ m.cut | fig }}</span>
++                @for (h of m.history; track h.period) {
++                  Cut in {{ h.period }} <span [attr.data-testid]="'pool-cut-' + h.period">{{ h.cut | fig }}</span>
++                }
+                 @if (m.retired) {
+                   (retired)
+                 }
+@@ -216,6 +302,8 @@ export class Pools {
+   readonly people = input<PoolPerson[]>([]);
+ 
+   protected readonly pools = signal<PoolView[]>([]);
++  /** For every period whose to-date is on or before the sheet's today, the pools as they stood at its end. */
++  protected readonly history = signal<PastPools[]>([]);
+   protected readonly name = signal('');
+   protected readonly error = signal<string | null>(null);
+   /** The member chosen ('person:<id>' or 'pool:<id>'), share and dates typed on each pool's row, by pool id. */
+@@ -223,61 +311,10 @@ export class Pools {
+   /** The error shown on each pool's row, by pool id. */
+   protected readonly memberErrors = signal<Record<number, string>>({});
+ 
+-  /**
+-   * Each pool's total share (a member whose dates leave out the sheet's today counting as 0.00), whether it is balanced, and, in a balanced pool
+-   * with a pot, each member's cut (in cents, in member order); null cuts for an unbalanced pool or one with no pot. A
+-   * pool that is a member of none has the sheet's pot; one that is a member of another has its cut there as its pot.
+-   */
+-  private readonly figures = computed(() => {
+-    const byId = new Map(this.people().map((p) => [p.id, p]));
+-    const poolsById = new Map(this.pools().map((p) => [p.id, p]));
+-    const potText = this.session.pot();
+-    const today = this.session.today();
+-    const sheetPot = potText ? cents(potText) : null;
+-    const above = new Map<number, number>();
+-    for (const pool of this.pools()) {
+-      for (const m of pool.members) if (m.poolId !== null) above.set(m.poolId, pool.id);
+-    }
+-    const figures = new Map<number, Figures>();
+-    // A pool's figures, its pot coming from the pool above (a chain is at most three deep, never a loop).
+-    const figuresOf = (pool: PoolView, depth: number): Figures => {
+-      const known = figures.get(pool.id);
+-      if (known) return known;
+-      // A member whose membership dates leave out the sheet's today is left out entirely: no share, no cut.
+-      const outside = pool.members.map((m) => !this.dated(m, today));
+-      const total = pool.members.reduce((sum, m, i) => sum + (outside[i] ? 0 : cents(m.share)), 0);
+-      const balanced = total === 10000;
+-      // A retired person gets no cut; their share is spread over the members with a cut, as a held one's is.
+-      const retired = pool.members.map((m) => (m.personId !== null ? (byId.get(m.personId)?.retired ?? false) : false));
+-      // A pool whose every member is retired shows no cuts.
+-      const allRetired = pool.members.some((_, i) => !outside[i]) && pool.members.every((_, i) => outside[i] || retired[i]);
+-      // A person on hold on the sheet's today gets no cut; their share is spread over the members with a cut.
+-      const held = pool.members.map((m) => {
+-        const holds = m.personId !== null ? (byId.get(m.personId)?.holds ?? []) : [];
+-        return today !== null && holds.some((h) => h.from <= today && (h.to === null || today <= h.to));
+-      });
+-      let pot: number | null = sheetPot;
+-      const parent = above.has(pool.id) ? poolsById.get(above.get(pool.id)!) : undefined;
+-      if (parent && depth < 10) {
+-        const up = figuresOf(parent, depth + 1);
+-        const i = parent.members.findIndex((m) => m.poolId === pool.id);
+-        pot = up.cuts ? up.cuts[i] : null;
+-      }
+-      const result = {
+-        total,
+-        balanced,
+-        outside,
+-        cuts:
+-          balanced && pot !== null && !allRetired
+-            ? cuts(pot, pool.members.map((m, i) => ({ share: cents(m.share), excluded: outside[i] || retired[i] || held[i] })))
+-            : null,
+-      };
+-      figures.set(pool.id, result);
+-      return result;
+-    };
+-    for (const pool of this.pools()) figuresOf(pool, 0);
+-    return figures;
+-  });
++  /** Each pool's figures as the sheet now stands (see {@link poolFigures}). */
++  private readonly figures = computed(() =>
++    poolFigures(this.pools(), this.people(), this.session.pot(), this.session.today()),
++  );
+ 
+   /**
+    * Each person's cut total (two decimals), by person id for every person on the sheet: their cuts in every pool they
+@@ -304,6 +341,7 @@ export class Pools {
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     const poolsById = new Map(this.pools().map((p) => [p.id, p]));
+     const figures = this.figures();
++    const history = this.history();
+     return this.pools().map((pool) => {
+       const f = figures.get(pool.id)!;
+       return {
+@@ -319,6 +357,7 @@ export class Pools {
+             share: m.share,
+             retired: person?.retired ?? false,
+             cut: f.cuts && !f.outside[i] ? fromCents(f.cuts[i]) : '',
++            history: history.map((h) => ({ period: h.period, cut: pastCut(h, pool.id, m) })),
+           };
+         }),
+         total: fromCents(f.total),
+@@ -363,6 +402,7 @@ export class Pools {
+       this.session.loaded();
+       untracked(() => {
+         this.pools.set([]);
++        this.history.set([]);
+         this.inputs.set({});
+         this.memberErrors.set({});
+         if (sheet) void this.read(sheet);
+@@ -370,15 +410,15 @@ export class Pools {
+     });
+   }
+ 
++  // A new today brings other periods to their end: read their cuts again.
++  private readonly onToday = effect(() => {
++    if (this.session.today() !== null) untracked(() => this.reread());
++  });
++
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+ 
+-  /** Whether the membership's dates include the sheet's today (always, with no today or no dates). */
+-  private dated(m: PoolMemberView, today: string | null): boolean {
+-    return today === null || ((m.from === null || m.from <= today) && (m.to === null || today <= m.to));
+-  }
+-
+   protected inputOf(poolId: number): MemberInput {
+     return this.inputs()[poolId] ?? NO_INPUT;
+   }
+@@ -514,13 +554,37 @@ export class Pools {
+   private async read(sheet: string): Promise<void> {
+     const read = ++this.reads;
+     const load = this.session.loaded();
+-    const list = await firstValueFrom(this.http.get<PoolView[]>(this.base(sheet), this.session.headers())).catch(
+-      () => null,
+-    );
++    const today = this.session.today();
++    const [list, history] = await Promise.all([
++      firstValueFrom(this.http.get<PoolView[]>(this.base(sheet), this.session.headers())),
++      this.readHistory(sheet, today),
++    ]).catch(() => [null, null]);
+     // A later read wins over a slower earlier one.
+-    if (list && read === this.reads && this.session.sheet() === sheet) {
++    if (list && history && read === this.reads && this.session.sheet() === sheet) {
+       this.pools.set(list);
++      this.history.set(history);
+       this.session.shown('pools', load);
+     }
+   }
++
++  /**
++   * For every period whose to-date is on or before today, in period order, the pools, people and pot as they stood at
++   * the end of its to-date (read as of that day), and the pools' figures then with that day as the sheet's today.
++   */
++  private async readHistory(sheet: string, today: string | null): Promise<PastPools[]> {
++    const url = `/api/sheets/${encodeURIComponent(sheet)}`;
++    const periods = await firstValueFrom(this.http.get<PoolPeriod[]>(`${url}/periods`, this.session.headers()));
++    const past = today === null ? [] : periods.filter((p) => p.to <= today);
++    return Promise.all(
++      past.map(async (period) => {
++        const options = { headers: { ...this.session.headers().headers, 'X-As-Of': period.to } };
++        const [pools, people, settings] = await Promise.all([
++          firstValueFrom(this.http.get<PoolView[]>(this.base(sheet), options)),
++          firstValueFrom(this.http.get<PoolPerson[]>(`${url}/people`, options)),
++          firstValueFrom(this.http.get<{ pot: string | null }>(`${url}/settings`, options)),
++        ]);
++        return { period: period.name, pools, figures: poolFigures(pools, people, settings.pot, period.to) };
++      }),
++    );
++  }
+ }

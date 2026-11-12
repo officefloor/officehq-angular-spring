@@ -1,0 +1,64 @@
+{
+  "checkpoint": 187,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp187_cut-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "For every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nFor every period whose to-date is on or before the sheet's today, each pool member's line shows\nthe member's cut as it stood at the end of that period (the pool, its members, the pot and the\nholds as they were then, with that day as the sheet's today), empty when there was none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ccef64bdbd18a196d8aed3ac1d486dccec7d7f17",
+  "reset_sha": "",
+  "preagent_sha": "91a8baf6325fd96cffadc7bc961c19f1a866f23f",
+  "prev_sha": "91a8baf6325fd96cffadc7bc961c19f1a866f23f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9671217999999999,
+    "input_tokens": 36,
+    "output_tokens": 11544,
+    "cache_read_tokens": 873209,
+    "cache_creation_tokens": 70182,
+    "num_turns": 19,
+    "duration_ms": 375354,
+    "duration_api_ms": 119753,
+    "model": "claude-opus-5-5",
+    "session_id": "dafcdf67-01af-4dda-9731-5b8951af9613",
+    "stop_reason": "success",
+    "result_text": "I added the per-period cut history, and all 4 tests in `bin/e2e` pass.\n\nEach pool member's line now shows a `pool-cut-<period>` value for every period whose to-date is on or before the sheet's today. The value is the member's cut as it stood at the end of that period, and it's blank when there was none: no pool or member yet, the pool unbalanced, no pot, or the membership dates not covering that day.\n\n**How it works:** the app already saves a copy of each sheet after every change, under the day it was made. It also has a read-only \"as of a date\" view that shows the sheet as it stood on that day. So I didn't need any server, schema or audit changes. All the changes are in the front end:\n\n- **`features/pools/pools.ts`**:\n  - The cut calculation is now a standalone function, `poolFigures`, so today's cuts and past cuts use exactly the same rules (holds, retirement, membership dates, nested pools, how the remainder is shared out).\n  - When the pools are read, the screen also reads the periods. For each period that has ended, it reads the pools, people and pot as of the period's to-date and works out the cuts with that day as the sheet's today.\n  - Past members are matched to today's by pool id and by person or member-pool id.\n- **`core/as-of.interceptor.ts`**: a request that sets its own as-of date now keeps it. Before, a screen that was itself in as-of mode would have overwritten it.\n\n**Limitations:**\n- **Speed:** each ended period adds three as-of reads, and the server handles a sheet's as-of reads one at a time. On a sheet with many periods, the pools section will take noticeably longer to load.\n- **Staleness:** the history is re-read when the sheet is loaded or its today changes. Adding a period that has already ended shows its cuts only after the next reload.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9671217999999999,
+        "num_turns": 19,
+        "duration_ms": 375354,
+        "duration_api_ms": 119753,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp187.agent.jsonl",
+  "agent_diff_file": "cp187.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
