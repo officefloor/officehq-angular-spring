@@ -88,6 +88,8 @@ public class SheetSnapshotService {
      * a transaction that is rolled back: it changes the store for that transaction alone.
      */
     public void restore(String sheetId, LocalDate asOf) {
+        // Lock the sheet's row first, as every change does, so a restore waits on a change rather than deadlocks with it.
+        jdbc.update("UPDATE sheet SET id = id WHERE id = ?", sheetId);
         List<byte[]> found = jdbc.query("SELECT data FROM sheet_snapshot WHERE sheet_id = ? AND made_on <= ? "
                 + "ORDER BY seq DESC LIMIT 1", (rs, i) -> rs.getBytes(1), sheetId, asOf);
         Map<String, List<Map<String, Object>>> rows = found.isEmpty() ? Map.of() : deserialize(found.get(0));

@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Rolls a fiscal year over: generates the next fiscal year's twelve periods as the fiscal year generator does, and adds
  * each person's open figure at the end of the old year's last period to their opening balance for the new year's first
  * period, and so to their carried figure for it. A fiscal year rolled over again, its last rollover not undone, adds
- * no opening balances a second time. Each rollover is kept, so the last can be undone on the day it was made.
+ * no opening balances a second time. Every period of the old year still open is then soft-closed, in start-date order. Each rollover is kept, so the last can be undone on the day it was made.
  */
 @Service
 public class RolloverService {
@@ -94,6 +94,8 @@ public class RolloverService {
         }
         rollovers.save(record);
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=" + fy + " periods=" + made.size());
+        old.stream().filter(p -> !p.isClosed() && !p.isSoftClosed()).sorted(Comparator.comparing(Period::getFromDate))
+                .forEach(p -> periods.softCloseNow(sheetId, user, p));
         return made;
     }
 

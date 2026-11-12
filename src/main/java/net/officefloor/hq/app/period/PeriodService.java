@@ -187,6 +187,11 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new PeriodClosedException(name);
         }
+        return softCloseNow(sheetId, user, period);
+    }
+
+    /** Soft-close an open period as a soft close by hand would; the caller has locked the sheet and checked it is open. */
+    Period softCloseNow(String sheetId, String user, Period period) {
         period.softClose(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()),
                 rollup.carriedInto(sheetId, list(sheetId), period), cutsNow(sheetId));
         Period saved = periods.saveAndFlush(period);
