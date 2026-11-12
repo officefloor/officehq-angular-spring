@@ -9,8 +9,8 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A statement taken of a person: the sheet's today then, their due-total then (none when it was n/a)
- *  and how many of their claims counted. */
+/** A statement taken of a person: the sheet's today then, or the date it was taken as of, their due-total
+ *  then (none when it was n/a) and how many of their claims counted. */
 @Entity
 @Table(name = "statement")
 public class Statement {

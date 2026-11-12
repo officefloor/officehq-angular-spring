@@ -335,12 +335,19 @@ public class ClaimController {
     public record StatementView(PersonView person, List<ClaimView> claims) {
     }
 
-    /** Take a person's statement. */
+    /** A statement as of a date on or before the sheet's today; none takes it now. */
+    public record StatementRequest(LocalDate asOf) {
+    }
+
+    /** Take a person's statement, now or as of a date. */
     @PostMapping("/people/{personId}/statement")
     public StatementView statement(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long personId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        ClaimService.Stated stated = service.statement(sheetId.trim(), user.trim(), personId);
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) @Valid StatementRequest request) {
+        LocalDate asOf = request == null ? null : request.asOf();
+        ClaimService.Stated stated = asOf == null ? service.statement(sheetId.trim(), user.trim(), personId)
+                : service.statementAsOf(sheetId.trim(), user.trim(), personId, asOf);
         return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
                 people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim())),
                 stated.claims().stream().map(ClaimView::of).toList());
@@ -355,6 +362,13 @@ public class ClaimController {
         return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
                 people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim())),
                 stated.claims().stream().map(ClaimView::of).toList());
+    }
+
+    /** A statement as of a date that cannot be taken is refused with the reason, for the screen to show. */
+    @ExceptionHandler(StatementRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> statementRefused(StatementRefusedException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** A cancel of a statement that is not allowed is refused with the reason, for the screen to show. */

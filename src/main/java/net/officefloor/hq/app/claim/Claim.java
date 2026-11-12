@@ -4,6 +4,7 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -17,10 +18,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.history.History;
 
 /** A claim by a person on a sheet: an amount (two decimals), a date, a note, a status and, once opened,
  *  a number and who opened it. A negative amount is a correction, naming the number of the claim it corrects. */
 @Entity
+@EntityListeners(History.class)
 @Table(name = "claim")
 public class Claim {
 

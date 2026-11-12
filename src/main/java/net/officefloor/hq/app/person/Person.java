@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -16,10 +17,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import net.officefloor.hq.app.history.History;
 
 /** A person on a sheet, with a name and a dated grade (A, B or C): each grade they are given applies
  *  from a date, the first from the beginning of time. */
 @Entity
+@EntityListeners(History.class)
 @Table(name = "person")
 public class Person {
 

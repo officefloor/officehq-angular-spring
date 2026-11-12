@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.period.PeriodService;
@@ -27,9 +28,12 @@ public class SheetService {
     private final RoleService roles;
     private final Audit audit;
     private final ClaimRepository claims;
+    private final History history;
 
     public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences, PeriodRepository periods,
-            PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims) {
+            PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims,
+            History history) {
+        this.history = history;
         this.claims = claims;
         this.sheets = sheets;
         this.sequences = sequences;
@@ -163,6 +167,7 @@ public class SheetService {
         Rollup.Snapshot before = movesFigures ? rollup.take(id) : null;
         sheet.setSetting(key, from == null ? sheet.getToday() : from, value);
         sheets.saveAndFlush(sheet);
+        history.keep(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value="
                 + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
         if (movesFigures) {

@@ -51,7 +51,8 @@ export interface Person {
   statementCount: number;
   /** The last statement's due-total, two decimals or n/a; null before their first. */
   statedTotal: string | null;
-  /** The sheet's today when the last statement was taken; null before their first. */
+  /** The last statement's date: the sheet's today when it was taken, or the date it was taken as of; null
+   *  before their first. */
   statementDate: string | null;
   /** Whether a retirement date is set: then they count as retired at once, whatever the date. */
   retired: boolean;
@@ -165,21 +166,26 @@ export class People {
     }
   }
 
-  /** Take a person's statement: the person and their claims as it left them, or an error message
-   *  when refused. */
-  async statement(id: number): Promise<Statement | string> {
+  /** Take a person's statement, as of a date on or before the sheet's today (blank takes it now): the
+   *  person and their claims as it left them, or an error message when refused. */
+  async statement(id: number, asOf = ''): Promise<Statement | string> {
     const sid = this.session.sheetId();
     const user = this.session.user();
     if (!user || !sid) return 'Load a sheet first.';
+    const d = asOf.trim();
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'Enter a date as YYYY-MM-DD.';
     try {
       const stated = await firstValueFrom(
-        this.http.post<Statement>(`${this.url(sid)}/${id}/statement`, null, { headers: { 'X-User': user } }),
+        this.http.post<Statement>(`${this.url(sid)}/${id}/statement`, { asOf: d || null }, { headers: { 'X-User': user } }),
       );
       if (this.session.sheetId() === sid) {
         this.people.update((ps) => ps.map((p) => (p.id === id ? stated.person : p)));
       }
       return stated;
     } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string') {
+        return e.error.message;
+      }
       return failed('take statement of', e);
     }
   }

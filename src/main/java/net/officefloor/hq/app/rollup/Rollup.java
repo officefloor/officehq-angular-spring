@@ -228,7 +228,7 @@ public class Rollup {
 
     /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on
      *  the sheet (half to even with no sheet). */
-    private static BigDecimal rated(Optional<Sheet> sheet, Claim claim, List<Claim> sheetClaims, Rate rate) {
+    public static BigDecimal rated(Optional<Sheet> sheet, Claim claim, List<Claim> sheetClaims, Rate rate) {
         LocalDate on = roundingDate(claim, sheetClaims);
         return claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
                 .setScale(2, sheet.map(s -> s.rounding(on)).orElse(RoundingMode.HALF_EVEN));
@@ -273,7 +273,7 @@ public class Rollup {
 
     /** The grade's rate in force on a date: the latest from-date on or before it, none first; none
      *  when the date is after that rate's to-date. */
-    private static Optional<Rate> inForce(List<Rate> sheetRates, String grade, LocalDate date) {
+    public static Optional<Rate> inForce(List<Rate> sheetRates, String grade, LocalDate date) {
         return sheetRates.stream()
                 .filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))

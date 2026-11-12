@@ -10,8 +10,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -48,11 +50,13 @@ public class ClaimService {
     private final Rollup rollup;
     private final RoleService roles;
     private final WatchRepository watches;
+    private final History history;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
             SheetRepository sheetRows, PeriodRepository periods, StatementRepository statements, Rollup rollup,
-            RoleService roles, WatchRepository watches, Audit audit) {
+            RoleService roles, WatchRepository watches, History history, Audit audit) {
+        this.history = history;
         this.watches = watches;
         this.roles = roles;
         this.sheetRows = sheetRows;
@@ -573,6 +577,66 @@ public class ClaimService {
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted);
+        rollup.recordChanges(sheetId, user, before);
+        return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
+    }
+
+    /** Take a person's statement as of a date on or before the sheet's today: the claims of theirs that
+     *  counted at the end of that date (as the changes made while the sheet's today was on or before it left
+     *  them; a later change does not count) are bound to their figures as they stood then, that date standing
+     *  in for the sheet's today in every figure (the grade and rate in force, the floor, late charges, holds,
+     *  retirements and the cap); every other claim of theirs is left unbound. The statement is dated that
+     *  date. Refused for a date after the sheet's today, and one before the person was on the sheet. */
+    @Transactional
+    public Stated statementAsOf(String sheetId, String user, long personId, LocalDate asOf) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        LocalDate today = sheets.today(sheetId);
+        if (asOf.isAfter(today)) {
+            throw new StatementRefusedException("A statement cannot be taken as of a date after the sheet's today ("
+                    + today + ").");
+        }
+        Person then = history.findAsOf(Person.class, sheetId, personId, asOf)
+                .orElseThrow(() -> new StatementRefusedException(person.getName() + " was not on the sheet on " + asOf + "."));
+        Sheet sheetThen = history.findAsOf(Sheet.class, sheetId, sheetId, asOf).orElseGet(() -> {
+            // no change to the sheet counts by then: it stands as it was started
+            Sheet now = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+            return new Sheet(sheetId, now.getCreatedBy(), now.getCreatedAt(), asOf);
+        });
+        sheetThen.setToday(asOf);
+        Optional<Sheet> onDate = Optional.of(sheetThen);
+        List<Rate> ratesThen = history.listAsOf(Rate.class, sheetId, asOf);
+        List<Claim> claimsThen = history.listAsOf(Claim.class, sheetId, asOf).stream()
+                .filter(c -> c.getPersonId().equals(personId)).toList();
+        List<Claim> theirs = claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, personId);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        Map<Long, BigDecimal> figures = new HashMap<>();
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        boolean figure = false;
+        for (Claim claim : claimsThen) {
+            if (!claim.getStatus().counts() || Rollup.heldOut(claim, then, asOf) || claim.deferredOn(asOf)) {
+                continue;
+            }
+            BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
+                    : claim.isBound() ? claim.getStatedDue()
+                    : Rollup.inForce(ratesThen, then.gradeOn(claim.getDate()), claim.getDate())
+                            .map(rate -> Rollup.rated(onDate, claim, claimsThen, rate)).orElse(null);
+            if (due != null) {
+                total = total.add(Rollup.charged(onDate, claim, due));
+                figure = true;
+            }
+            figures.put(claim.getId(), due);
+        }
+        for (Claim claim : theirs) {
+            claim.setStated(figures.containsKey(claim.getId()), figures.get(claim.getId()));
+        }
+        boolean rated = Rollup.inForce(ratesThen, then.gradeOn(asOf), asOf).isPresent();
+        BigDecimal dueTotal = rated || figure ? sheetThen.capped(total) : null;
+        int counted = figures.size();
+        claims.saveAllAndFlush(theirs);
+        statements.saveAndFlush(new Statement(sheetId, personId, asOf, dueTotal, counted));
+        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted
+                + " asof=" + asOf);
         rollup.recordChanges(sheetId, user, before);
         return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
     }

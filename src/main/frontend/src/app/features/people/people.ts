@@ -179,6 +179,14 @@ import { PersonClaims } from '../claims/claims';
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'person-statement-asof-' + p.id">Statement as of<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-statement-asof-' + p.id"
+                  data-testid="person-statement-asof"
+                  placeholder="YYYY-MM-DD"
+                  [value]="statementDates()[p.id] ?? ''"
+                  (input)="setStatementDate(p.id, value($event))"
+                />
                 <button
                   type="button"
                   data-testid="person-statement"
@@ -258,6 +266,8 @@ export class PeopleList {
   );
   /** The retire-from date typed on each person's row. */
   protected readonly retireDates = signal<Record<number, string>>({});
+  /** The date typed on each person's row to take their statement as of; blank takes it now. */
+  protected readonly statementDates = signal<Record<number, string>>({});
   /** The id of the person being retired. */
   protected readonly retiring = signal<number | null>(null);
   /** The hold from- and to-dates typed on each person's row. */
@@ -406,7 +416,9 @@ export class PeopleList {
     this.clearActionError(p.id);
     this.stating.set(p.id);
     try {
-      const stated = await this.people.statement(p.id);
+      const asOf = this.statementDates()[p.id] ?? '';
+      this.statementDates.update((ds) => ({ ...ds, [p.id]: '' }));
+      const stated = await this.people.statement(p.id, asOf);
       if (typeof stated === 'string') this.actionError.set({ id: p.id, message: stated });
       else this.claims.replaceOf(p.id, stated.claims);
     } finally {
@@ -424,6 +436,11 @@ export class PeopleList {
     } finally {
       this.stating.set(null);
     }
+  }
+
+  protected setStatementDate(id: number, date: string): void {
+    this.clearActionError(id);
+    this.statementDates.update((ds) => ({ ...ds, [id]: date }));
   }
 
   protected setRetireDate(id: number, date: string): void {
