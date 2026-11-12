@@ -34,6 +34,7 @@ import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReasonRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,13 +56,15 @@ public class ClaimService {
     private final History history;
     private final HolidayService holidays;
     private final SheetTagRepository sheetTags;
+    private final VoidReasonRepository voidReasons;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
             SheetRepository sheetRows, PeriodRepository periods, StatementRepository statements, Rollup rollup,
             RoleService roles, WatchRepository watches, History history, HolidayService holidays,
-            SheetTagRepository sheetTags, Audit audit) {
+            SheetTagRepository sheetTags, VoidReasonRepository voidReasons, Audit audit) {
         this.sheetTags = sheetTags;
+        this.voidReasons = voidReasons;
         this.history = history;
         this.holidays = holidays;
         this.watches = watches;
@@ -186,6 +189,17 @@ public class ClaimService {
      *  bound), its late charge on the sheet's today frozen in on top; with no figure then, its due stays live. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
+        return changeStatus(sheetId, user, claimId, to, "");
+    }
+
+    /** Void a claim (see changeStatus): while the sheet has void reasons, with one of them, which it keeps;
+     *  a void without one, or with one not on the list, is refused. */
+    @Transactional
+    public Claim voidClaim(String sheetId, String user, long claimId, String reason) {
+        return changeStatus(sheetId, user, claimId, ClaimStatus.VOID, reason);
+    }
+
+    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String voidReason) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDueBy());
         roles.require(sheetId, user, switch (to) {
@@ -200,8 +214,14 @@ public class ClaimService {
         if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
             refuseVoidSettled(claim, sheetId, user);
         }
+        if (to == ClaimStatus.VOID) {
+            refuseVoidReason(sheetId, voidReason);
+        }
         String reversed = to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED
                 ? " reversed=" + show(claim.getSettledDue()) : "";
+        if (to == ClaimStatus.VOID && !voidReason.isEmpty()) {
+            reversed += " reason=" + voidReason;
+        }
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ClaimSettlerException();
         }
@@ -231,6 +251,9 @@ public class ClaimService {
         }
         claim.setStatus(to);
         claim.setNumber(number);
+        if (to == ClaimStatus.VOID) {
+            claim.setVoidReason(voidReason.isEmpty() ? null : voidReason);
+        }
         logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
         String event = switch (to) {
@@ -726,6 +749,23 @@ public class ClaimService {
         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException();
+        }
+    }
+
+    /** Refuse a void while the sheet has void reasons, unless it is given one of them; with none on the
+     *  list, a void takes no reason. */
+    private void refuseVoidReason(String sheetId, String reason) {
+        if (!voidReasons.existsBySheetId(sheetId)) {
+            if (!reason.isEmpty()) {
+                throw new ClaimVoidException("The sheet has no void reasons.");
+            }
+            return;
+        }
+        if (reason.isEmpty()) {
+            throw new ClaimVoidException("Choose a reason to void the claim.");
+        }
+        if (!voidReasons.existsBySheetIdAndReason(sheetId, reason)) {
+            throw new ClaimVoidException("\"" + reason + "\" is not a void reason on the sheet.");
         }
     }
 

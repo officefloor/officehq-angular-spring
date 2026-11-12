@@ -6,6 +6,7 @@ import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Roles } from '../../core/roles';
 import { Session, isDate } from '../../core/session';
+import { VoidReasons } from '../../core/void-reasons';
 import { BulkOpen } from '../claims/bulk-open';
 import { BulkSettle } from '../claims/bulk-settle';
 import { PasteClaims } from '../claims/paste-claims';
@@ -16,11 +17,12 @@ import { PeriodsPanel } from '../periods/periods';
 import { RatesPanel } from '../rates/rates';
 import { SettingsPanel } from '../settings/settings';
 import { SummaryPanel } from '../summary/summary';
+import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [BulkOpen, BulkSettle, HeaderCounters, HolidaysPanel, PasteClaims, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
+  imports: [BulkOpen, BulkSettle, HeaderCounters, HolidaysPanel, PasteClaims, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -83,6 +85,7 @@ import { SummaryPanel } from '../summary/summary';
         <app-rates />
         <app-periods />
         <app-holidays />
+        <app-void-reasons />
         <app-people />
         <app-paste-claims />
         <app-bulk-open />
@@ -114,6 +117,7 @@ export class Home {
   private readonly periods = inject(Periods);
   private readonly roles = inject(Roles);
   private readonly holidays = inject(Holidays);
+  private readonly voidReasons = inject(VoidReasons);
   protected readonly nameInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetInput = signal('');
@@ -151,7 +155,7 @@ export class Home {
   private async loadSheet(id: string): Promise<string | null> {
     return (
       (await this.session.loadSheet(id)) ??
-      (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load()])).find((err) => err !== null) ??
+      (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load()])).find((err) => err !== null) ??
       null
     );
   }

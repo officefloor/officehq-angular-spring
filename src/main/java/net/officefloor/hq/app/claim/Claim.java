@@ -113,6 +113,10 @@ public class Claim {
     @Column(name = "ref")
     private String ref;
 
+    /** The reason it was voided with, from the sheet's list; none when not voided, or voided without one. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     /** Its tags, sorted and comma separated; none when it carries none. */
     @Column(name = "tags")
     private String tags;
@@ -201,6 +205,14 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     /** Its tags, sorted; empty when it carries none. */

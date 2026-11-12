@@ -50,7 +50,7 @@ public class ClaimController {
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            String remindedOn, String ref, List<String> tags) {
+            String remindedOn, String ref, List<String> tags, String voidReason) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -64,7 +64,7 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
                     claim.isLateEntry(),
                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
-                    claim.getTags());
+                    claim.getTags(), claim.getVoidReason());
         }
     }
 
@@ -366,12 +366,19 @@ public class ClaimController {
         return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, request.personId()));
     }
 
-    /** Void a DRAFT, OPEN or PENDING claim, or a SETTLED one by a steward within 7 days of settling. */
+    /** The reason a claim is voided with, from the sheet's list of void reasons. */
+    public record VoidRequest(@Size(max = 200) String reason) {
+    }
+
+    /** Void a DRAFT, OPEN or PENDING claim, or a SETTLED one by a steward within 7 days of settling; while
+     *  the sheet has void reasons, with one of them. */
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) @Valid VoidRequest request) {
+        String reason = request == null || request.reason() == null ? "" : request.reason().trim();
+        return ClaimView.of(service.voidClaim(sheetId.trim(), user.trim(), claimId, reason));
     }
 
     /** A person after a statement, with their claims as it bound them, newest first. */

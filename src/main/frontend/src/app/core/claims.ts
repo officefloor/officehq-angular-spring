@@ -53,6 +53,8 @@ export interface Claim {
   ref: string | null;
   /** Its tags: trimmed, lower-cased, without repeats, sorted; empty when it carries none. */
   tags: string[];
+  /** The reason it was voided with, from the sheet's list; null when not voided, or voided without one. */
+  voidReason: string | null;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -415,15 +417,15 @@ export class Claims {
     this.claims.update((cs) => cs.map((c) => (c.lockedBy === null ? c : { ...c, lockedBy: null })));
   }
 
-  /** Open, settle, void, approve, reject or re-settle a claim (a rejection with its reason); an error message
-   *  when refused. */
+  /** Open, settle, void, approve, reject or re-settle a claim (a rejection with its reason typed, a void with
+   *  its reason chosen from the sheet's list); an error message when refused. */
   async act(id: number, action: ClaimAction, reason = ''): Promise<string | null> {
     const sid = this.session.sheetId();
     const user = this.session.user();
     if (!user || !sid) return 'Load a sheet first.';
     if (action === 'reject' && !reason.trim()) return 'Give a reason to reject the claim.';
     try {
-      const body = action === 'reject' ? { reason: reason.trim() } : null;
+      const body = action === 'reject' || action === 'void' ? { reason: reason.trim() } : null;
       const claim = await firstValueFrom(
         this.http.post<Claim>(`${this.url(sid)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
       );

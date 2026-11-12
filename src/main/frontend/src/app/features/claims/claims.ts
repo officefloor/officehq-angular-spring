@@ -4,6 +4,7 @@ import { Periods } from '../../core/periods';
 import { GradeFrom, People, gradeOn } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 import { Session } from '../../core/session';
+import { VoidReasons } from '../../core/void-reasons';
 
 // A person's claims: one form adds a claim, or edits the one whose editor is open, and the list
 // shows the person's claims newest first.
@@ -116,6 +117,19 @@ import { Session } from '../../core/session';
           <button type="button" data-testid="claim-inline-save" [disabled]="acting() === c.id" (click)="saveInline(c)">
             Save amount<span class="visually-hidden"> of claim {{ c.amount }} on {{ c.date }}</span>
           </button>
+          @if (voidReasons.reasons().length > 0) {
+            <label [for]="'claim-void-reason-' + c.id">Void reason</label>
+            <select
+              [id]="'claim-void-reason-' + c.id"
+              data-testid="claim-void-reason"
+              (change)="setVoidReason(c.id, value($event))"
+            >
+              <option value="" [selected]="!voidReasonsChosen()[c.id]">Choose a reason</option>
+              @for (r of voidReasons.reasons(); track r.id) {
+                <option [value]="r.reason" [selected]="voidReasonsChosen()[c.id] === r.reason">{{ r.reason }}</option>
+              }
+            </select>
+          }
           @for (a of actions; track a.action) {
             <button
               type="button"
@@ -258,6 +272,9 @@ export class PersonClaims {
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The reason typed to reject each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  protected readonly voidReasons = inject(VoidReasons);
+  /** The void reason chosen for each claim, by claim id. */
+  protected readonly voidReasonsChosen = signal<Record<number, string>>({});
   protected readonly isOpen = isOpen;
   protected readonly noRate = NO_RATE;
   /** The id of the claim whose status change is under way. */
@@ -358,7 +375,8 @@ export class PersonClaims {
     this.clearActionError(c.id);
     this.acting.set(c.id);
     try {
-      const err = await this.claims.act(c.id, action, this.rejectReasons()[c.id] ?? '');
+      const reason = action === 'void' ? this.voidReasonsChosen()[c.id] : this.rejectReasons()[c.id];
+      const err = await this.claims.act(c.id, action, reason ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);
@@ -486,6 +504,11 @@ export class PersonClaims {
   protected setRejectReason(id: number, reason: string): void {
     this.clearActionError(id);
     this.rejectReasons.update((r) => ({ ...r, [id]: reason }));
+  }
+
+  protected setVoidReason(id: number, reason: string): void {
+    this.clearActionError(id);
+    this.voidReasonsChosen.update((r) => ({ ...r, [id]: reason }));
   }
 
   private clearActionError(id: number): void {
