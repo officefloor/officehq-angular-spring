@@ -1,0 +1,64 @@
+{
+  "checkpoint": 102,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp102_aliases",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have aliases: an entry and an add button on the row (PERSON_ALIAS_ADDED name=<name>\nalias=<alias>; a blank alias is refused with an error on the row). Aliases share the names'\nuniqueness: an alias must not equal, as names are compared, any name or alias on the sheet, and a\nnew name or renaming must not equal any alias. The quick-add bar and the paste box find a person by\nan alias as well as by the name. Show the person's aliases, sorted as names are compared, comma and\nspace separated.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have aliases: an entry and an add button on the row (PERSON_ALIAS_ADDED name=<name>\nalias=<alias>; a blank alias is refused with an error on the row). Aliases share the names'\nuniqueness: an alias must not equal, as names are compared, any name or alias on the sheet, and a\nnew name or renaming must not equal any alias. The quick-add bar and the paste box find a person by\nan alias as well as by the name. Show the person's aliases, sorted as names are compared, comma and\nspace separated.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b91bfc386eb59afbea41eba14ae0f8663a9d41c1",
+  "reset_sha": "",
+  "preagent_sha": "a36c5bc14b66df4e7178f3332df8edc51e0bb6bc",
+  "prev_sha": "a36c5bc14b66df4e7178f3332df8edc51e0bb6bc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2125320000000004,
+    "input_tokens": 48,
+    "output_tokens": 13074,
+    "cache_read_tokens": 1425740,
+    "cache_creation_tokens": 83214,
+    "num_turns": 25,
+    "duration_ms": 417077,
+    "duration_api_ms": 125562,
+    "model": "claude-opus-5-5",
+    "session_id": "ebe93f28-2696-4376-9259-6bfbb076d5cb",
+    "stop_reason": "success",
+    "result_text": "I've added person aliases, and `bin/e2e` now passes all 4 tests in the spec. Getting there also took one change outside aliases, described at the end.\n\n**How it works**\n- **Storage:** a new migration, `V62__person_alias.sql`, adds a `person_alias` table. Each alias is stored trimmed, and a unique index on the sheet plus the lower-cased alias stops two people sharing one.\n- **Adding an alias:** each person's row has an alias entry and an add button. The server:\n  - refuses a blank alias;\n  - refuses one that matches, ignoring case, any name or alias on the sheet;\n  - writes `PERSON_ALIAS_ADDED sheet=\u2026 by=\u2026 name=\u2026 alias=\u2026` to the audit file.\n\n  A refusal shows the message in the row's existing `person-error` element. That message clears when you type in the alias field or take another action on the row.\n- **Names vs aliases:** adding a person or renaming one is now also refused if the name matches any alias on the sheet.\n- **Quick-add bar and paste box:** both now find a person by an alias as well as by name.\n- **Display:** a new `person-aliases` cell lists the aliases sorted ignoring case and separated by \", \". Aliases are saved as part of the person's history, so viewing the sheet as of an earlier date shows the aliases they had then.\n\n**Decision for you:** renaming a person to one of their own aliases is refused too. The request said a new name \"must not equal any alias\", so I applied it strictly.\n\n**Change outside aliases:** scenario 2 deferred a claim, then voided it, and expects the row's `claim-deferred` to still show \"yes\". The app only treated OPEN claims as deferred, so it showed \"no\". I changed only what the row shows: it now says \"yes\" while the deferred-until date is after the sheet's today, whatever the claim's status. Totals, overdue status and settling still treat only OPEN claims as deferred. This change does nothing for aliases, so you may want to check it is the behaviour you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2125320000000004,
+        "num_turns": 25,
+        "duration_ms": 417077,
+        "duration_api_ms": 125562,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp102.agent.jsonl",
+  "agent_diff_file": "cp102.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
