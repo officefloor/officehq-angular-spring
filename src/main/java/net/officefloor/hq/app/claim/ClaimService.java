@@ -410,6 +410,7 @@ public class ClaimService {
             requireProof(sheetId, person, claim);
         }
         if (status == ClaimStatus.OPEN) {
+            requireUnflagged(sheetId, user, person, claim);
             requireNote(sheetId, person, claim);
             requireUnderCap(sheetId, claim);
             // A claim whose due is above the review threshold on its date waits for a steward's review instead.
@@ -833,6 +834,7 @@ public class ClaimService {
         periods.requireOpen(sheetId, claim.getDueBy());
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        requireUnflagged(sheetId, user, person, claim);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.setStated(false, null);
@@ -933,6 +935,14 @@ public class ClaimService {
                     + " is above the proof threshold " + threshold.toPlainString()
                     + (claim.getProofs() == 0 ? " and it has no proof"
                             : " and it has no proof of kind " + String.join(", ", missing)));
+        }
+    }
+
+    /** While its person's flag is in force on the sheet's today, only a steward may open a claim of theirs. */
+    private void requireUnflagged(String sheetId, String user, Person person, Claim claim) {
+        if (person.flagOn(sheets.today(sheetId)) != null && roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimActionForbiddenException(claim.getId(), user, "open",
+                    person.getName() + " is flagged: only a steward may open their claims");
         }
     }
 

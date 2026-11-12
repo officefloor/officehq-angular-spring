@@ -66,6 +66,9 @@ interface Person {
   snapshotLines: string[];
   /** One line per statement still standing, oldest first by its date: the date, then the due-total. */
   statementLines: string[];
+  /** The reason of the person's flag while the sheet's today is on or before its until-date; null otherwise. While
+   *  it is in force only a steward may open a claim of theirs. */
+  flag: string | null;
 }
 
 /** A hold of a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
@@ -598,6 +601,31 @@ function csvField(value: string): string {
                 >
                   Undo transfer
                 </button>
+                <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span>
+                <label [for]="'person-flag-reason-' + p.id" class="visually-hidden">Flag {{ p.name }} for</label>
+                <input
+                  [id]="'person-flag-reason-' + p.id"
+                  data-testid="person-flag-reason"
+                  placeholder="Flag reason"
+                  [value]="flagReasons()[p.id] ?? ''"
+                  (input)="setFlagReason(p.id, value($event))"
+                />
+                <label [for]="'person-flag-until-' + p.id" class="visually-hidden">Flag {{ p.name }} until</label>
+                <input
+                  [id]="'person-flag-until-' + p.id"
+                  type="date"
+                  data-testid="person-flag-until"
+                  [value]="flagUntils()[p.id] ?? ''"
+                  (input)="setFlagUntil(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-flag"
+                  [attr.aria-label]="'Flag ' + p.name"
+                  (click)="flag(p)"
+                >
+                  Flag
+                </button>
                 <ul class="holds">
                   @for (h of p.holds; track $index) {
                     <li data-testid="person-hold-line">Held {{ h.from }} to {{ h.to ?? 'open' }}</li>
@@ -897,6 +925,10 @@ export class People {
   protected readonly holdFroms = signal<Record<number, string>>({});
   /** The to-date typed for each person's next hold, by person id. */
   protected readonly holdTos = signal<Record<number, string>>({});
+  /** The reason typed for each person's next flag, by person id. */
+  protected readonly flagReasons = signal<Record<number, string>>({});
+  /** The until-date typed for each person's next flag, by person id. */
+  protected readonly flagUntils = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -1246,6 +1278,8 @@ export class People {
         this.statementAsOfs.set({});
         this.holdFroms.set({});
         this.holdTos.set({});
+        this.flagReasons.set({});
+        this.flagUntils.set({});
         this.patronChoices.set({});
         this.patronError.set(null);
         this.selectedClaims.set(new Set());
@@ -1315,6 +1349,16 @@ export class People {
 
   protected setHoldFrom(id: number, date: string): void {
     this.holdFroms.update((dates) => ({ ...dates, [id]: date }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setFlagReason(id: number, reason: string): void {
+    this.flagReasons.update((reasons) => ({ ...reasons, [id]: reason }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setFlagUntil(id: number, date: string): void {
+    this.flagUntils.update((dates) => ({ ...dates, [id]: date }));
     if (this.rowError()?.id === id) this.rowError.set(null);
   }
 
@@ -2095,6 +2139,36 @@ export class People {
    * Hold the person from the typed from-date (blank: the sheet's today) to the typed to-date (blank: no end), then
    * re-read so the totals show what the store holds.
    */
+  /** A steward flags the person with a reason until a date; anyone else, or a blank reason, is refused. */
+  protected async flag(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const reason = (this.flagReasons()[person.id] ?? '').trim();
+    const until = (this.flagUntils()[person.id] ?? '').trim();
+    if (!reason) {
+      this.rowError.set({ id: person.id, message: 'Give a reason for the flag.' });
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      this.rowError.set({ id: person.id, message: 'Pick the date the flag runs until.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/flag`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { reason, until }, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        this.flagReasons.update((reasons) => ({ ...reasons, [person.id]: '' }));
+        this.flagUntils.update((dates) => ({ ...dates, [person.id]: '' }));
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be flagged.` });
+    }
+  }
+
   protected async hold(person: Person): Promise<void> {
     this.rowError.set(null);
     this.patronError.set(null);

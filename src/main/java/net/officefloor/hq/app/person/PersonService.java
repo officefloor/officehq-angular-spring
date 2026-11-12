@@ -16,6 +16,8 @@ import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.SheetTag;
 import net.officefloor.hq.app.claim.SheetTagRepository;
+import net.officefloor.hq.app.role.Role;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -39,10 +41,12 @@ public class PersonService {
     private final SheetService sheetService;
     private final SheetTagRepository tags;
     private final PersonSnapshotRepository snapshots;
+    private final RoleService roles;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonAliasRepository aliases,
             SheetRepository sheets, Audit audit, RollupService rollup, SheetService sheetService,
-            SheetTagRepository tags, PersonSnapshotRepository snapshots) {
+            SheetTagRepository tags, PersonSnapshotRepository snapshots, RoleService roles) {
+        this.roles = roles;
         this.snapshots = snapshots;
         this.tags = tags;
         this.aliases = aliases;
@@ -270,6 +274,30 @@ public class PersonService {
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " from=" + fromDate);
         rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
+     * A steward flags the person with the reason until the date, inclusive, replacing any flag they had. Refused for
+     * anyone else, a blank reason or no until-date.
+     */
+    @Transactional
+    public Person flag(String sheetId, String user, Long id, String reason, LocalDate until) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new FlagForbiddenException(sheetId, user);
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new FlagRefusedException("A flag of " + person.getName() + " needs a reason");
+        }
+        if (until == null) {
+            throw new FlagRefusedException("A flag of " + person.getName() + " needs an until-date");
+        }
+        person.flag(reason, until);
+        Person saved = save(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " reason=" + reason.trim() + " until=" + until);
         return saved;
     }
 

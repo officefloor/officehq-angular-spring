@@ -83,6 +83,14 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonRetirement> retirements = new ArrayList<>();
 
+    /** The reason of the person's flag; null when they have never been flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day, inclusive, the person's flag is in force; null when they have never been flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** The sheet the person was transferred from; null when they were not transferred here. */
     @Column(name = "origin_sheet")
     private String originSheet;
@@ -315,6 +323,17 @@ public class Person {
         return retiredFrom != null && date != null && !date.isBefore(retiredFrom);
     }
 
+    /** Flag the person with the reason until the date, inclusive, replacing any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason.trim();
+        this.flagUntil = until;
+    }
+
+    /** The reason of the person's flag while it is in force on the date (on or before its until-date); else null. */
+    public String flagOn(LocalDate date) {
+        return flagReason != null && flagUntil != null && date != null && !date.isAfter(flagUntil) ? flagReason : null;
+    }
+
     /** Whether the person has any hold. */
     public boolean isHeld() {
         return !holds.isEmpty();
@@ -389,6 +408,8 @@ public class Person {
         copy.retiredOn = retiredOn;
         copy.addedOn = addedOn;
         copy.originSheet = originSheet;
+        copy.flagReason = flagReason;
+        copy.flagUntil = flagUntil;
         copy.position = position;
         holds.forEach(h -> copy.holds.add(new PersonHold(h.getFromDate(), h.getToDate(), h.getMadeOn())));
         retirements.forEach(r -> copy.retirements.add(new PersonRetirement(r.getFromDate(), r.getToDate())));

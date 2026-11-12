@@ -50,7 +50,7 @@ public class PersonController {
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
-            List<String> snapshotLines, List<String> statementLines) {
+            List<String> snapshotLines, List<String> statementLines, String flag) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
                 boolean watched, List<String> aliases, Set<String> keysInTree, List<String> snapshotLines) {
@@ -64,7 +64,7 @@ public class PersonController {
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     watched, aliases, PersonService.clashing(person, aliases, keysInTree), person.getOriginSheet(),
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
-                    snapshotLines, statements.lines());
+                    snapshotLines, statements.lines(), person.flagOn(today));
         }
     }
 
@@ -127,6 +127,10 @@ public class PersonController {
 
     /** The id of the sheet to transfer to. */
     public record TransferRequest(@NotBlank @Size(max = 100) String to) {
+    }
+
+    /** The reason to flag the person for, and the last day (inclusive) the flag is in force. */
+    public record FlagRequest(@Size(max = 200) String reason, LocalDate until) {
     }
 
     /** Whether the signed-in user is to watch the person. */
@@ -283,6 +287,15 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody HoldRequest request) {
         return view(service.hold(sheetId.trim(), user.trim(), id, request.from(), request.to()), user.trim());
+    }
+
+    /** Flag the person with a reason until a date (a steward only). */
+    @PostMapping("/{id}/flag")
+    public PersonView flag(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid FlagRequest request) {
+        return view(service.flag(sheetId.trim(), user.trim(), id, request.reason(), request.until()), user.trim());
     }
 
     /** Name another person on the sheet as the person's patron. */
