@@ -80,7 +80,7 @@ public class ClaimService {
         refuseCorrection(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.take(sheetId);
         int terms = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
-                .termsFor(person.gradeOn(on));
+                .termsFor(person.gradeOn(on), on);
         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
         logStatus(claim, person, user);
@@ -455,14 +455,14 @@ public class ClaimService {
         return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, figure);
     }
 
-    /** The claim's amount at the rate in force on its date of its person's grade in force then in force on its date, at least the sheet's floor
+    /** The claim's amount at the rate in force on its date of its person's grade in force then, at least the sheet's floor in force then
      *  (a correction has none); none when no rate applies. */
     private BigDecimal liveDue(Claim claim, Person person) {
         Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
         RoundingMode rounding = sheet.rounding(roundingDate(claim));
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(rate -> claim.isCorrection() ? due(claim.getAmount(), rate, rounding)
-                        : sheet.floored(due(claim.getAmount(), rate, rounding)))
+                        : sheet.floored(due(claim.getAmount(), rate, rounding), claim.getDate()))
                 .orElse(null);
     }
 

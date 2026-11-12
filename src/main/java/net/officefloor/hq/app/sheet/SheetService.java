@@ -58,71 +58,62 @@ public class SheetService {
         return sheet;
     }
 
-    /** Change the sheet's clerk limit: the largest due a clerk may settle; none for no limit. */
+    /** Record the sheet's clerk limit from a date (none: the sheet's today): the largest due a clerk may
+     *  settle; none for no limit. */
     @Transactional
-    public Sheet setClerkLimit(String id, String user, BigDecimal limit) {
-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
-        sheet.setClerkLimit(limit == null ? null : limit.setScale(2));
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=clerk-limit value="
-                + (sheet.getClerkLimit() == null ? "" : sheet.getClerkLimit().toPlainString()));
-        return sheet;
+    public Sheet setClerkLimit(String id, String user, BigDecimal limit, LocalDate from) {
+        return setDated(id, user, Sheet.CLERK_LIMIT, limit == null ? null : limit.setScale(2).toPlainString(), from,
+                false);
     }
 
-    /** Change the sheet's floor: the least a claim's live due can be, recording the figures it moves. */
+    /** Record the sheet's floor from a date (none: the sheet's today): the least a claim's live due can be,
+     *  recording the figures it moves. */
     @Transactional
-    public Sheet setFloor(String id, String user, BigDecimal floor) {
-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
-        Rollup.Snapshot before = rollup.take(id);
-        sheet.setFloor(floor.setScale(2));
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=floor value="
-                + sheet.getFloor().toPlainString());
-        rollup.recordChanges(id, user, before);
-        return sheet;
+    public Sheet setFloor(String id, String user, BigDecimal floor, LocalDate from) {
+        return setDated(id, user, Sheet.FLOOR, floor.setScale(2).toPlainString(), from, true);
     }
 
-    /** Change the sheet's cap: the most a person's due-total can be (none: no cap), recording the figures
-     *  it moves. */
+    /** Record the sheet's cap from a date (none: the sheet's today): the most a person's due-total can be
+     *  (none: no cap), recording the figures it moves. */
     @Transactional
-    public Sheet setCap(String id, String user, BigDecimal cap) {
-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
-        Rollup.Snapshot before = rollup.take(id);
-        sheet.setCap(cap == null ? null : cap.setScale(2));
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=cap value="
-                + (sheet.getCap() == null ? "" : sheet.getCap().toPlainString()));
-        rollup.recordChanges(id, user, before);
-        return sheet;
+    public Sheet setCap(String id, String user, BigDecimal cap, LocalDate from) {
+        return setDated(id, user, Sheet.CAP, cap == null ? null : cap.setScale(2).toPlainString(), from, true);
     }
 
-    /** Change the sheet's terms: the number of days after a claim's date it is due by, for a claim added
-     *  later whose grade has no terms of its own. A claim already added keeps its due-by. */
+    /** Record the sheet's terms from a date (none: the sheet's today): the number of days after a claim's
+     *  date it is due by, for a claim added later dated then whose grade has no terms of its own. A claim
+     *  already added keeps its due-by. */
     @Transactional
-    public Sheet setTerms(String id, String user, int terms) {
-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
-        sheet.setTerms(terms);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
-        return sheet;
+    public Sheet setTerms(String id, String user, int terms, LocalDate from) {
+        return setDated(id, user, Sheet.TERMS, Integer.toString(terms), from, false);
     }
 
-    /** Change a grade's own terms (none: it uses the sheet's terms), for a claim added later. A claim already
-     *  added keeps its due-by. */
+    /** Record a grade's own terms from a date (none: the sheet's today; no terms: it uses the sheet's
+     *  terms), for a claim added later. A claim already added keeps its due-by. */
     @Transactional
-    public Sheet setGradeTerms(String id, String user, String grade, Integer terms) {
-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
-        sheet.setGradeTerms(grade, terms);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms-" + grade + " value="
-                + (terms == null ? "" : terms.toString()));
-        return sheet;
+    public Sheet setGradeTerms(String id, String user, String grade, Integer terms, LocalDate from) {
+        return setDated(id, user, Sheet.TERMS + "-" + grade, terms == null ? null : terms.toString(), from, false);
     }
 
-    /** Change the sheet's late percent, recording the figures it moves. */
+    /** Record the sheet's late percent from a date (none: the sheet's today), recording the figures it
+     *  moves. */
     @Transactional
-    public Sheet setLatePct(String id, String user, BigDecimal latePct) {
+    public Sheet setLatePct(String id, String user, BigDecimal latePct, LocalDate from) {
+        return setDated(id, user, Sheet.LATE_PCT, latePct.setScale(2).toPlainString(), from, true);
+    }
+
+    /** Record a dated setting's value (none: blank) from a date, the sheet's today when none is given,
+     *  replacing one already from that date; when it can move figures, record those that moved. */
+    private Sheet setDated(String id, String user, String key, String value, LocalDate from, boolean movesFigures) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
-        Rollup.Snapshot before = rollup.take(id);
-        sheet.setLatePct(latePct.setScale(2));
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=late-pct value="
-                + sheet.getLatePct().toPlainString());
-        rollup.recordChanges(id, user, before);
+        Rollup.Snapshot before = movesFigures ? rollup.take(id) : null;
+        sheet.setSetting(key, from == null ? sheet.getToday() : from, value);
+        sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value="
+                + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
+        if (movesFigures) {
+            rollup.recordChanges(id, user, before);
+        }
         return sheet;
     }
 

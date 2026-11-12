@@ -210,9 +210,10 @@ public class Rollup {
                 .findFirst().map(Claim::getDate).orElse(claim.getDate());
     }
 
-    /** A live due as it counts: at least the sheet's floor, unless its claim is a correction. */
+    /** A live due as it counts: at least the sheet's floor in force on its claim's date, unless its claim is
+     *  a correction. */
     private static BigDecimal floored(Optional<Sheet> sheet, Claim claim, BigDecimal due) {
-        return claim.isCorrection() ? due : sheet.map(s -> s.floored(due)).orElse(due);
+        return claim.isCorrection() ? due : sheet.map(s -> s.floored(due, claim.getDate())).orElse(due);
     }
 
     /** A figure with its late charge on top while its claim is OPEN or PENDING (only those go overdue); a

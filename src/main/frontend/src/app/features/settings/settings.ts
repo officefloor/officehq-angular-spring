@@ -3,7 +3,9 @@ import { GRADES } from '../../core/people';
 import { ROLES, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
-// The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
+// The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the terms, each grade's
+// terms and the late percent) are saved from a from-date (blank for the sheet's today), keeping the values
+// already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
 // floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the terms (the days after a claim's date it is due by, fixed
 // when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), the
 // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
@@ -26,6 +28,13 @@ import { Session } from '../../core/session';
           (input)="limit.set(value($event)); limitTouched.set(true); error.set(null)"
           (focus)="focused.set('limit')"
         />
+        <label for="setting-clerk-limit-from">Clerk limit from (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="setting-clerk-limit-from"
+          data-testid="setting-clerk-limit-from"
+          [value]="fromOf('clerk-limit')"
+          (input)="setFrom('clerk-limit', value($event))"
+        />
         <p>In force: <strong data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</strong></p>
         <label for="setting-floor">Floor (the least a live due can be)</label>
         <input
@@ -34,6 +43,13 @@ import { Session } from '../../core/session';
           inputmode="decimal"
           [value]="floor()"
           (input)="floor.set(value($event)); floorTouched.set(true); error.set(null)"
+        />
+        <label for="setting-floor-from">Floor from (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="setting-floor-from"
+          data-testid="setting-floor-from"
+          [value]="fromOf('floor')"
+          (input)="setFrom('floor', value($event))"
         />
         <p>In force: <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
         <label for="setting-cap">Cap (the most a person's due-total can be; blank for none)</label>
@@ -47,6 +63,13 @@ import { Session } from '../../core/session';
           (keydown.delete)="capTouched.set(true); error.set(null)"
           (keydown.backspace)="capTouched.set(true); error.set(null)"
         />
+        <label for="setting-cap-from">Cap from (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="setting-cap-from"
+          data-testid="setting-cap-from"
+          [value]="fromOf('cap')"
+          (input)="setFrom('cap', value($event))"
+        />
         <p>In force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
         <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
         <input
@@ -55,6 +78,13 @@ import { Session } from '../../core/session';
           inputmode="numeric"
           [value]="terms()"
           (input)="terms.set(value($event)); termsTouched.set(true); error.set(null)"
+        />
+        <label for="setting-terms-from">Terms from (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="setting-terms-from"
+          data-testid="setting-terms-from"
+          [value]="fromOf('terms')"
+          (input)="setFrom('terms', value($event))"
         />
         <p>In force: <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
         @for (g of grades; track g) {
@@ -69,6 +99,13 @@ import { Session } from '../../core/session';
             (keydown.delete)="touchGradeTerms(g)"
             (keydown.backspace)="touchGradeTerms(g)"
           />
+          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from (YYYY-MM-DD; blank for the sheet's today)</label>
+          <input
+            [id]="'setting-terms-' + g + '-from'"
+            [attr.data-testid]="'setting-terms-' + g + '-from'"
+            [value]="fromOf('terms-' + g)"
+            (input)="setFrom('terms-' + g, value($event))"
+          />
           <p>In force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.gradeTerms()[g] ?? '' }}</strong></p>
         }
         <label for="setting-late-pct">Late percent (of an overdue claim's figure, per full 30 days)</label>
@@ -78,6 +115,13 @@ import { Session } from '../../core/session';
           inputmode="decimal"
           [value]="latePct()"
           (input)="latePct.set(value($event)); latePctTouched.set(true); error.set(null)"
+        />
+        <label for="setting-late-pct-from">Late percent from (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="setting-late-pct-from"
+          data-testid="setting-late-pct-from"
+          [value]="fromOf('late-pct')"
+          (input)="setFrom('late-pct', value($event))"
         />
         <p>In force: <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
         <label for="setting-policy-date">Policy date (YYYY-MM-DD; blank for the sheet's today)</label>
@@ -163,6 +207,8 @@ export class SettingsPanel {
   protected readonly gradeTermsTouched = signal<ReadonlySet<string>>(new Set());
   protected readonly latePct = signal('');
   protected readonly latePctTouched = signal(false);
+  /** The from-date typed for each dated setting (blank: the sheet's today). */
+  protected readonly froms = signal<Record<string, string>>({});
   protected readonly policyDate = signal('');
   protected readonly policyDateTouched = signal(false);
   protected readonly numberingFrom = signal('');
@@ -176,6 +222,15 @@ export class SettingsPanel {
   protected readonly role = signal('');
   protected readonly roleError = signal<string | null>(null);
   protected readonly settingRole = signal(false);
+
+  protected fromOf(key: string): string {
+    return this.froms()[key] ?? '';
+  }
+
+  protected setFrom(key: string, from: string): void {
+    this.froms.update((f) => ({ ...f, [key]: from }));
+    this.error.set(null);
+  }
 
   protected setGradeTerms(grade: string, terms: string): void {
     this.gradeTerms.update((t) => ({ ...t, [grade]: terms }));
@@ -218,12 +273,12 @@ export class SettingsPanel {
         || (guess && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
       const limit = this.limitTouched() || pick === 'limit' || (guess && !cap && !policyDate && !numberingFrom)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
-      const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
-        ?? (floor ? await this.session.setFloor(this.floor()) : null)
-        ?? (cap ? await this.session.setCap(this.cap()) : null)
-        ?? (terms ? await this.session.setTerms(this.terms()) : null)
+      const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
+        ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
+        ?? (cap ? await this.session.setCap(this.cap(), this.fromOf('cap')) : null)
+        ?? (terms ? await this.session.setTerms(this.terms(), this.fromOf('terms')) : null)
         ?? (await this.saveGradeTerms())
-        ?? (latePct ? await this.session.setLatePct(this.latePct()) : null)
+        ?? (latePct ? await this.session.setLatePct(this.latePct(), this.fromOf('late-pct')) : null)
         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null);
       if (err) this.error.set(err);
@@ -238,6 +293,7 @@ export class SettingsPanel {
         this.termsTouched.set(false);
         this.gradeTerms.set({});
         this.gradeTermsTouched.set(new Set());
+        this.froms.set({});
         this.latePct.set('');
         this.latePctTouched.set(false);
         this.policyDate.set('');
@@ -255,7 +311,7 @@ export class SettingsPanel {
   private async saveGradeTerms(): Promise<string | null> {
     for (const g of this.grades) {
       if (!this.gradeTermsTouched().has(g)) continue;
-      const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '');
+      const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '', this.fromOf('terms-' + g));
       if (err) return err;
     }
     return null;

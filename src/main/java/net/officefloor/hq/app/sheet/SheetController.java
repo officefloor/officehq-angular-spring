@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,9 +29,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap). */
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap).
+     *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
+     *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
-            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
+            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+            List<SettingView> settings) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -38,32 +42,50 @@ public class SheetController {
                     sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
                     sheet.getPeriodNumberingFrom(), sheet.getGradeTerms(),
-                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
+                    sheet.getSettings().stream().map(SettingView::of).toList());
         }
     }
 
-    /** The sheet's settings; a missing clerk limit means no limit. */
-    public record SettingsRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal clerkLimit) {
+    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, clerk-limit or cap)
+     *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
+    public record SettingView(String key, LocalDate from, String value) {
+
+        static SettingView of(SheetSetting setting) {
+            return new SettingView(setting.getKey(), setting.getFromDate(), setting.getValue());
+        }
     }
 
-    /** The sheet's floor: the least a claim's live due can be. */
-    public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal floor) {
+    /** The sheet's clerk limit from a date; a missing limit means no limit, a missing date the sheet's today. */
+    public record SettingsRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal clerkLimit,
+            LocalDate from) {
     }
 
-    /** The sheet's cap: the most a person's due-total can be; a missing one means no cap. */
-    public record CapRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal cap) {
+    /** The sheet's floor from a date (missing: the sheet's today): the least a claim's live due can be. */
+    public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal floor,
+            LocalDate from) {
     }
 
-    /** The sheet's terms: the number of days after a claim's date it is due by. */
-    public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer terms) {
+    /** The sheet's cap from a date (missing: the sheet's today): the most a person's due-total can be; a
+     *  missing one means no cap. */
+    public record CapRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal cap,
+            LocalDate from) {
     }
 
-    /** A grade's own terms; a missing one means the grade uses the sheet's terms. */
-    public record GradeTermsRequest(@Min(0) @Max(36500) Integer terms) {
+    /** The sheet's terms from a date (missing: the sheet's today): the number of days after a claim's date it
+     *  is due by. */
+    public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer terms, LocalDate from) {
     }
 
-    /** The sheet's late percent: what an overdue claim's due gains of its figure for every full 30 days. */
-    public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal latePct) {
+    /** A grade's own terms from a date (missing: the sheet's today); missing terms mean the grade uses the
+     *  sheet's terms. */
+    public record GradeTermsRequest(@Min(0) @Max(36500) Integer terms, LocalDate from) {
+    }
+
+    /** The sheet's late percent from a date (missing: the sheet's today): what an overdue claim's due gains of
+     *  its figure for every full 30 days. */
+    public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal latePct,
+            LocalDate from) {
     }
 
     /** The sheet's policy date; a missing one means the sheet's today. */
@@ -103,7 +125,7 @@ public class SheetController {
     public SheetView setSettings(@PathVariable @NotBlank @Size(max = 200) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid SettingsRequest request) {
-        return SheetView.of(service.setClerkLimit(id.trim(), user.trim(), request.clerkLimit()));
+        return SheetView.of(service.setClerkLimit(id.trim(), user.trim(), request.clerkLimit(), request.from()));
     }
 
     /** Change the sheet's floor. */
@@ -111,7 +133,7 @@ public class SheetController {
     public SheetView setFloor(@PathVariable @NotBlank @Size(max = 200) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid FloorRequest request) {
-        return SheetView.of(service.setFloor(id.trim(), user.trim(), request.floor()));
+        return SheetView.of(service.setFloor(id.trim(), user.trim(), request.floor(), request.from()));
     }
 
     /** Change the sheet's cap. */
@@ -119,7 +141,7 @@ public class SheetController {
     public SheetView setCap(@PathVariable @NotBlank @Size(max = 200) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid CapRequest request) {
-        return SheetView.of(service.setCap(id.trim(), user.trim(), request.cap()));
+        return SheetView.of(service.setCap(id.trim(), user.trim(), request.cap(), request.from()));
     }
 
     /** Change the sheet's terms. */
@@ -127,7 +149,7 @@ public class SheetController {
     public SheetView setTerms(@PathVariable @NotBlank @Size(max = 200) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid TermsRequest request) {
-        return SheetView.of(service.setTerms(id.trim(), user.trim(), request.terms()));
+        return SheetView.of(service.setTerms(id.trim(), user.trim(), request.terms(), request.from()));
     }
 
     /** Change a grade's own terms. */
@@ -136,7 +158,7 @@ public class SheetController {
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GradeTermsRequest request) {
-        return SheetView.of(service.setGradeTerms(id.trim(), user.trim(), grade, request.terms()));
+        return SheetView.of(service.setGradeTerms(id.trim(), user.trim(), grade, request.terms(), request.from()));
     }
 
     /** Change the sheet's late percent. */
@@ -144,7 +166,7 @@ public class SheetController {
     public SheetView setLatePct(@PathVariable @NotBlank @Size(max = 200) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid LatePctRequest request) {
-        return SheetView.of(service.setLatePct(id.trim(), user.trim(), request.latePct()));
+        return SheetView.of(service.setLatePct(id.trim(), user.trim(), request.latePct(), request.from()));
     }
 
     /** Change the sheet's policy date. */

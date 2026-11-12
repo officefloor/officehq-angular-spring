@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 export interface SheetView {
@@ -21,7 +21,20 @@ export interface SheetView {
   gradeTerms: Record<string, number>;
   /** The most a person's due-total can be, two decimals; null when there is no cap. */
   cap: string | null;
+  /** Every value recorded for a dated setting, by key then from-date. */
+  settings: DatedSetting[];
 }
+
+/** A value a dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit or cap) takes from a date
+ *  on; null for no limit, no cap, or a grade using the sheet's terms. */
+export interface DatedSetting {
+  key: string;
+  from: string;
+  value: string | null;
+}
+
+/** What the floor, the late percent and the terms are before every from-date. */
+const STARTING: Record<string, string> = { floor: '1.00', 'late-pct': '0.00', terms: '14' };
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
 // server carries the user's name in the X-User header.
@@ -33,20 +46,31 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The sheet's today (YYYY-MM-DD): every date decision and default date uses it, never the clock. */
   readonly today = signal<string | null>(null);
-  /** The sheet's clerk limit (two decimals); null when there is none. */
-  readonly clerkLimit = signal<string | null>(null);
-  /** The sheet's floor (two decimals): the least a claim's live due can be. */
-  readonly floor = signal<string>('1.00');
-  /** The sheet's cap (two decimals): the most a person's due-total can be; null when there is none. */
-  readonly cap = signal<string | null>(null);
-  /** The sheet's terms: the number of days after a claim's date it is due by. */
-  readonly terms = signal<number>(14);
-  /** The terms of each grade that has its own (a claim added for it is due that many days after its date);
-   *  a grade without uses the sheet's terms. */
-  readonly gradeTerms = signal<Record<string, number>>({});
-  /** The sheet's late percent (two decimals): what an overdue claim's due gains of its figure for every
-   *  full 30 days it is overdue. */
-  readonly latePct = signal<string>('0.00');
+  /** Every value recorded for the sheet's dated settings, each from a date. */
+  readonly settings = signal<DatedSetting[]>([]);
+  /** The sheet's clerk limit (two decimals) in force on its today; null when there is none. */
+  readonly clerkLimit = computed(() => this.onToday('clerk-limit'));
+  /** The sheet's floor (two decimals) in force on its today: the least a claim's live due can be. */
+  readonly floor = computed(() => this.onToday('floor') ?? STARTING['floor']);
+  /** The sheet's cap (two decimals) in force on its today: the most a person's due-total can be; null when
+   *  there is none. */
+  readonly cap = computed(() => this.onToday('cap'));
+  /** The sheet's terms in force on its today: the number of days after a claim's date it is due by. */
+  readonly terms = computed(() => Number(this.onToday('terms') ?? STARTING['terms']));
+  /** The terms of each grade that has its own in force on the sheet's today (a claim added for it is due
+   *  that many days after its date); a grade without uses the sheet's terms. */
+  readonly gradeTerms = computed(() => {
+    const out: Record<string, number> = {};
+    for (const key of new Set(this.settings().map((s) => s.key))) {
+      if (!key.startsWith('terms-')) continue;
+      const t = this.onToday(key);
+      if (t !== null) out[key.slice('terms-'.length)] = Number(t);
+    }
+    return out;
+  });
+  /** The sheet's late percent (two decimals) in force on its today: what an overdue claim's due gains of its
+   *  figure for every full 30 days it is overdue. */
+  readonly latePct = computed(() => this.onToday('late-pct') ?? STARTING['late-pct']);
   /** The sheet's policy date (YYYY-MM-DD); null when it is the sheet's today. A claim dated before it
    *  rounds half up, one dated on or after it half to even. */
   readonly policyDate = signal<string | null>(null);
@@ -74,12 +98,7 @@ export class Session {
       );
       this.sheetId.set(sheet.id);
       this.today.set(sheet.today);
-      this.clerkLimit.set(sheet.clerkLimit);
-      this.floor.set(sheet.floor);
-      this.cap.set(sheet.cap);
-      this.terms.set(sheet.terms);
-      this.gradeTerms.set(sheet.gradeTerms);
-      this.latePct.set(sheet.latePct);
+      this.settings.set(sheet.settings);
       this.policyDate.set(sheet.policyDate);
       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
       return null;
@@ -107,106 +126,142 @@ export class Session {
     }
   }
 
-  /** Change the sheet's clerk limit (blank: no limit); an error message when refused. */
-  async setClerkLimit(limit: string): Promise<string | null> {
+  /** Record the sheet's clerk limit (blank: no limit) from a date (blank: the sheet's today); an error message when refused. */
+  async setClerkLimit(limit: string, from = ''): Promise<string | null> {
     const user = this.user();
     const sid = this.sheetId();
     const l = limit.trim();
     if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
     if (l && !/^\d+(\.\d{1,2})?$/.test(l)) return 'Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.';
     try {
       const sheet = await firstValueFrom(
-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings`, { clerkLimit: l || null }, {
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings`, { clerkLimit: l || null, from: d || null }, {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.clerkLimit.set(sheet.clerkLimit);
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
   }
 
-  /** Change the sheet's floor; an error message when refused. */
-  async setFloor(floor: string): Promise<string | null> {
+  /** Record the sheet's floor from a date (blank: the sheet's today); an error message when refused. */
+  async setFloor(floor: string, from = ''): Promise<string | null> {
     const user = this.user();
     const sid = this.sheetId();
     const f = floor.trim();
     if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
     if (!/^\d+(\.\d{1,2})?$/.test(f)) return 'Enter a floor of 0.00 or more, with up to two decimals.';
     try {
       const sheet = await firstValueFrom(
-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/floor`, { floor: f }, {
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/floor`, { floor: f, from: d || null }, {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.floor.set(sheet.floor);
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
   }
 
-  /** Change the sheet's cap (blank: no cap); an error message when refused. */
-  async setCap(cap: string): Promise<string | null> {
+  /** Record the sheet's cap (blank: no cap) from a date (blank: the sheet's today); an error message when refused. */
+  async setCap(cap: string, from = ''): Promise<string | null> {
     const user = this.user();
     const sid = this.sheetId();
     const c = cap.trim();
     if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
     if (c && !/^\d+(\.\d{1,2})?$/.test(c)) return 'Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.';
     try {
       const sheet = await firstValueFrom(
-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/cap`, { cap: c || null }, {
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/cap`, { cap: c || null, from: d || null }, {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.cap.set(sheet.cap);
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
   }
 
-  /** Change the sheet's terms (whole days); an error message when refused. */
-  async setTerms(terms: string): Promise<string | null> {
+  /** Record the sheet's terms (whole days) from a date (blank: the sheet's today); an error message when refused. */
+  async setTerms(terms: string, from = ''): Promise<string | null> {
     const user = this.user();
     const sid = this.sheetId();
     const t = terms.trim();
     if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
     if (!/^\d{1,5}$/.test(t) || Number(t) > 36500) return 'Enter terms as a whole number of days, 0 or more.';
     try {
       const sheet = await firstValueFrom(
-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms`, { terms: Number(t) }, {
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms`, { terms: Number(t), from: d || null }, {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.terms.set(sheet.terms);
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
   }
 
-  /** Change a grade's own terms (whole days; blank: it uses the sheet's terms); an error message when
-   *  refused. */
-  async setGradeTerms(grade: string, terms: string): Promise<string | null> {
+  /** Record a grade's own terms (whole days; blank: it uses the sheet's terms) from a date (blank: the
+   *  sheet's today); an error message when refused. */
+  async setGradeTerms(grade: string, terms: string, from = ''): Promise<string | null> {
     const user = this.user();
     const sid = this.sheetId();
     const t = terms.trim();
     if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
     if (t && (!/^\d{1,5}$/.test(t) || Number(t) > 36500)) {
       return `Enter terms for grade ${grade} as a whole number of days, 0 or more, or leave it blank.`;
     }
     try {
       const sheet = await firstValueFrom(
         this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms/${encodeURIComponent(grade)}`,
-          { terms: t ? Number(t) : null }, { headers: { 'X-User': user } }),
+          { terms: t ? Number(t) : null, from: d || null }, { headers: { 'X-User': user } }),
       );
-      if (this.sheetId() === sheet.id) this.gradeTerms.set(sheet.gradeTerms);
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
+  }
+
+  /** The value of a dated setting in force on a date (YYYY-MM-DD): the one with the latest from-date on or
+   *  before it; null when none is recorded by then, or the one in force is none. */
+  valueOn(key: string, date: string): string | null {
+    let found: DatedSetting | undefined;
+    for (const s of this.settings()) {
+      if (s.key === key && s.from <= date && (found === undefined || s.from > found.from)) found = s;
+    }
+    return found?.value ?? null;
+  }
+
+  /** The floor (two decimals) in force on a date: the least a live due of a claim dated then can be. */
+  floorOn(date: string): string {
+    return this.valueOn('floor', date) ?? STARTING['floor'];
+  }
+
+  /** The late percent (two decimals) in force on a date: what an overdue claim dated then gains of its
+   *  figure for every full 30 days. */
+  latePctOn(date: string): string {
+    return this.valueOn('late-pct', date) ?? STARTING['late-pct'];
+  }
+
+  private onToday(key: string): string | null {
+    const today = this.today();
+    return today === null ? null : this.valueOn(key, today);
   }
 
   /** Whether a claim dated on a date rounds half up: it is before the policy date (the sheet's today when
@@ -255,20 +310,22 @@ export class Session {
     }
   }
 
-  /** Change the sheet's late percent; an error message when refused. */
-  async setLatePct(pct: string): Promise<string | null> {
+  /** Record the sheet's late percent from a date (blank: the sheet's today); an error message when refused. */
+  async setLatePct(pct: string, from = ''): Promise<string | null> {
     const user = this.user();
     const sid = this.sheetId();
     const p = pct.trim();
     if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
     if (!/^\d{1,7}(\.\d{1,2})?$/.test(p)) return 'Enter a late percent of 0.00 or more, with up to two decimals.';
     try {
       const sheet = await firstValueFrom(
-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/late-pct`, { latePct: p }, {
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/late-pct`, { latePct: p, from: d || null }, {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.latePct.set(sheet.latePct);
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

@@ -122,13 +122,13 @@ export class Claims {
   }
 
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, the sheet's late
-   *  percent of the figure for every full 30 days past its due-by, rounded to cents as its date rounds; none
+   *  percent in force on its date of the figure for every full 30 days past its due-by, rounded to cents as its date rounds; none
    *  otherwise, and none on a correction. Never bound by a statement; frozen into the due when settled. */
   lateCents(c: Claim, figureCents: bigint): bigint {
     const today = this.session.today();
     if (!this.overdue(c) || today === null || c.amount.startsWith('-')) return 0n;
     const periods = BigInt(Math.floor(daysBetween(this.dueBy(c), today) / 30));
-    return rounded(figureCents * hundredths(this.session.latePct()) * periods, 10000n, this.session.roundsHalfUp(c.date));
+    return rounded(figureCents * hundredths(this.session.latePctOn(c.date)) * periods, 10000n, this.session.roundsHalfUp(c.date));
   }
 
   /** The date a claim's figures round by: its own, or for a correction the date of the claim of the same
