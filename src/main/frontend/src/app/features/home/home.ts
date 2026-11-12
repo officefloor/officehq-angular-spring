@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { Claims } from '../../core/claims';
 import { People } from '../../core/people';
 import { Session } from '../../core/session';
 import { PeopleList } from '../people/people';
@@ -66,6 +67,7 @@ import { PeopleList } from '../people/people';
 export class Home {
   protected readonly session = inject(Session);
   private readonly people = inject(People);
+  private readonly claims = inject(Claims);
   protected readonly nameInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetInput = signal('');
@@ -91,7 +93,9 @@ export class Home {
     this.loading.set(true);
     try {
       this.sheetError.set(
-        (await this.session.loadSheet(this.sheetInput())) ?? (await this.people.load()),
+        (await this.session.loadSheet(this.sheetInput())) ??
+          (await Promise.all([this.people.load(), this.claims.load()])).find((err) => err !== null) ??
+          null,
       );
     } finally {
       this.loading.set(false);

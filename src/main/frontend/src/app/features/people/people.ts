@@ -1,10 +1,13 @@
 import { Component, inject, signal } from '@angular/core';
+import { Claims } from '../../core/claims';
 import { GRADES, People, Person } from '../../core/people';
+import { PersonClaims } from '../claims/claims';
 
 // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
-// list shows everyone in the order they were added.
+// list shows everyone in the order they were added, each with their claims.
 @Component({
   selector: 'app-people',
+  imports: [PersonClaims],
   template: `
     <section aria-label="People" data-testid="people">
       <h2>People</h2>
@@ -37,15 +40,18 @@ import { GRADES, People, Person } from '../../core/people';
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
         }
       </form>
+      <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claims.total() }}</strong></p>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people.people(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
+              <td><app-person-claims [personId]="p.id" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -60,6 +66,7 @@ import { GRADES, People, Person } from '../../core/people';
 })
 export class PeopleList {
   protected readonly people = inject(People);
+  protected readonly claims = inject(Claims);
   protected readonly grades = GRADES;
   protected readonly name = signal('');
   protected readonly grade = signal<string>('A');
