@@ -206,7 +206,7 @@ public class ClaimService {
         }
         if (to == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
-            BigDecimal due = figure == null ? null : charged(claim, figure);
+            BigDecimal due = figure == null ? null : charged(claim, person, figure);
             refuseUnproved(claim, due);
             if (overLimit(sheetId, user, due)) {
                 to = ClaimStatus.PENDING;
@@ -253,7 +253,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         BigDecimal figure = liveDue(claim, person);
-        BigDecimal due = figure == null ? null : charged(claim, figure);
+        BigDecimal due = figure == null ? null : charged(claim, person, figure);
         refuseUnproved(claim, due);
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
@@ -323,9 +323,9 @@ public class ClaimService {
         BigDecimal due = null;
         if (figure != null) {
             Sheet sheet = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+            LocalDate lateFrom = sheet.lateFrom(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate());
             due = claim.isCorrection() ? figure
-                    : sheet.floored(figure.add(sheet.lateCharge(figure, claim.getDueBy(), claim.getDate())),
-                            claim.getDate());
+                    : sheet.floored(figure.add(sheet.lateCharge(figure, lateFrom, claim.getDate())), claim.getDate());
         }
         claim.setSettledDue(due);
         logStatus(claim, person, user);
@@ -590,7 +590,7 @@ public class ClaimService {
             }
             BigDecimal due = due(claim, person);
             if (due != null) {
-                total = total.add(charged(claim, due));
+                total = total.add(charged(claim, person, due));
                 figure = true;
             }
             claim.setStated(true, due);
@@ -648,7 +648,7 @@ public class ClaimService {
                     : Rollup.inForce(ratesThen, then.gradeOn(claim.getDate()), claim.getDate())
                             .map(rate -> Rollup.rated(onDate, claim, claimsThen, rate)).orElse(null);
             if (due != null) {
-                total = total.add(Rollup.charged(onDate, claim, due));
+                total = total.add(Rollup.charged(onDate, claim, then, due));
                 figure = true;
             }
             figures.put(claim.getId(), due);
@@ -804,13 +804,13 @@ public class ClaimService {
             return claim.getSettledDue();
         }
         BigDecimal figure = due(claim, person);
-        return figure == null ? null : charged(claim, figure);
+        return figure == null ? null : charged(claim, person, figure);
     }
 
     /** A claim's due from its figure: its late charge on the sheet's today on top while it is OPEN or
      *  PENDING, then at least the floor in force on its date (a correction has neither). */
-    private BigDecimal charged(Claim claim, BigDecimal figure) {
-        return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, figure);
+    private BigDecimal charged(Claim claim, Person person, BigDecimal figure) {
+        return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, person, figure);
     }
 
     /** The claim's rate figure: its amount at the rate in force on its date of its person's grade in force

@@ -169,6 +169,15 @@ public class SheetService {
         return setDated(id, user, Sheet.TERMS + "-" + grade, terms == null ? null : terms.toString(), from, false);
     }
 
+    /** Record a grade's grace days from a date (none: the sheet's today; no days: the grade has none): a
+     *  claim whose person's grade in force on its date has grace days in force then is overdue only once its
+     *  due-by plus them is before the sheet's today, its late charge counted from there; recording the figures
+     *  it moves. A claim's due-by stays as it is. */
+    @Transactional
+    public Sheet setGradeGrace(String id, String user, String grade, Integer days, LocalDate from) {
+        return setDated(id, user, Sheet.GRACE + "-" + grade, days == null ? null : days.toString(), from, true);
+    }
+
     /** Record the sheet's late percent from a date (none: the sheet's today), recording the figures it
      *  moves. */
     @Transactional

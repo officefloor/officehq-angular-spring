@@ -84,7 +84,7 @@ public class Rollup {
                 BigDecimal figure = null;
                 if (kept != null) {
                     keptFigure = true;
-                    figure = charged(sheet, claim, kept);
+                    figure = charged(sheet, claim, person, kept);
                 } else if (!claim.isBound()) {
                     // a claim priced at the grade in force on its date keeps a figure too
                     BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
@@ -92,12 +92,12 @@ public class Rollup {
                             .orElse(null);
                     if (live != null) {
                         keptFigure = true;
-                        figure = charged(sheet, claim, live);
+                        figure = charged(sheet, claim, person, live);
                     }
                 }
                 if (figure != null) {
                     due = due.add(figure);
-                    if (overdue(claim, today)) {
+                    if (overdue(sheet, claim, person, today)) {
                         overdue = overdue.add(figure);
                     }
                 }
@@ -160,7 +160,7 @@ public class Rollup {
                         .orElse(null);
             }
             if (due != null) {
-                totals.merge(person.getId(), charged(sheet, claim, due), BigDecimal::add);
+                totals.merge(person.getId(), charged(sheet, claim, person, due), BigDecimal::add);
             }
         }
         return totals;
@@ -220,10 +220,18 @@ public class Rollup {
         return status != null && status.counts();
     }
 
-    /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */
-    private static boolean overdue(Claim claim, LocalDate today) {
+    /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by plus the grace days of its
+     *  person's grade in force on its date before the sheet's today. */
+    private static boolean overdue(Optional<Sheet> sheet, Claim claim, Person person, LocalDate today) {
         return claim.getStatus().isOpen() && !claim.deferredOn(today) && today != null && claim.getDueBy() != null
-                && claim.getDueBy().isBefore(today);
+                && lateFrom(sheet, claim, person).isBefore(today);
+    }
+
+    /** The date a claim's lateness runs from: its due-by plus the grace days in force on its date of its
+     *  person's grade in force then. */
+    public static LocalDate lateFrom(Optional<Sheet> sheet, Claim claim, Person person) {
+        String grade = person == null ? null : person.gradeOn(claim.getDate());
+        return sheet.map(s -> s.lateFrom(claim.getDueBy(), grade, claim.getDate())).orElse(claim.getDueBy());
     }
 
     /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by
@@ -257,12 +265,12 @@ public class Rollup {
      *  top while it is OPEN or PENDING (only those go overdue), then at least the sheet's floor in force on its
      *  date. A settled claim's due is frozen (it already holds the charge and floor fixed when it was
      *  settled); a correction has neither late charge nor floor. */
-    public static BigDecimal charged(Optional<Sheet> sheet, Claim claim, BigDecimal figure) {
+    public static BigDecimal charged(Optional<Sheet> sheet, Claim claim, Person person, BigDecimal figure) {
         if (claim.getSettledDue() != null || claim.isCorrection()) {
             return figure;
         }
         return sheet.map(s -> s.floored(claim.getStatus().isOpen()
-                ? figure.add(s.lateCharge(figure, claim.getDueBy(), claim.getDate())) : figure, claim.getDate()))
+                ? figure.add(s.lateCharge(figure, lateFrom(sheet, claim, person), claim.getDate())) : figure, claim.getDate()))
                 .orElse(figure);
     }
 

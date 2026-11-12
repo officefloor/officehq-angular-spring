@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { People, Person, heldOn, retiredBy } from './people';
+import { People, Person, gradeOn, heldOn, retiredBy } from './people';
 import { hundredths, rounded } from './rates';
 import { Session, addDays, daysBetween, isDate } from './session';
 
@@ -166,10 +166,19 @@ export class Claims {
     return c.dueBy;
   }
 
-  /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */
+  /** The date a claim's lateness runs from: its due-by plus the grace days in force on its date of its
+   *  person's grade in force then (none: the due-by). */
+  lateFrom(c: Claim): string {
+    const p = this.people.people().find((x) => x.id === c.personId);
+    const grace = p === undefined ? 0 : this.session.graceOn(gradeOn(p.grades, c.date), c.date);
+    return grace === 0 ? this.dueBy(c) : addDays(this.dueBy(c), grace);
+  }
+
+  /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by plus its grace (see
+   *  lateFrom) before the sheet's today. */
   overdue(c: Claim): boolean {
     const today = this.session.today();
-    return isOpen(c) && !this.deferred(c) && today !== null && this.dueBy(c) < today;
+    return isOpen(c) && !this.deferred(c) && today !== null && this.lateFrom(c) < today;
   }
 
   /** Whether a claim is deferred: OPEN, with a deferred-until date after the sheet's today. Until then it
@@ -180,18 +189,18 @@ export class Claims {
   }
 
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, for each full 30 days
-   *  past its due-by, the sheet's late percent in force on that boundary date (the due-by plus 30, 60, 90 ...
-   *  days) of the figure, rounded to cents as its date rounds, the charges added up; none otherwise, and none
+   *  past its due-by plus its grace (see lateFrom), the sheet's late percent in force on that boundary date
+   *  (that date plus 30, 60, 90 ... days) of the figure, rounded to cents as its date rounds, the charges added up; none otherwise, and none
    *  on a correction. Never bound by a statement; frozen into the due when settled. */
   lateCents(c: Claim, figureCents: bigint): bigint {
     const today = this.session.today();
     if (!this.overdue(c) || today === null || c.amount.startsWith('-')) return 0n;
-    const dueBy = this.dueBy(c);
-    const periods = Math.floor(daysBetween(dueBy, today) / 30);
+    const from = this.lateFrom(c);
+    const periods = Math.floor(daysBetween(from, today) / 30);
     const halfUp = this.session.roundsHalfUp(c.date);
     let total = 0n;
     for (let k = 1; k <= periods; k++) {
-      total += rounded(figureCents * hundredths(this.session.latePctOn(addDays(dueBy, 30 * k))), 10000n, halfUp);
+      total += rounded(figureCents * hundredths(this.session.latePctOn(addDays(from, 30 * k))), 10000n, halfUp);
     }
     return total;
   }

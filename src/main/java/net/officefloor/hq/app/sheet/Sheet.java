@@ -34,6 +34,7 @@ public class Sheet {
     public static final String FLOOR = "floor";
     public static final String LATE_PCT = "late-pct";
     public static final String TERMS = "terms";
+    public static final String GRACE = "grace";
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
@@ -65,7 +66,7 @@ public class Sheet {
     private int lastClaimNumber;
 
     /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
-     *  each grade's terms (terms-<grade>), the clerk limit, the cap, the proof threshold and the note threshold. */
+     *  each grade's terms (terms-<grade>), each grade's grace days (grace-<grade>), the clerk limit, the cap, the proof threshold and the note threshold. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<SheetSetting> settings = new ArrayList<>();
@@ -241,6 +242,20 @@ public class Sheet {
         return own != null ? own : termsOn(date);
     }
 
+    /** A grade's grace days on a date; none when it has none then (and for no grade). */
+    public Integer gradeGraceOn(String grade, LocalDate date) {
+        return grade == null ? null
+                : inForce(GRACE + "-" + grade, date).map(SheetSetting::getValue).map(Integer::valueOf).orElse(null);
+    }
+
+    /** The date a claim's lateness runs from: its due-by plus the grace days in force on its date of its
+     *  person's grade in force then (none: the due-by). It is overdue once this is before the sheet's today,
+     *  and its late charge's 30-day boundaries count from it. */
+    public LocalDate lateFrom(LocalDate dueBy, String grade, LocalDate date) {
+        Integer grace = gradeGraceOn(grade, date);
+        return grace == null ? dueBy : dueBy.plusDays(grace);
+    }
+
     /** The late percent on a date; 0.00 before every from-date. */
     public BigDecimal latePctOn(LocalDate date) {
         return decimalOn(LATE_PCT, date, START_LATE_PCT);
@@ -326,19 +341,20 @@ public class Sheet {
         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
-    /** The late charge on an overdue claim's figure: for each full 30 days past its due-by on the sheet's
-     *  today, the late percent in force on that boundary date (the due-by plus 30, 60, 90 ... days) of the
+    /** The late charge on an overdue claim's figure: for each full 30 days past the date its lateness runs
+     *  from (its due-by plus any grace, see lateFrom) on the sheet's today, the late percent in force on that
+     *  boundary date (that date plus 30, 60, 90 ... days) of the
      *  figure, rounded to cents as its date rounds, the charges added up (a boundary at 0.00 adds nothing);
      *  0.00 for no figure (n/a). Only an OPEN or PENDING claim is overdue, so the caller asks only for those. */
-    public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
+    public BigDecimal lateCharge(BigDecimal figure, LocalDate lateFrom, LocalDate date) {
         BigDecimal charge = BigDecimal.ZERO.setScale(2);
         if (figure == null) {
             return charge;
         }
-        long boundaries = ChronoUnit.DAYS.between(dueBy, today) / 30;
+        long boundaries = ChronoUnit.DAYS.between(lateFrom, today) / 30;
         RoundingMode rounding = rounding(date);
         for (long k = 1; k <= boundaries; k++) {
-            charge = charge.add(figure.multiply(latePctOn(dueBy.plusDays(30 * k))).movePointLeft(2)
+            charge = charge.add(figure.multiply(latePctOn(lateFrom.plusDays(30 * k))).movePointLeft(2)
                     .setScale(2, rounding));
         }
         return charge;

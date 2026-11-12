@@ -44,7 +44,7 @@ export interface SheetView {
  *  clerk and steward; reassign and reopen by steward. */
 export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 
-/** A value a dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold or note-threshold) takes from a date
+/** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold or note-threshold) takes from a date
  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
 export interface DatedSetting {
   key: string;
@@ -90,6 +90,16 @@ export class Session {
       if (!key.startsWith('terms-')) continue;
       const t = this.onToday(key);
       if (t !== null) out[key.slice('terms-'.length)] = Number(t);
+    }
+    return out;
+  });
+  /** The grace days of each grade that has some in force on the sheet's today; a grade without has none. */
+  readonly gradeGrace = computed(() => {
+    const out: Record<string, number> = {};
+    for (const key of new Set(this.settings().map((s) => s.key))) {
+      if (!key.startsWith('grace-')) continue;
+      const g = this.onToday(key);
+      if (g !== null) out[key.slice('grace-'.length)] = Number(g);
     }
     return out;
   });
@@ -354,6 +364,30 @@ export class Session {
     }
   }
 
+  /** Record a grade's grace days (whole days; blank: it has none) from a date (blank: the sheet's today); an
+   *  error message when refused. */
+  async setGradeGrace(grade: string, days: string, from = ''): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const t = days.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+    if (t && (!/^\d{1,5}$/.test(t) || Number(t) > 36500)) {
+      return `Enter grace days for grade ${grade} as a whole number, 0 or more, or leave it blank.`;
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/grace/${encodeURIComponent(grade)}`,
+          { graceDays: t ? Number(t) : null, from: d || null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
   /** The value of a dated setting in force on a date (YYYY-MM-DD): the one with the latest from-date on or
    *  before it; null when none is recorded by then, or the one in force is none. */
   valueOn(key: string, date: string): string | null {
@@ -367,6 +401,11 @@ export class Session {
   /** The floor (two decimals) in force on a date: the least a live due of a claim dated then can be. */
   floorOn(date: string): string {
     return this.valueOn('floor', date) ?? STARTING['floor'];
+  }
+
+  /** A grade's grace days in force on a date; 0 when it has none then. */
+  graceOn(grade: string, date: string): number {
+    return Number(this.valueOn('grace-' + grade, date) ?? 0);
   }
 
   /** The late percent (two decimals) in force on a date: what an overdue claim dated then gains of its

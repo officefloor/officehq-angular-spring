@@ -9,8 +9,9 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
 // the one in force on its date needs a proof to be settled or approved; blank for none), the note threshold (a claim whose due
 // is above the one in force on its date cannot be opened with an empty note; blank for none), the terms (the business days after a claim's date it is due by, fixed
-// when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), the
-// late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
+// when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), each grade's
+// grace days (a claim whose person's grade on its date has grace then is overdue, and its late charge counted, only
+// from its due-by plus them; blank for none), the late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
 // date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), the
 // period numbering from-date (while the sheet's today is on or after it, a claim opened is numbered within its
 // period; blank for off), the grace days (a today change closes each open period whose to-date plus these days
@@ -151,6 +152,27 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
             (input)="setFrom('terms-' + g, value($event))"
           />
           <p>In force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.gradeTerms()[g] ?? '' }}</strong></p>
+        }
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} (days past a claim's due-by before it is overdue; blank for none)</label>
+          <input
+            [id]="'setting-grace-' + g"
+            [attr.data-testid]="'setting-grace-' + g"
+            inputmode="numeric"
+            [value]="gradeGrace()[g] ?? ''"
+            (input)="setGradeGrace(g, value($event))"
+            (focus)="focused.set('grace-' + g)"
+            (keydown.delete)="touchGradeGrace(g)"
+            (keydown.backspace)="touchGradeGrace(g)"
+          />
+          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} from (YYYY-MM-DD; blank for the sheet's today)</label>
+          <input
+            [id]="'setting-grace-' + g + '-from'"
+            [attr.data-testid]="'setting-grace-' + g + '-from'"
+            [value]="fromOf('grace-' + g)"
+            (input)="setFrom('grace-' + g, value($event))"
+          />
+          <p>In force: <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ session.gradeGrace()[g] ?? '' }}</strong></p>
         }
         <label for="setting-late-pct">Late percent (of an overdue claim's figure, per full 30 days)</label>
         <input
@@ -322,6 +344,9 @@ export class SettingsPanel {
   /** What is typed for each grade's terms, and the grades typed into since the last save. */
   protected readonly gradeTerms = signal<Record<string, string>>({});
   protected readonly gradeTermsTouched = signal<ReadonlySet<string>>(new Set());
+  /** What is typed for each grade's grace days, and the grades typed into since the last save. */
+  protected readonly gradeGrace = signal<Record<string, string>>({});
+  protected readonly gradeGraceTouched = signal<ReadonlySet<string>>(new Set());
   protected readonly actions = PERMISSION_ACTIONS;
   /** What is typed for each action's roles, and the actions typed into since the last save. */
   protected readonly perms = signal<Record<string, string>>({});
@@ -372,6 +397,16 @@ export class SettingsPanel {
     this.error.set(null);
   }
 
+  protected setGradeGrace(grade: string, days: string): void {
+    this.gradeGrace.update((t) => ({ ...t, [grade]: days }));
+    this.touchGradeGrace(grade);
+  }
+
+  protected touchGradeGrace(grade: string): void {
+    this.gradeGraceTouched.update((t) => new Set([...t, grade]));
+    this.error.set(null);
+  }
+
   protected setPerm(action: string, roles: string): void {
     this.perms.update((p) => ({ ...p, [action]: roles }));
     this.touchPerm(action);
@@ -401,10 +436,13 @@ export class SettingsPanel {
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
         && !this.graceDaysTouched() && !this.entryDateTouched()
-        && this.gradeTermsTouched().size === 0 && this.permsTouched().size === 0;
+        && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
+        && this.permsTouched().size === 0;
       const pick = untouched ? this.focused() : null;
       if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
       if (pick?.startsWith('perm-')) this.touchPerm(pick.slice('perm-'.length));
+      const graceGrade = this.grades.find((g) => pick === 'grace-' + g);
+      if (graceGrade) this.touchGradeGrace(graceGrade);
       const guess = untouched && pick === null;
       const floor = this.floorTouched();
       const cap = this.capTouched() || pick === 'cap'
@@ -438,6 +476,7 @@ export class SettingsPanel {
           : null)
         ?? (terms ? await this.session.setTerms(this.terms(), this.fromOf('terms')) : null)
         ?? (await this.saveGradeTerms())
+        ?? (await this.saveGradeGrace())
         ?? (await this.savePerms())
         ?? (latePct ? await this.session.setLatePct(this.latePct(), this.fromOf('late-pct')) : null)
         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
@@ -460,6 +499,8 @@ export class SettingsPanel {
         this.termsTouched.set(false);
         this.gradeTerms.set({});
         this.gradeTermsTouched.set(new Set());
+        this.gradeGrace.set({});
+        this.gradeGraceTouched.set(new Set());
         this.perms.set({});
         this.permsTouched.set(new Set());
         this.froms.set({});
@@ -485,6 +526,16 @@ export class SettingsPanel {
     for (const g of this.grades) {
       if (!this.gradeTermsTouched().has(g)) continue;
       const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '', this.fromOf('terms-' + g));
+      if (err) return err;
+    }
+    return null;
+  }
+
+  /** Save the grace days of each grade typed into, in grade order; the first refusal stops the rest. */
+  private async saveGradeGrace(): Promise<string | null> {
+    for (const g of this.grades) {
+      if (!this.gradeGraceTouched().has(g)) continue;
+      const err = await this.session.setGradeGrace(g, this.gradeGrace()[g] ?? '', this.fromOf('grace-' + g));
       if (err) return err;
     }
     return null;
