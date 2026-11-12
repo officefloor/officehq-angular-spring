@@ -1,0 +1,74 @@
+{
+  "checkpoint": 236,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp236_deferred-bound-counts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    52,
+    54,
+    89,
+    160
+  ],
+  "replaced_tests": [
+    "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp54_viewer-role.spec.ts::viewer role scenario 2",
+    "cp89_claim-tags.spec.ts::claim tags scenario 3"
+  ],
+  "request": {
+    "spec": "A claim that a statement has bound and that is then deferred stays in the totals, counts and\ncan be settled while bound: the deferral takes effect only once the binding ends (the statement is\ncancelled, or the next statement leaves the claim unbound).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim that a statement has bound and that is then deferred stays in the totals, counts and\ncan be settled while bound: the deferral takes effect only once the binding ends (the statement is\ncancelled, or the next statement leaves the claim unbound).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a4f7d48d239b6e4cfffa4eca17c9ff860d6814b5",
+  "reset_sha": "",
+  "preagent_sha": "81ac8dbaec2592d0143f39a1ae07ab88cccc52c4",
+  "prev_sha": "81ac8dbaec2592d0143f39a1ae07ab88cccc52c4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7328254000000001,
+    "input_tokens": 28,
+    "output_tokens": 7355,
+    "cache_read_tokens": 568507,
+    "cache_creation_tokens": 58989,
+    "num_turns": 16,
+    "duration_ms": 317525,
+    "duration_api_ms": 75895,
+    "model": "claude-opus-5-5",
+    "session_id": "febfb584-8c1d-4c4b-92d0-08c23f5b7148",
+    "stop_reason": "success",
+    "result_text": "I made the change and `bin/e2e` passes: all 4 tests in the spec (the main \"deferred bound counts\" test and scenarios 1\u20133).\n\n**How it works now:** while a statement binds a claim, deferring it has no effect yet. The claim stays in the totals and counts, can still go overdue, can be settled, shows `claim-deferred` = `no`, and the next statement keeps it bound. Once the binding ends, because the statement is cancelled or the next statement leaves the claim unbound, the deferral starts if its date hasn't passed. From then the claim is out of the totals, isn't overdue and shows as deferred. That applies even if the claim was settled while it was bound, which is what the spec expects (its settled amount drops out of the totals).\n\n**What changed** (no database change was needed):\n- **Server:** `Claim.isDeferredOn` (in `Claim.java`) is the one check the totals, counts, overdue, late charge, settle and split rules all use. It is now false while the claim is bound, and covers SETTLED claims as well as OPEN ones. The \"as of an earlier date\" statement in `StatementService.takeAsOf` follows the same rule.\n- **Screen:** in `claims.ts`, `deferred()` (which the people view also uses) and the `claim-deferred` column follow the same rule.\n\nThere's one edge case I didn't test. A claim is now treated as deferred if it is SETTLED, unbound and still before its deferral date. Normally that only happens through the settle-while-bound path above. But moving the sheet's \"today\" back to a date before a claim's deferral end would also pull out a claim that was settled after its deferral had ended.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7328254000000001,
+        "num_turns": 16,
+        "duration_ms": 317525,
+        "duration_api_ms": 75895,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp236.agent.jsonl",
+  "agent_diff_file": "cp236.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

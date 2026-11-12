@@ -1,0 +1,73 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 8ca79fb66..a37bf513d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -152,11 +152,13 @@ export function counts(claim: Claim, today: string | null): boolean {
+ }
+ 
+ /**
+- * Whether the claim is deferred on the sheet's today: an OPEN claim deferred until a later date. It then counts in no
+- * total, is not overdue, cannot be settled and is left unbound by a statement.
++ * Whether the claim is deferred on the sheet's today: an OPEN claim deferred until a later date, and not bound by a
++ * statement. It then counts in no total, is not overdue, cannot be settled and is left unbound by a statement. While a
++ * statement binds it the deferral waits; once the binding ends it takes effect, on a claim settled meanwhile too.
+  */
+ export function deferred(claim: Claim, today: string | null): boolean {
+-  return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
++  return (claim.status === 'OPEN' || claim.status === 'SETTLED') && !bound(claim)
++    && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+ }
+ 
+ /**
+@@ -910,10 +912,13 @@ export class Claims implements OnInit {
+     return deferred(claim, this.session.today());
+   }
+ 
+-  /** Whether the claim's deferral has not yet ended on the sheet's today, whatever its status now. */
++  /**
++   * Whether the claim's deferral has not yet ended on the sheet's today, whatever its status now; it waits while a
++   * statement binds the claim.
++   */
+   protected deferralRunning(claim: Claim): boolean {
+     const today = this.session.today();
+-    return claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
++    return !bound(claim) && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+   }
+ 
+   /** The name of the period the claim's due-by falls in, or blank when none. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index bae709af5..3a9c74b74 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -346,11 +346,14 @@ public class Claim {
+     }
+ 
+     /**
+-     * Whether the claim is deferred on the date (the sheet's today): an OPEN claim deferred until a later date. It then
+-     * counts in no total, is not overdue, cannot be settled and is left unbound by a statement.
++     * Whether the claim is deferred on the date (the sheet's today): an OPEN claim deferred until a later date, and not
++     * bound by a statement. It then counts in no total, is not overdue, cannot be settled and is left unbound by a
++     * statement. While a statement binds it the deferral waits: it counts, and can be settled; once the binding ends the
++     * deferral takes effect, on a claim settled meanwhile too.
+      */
+     public boolean isDeferredOn(LocalDate today) {
+-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
++        return (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !isBound() && deferredUntil != null
++                && today != null && today.isBefore(deferredUntil);
+     }
+ 
+     public int getProofs() {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 8a6fc5312..15b7f5591 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -185,7 +185,8 @@ public class StatementService {
+             boolean bound = bindingsStood && claim.isStated();
+             boolean counts = status != null && status.counts()
+                     && !(status.isOpen() && !bound && person.retiredAsOf(asOf))
+-                    && !(status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
++                    && !((status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !bound
++                            && claim.getDeferredUntil() != null
+                             && asOf.isBefore(claim.getDeferredUntil()));
+             if (!counts) {
+                 claim.setStated(false, null);
