@@ -1,0 +1,120 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index df6de631f..2e0eba77f 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -20,10 +20,11 @@ export interface CrewTotal {
+   dueTotal: string;
+ }
+ 
+-/** What a crew needs to know of a person: their name. */
++/** What a crew needs to know of a person: their name, and their name as the screen shows it (with their grade). */
+ export interface CrewPerson {
+   id: number;
+   name: string;
++  shownName: string;
+ }
+ 
+ // The sheet's crews: each with its lead, its members and its due-total, the lead's and the members' due-totals added
+@@ -117,7 +118,7 @@ export class Crews {
+       id: crew.id,
+       name: crew.name,
+       leadId: crew.leadId,
+-      lead: crew.leadId === null ? '' : (byId.get(crew.leadId)?.name ?? ''),
++      lead: crew.leadId === null ? '' : (byId.get(crew.leadId)?.shownName ?? ''),
+       members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
+       dueTotal: sumDues(
+         [...(crew.leadId === null ? [] : [crew.leadId]), ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a'),
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1403c0e81..8e8f55004 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -386,7 +386,7 @@ function csvField(value: string): string {
+                   (change)="selectPerson(p.id, checked($event))"
+                 />
+               </td>
+-              <td data-testid="person-name">{{ p.name | fig }}</td>
++              <td data-testid="person-name">{{ shownName(p) | fig }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) | fig }}</td>
+               @if (columns.shows('terms')) {
+                 <td data-testid="person-terms">{{ p.terms ?? '' | fig }}</td>
+@@ -899,7 +899,7 @@ function csvField(value: string): string {
+     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
+     <app-pools #poolsView [people]="people()" />
+     <app-crews
+-      [people]="people()"
++      [people]="crewPeople()"
+       [dueTotals]="personDueTotals()"
+       (totals)="crewTotals.set($event)"
+       (changed)="poolsView.reread()"
+@@ -1563,6 +1563,16 @@ export class People {
+   }
+ 
+   /** The person's grade in force on the sheet's today. */
++  /** The person's name as the screen shows it: with the grade in force on the sheet's today. */
++  protected shownName(person: Person): string {
++    return `${person.name} (${this.gradeOf(person)})`;
++  }
++
++  /** The people as the crews know them: each with the name the screen shows for them. */
++  protected readonly crewPeople = computed(() =>
++    this.people().map((p) => ({ id: p.id, name: p.name, shownName: this.shownName(p) })),
++  );
++
+   protected gradeOf(person: Person): string {
+     const today = this.session.today();
+     return (today === null ? undefined : gradeOn(person.grades, today)) ?? person.grade;
+@@ -1695,7 +1705,7 @@ export class People {
+   protected patronsOf(person: Person): string {
+     return this.patronsListOf(person)
+       .sort((a, b) => a.patron.name.localeCompare(b.patron.name))
+-      .map((p) => `${p.patron.name} ${p.share}`)
++      .map((p) => `${this.shownName(p.patron)} ${p.share}`)
+       .join(', ');
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index b252c7b63..5cb435284 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -45,9 +45,10 @@ public class RollupService {
+ 
+     /**
+      * A person's figures as shown: claimed with two decimals, due-total (held down to the cap) with two decimals or
+-     * n/a, and overdue-total (the dues of their overdue claims) with two decimals.
++     * n/a, and overdue-total (the dues of their overdue claims) with two decimals; and the grade in force on the
++     * sheet's today, or null when the sheet has none.
+      */
+-    public record Figures(String name, String claimed, String dueTotal, String overdueTotal) {
++    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade) {
+     }
+ 
+     /** Everyone's figures, by person id in the order they were added, and the sheet's totals. */
+@@ -138,7 +139,7 @@ public class RollupService {
+                 dues.add(due);
+             }
+             figures.put(person.getId(), new Figures(person.getName(), shown(claimed), anyDue ? shown(due) : "n/a",
+-                    shown(overdue)));
++                    shown(overdue), today == null ? null : person.gradeOn(today)));
+         }
+         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
+     }
+@@ -210,13 +211,18 @@ public class RollupService {
+                         || aliasesOf.getOrDefault(entry.getKey(), List.of()).stream()
+                                 .anyMatch(alias -> alias.toLowerCase(Locale.ROOT).contains(wanted));
+                 if (matches) {
+-                    lines.add(id + " " + person.name() + " " + person.dueTotal());
++                    lines.add(id + " " + named(person) + " " + person.dueTotal());
+                 }
+             }
+         }
+         return lines;
+     }
+ 
++    /** The person's name as the screen shows it: with the grade in force on the sheet's today, when there is one. */
++    private static String named(Figures person) {
++        return person.grade() == null ? person.name() : person.name() + " (" + person.grade() + ")";
++    }
++
+     /**
+      * The ids of the sheet's descendants, as {@link #descendants(String)}. While the request shows the sheet as of a
+      * date, each is first put back as it stood at the end of that date, with the date as its today, for the request's
