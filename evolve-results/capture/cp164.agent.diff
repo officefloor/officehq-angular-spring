@@ -1,0 +1,77 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 03554588f..5d19926b8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -225,7 +225,7 @@ public class ClaimService {
+         LocalDate dueBy = holidays.businessDaysAfter(sheetId, dated, terms);
+         periods.requireOpen(sheetId, dueBy);
+         person.requireClaimable(dated);
+-        LocalDate correctedDate = requireCorrection(sheetId, personId, amount, corrects);
++        LocalDate correctedDate = requireCorrection(sheetId, personId, amount, corrects, null);
+         Claim claim = new Claim(sheetId, personId, amount, dated, noteOf(note));
+         claim.setCorrects(corrects);
+         claim.setRoundingDate(correctedDate != null ? correctedDate : dated);
+@@ -276,7 +276,7 @@ public class ClaimService {
+         people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()))
+                 .requireClaimable(dated);
+-        LocalDate correctedDate = requireCorrection(sheetId, claim.getPersonId(), amount, corrects);
++        LocalDate correctedDate = requireCorrection(sheetId, claim.getPersonId(), amount, corrects, id);
+         String reference = refOf(ref);
+         if (reference != null && claims.existsBySheetIdAndRefIgnoreCaseAndIdNot(sheetId, reference, id)) {
+             throw new ClaimRefException(reference);
+@@ -517,6 +517,10 @@ public class ClaimService {
+                     + deletedOn);
+         }
+         periods.requireOpen(sheetId, claim.getDueBy());
++        // A restored correction counts against its target again.
++        if (claim.getCorrects() != null) {
++            requireCorrection(sheetId, claim.getPersonId(), claim.getAmount(), claim.getCorrects(), id);
++        }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+@@ -1003,10 +1007,12 @@ public class ClaimService {
+ 
+     /**
+      * A negative amount (a correction) must name, by number, a SETTLED claim of the same person; any other amount
+-     * names none. Refused otherwise. Gives the date of the claim a correction corrects (it rounds by that date), null
+-     * for any other claim.
++     * names none. A correction may not exceed what remains of its target: the target's amount less the amounts of the
++     * other corrections against it that are not VOID or DELETED (the claim with the id, the one being changed, left
++     * out). Refused otherwise. Gives the date of the claim a correction corrects (it rounds by that date), null for any
++     * other claim.
+      */
+-    private LocalDate requireCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
++    private LocalDate requireCorrection(String sheetId, Long personId, BigDecimal amount, String corrects, Long id) {
+         if (amount.signum() >= 0) {
+             if (corrects != null) {
+                 throw new ClaimCorrectionException("Only a correction (a negative amount) corrects a claim");
+@@ -1016,11 +1022,25 @@ public class ClaimService {
+         if (corrects == null) {
+             throw new ClaimCorrectionException("A negative amount must name the settled claim it corrects");
+         }
+-        return claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
++        Claim target = claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                 .filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+-                .map(Claim::getDate)
+                 .orElseThrow(() -> new ClaimCorrectionException(
+                         "Claim " + corrects + " is not a settled claim of the same person"));
++        // Locking the target means two corrections of it do not both pass the check.
++        claims.findForUpdate(target.getId(), sheetId);
++        BigDecimal remaining = target.getAmount();
++        for (Claim other : claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId)) {
++            if (corrects.equals(other.getCorrects()) && !other.getId().equals(id)
++                    && other.getStatus() != ClaimStatus.VOID && other.getStatus() != ClaimStatus.DELETED) {
++                remaining = remaining.add(other.getAmount());
++            }
++        }
++        if (amount.negate().compareTo(remaining) > 0) {
++            throw new ClaimCorrectionException("A correction of " + amount.negate().toPlainString()
++                    + " exceeds the " + remaining.max(BigDecimal.ZERO).toPlainString() + " that remains of claim "
++                    + corrects);
++        }
++        return target.getDate();
+     }
+ 
+     /**
