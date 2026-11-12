@@ -41,8 +41,11 @@ public class PersonService {
     }
 
     @Transactional
-    public Person update(String sheetId, String user, long personId, String name, String grade) {
+    public Person update(String sheetId, String user, long personId, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (person.getVersion() != version) {
+            throw new PersonVersionConflictException(person);
+        }
         requireFreeName(sheetId, name.trim(), person.getId());
         person.setName(name.trim());
         person.setGrade(grade);
@@ -69,6 +72,12 @@ public class PersonService {
         } catch (DataIntegrityViolationException e) {
             throw new PersonNameTakenException();
         }
+    }
+
+    /** The person as stored now, for an editor whose save was refused. */
+    @Transactional(readOnly = true)
+    public Person current(String sheetId, long personId) {
+        return people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
     }
 
     private void requireSheet(String sheetId) {

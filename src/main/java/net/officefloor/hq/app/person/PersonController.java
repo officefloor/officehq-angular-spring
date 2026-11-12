@@ -6,7 +6,11 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,16 +26,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade) {
+    public record PersonView(long id, String name, String grade, long version) {
 
         static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }
 
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
+    }
+
+    /** A person's new name and grade, with the version of the person the editor loaded. */
+    public record PersonUpdate(
+            @NotBlank @Size(max = 200) String name,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull Long version) {
     }
 
     private final PersonService service;
@@ -60,7 +71,19 @@ public class PersonController {
     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
-            @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.name(), request.grade()));
+            @RequestBody @Valid PersonUpdate request) {
+        try {
+            return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.version(),
+                    request.name(), request.grade()));
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // saved by someone else between the version check and the write
+            throw new PersonVersionConflictException(service.current(sheetId.trim(), personId));
+        }
+    }
+
+    /** A save from an editor that loaded an older version: refused, answering the person as it is now. */
+    @ExceptionHandler(PersonVersionConflictException.class)
+    public ResponseEntity<PersonView> conflict(PersonVersionConflictException e) {
+        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(PersonView.of(e.getCurrent()));
     }
 }

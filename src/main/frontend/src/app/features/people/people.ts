@@ -82,6 +82,8 @@ export class PeopleList {
   protected readonly grade = signal<string>('A');
   /** The id of the person whose editor is open, or null when the form adds. */
   protected readonly editing = signal<number | null>(null);
+  /** The version of the person the editor loaded; a save from it is refused once someone else saved. */
+  private readonly version = signal(0);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
 
@@ -115,9 +117,14 @@ export class PeopleList {
 
   protected edit(p: Person): void {
     this.editing.set(p.id);
+    this.load(p);
+    this.error.set(null);
+  }
+
+  private load(p: Person): void {
+    this.version.set(p.version);
     this.name.set(p.name);
     this.grade.set(p.grade);
-    this.error.set(null);
   }
 
   protected reset(): void {
@@ -129,14 +136,24 @@ export class PeopleList {
 
   protected async submit(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.saving()) return; // a second submit before the first has answered
     this.error.set(null);
     this.saving.set(true);
     try {
       const f = { name: this.name(), grade: this.grade() };
       const id = this.editing();
-      const err = id === null ? await this.people.add(f) : await this.people.update(id, f);
-      if (err) this.error.set(err);
-      else this.reset();
+      if (id === null) {
+        const err = await this.people.add(f);
+        if (err) this.error.set(err);
+        else this.reset();
+      } else {
+        const refusal = await this.people.update(id, this.version(), f);
+        if (!refusal) this.reset();
+        else {
+          if (refusal.current) this.load(refusal.current);
+          this.error.set(refusal.error);
+        }
+      }
     } finally {
       this.saving.set(false);
     }

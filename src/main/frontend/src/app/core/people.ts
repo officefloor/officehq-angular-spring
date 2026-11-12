@@ -9,6 +9,14 @@ export interface Person {
   id: number;
   name: string;
   grade: string;
+  /** Moved on by each save; an edit made from an older version is refused. */
+  version: number;
+}
+
+/** A refused save: why, and the person as stored now when someone else saved them first. */
+export interface Refusal {
+  error: string;
+  current?: Person;
 }
 
 export interface PersonFields {
@@ -60,21 +68,31 @@ export class People {
     }
   }
 
-  /** Change a person's name and grade; an error message when refused. */
-  async update(id: number, f: PersonFields): Promise<string | null> {
+  /** Change a person's name and grade, from the version the editor loaded; the refusal when
+   *  refused, carrying the person as stored now when someone else saved them in the meantime. */
+  async update(id: number, version: number, f: PersonFields): Promise<Refusal | null> {
     const refused = this.check(f);
-    if (refused) return refused;
+    if (refused) return { error: refused };
     const sid = this.session.sheetId()!;
-    try {
-      const person = await firstValueFrom(
-        this.http.put<Person>(`${this.url(sid)}/${id}`, this.body(f), {
-          headers: { 'X-User': this.session.user()! },
-        }),
-      );
+    const put = (person: Person) => {
       if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+    };
+    try {
+      put(
+        await firstValueFrom(
+          this.http.put<Person>(`${this.url(sid)}/${id}`, { ...this.body(f), version }, {
+            headers: { 'X-User': this.session.user()! },
+          }),
+        ),
+      );
       return null;
     } catch (e) {
-      return failed('save', e);
+      if (e instanceof HttpErrorResponse && e.status === 412) {
+        const current = e.error as Person;
+        put(current);
+        return { error: 'Someone else has changed this person. Their values are shown; review and save again.', current };
+      }
+      return { error: failed('save', e) };
     }
   }
 

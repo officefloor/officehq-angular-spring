@@ -108,6 +108,7 @@ export class Home {
 
   protected async saveToday(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.savingToday()) return; // a second submit before the first has answered
     this.todayError.set(null);
     this.savingToday.set(true);
     try {

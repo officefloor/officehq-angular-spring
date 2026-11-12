@@ -89,6 +89,7 @@ export class RatesPanel {
 
   protected async submit(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.saving()) return; // a second submit before the first has answered
     this.error.set(null);
     this.saving.set(true);
     try {
