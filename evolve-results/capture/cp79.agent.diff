@@ -1,0 +1,390 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 27940f53d..be8a4bf1f 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -35,6 +35,9 @@ export interface SheetView {
+   graceDays: number | null;
+   /** Whether the sheet is archived: everything stays visible and every change is refused. */
+   archived: boolean;
++  /** The entry date (YYYY-MM-DD): the default date of a new claim in place of the sheet's today; null when
++   *  off. */
++  entryDate: string | null;
+ }
+ 
+ /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
+@@ -105,6 +108,9 @@ export class Session {
+   /** The sheet's grace days; null when off. A today change closes each open period whose to-date plus these
+    *  days is before the new today. */
+   readonly graceDays = signal<number | null>(null);
++  /** The sheet's entry date (YYYY-MM-DD); null when off. While set, it is the default date of a new claim
++   *  in place of the sheet's today. */
++  readonly entryDate = signal<string | null>(null);
+   /** Whether the sheet is archived: everything stays visible and every change is refused. */
+   readonly archived = signal(false);
+   /** The date (YYYY-MM-DD) this user's screen shows the sheet as of, while set: every figure as it stood at
+@@ -137,6 +143,7 @@ export class Session {
+       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
+       this.permissions.set(sheet.permissions);
+       this.graceDays.set(sheet.graceDays);
++      this.entryDate.set(sheet.entryDate);
+       this.archived.set(sheet.archived);
+       return null;
+     } catch (e) {
+@@ -400,6 +407,26 @@ export class Session {
+     }
+   }
+ 
++  /** Change the sheet's entry date (blank: off); an error message when refused. */
++  async setEntryDate(date: string): Promise<string | null> {
++    const user = this.user();
++    const sid = this.sheetId();
++    const d = date.trim();
++    if (!user || !sid) return 'Load a sheet first.';
++    if (d && !isDate(d)) return 'Enter an entry date as YYYY-MM-DD, or leave it blank.';
++    try {
++      const sheet = await firstValueFrom(
++        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/entry-date`, { entryDate: d || null }, {
++          headers: { 'X-User': user },
++        }),
++      );
++      if (this.sheetId() === sheet.id) this.entryDate.set(sheet.entryDate);
++      return null;
++    } catch (e) {
++      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
++    }
++  }
++
+   /** Set the roles that may take an action, comma separated (blank: the standing rule); an error message
+    *  when refused. */
+   async setPermission(action: string, roles: string): Promise<string | null> {
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index f4a663145..3c1f3456c 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -15,7 +15,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
+ // period numbering from-date (while the sheet's today is on or after it, a claim opened is numbered within its
+ // period; blank for off), the grace days (a today change closes each open period whose to-date plus these days
+ // is before the new today; blank for off; not dated), the permission matrix (for each action, the roles that may take it, comma separated;
+-// blank keeps the standing rule; not dated), and
++// blank keeps the standing rule; not dated), the entry date (while set, the default date of a new claim in
++// place of the sheet's today; blank for off; not dated), and
+ // the role each user name has on the sheet (clerk unless given another), and the delegations of the steward role
+ // (a steward gives a user the role from a date to a date, inclusive, by the sheet's today).
+ @Component({
+@@ -178,6 +179,17 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
+           (keydown.backspace)="policyDateTouched.set(true); error.set(null)"
+         />
+         <p>In force: <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
++        <label for="setting-entry-date">Entry date (YYYY-MM-DD; a new claim's default date; blank for the sheet's today)</label>
++        <input
++          id="setting-entry-date"
++          data-testid="setting-entry-date"
++          [value]="entryDate()"
++          (input)="entryDate.set(value($event)); entryDateTouched.set(true); error.set(null)"
++          (focus)="focused.set('entry-date')"
++          (keydown.delete)="entryDateTouched.set(true); error.set(null)"
++          (keydown.backspace)="entryDateTouched.set(true); error.set(null)"
++        />
++        <p>In force: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' }}</strong></p>
+         <label for="setting-period-numbering-from">Period numbering from (YYYY-MM-DD; blank for off)</label>
+         <input
+           id="setting-period-numbering-from"
+@@ -324,6 +336,8 @@ export class SettingsPanel {
+   protected readonly numberingFromTouched = signal(false);
+   protected readonly graceDays = signal('');
+   protected readonly graceDaysTouched = signal(false);
++  protected readonly entryDate = signal('');
++  protected readonly entryDateTouched = signal(false);
+   /** The setting that may be blank whose field was focused last: an untouched save (a blank typed into a
+    *  blank field fires no input) saves that one. */
+   protected readonly focused = signal<string | null>(null);
+@@ -386,7 +400,7 @@ export class SettingsPanel {
+         && !this.noteThresholdTouched()
+         && !this.termsTouched()
+         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
+-        && !this.graceDaysTouched()
++        && !this.graceDaysTouched() && !this.entryDateTouched()
+         && this.gradeTermsTouched().size === 0 && this.permsTouched().size === 0;
+       const pick = untouched ? this.focused() : null;
+       if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
+@@ -407,8 +421,11 @@ export class SettingsPanel {
+         || (guess && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
+       const graceDays = this.graceDaysTouched() || pick === 'grace-days'
+         || (guess && this.graceDays().trim() !== (this.session.graceDays()?.toString() ?? ''));
++      const entryDate = this.entryDateTouched() || pick === 'entry-date'
++        || (guess && this.entryDate().trim() !== (this.session.entryDate() ?? ''));
+       const limit = this.limitTouched() || pick === 'limit'
+-        || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays)
++        || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
++          && !entryDate)
+         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
+       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
+         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
+@@ -425,7 +442,8 @@ export class SettingsPanel {
+         ?? (latePct ? await this.session.setLatePct(this.latePct(), this.fromOf('late-pct')) : null)
+         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
+         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null)
+-        ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null);
++        ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null)
++        ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null);
+       if (err) this.error.set(err);
+       else {
+         this.limit.set('');
+@@ -453,6 +471,8 @@ export class SettingsPanel {
+         this.numberingFromTouched.set(false);
+         this.graceDays.set('');
+         this.graceDaysTouched.set(false);
++        this.entryDate.set('');
++        this.entryDateTouched.set(false);
+         this.focused.set(null);
+       }
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e84499691..739448f44 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -36,7 +36,8 @@ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Keeps the people's claims on each sheet. A claim with no date is dated the sheet's today. */
++/** Keeps the people's claims on each sheet. A new claim with no date is dated the sheet's entry date while
++ *  set, else its today. */
+ @Service
+ public class ClaimService {
+ 
+@@ -83,7 +84,7 @@ public class ClaimService {
+     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+             String corrects) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+-        LocalDate on = date != null ? date : sheets.today(sheetId);
++        LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
+         refuseClosed(sheetId, on);
+         refuseRetired(person, on);
+         refuseCorrection(sheetId, personId, amount, corrects);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/PasteService.java b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+index 4b0f6be64..e37b6c5c2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/PasteService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+@@ -17,9 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * The paste box: lines of name,amount,date,note (the note may hold commas and may be absent; a blank date
+- * takes the sheet's today), each a DRAFT claim for the person on the sheet with the name (ignoring case),
+- * added in order. Blank lines are skipped. One change: every line is checked with the claim form's rules,
+- * and a refused line refuses the paste, adding nothing and writing nothing.
++ * takes the sheet's entry date, its today when off), each a DRAFT claim for the person on the sheet with
++ * the name (ignoring case), added in order. Blank lines are skipped. One change: every line is checked
++ * with the claim form's rules, and a refused line refuses the paste, adding nothing and writing nothing.
+  */
+ @Service
+ public class PasteService {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+index fb0d27ebc..be51039a8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+- * The quick-add bar: a DRAFT claim dated the sheet's today, with an empty note, for the person with
++ * The quick-add bar: a DRAFT claim dated the sheet's entry date (its today when off), with an empty note, for the person with
+  * the name (ignoring case), adding them with grade A first when the sheet has no one by that name.
+  * One change: a refused claim rolls back the person it added, and writes nothing.
+  */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index f41edd1e4..af26639e4 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -7,6 +7,7 @@ import java.util.Objects;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -26,11 +27,13 @@ public class PersonService {
+     private final StatementRepository statements;
+     private final PatronRepository patrons;
+     private final WatchRepository watches;
++    private final RoleService roles;
+     private final Rollup rollup;
+     private final Audit audit;
+ 
+     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
+-            PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit) {
++            PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles) {
++        this.roles = roles;
+         this.watches = watches;
+         this.patrons = patrons;
+         this.rollup = rollup;
+@@ -175,10 +178,14 @@ public class PersonService {
+     }
+ 
+     /** Give each of the chosen people the grade from a date, in list order, exactly as the person form
+-     *  would with their name and terms left as they are; the people changed, in list order. */
++     *  would with their name and terms left as they are; the people changed, in list order. A viewer's goes
++     *  through with no one changed. */
+     @Transactional
+     public List<Person> bulkGrade(String sheetId, String user, List<Long> personIds, String grade, LocalDate from) {
+         requireSheet(sheetId);
++        if (roles.isViewer(sheetId, user)) {
++            return List.of();
++        }
+         Set<Long> chosen = Set.copyOf(personIds);
+         List<Person> picked = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .filter(p -> chosen.contains(p.getId())).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+index 3150f36f2..54a261dc5 100644
+--- a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+@@ -12,7 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ /**
+  * A viewer sees the sheet and changes nothing: every change to a sheet by a viewer is refused before it
+  * reaches its handler. Loading the sheet is not a change, and a bulk action goes through with nothing done
+- * (each claim refused), so those are left to their handlers.
++ * (each claim refused, no one graded), so those are left to their handlers.
+  */
+ @Configuration
+ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+@@ -27,7 +27,8 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+     public void addInterceptors(InterceptorRegistry registry) {
+         registry.addInterceptor(this)
+                 .addPathPatterns("/api/sheets/*/**")
+-                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*");
++                .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
++                        "/api/sheets/*/people/bulk-grade");
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 305f94970..74e1920cc 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -93,6 +93,11 @@ public class Sheet {
+     @Column(name = "grace_days")
+     private Integer graceDays;
+ 
++    /** The entry date: while set, the default date of a new claim in place of the sheet's today; none means
++     *  off. Not dated. */
++    @Column(name = "entry_date")
++    private LocalDate entryDate;
++
+     /** Whether the sheet is archived: everything stays visible and every change is refused. */
+     @Column(name = "archived", nullable = false)
+     private boolean archived;
+@@ -292,6 +297,14 @@ public class Sheet {
+         this.periodNumberingFrom = periodNumberingFrom;
+     }
+ 
++    public LocalDate getEntryDate() {
++        return entryDate;
++    }
++
++    public void setEntryDate(LocalDate entryDate) {
++        this.entryDate = entryDate;
++    }
++
+     public Integer getGraceDays() {
+         return graceDays;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index c963a78e4..b448d972d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -31,13 +31,13 @@ import org.springframework.web.bind.annotation.RestController;
+ public class SheetController {
+ 
+     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
+-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived.
++     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off).
+      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
+      *  settings. */
+     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+             List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
+-            boolean archived, String noteThreshold) {
++            boolean archived, String noteThreshold, LocalDate entryDate) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(),
+@@ -49,7 +49,8 @@ public class SheetController {
+                     sheet.getSettings().stream().map(SettingView::of).toList(),
+                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
+                     sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived(),
+-                    sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString());
++                    sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
++                    sheet.getEntryDate());
+         }
+     }
+ 
+@@ -112,6 +113,10 @@ public class SheetController {
+     public record PeriodNumberingFromRequest(LocalDate periodNumberingFrom) {
+     }
+ 
++    /** The sheet's entry date; a missing one means off. */
++    public record EntryDateRequest(LocalDate entryDate) {
++    }
++
+     /** The sheet's grace days; missing means off. */
+     public record GraceDaysRequest(@Min(0) @Max(36500) Integer graceDays) {
+     }
+@@ -247,6 +252,14 @@ public class SheetController {
+         return SheetView.of(service.setGraceDays(id.trim(), user.trim(), request.graceDays()));
+     }
+ 
++    /** Change the sheet's entry date. */
++    @PutMapping("/{id}/settings/entry-date")
++    public SheetView setEntryDate(@PathVariable @NotBlank @Size(max = 200) String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid EntryDateRequest request) {
++        return SheetView.of(service.setEntryDate(id.trim(), user.trim(), request.entryDate()));
++    }
++
+     /** Change the sheet's period numbering from-date. */
+     @PutMapping("/{id}/settings/period-numbering-from")
+     public SheetView setPeriodNumberingFrom(@PathVariable @NotBlank @Size(max = 200) String id,
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index ca78de403..1e73bdd2d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -92,6 +92,12 @@ public class SheetService {
+         return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
+     }
+ 
++    /** The default date of a new claim: the sheet's entry date while set, else its today. */
++    @Transactional(readOnly = true)
++    public LocalDate entryDefault(String id) {
++        return sheets.findById(id).map(sheet -> sheet.getEntryDate() != null ? sheet.getEntryDate() : sheet.getToday()).orElseThrow(SheetNotFoundException::new);
++    }
++
+     /** Change the sheet's today, closing the periods past their grace days and recording the figures it
+      *  moves; a new today first records a SNAPSHOT line of each person's due-total on the day being left, in
+      *  list order, and releases every claim's lock (their editors close). */
+@@ -221,6 +227,16 @@ public class SheetService {
+         return sheet;
+     }
+ 
++    /** Change the sheet's entry date (none: off, a new claim takes the sheet's today). Not dated. */
++    @Transactional
++    public Sheet setEntryDate(String id, String user, LocalDate entryDate) {
++        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
++        sheet.setEntryDate(entryDate);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=entry-date value="
++                + (entryDate == null ? "" : entryDate.toString()));
++        return sheet;
++    }
++
+     /** Change the sheet's period numbering from-date (none: off). */
+     @Transactional
+     public Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {
+diff --git a/src/main/resources/db/migration/V50__sheet_entry_date.sql b/src/main/resources/db/migration/V50__sheet_entry_date.sql
+new file mode 100644
+index 000000000..c4c22ce9a
+--- /dev/null
++++ b/src/main/resources/db/migration/V50__sheet_entry_date.sql
+@@ -0,0 +1,3 @@
++-- The sheet's entry date: while set, the default date of a new claim in place of the sheet's today. None
++-- (blank) means off. Not dated.
++ALTER TABLE sheet ADD COLUMN entry_date DATE;
