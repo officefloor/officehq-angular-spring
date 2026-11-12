@@ -1,0 +1,66 @@
+{
+  "checkpoint": 165,
+  "checkpoint_id": "cp165_escalate",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 6,
+  "branch": "evolve/202610271-as/just-solve/chain6",
+  "commit_sha": "b8837cc043c87944b966196d3c42305ad4de91ea",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-12T01:33:11",
+  "seconds": 215,
+  "build_log_file": "cp165.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp165_escalate.spec.ts::escalate": true,
+      "cp165_escalate.spec.ts::escalate scenario 1": false,
+      "cp165_escalate.spec.ts::escalate scenario 2": true,
+      "cp165_escalate.spec.ts::escalate scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12054,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 48020,
+        "failure": "Error: \u001b[31mTimed out 30000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-current-id')\nExpected string: \u001b[32m\"smwcefj8gbqs9\u001b[7m-reload\u001b[27m\"\u001b[39m\nReceived string: \u001b[31m\"smwcefj8gbqs9\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 30000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-current-id')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\n\n   at ../support/ui.ts:215\n\n  213 |   await page.getByTestId('sheet-id-input').fill(sheet);\n  214 |   await page.getByTestId('sheet-load').click();\n> 215 |   await expect(page.getByTestId('sheet-current-id')).toHaveText(sheet, { timeout: LOAD_WAIT });\n      |                                                      ^\n  216 | }\n  217 |\n  218 | /** Re-load the active sheet so the screen shows what the store holds now. Loading the same id\n\n    at loadSheet (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:215:54)\n    at Object.refresh (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:234:3)\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp165_escalate.spec.ts:170:5 | Error: \u001b[31mTimed out 30000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('sheet-current-id')\nExpected string: \u001b[32m\"smwcefj8gbqs9\u001b[7m-reload\u001b[27m\"\u001b[39m\nReceived string: \u001b[31m\"smwcefj8gbqs9\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 30000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('sheet-current-id')\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[22m\n\u001b[2m  -   unexpected value \"smwcefj8gbqs9\"\u001b[22m\n\u001b[2m  -   locator resolved to <strong data-testid=\"sheet-current-id\">smwcefj8gbqs9</strong>\u001b[2"
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38686,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38604,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 147,
+  "checkpoint_id": "cp147_snapshot-lines",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 6,
+  "branch": "evolve/202610271-as/just-solve/chain6",
+  "commit_sha": "e0d6aa4c03088b00cefd9722155573570d463fe9",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-11T21:46:52",
+  "seconds": 191,
+  "build_log_file": "cp147.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp147_snapshot-lines.spec.ts::snapshot lines": true,
+      "cp147_snapshot-lines.spec.ts::snapshot lines scenario 1": true,
+      "cp147_snapshot-lines.spec.ts::snapshot lines scenario 2": true,
+      "cp147_snapshot-lines.spec.ts::snapshot lines scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp147_snapshot-lines.spec.ts::snapshot lines",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8656,
+        "failure": ""
+      },
+      {
+        "test_id": "cp147_snapshot-lines.spec.ts::snapshot lines scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28043,
+        "failure": ""
+      },
+      {
+        "test_id": "cp147_snapshot-lines.spec.ts::snapshot lines scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28802,
+        "failure": ""
+      },
+      {
+        "test_id": "cp147_snapshot-lines.spec.ts::snapshot lines scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 37461,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

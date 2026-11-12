@@ -1,0 +1,112 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp184-xpqfirv5
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp184_hold-leaves-claimed.spec.ts:6:7 › hold leaves claimed › hold leaves claimed (10.7s)
+  ✓  2 [chromium] › cp184_hold-leaves-claimed.spec.ts:107:7 › hold leaves claimed › hold leaves claimed scenario 1 (31.8s)
+  ✘  3 [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 (49.2s)
+  ✓  4 [chromium] › cp184_hold-leaves-claimed.spec.ts:1441:7 › hold leaves claimed › hold leaves claimed scenario 3 (42.3s)
+
+
+  1) [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 
+
+    Error: [31mTimed out 30000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('sheet-current-id')
+    Expected string: [32m"smwcnxu8ezxux[7m-reload[27m"[39m
+    Received string: [31m"smwcnxu8ezxux"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 30000ms[22m
+    [2m  - waiting for getByTestId('sheet-current-id')[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+    [2m  -   locator resolved to <strong data-testid="sheet-current-id">smwcnxu8ezxux</strong>[22m
+    [2m  -   unexpected value "smwcnxu8ezxux"[22m
+
+
+       at ../support/ui.ts:215
+
+      213 |   await page.getByTestId('sheet-id-input').fill(sheet);
+      214 |   await page.getByTestId('sheet-load').click();
+    > 215 |   await expect(page.getByTestId('sheet-current-id')).toHaveText(sheet, { timeout: LOAD_WAIT });
+          |                                                      ^
+      216 | }
+      217 |
+      218 | /** Re-load the active sheet so the screen shows what the store holds now. Loading the same id
+
+        at loadSheet (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:215:54)
+        at Object.refresh (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:234:3)
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp184_hold-leaves-claimed.spec.ts:840:5
+
+  1 failed
+    [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 
+  3 passed (2.3m)

@@ -1,0 +1,72 @@
+{
+  "checkpoint": 164,
+  "checkpoint_id": "cp164_correction-limit",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 6,
+  "branch": "evolve/202610271-as/just-solve/chain6",
+  "commit_sha": "98f77319719252bef6b26b31720e240358861468",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-12T01:29:44",
+  "seconds": 207,
+  "build_log_file": "cp164.test.log",
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+    "cp30_corrections.spec.ts::corrections",
+    "cp34_bulk-open.spec.ts::bulk open scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp164_correction-limit.spec.ts::correction limit": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 1": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 2": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14608,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24940,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 67776,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33785,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

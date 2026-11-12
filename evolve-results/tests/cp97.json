@@ -1,0 +1,66 @@
+{
+  "checkpoint": 97,
+  "checkpoint_id": "cp97_monthly-totals",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 6,
+  "branch": "evolve/202610271-as/just-solve/chain6",
+  "commit_sha": "031c9825951410491e409c27f4c0450897335fd5",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-11T14:37:51",
+  "seconds": 133,
+  "build_log_file": "cp97.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp97_monthly-totals.spec.ts::monthly totals": true,
+      "cp97_monthly-totals.spec.ts::monthly totals scenario 1": true,
+      "cp97_monthly-totals.spec.ts::monthly totals scenario 2": true,
+      "cp97_monthly-totals.spec.ts::monthly totals scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp97_monthly-totals.spec.ts::monthly totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11202,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_monthly-totals.spec.ts::monthly totals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18088,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_monthly-totals.spec.ts::monthly totals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19657,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_monthly-totals.spec.ts::monthly totals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17396,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

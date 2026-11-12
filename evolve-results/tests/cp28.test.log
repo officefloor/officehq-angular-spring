@@ -1,0 +1,71 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp28-9bbqaafo
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp28_grade-dated.spec.ts:6:7 › grade dated › grade dated (4.3s)
+  ✓  2 [chromium] › cp28_grade-dated.spec.ts:66:7 › grade dated › grade dated scenario 1 (9.4s)
+  ✓  3 [chromium] › cp28_grade-dated.spec.ts:225:7 › grade dated › grade dated scenario 2 (14.3s)
+  ✘  4 [chromium] › cp28_grade-dated.spec.ts:422:7 › grade dated › grade dated scenario 3 (16.3s)
+
+
+  1) [chromium] › cp28_grade-dated.spec.ts:422:7 › grade dated › grade dated scenario 3 ────────────
+
+    Error: [31mTimed out 8000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('setting-late-pct-current')
+    Expected string: [32m"[7m5[27m.00"[39m
+    Received string: [31m"[7m0[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 8000ms[22m
+    [2m  - waiting for getByTestId('setting-late-pct-current')[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <strong data-testid="setting-late-pct-current">0.00</strong>[22m
+    [2m  -   unexpected value "0.00"[22m
+
+
+       at ../support/ui.ts:1195
+
+      1193 |   await setField(page, `setting-${key}-from`, undefined);    // undated: from the sheet's today
+      1194 |   await page.getByTestId('settings-save').click();
+    > 1195 |   await expect(page.getByTestId(`setting-${key}-current`)).toHaveText(value, { timeout: WAIT });
+           |                                                            ^
+      1196 | }
+      1197 |
+      1198 | /** Save a setting where the screen may refuse it: true when the value in force shows it. */
+
+        at Object.setSetting (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:1195:60)
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp28_grade-dated.spec.ts:498:5
+
+  Slow test file: [chromium] › cp28_grade-dated.spec.ts (44.3s)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp28_grade-dated.spec.ts:422:7 › grade dated › grade dated scenario 3 ─────────────
+  3 passed (46.3s)
