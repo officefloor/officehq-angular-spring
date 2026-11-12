@@ -1,0 +1,169 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index ecce49d70..3d843b9ec 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -11,12 +11,13 @@ import { Settings } from '../settings/settings';
+ import { SnapshotCompare } from '../snapshot-compare/snapshot-compare';
+ import { TemplatesList } from '../templates/templates';
+ import { TreeSearch } from '../tree-search/tree-search';
++import { SheetCompare } from '../sheet-compare/sheet-compare';
+ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ 
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [Activity, AuditViewer, Duplicates, Holidays, NotesList, People, Settings, SnapshotCompare, TemplatesList, TreeSearch, VoidReasonsList],
++  imports: [Activity, AuditViewer, Duplicates, Holidays, NotesList, People, Settings, SheetCompare, SnapshotCompare, TemplatesList, TreeSearch, VoidReasonsList],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -103,6 +104,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+         <app-duplicates />
+         <app-snapshot-compare />
+         <app-tree-search />
++        <app-sheet-compare />
+         <app-audit-viewer />
+         <app-activity />
+       }
+diff --git a/src/main/frontend/src/app/features/sheet-compare/sheet-compare.ts b/src/main/frontend/src/app/features/sheet-compare/sheet-compare.ts
+new file mode 100644
+index 000000000..558ade48f
+--- /dev/null
++++ b/src/main/frontend/src/app/features/sheet-compare/sheet-compare.ts
+@@ -0,0 +1,81 @@
++import { HttpClient } from '@angular/common/http';
++import { FigurePipe } from '../../core/locale';
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// Sheet comparison: one line per grade of this sheet as <grade> <this sheet's summary due-total> <the other sheet's>,
++// 0.00 for a grade the other sheet has no one on; a sheet that does not exist gives no lines. It records nothing.
++@Component({
++  selector: 'app-sheet-compare',
++  imports: [FigurePipe],
++  template: `
++    <section aria-labelledby="compare-heading">
++      <h2 id="compare-heading">Compare with another sheet</h2>
++      <form (submit)="compare($event)" aria-labelledby="compare-heading">
++        <label for="compare-sheet">Other sheet id</label>
++        <input
++          id="compare-sheet"
++          data-testid="compare-sheet"
++          [value]="other()"
++          (input)="other.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="compare">Compare</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="compare-error">{{ message | fig }}</p>
++        }
++      </form>
++      <ol aria-label="Comparison by grade">
++        @for (line of lines(); track $index) {
++          <li data-testid="compare-line">{{ line | fig }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class SheetCompare {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly other = signal('');
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  private reads = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.sheet();
++      this.session.loaded();
++      untracked(() => {
++        this.reads++;
++        this.lines.set([]);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected async compare(event: Event): Promise<void> {
++    event.preventDefault();
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const read = ++this.reads;
++    this.lines.set([]);
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/compare`, {
++          ...this.session.headers(),
++          params: { other: this.other() },
++        }),
++      );
++      // A later comparison wins over a slower earlier one.
++      if (read === this.reads && this.session.sheet() === sheet) this.lines.set(lines);
++    } catch {
++      if (read === this.reads) this.error.set('The sheets could not be compared.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+index 7f74ecd1f..a40bcd316 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -52,4 +52,15 @@ public class ConsolidatedController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+         return rollups.search(sheetId.trim(), name);
+     }
++
++    /**
++     * This sheet compared with another, one line per grade: {@code <grade> <this sheet's due-total> <the other's>};
++     * no lines when the other sheet does not exist. It changes nothing.
++     */
++    @GetMapping("/api/sheets/{sheetId}/compare")
++    public List<String> compare(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestParam(defaultValue = "") @Size(max = 100) String other,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return rollups.compare(sheetId.trim(), other.trim());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 1258422c1..f565bc106 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -7,6 +7,7 @@ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
++import net.officefloor.hq.app.setting.SettingService;
+ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Objects;
+@@ -237,6 +238,22 @@ public class RollupService {
+                 shownAll(gradeDues), statuses, members);
+     }
+ 
++    /**
++     * This sheet compared with another, one line per grade of this sheet: {@code <grade> <this sheet's due-total>
++     * <the other sheet's>}, each the summary's due-total for the grade (0.00 for a grade with no one on it); no lines
++     * when the other sheet does not exist. It changes nothing.
++     */
++    public List<String> compare(String sheetId, String otherId) {
++        if (otherId.isBlank() || !sheets.existsById(otherId)) {
++            return List.of();
++        }
++        Map<String, String> ours = figuresOf(List.of(sheetId)).gradeDueTotals();
++        Map<String, String> theirs = figuresOf(List.of(otherId)).gradeDueTotals();
++        return SettingService.GRADES.stream()
++                .map(grade -> grade + " " + ours.getOrDefault(grade, "0.00") + " " + theirs.getOrDefault(grade, "0.00"))
++                .toList();
++    }
++
+     /** How many people the members are, those whose names or aliases match (as names are compared) being one. */
+     private static int distinctPeople(List<Member> members) {
+         int[] parent = new int[members.size()];
