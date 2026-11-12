@@ -89,6 +89,17 @@ import { Session } from '../../core/session';
               Edit<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
             </button>
           }
+          <label [for]="'claim-inline-amount-' + c.id">New amount</label>
+          <input
+            [id]="'claim-inline-amount-' + c.id"
+            data-testid="claim-inline-amount"
+            inputmode="decimal"
+            [value]="inlineAmounts()[c.id] ?? ''"
+            (input)="setInlineAmount(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-inline-save" [disabled]="acting() === c.id" (click)="saveInline(c)">
+            Save amount<span class="visually-hidden"> of claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           @for (a of actions; track a.action) {
             <button
               type="button"
@@ -225,6 +236,8 @@ export class PersonClaims {
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The amount typed in each claim's row, by claim id. */
+  protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The reason typed to reject each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
   protected readonly isOpen = isOpen;
@@ -416,6 +429,26 @@ export class PersonClaims {
     try {
       const err = await this.claims.split(c.id, this.splitAmounts()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setInlineAmount(id: number, amount: string): void {
+    this.clearActionError(id);
+    this.inlineAmounts.update((a) => ({ ...a, [id]: amount }));
+  }
+
+  /** Save the amount typed in the claim's row, keeping its date, note and correction: the claim form's
+   *  save, refused on the claim for the same reasons. */
+  protected async saveInline(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const f = { amount: this.inlineAmounts()[c.id] ?? '', date: c.date, note: c.note, corrects: c.corrects ?? '' };
+      const refused = await this.claims.update(c.id, f);
+      if (refused) this.actionError.set({ id: c.id, message: refused.message });
+      else this.inlineAmounts.update((a) => ({ ...a, [c.id]: '' }));
     } finally {
       this.acting.set(null);
     }
