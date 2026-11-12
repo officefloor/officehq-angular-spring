@@ -1,0 +1,126 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 8dab52d88..0e99e78bc 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
++import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { FigurePipe } from '../../core/locale';
+ import { Session } from '../../core/session';
+@@ -13,6 +13,12 @@ interface CrewView {
+   memberIds: number[];
+ }
+ 
++/** A crew's lead and its due-total, as the crew's row shows it. */
++export interface CrewTotal {
++  leadId: number;
++  dueTotal: string;
++}
++
+ /** What a crew needs to know of a person: their name. */
+ export interface CrewPerson {
+   id: number;
+@@ -87,6 +93,8 @@ export class Crews {
+   readonly people = input<CrewPerson[]>([]);
+   /** Each person's due-total as shown on their row (two decimals, or n/a), by person id. */
+   readonly dueTotals = input<Map<number, string>>(new Map());
++  /** Each crew's lead and due-total, emitted whenever they change. */
++  readonly totals = output<CrewTotal[]>();
+ 
+   protected readonly crews = signal<CrewView[]>([]);
+   protected readonly name = signal('');
+@@ -105,6 +113,7 @@ export class Crews {
+     return this.crews().map((crew) => ({
+       id: crew.id,
+       name: crew.name,
++      leadId: crew.leadId,
+       lead: byId.get(crew.leadId)?.name ?? '',
+       members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
+       dueTotal: sumDues([crew.leadId, ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a')),
+@@ -115,6 +124,10 @@ export class Crews {
+   private reads = 0;
+ 
+   constructor() {
++    effect(() => {
++      const totals = this.shown().map((c) => ({ leadId: c.leadId, dueTotal: c.dueTotal }));
++      untracked(() => this.totals.emit(totals));
++    });
+     effect(() => {
+       const sheet = this.session.sheet();
+       this.session.loaded();
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index dc3d4faf5..01dd9dc57 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -4,7 +4,8 @@ import { StatusSummary } from '../summary/summary';
+ 
+ // The sheet's counters, shown at all times: its people (retired included), its claims per status as the summary
+ // counts them, and its due-total and overdue-total as the sheet's totals show them;
+-// and the signed-in user's own due-total and overdue-total, when a person on the sheet has their name.
++// and the signed-in user's own due-total and overdue-total, when a person on the sheet has their name; and their crew
++// total, the due-totals of the crews that person leads added up, when they lead one.
+ @Component({
+   selector: 'app-header',
+   imports: [FigurePipe],
+@@ -25,6 +26,8 @@ import { StatusSummary } from '../summary/summary';
+         <dd data-testid="my-due-total">{{ myDueTotal() | fig }}</dd>
+         <dt>My overdue total</dt>
+         <dd data-testid="my-overdue-total">{{ myOverdueTotal() | fig }}</dd>
++        <dt>My crew total</dt>
++        <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | fig }}</dd>
+       </dl>
+     </header>
+   `,
+@@ -36,4 +39,5 @@ export class Header {
+   readonly overdueTotal = input.required<string>();
+   readonly myDueTotal = input.required<string>();
+   readonly myOverdueTotal = input.required<string>();
++  readonly myCrewDueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ae5b78dbe..ea7663ba3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,7 +9,7 @@ import { Rate, Rates, capped, changeFrom, excessOver, rateOn, sumDues, sumShared
+ import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { Header } from '../header/header';
+-import { Crews } from '../crews/crews';
++import { CrewTotal, Crews } from '../crews/crews';
+ import { Pools } from '../pools/pools';
+ import { PersonPlans } from '../plans/plans';
+ import { Plans } from '../../core/plans';
+@@ -149,6 +149,7 @@ function csvField(value: string): string {
+       [overdueTotal]="overdueTotal()"
+       [myDueTotal]="myDueTotal()"
+       [myOverdueTotal]="myOverdueTotal()"
++      [myCrewDueTotal]="myCrewDueTotal()"
+     />
+     <section aria-labelledby="consolidated-heading">
+       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
+@@ -808,7 +809,7 @@ function csvField(value: string): string {
+     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
+     <app-pools [people]="people()" />
+-    <app-crews [people]="people()" [dueTotals]="personDueTotals()" />
++    <app-crews [people]="people()" [dueTotals]="personDueTotals()" (totals)="crewTotals.set($event)" />
+   `,
+ })
+ export class People {
+@@ -972,6 +973,14 @@ export class People {
+     const me = this.me();
+     return me ? this.overdueTotalOf(me) : '';
+   });
++  /** Each crew's lead and due-total, as the crews show them. */
++  protected readonly crewTotals = signal<CrewTotal[]>([]);
++  /** The due-totals of the crews the signed-in user leads, added up; blank when they lead none. */
++  protected readonly myCrewDueTotal = computed(() => {
++    const me = this.me();
++    const led = me ? this.crewTotals().filter((c) => c.leadId === me.id) : [];
++    return led.length ? sumDues(led.map((c) => c.dueTotal)) : '';
++  });
+   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
+   private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+   /** The sheet's people and its descendants' added up. */
