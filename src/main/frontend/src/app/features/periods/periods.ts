@@ -1,11 +1,12 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Claims, counts } from '../../core/claims';
 import { People } from '../../core/people';
-import { Periods } from '../../core/periods';
+import { Period, Periods } from '../../core/periods';
 import { Rates, hundredths, money } from '../../core/rates';
 
 // The sheet's periods: one form adds a period, and the list shows each with its dates and its
-// due-total, the due of the claims that count whose date falls in it.
+// due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
+// whether it is closed, with a button to close it.
 @Component({
   selector: 'app-periods',
   template: `
@@ -42,7 +43,7 @@ import { Rates, hundredths, money } from '../../core/rates';
       </form>
       <table data-testid="period-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Actions</th></tr>
         </thead>
         <tbody>
           @for (p of periods.periods(); track p.id) {
@@ -50,7 +51,16 @@ import { Rates, hundredths, money } from '../../core/rates';
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button type="button" data-testid="period-close" [disabled]="acting() === p.id" (click)="close(p)">
+                  Close<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
+                @if (actionError()?.id === p.id) {
+                  <p role="alert" data-testid="period-error">{{ actionError()?.message }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -68,6 +78,9 @@ export class PeriodsPanel {
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** The period whose action is under way, and the last action's refusal, by period. */
+  protected readonly acting = signal<number | null>(null);
+  protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
   /** Each period's due-total, by period id: the figures of the claims that count whose date falls
    *  in it — a settled claim's frozen due, else as its person's last statement bound it, else its
@@ -89,6 +102,18 @@ export class PeriodsPanel {
     }
     return new Map([...sums].map(([id, sum]) => [id, money(sum)]));
   });
+
+  protected async close(p: Period): Promise<void> {
+    if (this.acting() !== null) return;
+    this.actionError.set(null);
+    this.acting.set(p.id);
+    try {
+      const err = await this.periods.close(p.id);
+      if (err) this.actionError.set({ id: p.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;

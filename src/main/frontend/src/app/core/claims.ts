@@ -178,14 +178,20 @@ function money(cents: number): string {
 }
 
 function refusal(e: HttpErrorResponse, action: ClaimAction): string {
+  return message(e) ?? `This claim's status does not allow it to ${action}.`;
+}
+
+/** The reason the server gave for a refusal, when it gave one. */
+function message(e: HttpErrorResponse): string | null {
   const err: unknown = e.error;
   if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string' && err.message) {
     return err.message;
   }
-  return `This claim's status does not allow it to ${action}.`;
+  return null;
 }
 
 function failed(what: string, e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return message(e) ?? `Could not ${what} claim (409).`;
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more, with up to two decimals.';
   return e instanceof HttpErrorResponse ? `Could not ${what} claim (${e.status}).` : `Could not ${what} claim.`;
 }

@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodClosedException;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
@@ -13,6 +15,8 @@ import net.officefloor.hq.app.person.Statement;
 import net.officefloor.hq.app.person.StatementRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.sheet.SheetNotFoundException;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,12 +29,17 @@ public class ClaimService {
     private final PersonRepository people;
     private final RateRepository rates;
     private final SheetService sheets;
+    private final SheetRepository sheetRows;
+    private final PeriodRepository periods;
     private final StatementRepository statements;
     private final Rollup rollup;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            StatementRepository statements, Rollup rollup, Audit audit) {
+            SheetRepository sheetRows, PeriodRepository periods, StatementRepository statements, Rollup rollup,
+            Audit audit) {
+        this.sheetRows = sheetRows;
+        this.periods = periods;
         this.rollup = rollup;
         this.claims = claims;
         this.people = people;
@@ -51,6 +60,7 @@ public class ClaimService {
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, on);
         Rollup.Snapshot before = rollup.take(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note));
         audit("CLAIM_ADDED", claim, person, user);
@@ -62,6 +72,8 @@ public class ClaimService {
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, on);
         Rollup.Snapshot before = rollup.take(sheetId);
         claim.setAmount(amount.setScale(2));
         claim.setDate(on);
@@ -81,6 +93,7 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canBecome(to)) {
             throw new ClaimStatusException(claim.getStatus(), to);
         }
@@ -150,6 +163,15 @@ public class ClaimService {
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted);
         rollup.recordChanges(sheetId, user, before);
         return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
+    }
+
+    /** Refuse a change to a claim dated inside a closed period. Locks the sheet first, so a period being
+     *  closed at the same moment is seen. */
+    private void refuseClosed(String sheetId, LocalDate date) {
+        sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
+        if (periods.closedOn(sheetId, date)) {
+            throw new PeriodClosedException();
+        }
     }
 
     /** A claim's figure: the due fixed when settled, else the one its last statement bound, else its live

@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -127,6 +128,13 @@ public class ClaimController {
         ClaimService.Stated stated = service.statement(sheetId.trim(), user.trim(), personId);
         return new StatementView(PersonView.of(stated.person(), stated.statements()),
                 stated.claims().stream().map(ClaimView::of).toList());
+    }
+
+    /** A change to a claim in a closed period is refused with the reason, for the screen to show. */
+    @ExceptionHandler(PeriodClosedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> periodClosed(PeriodClosedException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** A settle by the user who opened the claim is refused with the reason, for the screen to show. */

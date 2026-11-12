@@ -10,6 +10,10 @@ export interface Period {
   /** The first and last day of the period (YYYY-MM-DD), both inclusive. */
   from: string;
   to: string;
+  /** Closed: its due-total is fixed and its claims can no longer change. */
+  closed: boolean;
+  /** The due-total fixed when it was closed, two decimals; null while open. */
+  closedTotal: string | null;
 }
 
 export interface PeriodFields {
@@ -75,6 +79,23 @@ export class Periods {
       }
       if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, and the from and to dates as YYYY-MM-DD.';
       return e instanceof HttpErrorResponse ? `Could not add period (${e.status}).` : 'Could not add period.';
+    }
+  }
+
+  /** Close a period, fixing its due-total; an error message when refused. */
+  async close(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const period = await firstValueFrom(
+        this.http.post<Period>(`${this.url(sid)}/${id}/close`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.periods.update((ps) => ps.map((p) => (p.id === id ? period : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already closed.';
+      return e instanceof HttpErrorResponse ? `Could not close period (${e.status}).` : 'Could not close period.';
     }
   }
 

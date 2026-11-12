@@ -95,6 +95,37 @@ public class Rollup {
         return new Snapshot(figures, claimedTotal, dueTotal);
     }
 
+    /** The due-total of the claims that count dated from one date to another, both inclusive, as the
+     *  screen shows a period's: each claim's settled due, else the figure its statement bound, else its
+     *  live due (a claim with no figure adds nothing). */
+    public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
+        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
+        Map<Long, String> grades = new LinkedHashMap<>();
+        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> grades.put(p.getId(), p.getGrade()));
+        BigDecimal total = ZERO;
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (!claim.getStatus().counts() || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+                continue;
+            }
+            BigDecimal due;
+            if (claim.getSettledDue() != null) {
+                due = claim.getSettledDue();
+            } else if (claim.isStated()) {
+                due = claim.getStatedDue();
+            } else {
+                String grade = grades.get(claim.getPersonId());
+                due = grade == null ? null : inForce(sheetRates, grade, claim.getDate())
+                        .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
+                                .setScale(2, RoundingMode.HALF_EVEN))
+                        .orElse(null);
+            }
+            if (due != null) {
+                total = total.add(due);
+            }
+        }
+        return total;
+    }
+
     /** Record, once the change commits, the lines for every figure that moved since {@code before}. */
     public void recordChanges(String sheetId, String user, Snapshot before) {
         Snapshot after = take(sheetId);
