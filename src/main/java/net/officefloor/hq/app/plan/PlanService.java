@@ -30,6 +30,7 @@ public class PlanService {
 
     private final PlanRepository plans;
     private final PlanDateRepository dates;
+    private final PlanPauseRepository pauses;
     private final PersonRepository people;
     private final ClaimService claims;
     private final SheetService sheets;
@@ -37,10 +38,11 @@ public class PlanService {
     /** Each plan date's claim is made in its own transaction, so one refused rolls back only itself. */
     private final TransactionTemplate each;
 
-    public PlanService(PlanRepository plans, PlanDateRepository dates, PersonRepository people, ClaimService claims,
+    public PlanService(PlanRepository plans, PlanDateRepository dates, PlanPauseRepository pauses, PersonRepository people, ClaimService claims,
             SheetService sheets, Audit audit, PlatformTransactionManager transactions) {
         this.plans = plans;
         this.dates = dates;
+        this.pauses = pauses;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
@@ -60,9 +62,25 @@ public class PlanService {
                 .collect(Collectors.groupingBy(PlanDate::getPlanId, Collectors.counting()));
     }
 
-    /** The plan's first five dates after the sheet's today, up to its end. */
+    /** The sheet's pauses of each plan, by plan id. */
+    private Map<Long, List<PlanPause>> pausesByPlan(String sheetId) {
+        return pauses.findBySheetId(sheetId).stream().collect(Collectors.groupingBy(PlanPause::getPlanId));
+    }
+
+    private static boolean skipped(List<PlanPause> pauses, LocalDate date) {
+        return pauses.stream().anyMatch(pause -> pause.skips(date));
+    }
+
+    /** The ids of the sheet's plans now paused. */
+    public Set<Long> paused(String sheetId) {
+        return pauses.findBySheetId(sheetId).stream().filter(PlanPause::isOpen).map(PlanPause::getPlanId)
+                .collect(Collectors.toSet());
+    }
+
+    /** The plan's first five dates after the sheet's today, up to its end, those paused left out. */
     public List<LocalDate> nextDates(String sheetId, Plan plan) {
-        return plan.datesAfter(sheets.today(sheetId), 5);
+        List<PlanPause> its = pauses.findByPlanIdAndSheetId(plan.getId(), sheetId);
+        return plan.datesAfter(sheets.today(sheetId), 5, date -> skipped(its, date));
     }
 
     /** The first five dates after the sheet's today of each of the sheet's plans, by plan id. */
@@ -72,7 +90,11 @@ public class PlanService {
             return Map.of();
         }
         LocalDate today = sheets.today(sheetId);
-        return all.stream().collect(Collectors.toMap(Plan::getId, plan -> plan.datesAfter(today, 5)));
+        Map<Long, List<PlanPause>> paused = pausesByPlan(sheetId);
+        return all.stream().collect(Collectors.toMap(Plan::getId, plan -> {
+            List<PlanPause> its = paused.getOrDefault(plan.getId(), List.of());
+            return plan.datesAfter(today, 5, date -> skipped(its, date));
+        }));
     }
 
     @Transactional
@@ -102,6 +124,36 @@ public class PlanService {
         return saved;
     }
 
+    /**
+     * Pause the plan from the sheet's today, or resume it on the sheet's today: a plan date on or after the day it was
+     * paused and before the day it was resumed is skipped. Pausing a paused plan or resuming a running one is refused.
+     */
+    @Transactional
+    public Plan pause(String sheetId, String user, Long planId, boolean on) {
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new PlanNotFoundException(sheetId, planId));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, plan.getPersonId()));
+        LocalDate today = sheets.today(sheetId);
+        PlanPause open = pauses.findByPlanIdAndSheetId(planId, sheetId).stream().filter(PlanPause::isOpen)
+                .findFirst().orElse(null);
+        if (on) {
+            if (open != null) {
+                throw new PlanRefusedException("The plan is already paused");
+            }
+            pauses.saveAndFlush(new PlanPause(sheetId, planId, today));
+        } else {
+            if (open == null) {
+                throw new PlanRefusedException("The plan is not paused");
+            }
+            open.resume(today);
+            pauses.saveAndFlush(open);
+        }
+        audit.recordOnCommit((on ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " start=" + plan.getStart());
+        return plan;
+    }
+
     /** Make the claims of every plan date due and not yet made: how many were made (none for a viewer). */
     public int generate(String sheetId, String user) {
         if (sheets.isViewer(sheetId, user)) {
@@ -111,11 +163,13 @@ public class PlanService {
         Map<Long, Set<LocalDate>> made = dates.findBySheetId(sheetId).stream()
                 .collect(Collectors.groupingBy(PlanDate::getPlanId,
                         Collectors.mapping(PlanDate::getDate, Collectors.toSet())));
+        Map<Long, List<PlanPause>> paused = pausesByPlan(sheetId);
         int count = 0;
         for (Plan plan : list(sheetId)) {
             Set<LocalDate> done = made.getOrDefault(plan.getId(), Set.of());
+            List<PlanPause> its = paused.getOrDefault(plan.getId(), List.of());
             for (LocalDate date : plan.datesUpTo(today)) {
-                if (!done.contains(date) && make(sheetId, user, plan, date)) {
+                if (!done.contains(date) && !skipped(its, date) && make(sheetId, user, plan, date)) {
                     count++;
                 }
             }

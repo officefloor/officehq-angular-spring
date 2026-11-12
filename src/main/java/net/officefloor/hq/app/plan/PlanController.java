@@ -10,6 +10,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -31,16 +32,16 @@ public class PlanController {
     /**
      * A plan as shown: its amount with two decimals, its dates as yyyy-mm-dd, its interval in days or its day of the
      * month (the other null), how many claims it has made, and its first five dates after the sheet's today up to its
-     * end, comma and space separated.
+     * end, comma and space separated, those paused left out; and whether it is paused now.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated, String nextDates) {
+            LocalDate end, long generated, String nextDates, boolean paused) {
 
-        static PlanView of(Plan plan, long generated, List<LocalDate> nextDates) {
+        static PlanView of(Plan plan, long generated, List<LocalDate> nextDates, boolean paused) {
             return new PlanView(plan.getId(), plan.getPersonId(),
                     plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
                     plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
-                    nextDates.stream().map(LocalDate::toString).collect(Collectors.joining(", ")));
+                    nextDates.stream().map(LocalDate::toString).collect(Collectors.joining(", ")), paused);
         }
     }
 
@@ -88,9 +89,10 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         Map<Long, Long> generated = service.generatedCounts(sheetId.trim());
         Map<Long, List<LocalDate>> next = service.nextDates(sheetId.trim());
+        Set<Long> paused = service.paused(sheetId.trim());
         return service.list(sheetId.trim()).stream()
                 .map(plan -> PlanView.of(plan, generated.getOrDefault(plan.getId(), 0L),
-                        next.getOrDefault(plan.getId(), List.of())))
+                        next.getOrDefault(plan.getId(), List.of()), paused.contains(plan.getId())))
                 .toList();
     }
 
@@ -102,7 +104,29 @@ public class PlanController {
             @RequestBody @Valid PlanRequest request) {
         Plan plan = service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.start(),
                 request.everyValue(), request.dayValue(), request.end());
-        return PlanView.of(plan, 0, service.nextDates(sheetId.trim(), plan));
+        return PlanView.of(plan, 0, service.nextDates(sheetId.trim(), plan), false);
+    }
+
+    /** Pause the plan from the sheet's today; refused when it is already paused. */
+    @PostMapping("/plans/{planId}/pause")
+    public PlanView pause(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return pauseOrResume(sheetId.trim(), user.trim(), planId, true);
+    }
+
+    /** Resume the plan on the sheet's today; refused when it is not paused. */
+    @PostMapping("/plans/{planId}/resume")
+    public PlanView resume(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return pauseOrResume(sheetId.trim(), user.trim(), planId, false);
+    }
+
+    private PlanView pauseOrResume(String sheetId, String user, Long planId, boolean on) {
+        Plan plan = service.pause(sheetId, user, planId, on);
+        return PlanView.of(plan, service.generatedCounts(sheetId).getOrDefault(planId, 0L),
+                service.nextDates(sheetId, plan), on);
     }
 
     /** Make the claims of every plan date due and not yet made. */

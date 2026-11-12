@@ -12,6 +12,7 @@ import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * A person's plan: a claim of the amount on the start date, then every so many days, up to the end date; or, run
@@ -84,12 +85,17 @@ public class Plan {
 
     /** The first so many plan dates after the given day, up to the end. */
     public List<LocalDate> datesAfter(LocalDate after, int limit) {
+        return datesAfter(after, limit, date -> false);
+    }
+
+    /** The first so many plan dates after the given day, up to the end, those skipped left out. */
+    public List<LocalDate> datesAfter(LocalDate after, int limit, Predicate<LocalDate> skipped) {
         List<LocalDate> dates = new ArrayList<>();
         if (day != null) {
             for (YearMonth month = YearMonth.from(start); dates.size() < limit && !month.atDay(1).isAfter(end);
                     month = month.plusMonths(1)) {
                 LocalDate d = month.atDay(Math.min(day, month.lengthOfMonth()));
-                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
+                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end) && !skipped.test(d)) {
                     dates.add(d);
                 }
             }
@@ -100,7 +106,9 @@ public class Plan {
             d = start.plusDays((ChronoUnit.DAYS.between(start, after) / every + 1) * every);
         }
         for (; dates.size() < limit && !d.isAfter(end); d = d.plusDays(every)) {
-            dates.add(d);
+            if (!skipped.test(d)) {
+                dates.add(d);
+            }
         }
         return dates;
     }

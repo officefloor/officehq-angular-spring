@@ -22,6 +22,8 @@ export interface PlanView {
   generated: number;
   /** The first five plan dates after the sheet's today, up to the end, comma and space separated. */
   nextDates: string;
+  /** Whether the plan is paused now: its dates from the day it was paused are skipped until it is resumed. */
+  paused: boolean;
 }
 
 // The active sheet's plans, in the order they were added, re-read whenever a sheet is loaded.
@@ -56,6 +58,20 @@ export class Plans {
       ),
     );
     if (this.session.sheet() === sheet) this.list.update((list) => [...list, saved]);
+  }
+
+  /** Pause the plan from the sheet's today, or resume it; throws when refused. */
+  async pause(planId: number, on: boolean): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<PlanView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/${on ? 'pause' : 'resume'}`,
+        null,
+        this.session.headers(),
+      ),
+    );
+    if (this.session.sheet() === sheet) this.list.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
   }
 
   /** Make the DRAFT claims of every plan date due and not yet made: how many were made; throws when refused. */

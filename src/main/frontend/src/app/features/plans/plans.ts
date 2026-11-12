@@ -22,7 +22,13 @@ const WHOLE = /^\d{1,6}$/;
           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
           to {{ pl.end }};
           made <span data-testid="plan-generated">{{ pl.generated | fig }}</span>;
-          next <span data-testid="plan-next-dates">{{ pl.nextDates | fig }}</span>
+          next <span data-testid="plan-next-dates">{{ pl.nextDates | fig }}</span>;
+          paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="plan-pause" (click)="pause(pl.id, true)">Pause</button>
+          <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)">Resume</button>
+          @if (rowErrors()[pl.id]; as message) {
+            <p role="alert" data-testid="plan-error">{{ message | fig }}</p>
+          }
         </li>
       }
     </ul>
@@ -87,11 +93,24 @@ export class PersonPlans {
   protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The error of the last action on each plan's row, by plan id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   /** Whether an add is waiting for its answer: a second add meanwhile is ignored. */
   private adding = false;
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected async pause(planId: number, on: boolean): Promise<void> {
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+    try {
+      await this.store.pause(planId, on);
+    } catch (e) {
+      const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+      const message = (on ? 'The plan could not be paused.' : 'The plan could not be resumed.') + detail;
+      this.rowErrors.update((errors) => ({ ...errors, [planId]: message }));
+    }
   }
 
   protected async add(event: Event): Promise<void> {
