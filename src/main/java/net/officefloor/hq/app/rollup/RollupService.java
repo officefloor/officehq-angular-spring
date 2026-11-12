@@ -52,9 +52,12 @@ public class RollupService {
      * A person's figures as shown: claimed with two decimals, due-total (held down to the cap less their cut total, not below 0.00) with two decimals or
      * n/a, and overdue-total (the dues of their overdue claims) with two decimals; and the grade in force on the
      * sheet's today, or null when the sheet has none; and the score: the dues of their settled claims that correct
-     * nothing divided by 100, less 5 for each of their overdue claims, rounded half to even to a whole number.
+     * nothing divided by 100, less 5 for each of their overdue claims, rounded half to even to a whole number; and the settled-total (the dues of their SETTLED claims, each less its
+     * holders' parts, and the parts they hold of SETTLED claims), the open-total (the same of OPEN and PENDING claims)
+     * and the cut total (their cuts in every pool), each with two decimals.
      */
-    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade, String score) {
+    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade, String score,
+            String settledTotal, String openTotal, String cutTotal) {
     }
 
     /**
@@ -113,6 +116,8 @@ public class RollupService {
         SharedParts parts = sharedParts(sheetId, sheet, sheetRates, listed, counted);
         Map<Long, BigDecimal> heldParts = parts.held();
         Map<Long, BigDecimal> givenParts = parts.given();
+        Map<Long, BigDecimal> heldSettledParts = parts.heldSettled();
+        Map<Long, BigDecimal> heldOpenParts = parts.heldOpen();
         // Each person's cut total: their cuts in every pool they are a member of, added up.
         Map<String, BigDecimal> cutTotals = new LinkedHashMap<>();
         for (PoolCut cut : poolCuts.cutsNow(sheetId)) {
@@ -131,6 +136,8 @@ public class RollupService {
             BigDecimal due = zero();
             BigDecimal overdue = zero();
             BigDecimal settled = zero();
+            BigDecimal settledTotal = heldSettledParts.getOrDefault(person.getId(), zero());
+            BigDecimal openTotal = heldOpenParts.getOrDefault(person.getId(), zero());
             int overdueCount = 0;
             boolean anyDue = today != null && rateOn(sheetRates, person.gradeOn(today), today).isPresent();
             for (Claim claim : theirs) {
@@ -150,7 +157,13 @@ public class RollupService {
                     overdueCount++;
                 }
                 if (claimDue.isPresent()) {
-                    due = due.add(claimDue.get()).subtract(givenParts.getOrDefault(claim.getId(), zero()));
+                    BigDecimal ownPart = claimDue.get().subtract(givenParts.getOrDefault(claim.getId(), zero()));
+                    due = due.add(ownPart);
+                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                        settledTotal = settledTotal.add(ownPart);
+                    } else if (claim.getStatus().isOpen()) {
+                        openTotal = openTotal.add(ownPart);
+                    }
                     // A correction leaves the score's settled figure alone.
                     if (claim.getStatus() == ClaimStatus.SETTLED && claim.getCorrects() == null) {
                         settled = settled.add(claimDue.get());
@@ -173,14 +186,16 @@ public class RollupService {
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
             sheetOverdueCount += overdueCount;
+            BigDecimal cutTotal = cutTotals.getOrDefault(PoolCut.person(person.getId()), zero());
             if (anyDue && sheet != null) {
-                due = sheet.capped(due, cutTotals.getOrDefault(PoolCut.person(person.getId()), zero()));
+                due = sheet.capped(due, cutTotal);
             }
             if (anyDue) {
                 dues.add(due);
             }
             figures.put(person.getId(), new Figures(person.getName(), shown(claimed), anyDue ? shown(due) : "n/a",
-                    shown(overdue), today == null ? null : person.gradeOn(today), scoreOf(settled, overdueCount)));
+                    shown(overdue), today == null ? null : person.gradeOn(today), scoreOf(settled, overdueCount),
+                    shown(settledTotal), shown(openTotal), shown(cutTotal)));
         }
         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)),
                 sheetOverdueCount);
@@ -188,9 +203,11 @@ public class RollupService {
 
     /**
      * The parts of the sheet's shared claims under its today: by person, the parts of others' claims they hold; by
-     * claim, the parts of it shared out (taken off its own person's due).
+     * claim, the parts of it shared out (taken off its own person's due); and by person, the parts they hold of SETTLED
+     * claims and of OPEN and PENDING ones.
      */
-    public record SharedParts(Map<Long, BigDecimal> held, Map<Long, BigDecimal> given) {
+    public record SharedParts(Map<Long, BigDecimal> held, Map<Long, BigDecimal> given,
+            Map<Long, BigDecimal> heldSettled, Map<Long, BigDecimal> heldOpen) {
     }
 
     /** The parts of the sheet's shared claims now, as {@link #snapshot(String)} counts them. */
@@ -219,6 +236,8 @@ public class RollupService {
         }
         Map<Long, BigDecimal> held = new LinkedHashMap<>();
         Map<Long, BigDecimal> given = new LinkedHashMap<>();
+        Map<Long, BigDecimal> heldSettled = new LinkedHashMap<>();
+        Map<Long, BigDecimal> heldOpen = new LinkedHashMap<>();
         for (Person person : listed) {
             for (Claim claim : counted.getOrDefault(person.getId(), List.of())) {
                 List<ClaimShare> claimShares = sharesOf.getOrDefault(claim.getId(), List.of());
@@ -233,11 +252,16 @@ public class RollupService {
                     Optional<BigDecimal> part = partOf(sheet, sheetRates, byId.get(share.getPersonId()), claim, share,
                             claimDue.get());
                     part.ifPresent(p -> held.merge(share.getPersonId(), p, BigDecimal::add));
+                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                        part.ifPresent(p -> heldSettled.merge(share.getPersonId(), p, BigDecimal::add));
+                    } else if (claim.getStatus().isOpen()) {
+                        part.ifPresent(p -> heldOpen.merge(share.getPersonId(), p, BigDecimal::add));
+                    }
                     given.merge(claim.getId(), part.orElse(zero()), BigDecimal::add);
                 }
             }
         }
-        return new SharedParts(held, given);
+        return new SharedParts(held, given, heldSettled, heldOpen);
     }
 
     /**
@@ -266,17 +290,20 @@ public class RollupService {
     /**
      * Figures added up over sheets: the number of people, the due-totals and the overdue-totals (two decimals); per
      * grade, the due-totals of the people on it not retired (two decimals); per status, how many claims have it; and how
-     * many counted claims are overdue.
+     * many counted claims are overdue; and the settled-totals, open-totals and cut totals (two decimals).
      */
     public record Consolidated(int people, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts, List<Member> members, int overdueCount) {
+            Map<String, Integer> statusCounts, List<Member> members, int overdueCount, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     /**
      * A person of one of the sheets as that sheet shows them: their due-total (two decimals or n/a), their
-     * overdue-total (two decimals), and their name and aliases as names are compared.
+     * overdue-total (two decimals), their name and aliases as names are compared, and their settled-total, open-total
+     * and cut total (two decimals).
      */
-    public record Member(String dueTotal, String overdueTotal, List<String> names) {
+    public record Member(String dueTotal, String overdueTotal, List<String> names, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     /**
@@ -307,7 +334,8 @@ public class RollupService {
             figures.people().forEach((personId, theirs) -> {
                 List<String> names = new ArrayList<>(List.of(Person.key(theirs.name())));
                 names.addAll(namesOf.getOrDefault(personId, List.of()));
-                members.add(new Member(theirs.dueTotal(), theirs.overdueTotal(), names));
+                members.add(new Member(theirs.dueTotal(), theirs.overdueTotal(), names, theirs.settledTotal(),
+                        theirs.openTotal(), theirs.cutTotal()));
             });
             due = due.add(new BigDecimal(figures.dueTotal()));
             overdue = overdue.add(new BigDecimal(figures.overdueTotal()));
@@ -322,12 +350,17 @@ public class RollupService {
                 statuses.merge(claim.getStatus().name(), 1, Integer::sum);
             }
         }
-        return new Consolidated(count, shown(due), shown(overdue), shownAll(gradeDues), statuses, members, overdueCount);
+        BigDecimal settled = members.stream().map(m -> new BigDecimal(m.settledTotal())).reduce(zero(), BigDecimal::add);
+        BigDecimal open = members.stream().map(m -> new BigDecimal(m.openTotal())).reduce(zero(), BigDecimal::add);
+        BigDecimal cut = members.stream().map(m -> new BigDecimal(m.cutTotal())).reduce(zero(), BigDecimal::add);
+        return new Consolidated(count, shown(due), shown(overdue), shownAll(gradeDues), statuses, members, overdueCount,
+                shown(settled), shown(open), shown(cut));
     }
 
     /**
      * The figures of the sheet and its descendants: the people counted once over the tree (people whose names or
-     * aliases match, as names are compared, are one person); the due-total and overdue-total trimmed once over every
+     * aliases match, as names are compared, are one person); the due-total, overdue-total, settled-total, open-total
+     * and cut total trimmed once over every
      * person's figure of the tree; per grade and per status, each sheet's added up. While the request shows the sheet
      * as of a date, every sheet of the tree is as it stood at the end of that date, with the date as its today.
      */
@@ -345,8 +378,12 @@ public class RollupService {
         List<BigDecimal> dues = members.stream().map(Member::dueTotal).filter(d -> !d.equals("n/a"))
                 .map(BigDecimal::new).toList();
         List<BigDecimal> overdues = members.stream().map(Member::overdueTotal).map(BigDecimal::new).toList();
+        List<BigDecimal> settleds = members.stream().map(Member::settledTotal).map(BigDecimal::new).toList();
+        List<BigDecimal> opens = members.stream().map(Member::openTotal).map(BigDecimal::new).toList();
+        List<BigDecimal> cuts = members.stream().map(Member::cutTotal).map(BigDecimal::new).toList();
         return new Consolidated(distinctPeople(members), shown(trimmedSum(dues)), shown(trimmedSum(overdues)),
-                shownAll(gradeDues), statuses, members, own.overdueCount() + descendants.overdueCount());
+                shownAll(gradeDues), statuses, members, own.overdueCount() + descendants.overdueCount(),
+                shown(trimmedSum(settleds)), shown(trimmedSum(opens)), shown(trimmedSum(cuts)));
     }
 
     /**

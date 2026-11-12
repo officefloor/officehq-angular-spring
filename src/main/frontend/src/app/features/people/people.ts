@@ -93,11 +93,17 @@ interface DescendantFigures {
   overdueCount: number;
 }
 
-/** A person of a sheet as that sheet shows them: due-total, overdue-total, and name and aliases as names are compared. */
+/**
+ * A person of a sheet as that sheet shows them: due-total, overdue-total, name and aliases as names are compared, and
+ * settled-total, open-total and cut total.
+ */
 interface TreeMember {
   dueTotal: string;
   overdueTotal: string;
   names: string[];
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 /** How many people the members are, those whose names or aliases match (as names are compared) being one. */
@@ -215,6 +221,12 @@ function csvField(value: string): string {
         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | fig }}</dd>
         <dt>Overdue total</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | fig }}</dd>
+        <dt>Settled total</dt>
+        <dd data-testid="consolidated-settled-total">{{ consolidatedSettledTotal() | fig }}</dd>
+        <dt>Open total</dt>
+        <dd data-testid="consolidated-open-total">{{ consolidatedOpenTotal() | fig }}</dd>
+        <dt>Cut total</dt>
+        <dd data-testid="consolidated-cut-total">{{ consolidatedCutTotal() | fig }}</dd>
         @for (g of consolidatedGrades(); track g.grade) {
           <dt>Grade {{ g.grade }} due total</dt>
           <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | fig }}</dd>
@@ -1104,8 +1116,8 @@ export class People {
   });
   /** The pools, whose cuts each person's cut total adds up. */
   private readonly pools = viewChild(Pools);
-  /** The sheet's cut total: everyone's cut totals added up. */
-  protected readonly cutTotal = computed(() => this.pools()?.cutTotal() ?? '0.00');
+  /** The sheet's cut total: everyone's cut totals added up, with three or more leaving out the highest and lowest. */
+  protected readonly cutTotal = computed(() => trimmedSumDues(this.people().map((p) => this.cutTotalOf(p))));
   protected readonly claimedTotal = computed(() => sumAmounts(this.people().map((p) => this.claimedBy(p.id))));
   /** The sheet's rates, by grade and then from-date. */
   protected readonly rates = signal<Rate[]>([]);
@@ -1182,10 +1194,10 @@ export class People {
   protected readonly personDueTotals = computed(() => new Map(this.people().map((p) => [p.id, this.dueTotalOf(p)])));
 
   protected readonly dueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.dueTotalOf(p))));
-  /** Everyone's settled-total added up, not trimmed. */
-  protected readonly settledTotal = computed(() => sumDues(this.people().map((p) => this.settledTotalOf(p))));
-  /** Everyone's open-total added up, not trimmed. */
-  protected readonly openTotal = computed(() => sumDues(this.people().map((p) => this.openTotalOf(p))));
+  /** Everyone's settled-total added up, with three or more leaving out the highest and lowest. */
+  protected readonly settledTotal = computed(() => trimmedSumDues(this.people().map((p) => this.settledTotalOf(p))));
+  /** Everyone's open-total added up, with three or more leaving out the highest and lowest. */
+  protected readonly openTotal = computed(() => trimmedSumDues(this.people().map((p) => this.openTotalOf(p))));
   /** Everyone's age buckets added up, bucket by bucket (0 to 30, 31 to 60, 61 or more days), not trimmed. */
   protected readonly agedTotals = computed<[string, string, string]>(() => {
     const aged = this.people().map((p) => this.agedOf(p));
@@ -1255,6 +1267,9 @@ export class People {
       dueTotal: this.dueTotalOf(p),
       overdueTotal: this.overdueTotalOf(p),
       names: [p.name, ...p.aliases].map(nameKey),
+      settledTotal: this.settledTotalOf(p),
+      openTotal: this.openTotalOf(p),
+      cutTotal: this.cutTotalOf(p),
     })),
     ...this.descendantFigures().members,
   ]);
@@ -1267,6 +1282,18 @@ export class People {
   /** Every person's overdue-total over the tree added up, with three or more leaving out the highest and lowest. */
   protected readonly consolidatedOverdueTotal = computed(() =>
     trimmedSumDues(this.treeMembers().map((m) => m.overdueTotal)),
+  );
+  /** Every person's settled-total over the tree added up, with three or more leaving out the highest and lowest. */
+  protected readonly consolidatedSettledTotal = computed(() =>
+    trimmedSumDues(this.treeMembers().map((m) => m.settledTotal)),
+  );
+  /** Every person's open-total over the tree added up, with three or more leaving out the highest and lowest. */
+  protected readonly consolidatedOpenTotal = computed(() =>
+    trimmedSumDues(this.treeMembers().map((m) => m.openTotal)),
+  );
+  /** Every person's cut total over the tree added up, with three or more leaving out the highest and lowest. */
+  protected readonly consolidatedCutTotal = computed(() =>
+    trimmedSumDues(this.treeMembers().map((m) => m.cutTotal)),
   );
   /** Per grade: the sheet's due-total of the people on it not retired, as the summary shows it, and its descendants'. */
   protected readonly consolidatedGrades = computed(() =>
