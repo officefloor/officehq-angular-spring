@@ -1,0 +1,64 @@
+{
+  "checkpoint": 205,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp205_plan-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d85139db7fe9808dc7ef7381d1a87e2565dada6c",
+  "reset_sha": "",
+  "preagent_sha": "9715090e547b4f8aa5a664ca542d9258a26aabc5",
+  "prev_sha": "9715090e547b4f8aa5a664ca542d9258a26aabc5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6673070000000001,
+    "input_tokens": 26,
+    "output_tokens": 8950,
+    "cache_read_tokens": 514655,
+    "cache_creation_tokens": 48159,
+    "num_turns": 14,
+    "duration_ms": 355499,
+    "duration_api_ms": 74179,
+    "model": "claude-opus-5-5",
+    "session_id": "c3e4c45a-3c97-48f8-ac1a-3abef178e10e",
+    "stop_reason": "success",
+    "result_text": "You can now change a plan's amount, and all 4 acceptance tests pass with `bin/e2e`.\n\n**How it works**\n- **Stored data:** a new migration, `V108__plan_change.sql`, adds a `plan_change` table. It records the plan, the sheet's today when the change was made, and the new amount.\n- **Server:** a new endpoint, `POST /api/sheets/{sheetId}/plans/{planId}/amount`, takes the new amount.\n  - It refuses an amount with more than two decimals or one that isn't more than 0.00. Nothing is written when it refuses.\n  - When it goes through, it updates the plan's amount, saves a change record, and writes `PLAN_CHANGED sheet=\u2026 by=\u2026 name=<person> start=<plan start> amount=<new amount>` to the audit file.\n  - Claims are generated from the plan's current amount, so claims made after the change use the new amount. Claims already made keep theirs.\n  - Each plan as listed now carries its changes, oldest first.\n- **Front end:** each plan row has an amount entry (`plan-amount`) and a save button (`plan-amount-save`). Its changes are listed as `<date> amount=<amount>` lines (`plan-change-line`). A refused amount shows the row's existing `plan-error`, and the error clears when you type in the entry or press save again.\n\nViewers can't change a plan's amount: the existing check that blocks viewers from making changes covers the new endpoint too.\n\nThe changes are mostly in `PlanService.java`, `PlanController.java`, the new `PlanChange.java` and `PlanChangeRepository.java`, and the front end in `core/plans.ts` and `features/plans/plans.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6673070000000001,
+        "num_turns": 14,
+        "duration_ms": 355499,
+        "duration_api_ms": 74179,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp205.agent.jsonl",
+  "agent_diff_file": "cp205.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
