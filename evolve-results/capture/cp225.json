@@ -1,0 +1,64 @@
+{
+  "checkpoint": 225,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp225_grade-merge",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can merge a grade into another (two selects and a button; GRADE_MERGED from=<grade>\ninto=<grade>; the same grade twice, or anyone else, is refused): every person whose grade in force\ntoday is the merged grade is given the other from the sheet's today, each exactly as the person\nform would (PERSON_EDITED and the rollup lines, in list order).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can merge a grade into another (two selects and a button; GRADE_MERGED from=<grade>\ninto=<grade>; the same grade twice, or anyone else, is refused): every person whose grade in force\ntoday is the merged grade is given the other from the sheet's today, each exactly as the person\nform would (PERSON_EDITED and the rollup lines, in list order).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "32cc51c1d8cb6a206e4778ef39a4f8c57f7297a0",
+  "reset_sha": "",
+  "preagent_sha": "d43d9e0c713928ff5ee66ceed93e4a92bbd0500c",
+  "prev_sha": "d43d9e0c713928ff5ee66ceed93e4a92bbd0500c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3297338,
+    "input_tokens": 66,
+    "output_tokens": 16336,
+    "cache_read_tokens": 1838549,
+    "cache_creation_tokens": 79380,
+    "num_turns": 34,
+    "duration_ms": 609416,
+    "duration_api_ms": 168093,
+    "model": "claude-opus-5-5",
+    "session_id": "e7d14208-05e0-4643-a05b-6d53601e42f5",
+    "stop_reason": "success",
+    "result_text": "A steward can now merge one grade into another. The main \"grade merge\" test passes, along with scenarios 2 and 3. **Scenario 1 still fails**, at a check that has nothing to do with merging and that I didn't change.\n\n**What the merge does**\n- **Server:** a new `GradeMergeService` (in the `person` package) behind `POST /api/sheets/{id}/people/grade-merge`.\n  - It refuses anyone who isn't a steward, and a grade merged into itself. A refusal saves nothing and writes nothing to the audit file.\n  - Otherwise it writes `GRADE_MERGED from=\u2026 into=\u2026`, then saves each person whose grade today is the merged one, in list order, the same way the person form saves. That writes each person's `PERSON_EDITED` and rollup lines.\n  - At the end it also records the rollup changes for the merge as a whole. The test expects that second ROLLUP/TOTALS pair; without it the audit came up two lines short.\n  - Merging into a retired grade is refused, because the person save already refuses retired grades.\n- **Screen:** the Grades section has a new form with `grade-merge-from`, `grade-merge-into` and the `grade-merge` button. Picking the same grade twice shows `grade-error` without sending anything, and a refusal from the server shows it too. When a merge succeeds, the sheet reloads so everyone's new grade shows, and `grade-merged` shows how many people changed grade. That count clears when the button is pressed again and when the sheet reloads.\n\n**Scenario 1 failure** (`acceptance.spec.ts:444`): it expects Cam's `person-excess` to be `0.00`, but the screen shows `48.00`. Cam's cut total is 50.00 and the cap is 2.00. The app works excess out as dues plus cut total minus the cap, a rule written down in `excessOver` in `rates.ts`, which gives 48.00. That scenario never merges a grade, and my change doesn't touch how excess is calculated. It failed the same way on both runs, so this looks like a mismatch already in the app's excess logic.\n\nI left it alone because changing a documented rule in an unrelated feature is outside this request. I didn't check whether scenario 1 has more failures after that line. Changing it would mean deciding whether the cut total should count toward excess. Tell me if you want me to look into it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3297338,
+        "num_turns": 34,
+        "duration_ms": 609416,
+        "duration_api_ms": 168093,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp225.agent.jsonl",
+  "agent_diff_file": "cp225.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
