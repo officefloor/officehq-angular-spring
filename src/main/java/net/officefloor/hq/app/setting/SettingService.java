@@ -2,13 +2,17 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.PolicyVersion;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -26,15 +30,36 @@ public class SettingService {
     private final SheetRepository sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final ClaimRepository claims;
 
-    public SettingService(SheetRepository sheets, Audit audit, RollupService rollup) {
+    public SettingService(SheetRepository sheets, Audit audit, RollupService rollup, ClaimRepository claims) {
         this.sheets = sheets;
         this.audit = audit;
         this.rollup = rollup;
+        this.claims = claims;
     }
 
     public Sheet get(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId));
+    }
+
+    /** A policy version with the number of the sheet's claims whose policy version it is. */
+    public record PolicyVersionCount(PolicyVersion version, long claims) {
+    }
+
+    /**
+     * The sheet's policy versions, first made to last, each with the number of its claims whose policy version it is:
+     * the version in force on the claim's date.
+     */
+    @Transactional(readOnly = true)
+    public List<PolicyVersionCount> policyVersionCounts(String sheetId) {
+        Sheet sheet = get(sheetId);
+        Map<Integer, Long> byVersion = new HashMap<>();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            byVersion.merge(sheet.policyVersionOn(claim.getDate()), 1L, Long::sum);
+        }
+        return sheet.policyVersions().stream()
+                .map(v -> new PolicyVersionCount(v, byVersion.getOrDefault(v.getNumber(), 0L))).toList();
     }
 
     /**

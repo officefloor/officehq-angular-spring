@@ -74,6 +74,19 @@ public class SettingController {
         }
     }
 
+    /**
+     * A policy version as listed: its number, the setting changed, the value given it (null: none), the date it is in
+     * force from (null: every date) and the number of claims whose policy version it is.
+     */
+    public record PolicyLineView(int number, String key, String value, LocalDate from, long claims) {
+
+        static PolicyLineView of(SettingService.PolicyVersionCount count) {
+            PolicyVersion version = count.version();
+            return new PolicyLineView(version.getNumber(), version.getKey(), version.getValue(),
+                    version.getFromDate(), count.claims());
+        }
+    }
+
     /** A dated setting's value (null: none) from its from-date. */
     public record DatedValue(LocalDate from, String value) {
     }
@@ -330,6 +343,16 @@ public class SettingController {
     public SettingsView get(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(service.get(sheetId.trim()));
+    }
+
+    /**
+     * The policy versions, first made to last: each one's number, setting, value and from-date, with the number of the
+     * sheet's claims whose policy version it is.
+     */
+    @GetMapping("/policy")
+    public List<PolicyLineView> policy(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.policyVersionCounts(sheetId.trim()).stream().map(PolicyLineView::of).toList();
     }
 
     @PutMapping

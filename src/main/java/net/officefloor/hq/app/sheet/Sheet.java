@@ -196,7 +196,7 @@ public class Sheet {
         Sheet copy = new Sheet(id, createdBy, today);
         dated.forEach(d -> copy.dated.add(new DatedSetting(copy, d.getKey(), d.getFromDate(), d.getValue())));
         policyVersions.forEach(v -> copy.policyVersions
-                .add(new PolicyVersion(copy, v.getNumber(), v.getKey(), v.getFromDate())));
+                .add(new PolicyVersion(copy, v.getNumber(), v.getKey(), v.getFromDate(), v.getValue())));
         copy.permissions.putAll(permissions);
         copy.policyDate = policyDate;
         copy.periodNumberingFrom = periodNumberingFrom;
@@ -269,7 +269,7 @@ public class Sheet {
         dated.stream().filter(d -> d.getKey().equals(key) && d.getFromDate().equals(from)).findFirst()
                 .ifPresentOrElse(d -> d.setValue(value), () -> dated.add(new DatedSetting(this, key, from, value)));
         if (POLICY_KEYS.contains(key)) {
-            policyVersions.add(new PolicyVersion(this, policyVersions.size() + 1, key, from));
+            policyVersions.add(new PolicyVersion(this, policyVersions.size() + 1, key, from, value));
         }
     }
 

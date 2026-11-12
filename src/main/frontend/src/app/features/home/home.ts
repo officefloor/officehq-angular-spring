@@ -4,6 +4,7 @@ import { Session } from '../../core/session';
 import { AuditViewer } from '../audit-viewer/audit-viewer';
 import { Activity } from '../activity/activity';
 import { Duplicates } from '../duplicates/duplicates';
+import { PolicyVersions } from '../policy/policy-versions';
 import { Grades } from '../grades/grades';
 import { Holidays } from '../holidays/holidays';
 import { NotesList } from '../notes/notes';
@@ -18,7 +19,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [Activity, AuditViewer, Duplicates, Grades, Holidays, NotesList, People, Settings, SheetCompare, SnapshotCompare, TemplatesList, TreeSearch, VoidReasonsList],
+  imports: [Activity, AuditViewer, Duplicates, Grades, Holidays, NotesList, People, PolicyVersions, Settings, SheetCompare, SnapshotCompare, TemplatesList, TreeSearch, VoidReasonsList],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -120,6 +121,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
         <app-templates />
         <app-people />
         <app-duplicates />
+        <app-policy-versions />
         <app-snapshot-compare />
         <app-tree-search />
         <app-sheet-compare />

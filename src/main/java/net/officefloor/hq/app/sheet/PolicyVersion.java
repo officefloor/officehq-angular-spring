@@ -13,8 +13,8 @@ import java.time.LocalDate;
 
 /**
  * A policy version of a sheet: a change to one of its policy settings (the rounding mode, the floor, the cap, the
- * terms, the late percent or the clerk limit), numbered from 1 in the order made, in force from its from-date (none:
- * on every date).
+ * terms, the late percent or the clerk limit), numbered from 1 in the order made, with the value the setting was given,
+ * in force from its from-date (none: on every date).
  */
 @Entity
 @Table(name = "policy_version")
@@ -38,14 +38,19 @@ public class PolicyVersion {
     @Column(name = "from_date")
     private LocalDate fromDate;
 
+    /** The value the setting was given; null: none (such as no limit). */
+    @Column(name = "setting_value")
+    private String value;
+
     protected PolicyVersion() {
     }
 
-    PolicyVersion(Sheet sheet, int number, String key, LocalDate fromDate) {
+    PolicyVersion(Sheet sheet, int number, String key, LocalDate fromDate, String value) {
         this.sheet = sheet;
         this.number = number;
         this.key = key;
         this.fromDate = fromDate;
+        this.value = value;
     }
 
     public int getNumber() {
@@ -58,6 +63,10 @@ public class PolicyVersion {
 
     public LocalDate getFromDate() {
         return fromDate;
+    }
+
+    public String getValue() {
+        return value;
     }
 
     /** Whether the version is in force on the date: it has no from-date, or its from-date is on or before it. */
