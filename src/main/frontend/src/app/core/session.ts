@@ -72,6 +72,10 @@ export class Session {
    *  is none or until the settings are read. */
   readonly cap = computed(() => this.settingOn('cap', this.today()));
   private loads = 0;
+  /** The number of sheet loads waiting for their answer. */
+  private loading = 0;
+  /** The completed load whose data each part of the screen last showed, by part. */
+  private readonly shownLoads: Record<string, number> = {};
 
   signIn(name: string): void {
     this.user.set(name);
@@ -102,15 +106,33 @@ export class Session {
   /** Load a sheet by id; an id never used before starts an empty sheet. */
   async loadSheet(id: string): Promise<void> {
     const load = ++this.loads;
+    this.loading++;
     const loaded = await firstValueFrom(
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
         headers: { 'X-User': this.user() ?? '' },
       }),
-    );
+    ).finally(() => this.loading--);
     // A later load wins over a slower earlier one.
     if (load === this.loads) {
       this.show(loaded);
       this.loaded.update((n) => n + 1);
+    }
+  }
+
+  /** Record that the part of the screen now shows the data it read for the completed load. */
+  shown(part: string, load: number): void {
+    this.shownLoads[part] = load;
+  }
+
+  /**
+   * Resolves once no sheet load is waiting for its answer and each of the parts shows the data read for the latest
+   * completed load (so a figure taken from the screen is the sheet as it now stands, or as of the as-of date).
+   */
+  async settled(...parts: string[]): Promise<void> {
+    // A part whose read failed never catches up: after a while, take the screen as it is.
+    for (let waited = 0; waited < 10_000; waited += 20) {
+      if (this.loading === 0 && parts.every((part) => this.shownLoads[part] === this.loaded())) return;
+      await new Promise((resolve) => setTimeout(resolve, 20));
     }
   }
 

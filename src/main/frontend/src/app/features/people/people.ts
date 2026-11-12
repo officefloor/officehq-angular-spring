@@ -2257,7 +2257,8 @@ export class People {
    * Download everyone on the sheet, retired people included, in list order as a CSV file: name, the grade in force
    * today, the retired-from date or nothing, and the due-total as the list shows it.
    */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    await this.session.settled('people', 'settings');
     const lines = [['name', 'grade', 'retired-from', 'due-total']].concat(
       this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)]),
     );
@@ -2269,7 +2270,8 @@ export class People {
    * claims oldest first: the person's name, then the claim's number, date, amount, due, status and period as the list
    * shows them.
    */
-  protected exportClaims(): void {
+  protected async exportClaims(): Promise<void> {
+    await this.session.settled('people', 'settings');
     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']].concat(
       this.people().flatMap((p) =>
         [...this.claimsOf(p.id)]
@@ -2315,6 +2317,7 @@ export class People {
 
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
+    const load = this.session.loaded();
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [list, claims, rates, periods, tags, descendants] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
@@ -2332,6 +2335,7 @@ export class People {
       this.periods.set(periods);
       this.tags.set(tags);
       this.descendantFigures.set(descendants);
+      this.session.shown('people', load);
     }
   }
 }

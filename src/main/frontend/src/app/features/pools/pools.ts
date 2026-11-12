@@ -327,7 +327,8 @@ export class Pools {
    * Download the pools as a CSV file, pools in the order added and each pool's members in the order added: the pool's
    * name, the member's name (a pool as pool:<name>), their share and their cut as shown (empty when none).
    */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    await this.session.settled('people', 'settings', 'pools');
     const lines = [['pool', 'member', 'share', 'cut']].concat(
       this.shown().flatMap((p) => p.members.map((m) => [p.name, m.name, m.share, m.cut])),
     );
@@ -496,12 +497,14 @@ export class Pools {
 
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
+    const load = this.session.loaded();
     const list = await firstValueFrom(this.http.get<PoolView[]>(this.base(sheet), this.session.headers())).catch(
       () => null,
     );
     // A later read wins over a slower earlier one.
     if (list && read === this.reads && this.session.sheet() === sheet) {
       this.pools.set(list);
+      this.session.shown('pools', load);
     }
   }
 }

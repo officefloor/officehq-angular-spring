@@ -1066,6 +1066,7 @@ export class Settings {
 
   private async read(sheet: string): Promise<void> {
     const read = ++this.reads;
+    const load = this.session.loaded();
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
     const [settings, roles, delegations] = await Promise.all([
       firstValueFrom(this.http.get<SettingsView>(`${url}/settings`, this.session.headers())),
@@ -1077,6 +1078,7 @@ export class Settings {
       this.show(settings);
       this.roleList.set(roles);
       this.delegations.set(delegations);
+      this.session.shown('settings', load);
     }
   }
 
