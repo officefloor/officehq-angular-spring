@@ -1,0 +1,142 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index f09f7abd8..eae4495fb 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -64,6 +64,20 @@ export function counts(c: Claim): boolean {
+   return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
+ }
+ 
++/** Whether a claim in this status counts toward the totals; no status (not yet added) does not. */
++export function countsAt(status: ClaimStatus | null): boolean {
++  return status === 'OPEN' || status === 'PENDING' || status === 'SETTLED';
++}
++
++/** The status a claim had at the end of a day (YYYY-MM-DD), as its status log records it: its latest line
++ *  dated on or before it; null when it was added after it. A claim with no log has its status now. */
++export function statusAt(c: Claim, day: string): ClaimStatus | null {
++  if (c.statusLog.length === 0) return c.status;
++  let status: ClaimStatus | null = null;
++  for (const l of c.statusLog) if (l.on <= day) status = l.status;
++  return status;
++}
++
+ /** Whether a claim is still open (OPEN or PENDING): it goes overdue, and a hold over its date takes it
+  *  out of the live totals unless a statement binds it. */
+ export function isOpen(c: Claim): boolean {
+@@ -108,6 +122,16 @@ export class Claims {
+     );
+   });
+ 
++  /** The claims a period's figures may count, whatever their status: all but the OPEN and PENDING claims
++   *  bound by no statement and dated within one of their person's holds, and the deferred claims, as the
++   *  live totals leave those out. */
++  readonly periodCandidates = computed(() => {
++    const holds = new Map(this.people.people().map((p) => [p.id, p.holds]));
++    return this.claims().filter(
++      (c) => !(isOpen(c) && !bound(c) && heldOn(holds.get(c.personId) ?? [], c.date)) && !this.deferred(c),
++    );
++  });
++
+   /** Each person's claimed, in cents, by person id. */
+   readonly claimedCents = computed(() => {
+     const out = new Map<number, number>();
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 8db62feb0..8d14bdb6a 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -1,5 +1,5 @@
+ import { Injectable, computed, inject } from '@angular/core';
+-import { Claim, Claims, bound } from './claims';
++import { Claim, Claims, bound, countsAt, statusAt } from './claims';
+ import { People, Person, gradeOn } from './people';
+ import { Period, Periods } from './periods';
+ import { Rates, hundredths, money } from './rates';
+@@ -99,15 +99,17 @@ export class Figures {
+   }
+ 
+   /** Each period's live due-total for each person, in cents, by period id then person id: the figures
+-   *  of the person's claims that count live whose date falls in it — a settled claim's frozen due, else
+-   *  as its person's last statement bound it, else its live due, an overdue claim's late charge on top
+-   *  (a claim with no figure adds nothing). */
++   *  of the person's claims whose date falls in it and that counted by the status they had at the end of
++   *  the period's last day, as their status log records it (one added after then does not count), and
++   *  that are not left out now by a hold or a deferral — each its due as shown now: a settled claim's
++   *  frozen due, else as its person's last statement bound it, else its live due, an overdue claim's
++   *  late charge on top (a claim with no figure adds nothing). */
+   private readonly livePersonPeriodCents = computed(() => {
+     const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
+     const sums = new Map<number, Map<number, bigint>>();
+-    for (const c of this.claims.live()) {
++    for (const c of this.claims.periodCandidates()) {
+       const period = this.periods.of(c.date);
+-      if (!period) continue;
++      if (!period || !countsAt(statusAt(c, period.to))) continue;
+       let due: bigint | null;
+       if (c.settledDue !== null) due = hundredths(c.settledDue);
+       else if (bound(c)) due = c.statedDue === null ? null : hundredths(c.statedDue);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 086113afa..845da70fd 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -12,6 +12,8 @@ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.claim.StatusChange;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rate.Rate;
+@@ -112,11 +114,12 @@ public class Rollup {
+         return new Snapshot(figures, claimedTotal, dueTotal, overdueTotal);
+     }
+ 
+-    /** Each person's due-total of their claims that count dated from one date to another, both
+-     *  inclusive, by person id, every person on the sheet in the order they were added, as the screen
+-     *  shows a person's for a period: each claim's settled due, else the figure its statement bound,
+-     *  else its live due, at least the floor, an overdue claim's late charge on top (a claim with no
+-     *  figure adds nothing). */
++    /** Each person's due-total of their claims dated from one date to another, both inclusive, by person
++     *  id, every person on the sheet in the order they were added, as the screen shows a person's for a
++     *  period: a claim counts by the status it had at the end of the last day, as its status log records
++     *  it (one added after then does not), unless a hold or a deferral leaves it out now; each counts its
++     *  due as shown now: its settled due, else the figure its statement bound, else its live due, at
++     *  least the floor, an overdue claim's late charge on top (a claim with no figure adds nothing). */
+     public Map<Long, BigDecimal> dueBetweenByPerson(String sheetId, LocalDate from, LocalDate to) {
+         Optional<Sheet> sheet = sheets.findById(sheetId);
+         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
+@@ -130,8 +133,8 @@ public class Rollup {
+         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+         for (Claim claim : sheetClaims) {
+             Person person = byId.get(claim.getPersonId());
+-            if (person == null || !countsLive(claim, person, today) || claim.getDate().isBefore(from)
+-                    || claim.getDate().isAfter(to)) {
++            if (person == null || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)
++                    || !countsAt(claim, to) || heldOut(claim, person) || claim.deferredOn(today)) {
+                 continue;
+             }
+             BigDecimal due;
+@@ -181,6 +184,23 @@ public class Rollup {
+         return claim.getStatus().counts() && !heldOut(claim, person) && !claim.deferredOn(today);
+     }
+ 
++    /** Whether a claim counted by the status it had at the end of a day, as its status log records it:
++     *  its latest line dated on or before it; not when it was added after it. A claim with no log counts
++     *  by its status now. */
++    private static boolean countsAt(Claim claim, LocalDate day) {
++        List<StatusChange> log = claim.getStatusLog();
++        if (log.isEmpty()) {
++            return claim.getStatus().counts();
++        }
++        ClaimStatus status = null;
++        for (StatusChange change : log) {
++            if (!change.getOn().isAfter(day)) {
++                status = change.getStatus();
++            }
++        }
++        return status != null && status.counts();
++    }
++
+     /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */
+     private static boolean overdue(Claim claim, LocalDate today) {
+         return claim.getStatus().isOpen() && !claim.deferredOn(today) && today != null && claim.getDueBy() != null
