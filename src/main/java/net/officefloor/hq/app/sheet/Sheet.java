@@ -207,6 +207,11 @@ public class Sheet {
         return PROOF_THRESHOLD + "-" + grade;
     }
 
+    /** The key of a grade's own clerk limit (clerk-limit-A, clerk-limit-B, clerk-limit-C). */
+    public static String gradeClerkLimitKey(String grade) {
+        return CLERK_LIMIT + "-" + grade;
+    }
+
     /** The key of a grade's grace days. */
     public static String gradeGraceKey(String grade) {
         return GRACE + "-" + grade;
@@ -248,6 +253,15 @@ public class Sheet {
     /** The highest due a clerk may settle, in force on the sheet's today; null when there is no limit. */
     public BigDecimal getClerkLimit() {
         return decimalOn(CLERK_LIMIT, today).orElse(null);
+    }
+
+    /**
+     * The clerk limit for a person of the grade, in force on the sheet's today: the grade's own when one is set, else
+     * the sheet's; null when there is none.
+     */
+    public BigDecimal clerkLimitFor(String grade) {
+        return grade == null ? getClerkLimit()
+                : decimalOn(gradeClerkLimitKey(grade), today).orElseGet(this::getClerkLimit);
     }
 
     /** The least a live due of a claim dated on the date can be. */

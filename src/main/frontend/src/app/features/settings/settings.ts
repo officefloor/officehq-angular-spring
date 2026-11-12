@@ -102,6 +102,24 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="froms()['clerk-limit'] ?? ''"
           (input)="setFrom('clerk-limit', value($event))"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (blank: the sheet's clerk limit)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g"
+            [attr.data-testid]="'setting-clerk-limit-' + g"
+            inputmode="decimal"
+            [value]="gradeClerkLimit()[g] ?? ''"
+            (input)="setGradeClerkLimit(g, value($event)); settingsError.set(null)"
+          />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">From (blank: the sheet's today)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g + '-from'"
+            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+            type="date"
+            [value]="froms()['clerk-limit-' + g] ?? ''"
+            (input)="setFrom('clerk-limit-' + g, value($event))"
+          />
+        }
         <label for="setting-floor">Floor (the least a live due can be)</label>
         <input
           id="setting-floor"
@@ -415,6 +433,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </form>
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ session.settingOn('clerk-limit', session.today()) ?? '' | fig }}</strong></p>
+      @for (g of grades; track g) {
+        <p>Clerk limit for grade {{ g }} in force: <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ session.settingOn('clerk-limit-' + g, session.today()) ?? '' | fig }}</strong></p>
+      }
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' | fig }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ session.terms() ?? '' | fig }}</strong></p>
       @for (g of grades; track g) {
@@ -553,6 +574,10 @@ export class Settings {
   protected readonly gradeProofThreshold = signal<Record<string, string>>({});
   /** The grades whose proof threshold was typed in since the form was last saved or read. */
   protected gradeProofThresholdEdited = new Set<string>();
+  /** Each grade's clerk limit as typed. */
+  protected readonly gradeClerkLimit = signal<Record<string, string>>({});
+  /** The grades whose clerk limit was typed in since the form was last saved or read. */
+  protected gradeClerkLimitEdited = new Set<string>();
   protected readonly clerkLimit = signal('');
   protected readonly floor = signal('');
   protected readonly terms = signal('');
@@ -667,6 +692,11 @@ export class Settings {
     this.gradeGraceEdited.add(grade);
   }
 
+  protected setGradeClerkLimit(grade: string, limit: string): void {
+    this.gradeClerkLimit.update((all) => ({ ...all, [grade]: limit }));
+    this.gradeClerkLimitEdited.add(grade);
+  }
+
   protected setGradeProofThreshold(grade: string, threshold: string): void {
     this.gradeProofThreshold.update((all) => ({ ...all, [grade]: threshold }));
     this.gradeProofThresholdEdited.add(grade);
@@ -695,7 +725,8 @@ export class Settings {
       case 'review-threshold': this.reviewThresholdEdited = true; break;
       case 'rounding': this.roundingEdited = true; break;
       default:
-        if (key.startsWith('proof-threshold-')) this.gradeProofThresholdEdited.add(key.slice('proof-threshold-'.length));
+        if (key.startsWith('clerk-limit-')) this.gradeClerkLimitEdited.add(key.slice('clerk-limit-'.length));
+        else if (key.startsWith('proof-threshold-')) this.gradeProofThresholdEdited.add(key.slice('proof-threshold-'.length));
         else if (key.startsWith('grace-')) this.gradeGraceEdited.add(key.slice('grace-'.length));
         else this.gradeTermsEdited.add(key.slice('terms-'.length));
     }
@@ -710,7 +741,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.proofKindsEdited && !this.defaultGradeEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && this.gradeClerkLimitEdited.size === 0 && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.proofKindsEdited && !this.defaultGradeEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -738,6 +769,7 @@ export class Settings {
       }
     }
     const saveLimit = this.clerkLimitEdited || (nothingTyped && !this.lastFocused);
+    const saveGradeClerkLimit = GRADES.filter((g) => this.gradeClerkLimitEdited.has(g));
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
     const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g));
@@ -787,6 +819,7 @@ export class Settings {
     const fromOf = (key: string): string | null => (froms[key] ?? '').trim() || null;
     const saving = [
       ...(saveLimit ? ['clerk-limit'] : []),
+      ...saveGradeClerkLimit.map((g) => 'clerk-limit-' + g),
       ...(saveFloor ? ['floor'] : []),
       ...(saveTerms ? ['terms'] : []),
       ...saveGradeTerms.map((g) => 'terms-' + g),
@@ -883,6 +916,10 @@ export class Settings {
       this.settingsError.set('Type a proof threshold of 0.00 or more with at most two decimals, or leave it blank for none.');
       return;
     }
+    if (saveGradeClerkLimit.some((g) => !/^(\d{1,10}(\.\d{1,2})?)?$/.test((this.gradeClerkLimit()[g] ?? '').trim()))) {
+      this.settingsError.set('Type a clerk limit for a grade of 0.00 or more with at most two decimals, or leave it blank for none.');
+      return;
+    }
     if (saveGradeProofThreshold.some((g) => !/^(\d{1,10}(\.\d{1,2})?)?$/.test((this.gradeProofThreshold()[g] ?? '').trim()))) {
       this.settingsError.set('Type a proof threshold for a grade of 0.00 or more with at most two decimals, or leave it blank for none.');
       return;
@@ -912,6 +949,17 @@ export class Settings {
           this.http.put<SettingsView>(url, { clerkLimit: limit === '' ? null : limit, from: fromOf('clerk-limit') }, this.session.headers()),
         );
         this.clerkLimitEdited = false;
+      }
+      for (const g of saveGradeClerkLimit) {
+        const gradeLimit = (this.gradeClerkLimit()[g] ?? '').trim();
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(
+            `${url}/clerk-limit/${g}`,
+            { clerkLimit: gradeLimit === '' ? null : gradeLimit, from: fromOf('clerk-limit-' + g) },
+            this.session.headers(),
+          ),
+        );
+        this.gradeClerkLimitEdited.delete(g);
       }
       if (saveFloor) {
         saved = await firstValueFrom(this.http.put<SettingsView>(`${url}/floor`, { floor, from: fromOf('floor') }, this.session.headers()));
@@ -1207,6 +1255,9 @@ export class Settings {
     const gradeGrace: Record<string, string> = {};
     for (const g of GRADES) gradeGrace[g] = this.session.settingOn('grace-' + g, this.session.today()) ?? '';
     this.gradeGrace.set(gradeGrace);
+    const gradeClerkLimit: Record<string, string> = {};
+    for (const g of GRADES) gradeClerkLimit[g] = this.session.settingOn('clerk-limit-' + g, this.session.today()) ?? '';
+    this.gradeClerkLimit.set(gradeClerkLimit);
     const gradeProofThreshold: Record<string, string> = {};
     for (const g of GRADES) gradeProofThreshold[g] = this.session.settingOn('proof-threshold-' + g, this.session.today()) ?? '';
     this.gradeProofThreshold.set(gradeProofThreshold);
@@ -1251,6 +1302,7 @@ export class Settings {
     this.termsEdited = false;
     this.gradeTermsEdited.clear();
     this.gradeGraceEdited.clear();
+    this.gradeClerkLimitEdited.clear();
     this.gradeProofThresholdEdited.clear();
     this.latePctEdited = false;
     this.policyDateEdited = false;

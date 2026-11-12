@@ -50,6 +50,17 @@ public class SettingService {
     }
 
     /**
+     * Set a grade's own clerk limit from the date (null: the sheet's today): a person of the grade is held to it in
+     * place of the sheet's; a null limit means none (the sheet's applies). Every save is recorded, even of the same
+     * value.
+     */
+    @Transactional
+    public Sheet setGradeClerkLimit(String sheetId, String user, String grade, BigDecimal limit, LocalDate from) {
+        return record(sheetId, user, Sheet.gradeClerkLimitKey(grade), limit == null ? null : limit.toPlainString(),
+                from, false);
+    }
+
+    /**
      * Set the floor, the least a live due of a claim dated from the date (null: the sheet's today) can be. Every save
      * is recorded, then the figures it moved.
      */

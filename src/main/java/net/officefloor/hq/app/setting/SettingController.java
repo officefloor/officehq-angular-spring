@@ -36,7 +36,7 @@ public class SettingController {
      * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the fiscal year start month (1 to 12); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the review threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the alert threshold with two decimals, null when off; the parent sheet's id, null when there is none; the proof kinds, comma separated, null when there are none; the escalation gap in whole days, null when blank (off); the default grade, null when blank (A);
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
      * separated, null when blank (the standing rule).
-     * Then every value recorded of each dated setting, by key (clerk-limit, floor, terms, terms-A, terms-B, terms-C,
+     * Then every value recorded of each dated setting, by key (clerk-limit, clerk-limit-A, clerk-limit-B, clerk-limit-C, floor, terms, terms-A, terms-B, terms-C,
      * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold, review-threshold, rounding), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
@@ -289,6 +289,15 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid SettingsRequest request) {
         return view(service.setClerkLimit(sheetId.trim(), user.trim(), request.clerkLimitValue(), request.from()));
+    }
+
+    @PutMapping("/clerk-limit/{grade}")
+    public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid SettingsRequest request) {
+        return view(service.setGradeClerkLimit(sheetId.trim(), user.trim(), grade, request.clerkLimitValue(),
+                request.from()));
     }
 
     @PutMapping("/floor")

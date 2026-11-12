@@ -451,7 +451,8 @@ public class ClaimService {
         // A clerk settles only a claim whose due (the one its statement bound it to, else worked out from the rate)
         // is at or below the clerk limit; one above it goes to PENDING. A due of n/a is within any limit.
         if (status == ClaimStatus.SETTLED && roles.roleOf(sheetId, user) == Role.CLERK) {
-            BigDecimal limit = settings.get(sheetId).getClerkLimit();
+            Sheet sheet = settings.get(sheetId);
+            BigDecimal limit = sheet.clerkLimitFor(person.gradeOn(sheet.getToday()));
             BigDecimal due = liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
             if (limit != null && due != null && due.compareTo(limit) > 0) {
                 status = ClaimStatus.PENDING;
