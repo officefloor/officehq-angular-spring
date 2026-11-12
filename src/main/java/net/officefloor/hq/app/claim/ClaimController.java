@@ -165,6 +165,19 @@ public class ClaimController {
         return new BulkOpenView(done.opened(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
     }
 
+    /** How many a bulk settle settled (PENDING included) and refused, and the claims it changed. */
+    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
+    }
+
+    /** Settle the chosen claims together, in list order; each that cannot be settled is left as it is. */
+    @PostMapping("/claims/bulk-settle")
+    public BulkSettleView bulkSettle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkRequest request) {
+        ClaimService.BulkSettled done = service.bulkSettle(sheetId.trim(), user.trim(), request.claimIds());
+        return new BulkSettleView(done.settled(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
+    }
+
     /** Settle an OPEN claim; a clerk settling a due above the clerk limit puts it PENDING instead. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,

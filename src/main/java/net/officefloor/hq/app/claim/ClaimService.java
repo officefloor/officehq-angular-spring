@@ -264,16 +264,8 @@ public class ClaimService {
     @Transactional
     public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> claimIds) {
         Set<Long> chosen = new HashSet<>(claimIds);
-        Map<Long, Integer> personOrder = new HashMap<>();
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
-            personOrder.put(person.getId(), personOrder.size());
-        }
-        List<Claim> inOrder = claims.findBySheetIdOrderByListOrderDesc(sheetId).stream()
-                .filter(c -> chosen.contains(c.getId()))
-                .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
-                .toList();
         List<Claim> opened = new ArrayList<>();
-        for (Claim claim : inOrder) {
+        for (Claim claim : inListOrder(sheetId, chosen)) {
             try {
                 opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
             } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException e) {
@@ -281,6 +273,42 @@ public class ClaimService {
             }
         }
         return new BulkOpened(opened.size(), chosen.size() - opened.size(), opened);
+    }
+
+    /** What a bulk settle did: how many it settled (PENDING included) and refused, and the claims it changed. */
+    public record BulkSettled(int settled, int refused, List<Claim> claims) {
+    }
+
+    /** Settle the chosen claims together in list order (people in the order they were added, each person's
+     *  claims newest first), each as a single settle by the user would: one a clerk puts PENDING counts as
+     *  settled, and one that cannot be settled is left as it is and counted as refused, as is one not on
+     *  the sheet. */
+    @Transactional
+    public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> claimIds) {
+        Set<Long> chosen = new HashSet<>(claimIds);
+        List<Claim> settled = new ArrayList<>();
+        for (Claim claim : inListOrder(sheetId, chosen)) {
+            try {
+                settled.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
+            } catch (ClaimStatusException | ClaimSettlerException | PeriodClosedException
+                    | ClaimNotFoundException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkSettled(settled.size(), chosen.size() - settled.size(), settled);
+    }
+
+    /** The sheet's chosen claims in list order: people in the order they were added, each person's claims
+     *  newest first. */
+    private List<Claim> inListOrder(String sheetId, Set<Long> chosen) {
+        Map<Long, Integer> personOrder = new HashMap<>();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            personOrder.put(person.getId(), personOrder.size());
+        }
+        return claims.findBySheetIdOrderByListOrderDesc(sheetId).stream()
+                .filter(c -> chosen.contains(c.getId()))
+                .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
+                .toList();
     }
 
     /** A person, their statements in the order taken, and their claims newest first. */
