@@ -69,6 +69,8 @@ export interface Person {
   watched: boolean;
   /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
   terms: number | null;
+  /** Their contact, trimmed and lower-cased; null when they have none. */
+  contact: string | null;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -90,6 +92,8 @@ export interface PersonFields {
   gradeFrom?: string;
   /** Their own terms in days; blank for none. */
   terms?: string;
+  /** Their contact; blank for none. */
+  contact?: string;
 }
 
 // The people on the active sheet, in the order they were added, re-read from the server each
@@ -348,12 +352,14 @@ export class People {
     if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
     const terms = f.terms?.trim();
     if (terms && !/^\d{1,6}$/.test(terms)) return 'Enter the terms as a whole number of days, or leave them blank.';
+    if ((f.contact?.trim().length ?? 0) > 200) return 'Enter a contact of at most 200 characters.';
     return null;
   }
 
-  private body(f: PersonFields): { name: string; grade: string; terms: number | null } {
+  private body(f: PersonFields): { name: string; grade: string; terms: number | null; contact: string | null } {
     const terms = f.terms?.trim();
-    return { name: f.name.trim(), grade: f.grade, terms: terms ? Number(terms) : null };
+    const contact = f.contact?.trim().toLowerCase();
+    return { name: f.name.trim(), grade: f.grade, terms: terms ? Number(terms) : null, contact: contact || null };
   }
 
   private url(sid: string): string {
@@ -362,6 +368,10 @@ export class People {
 }
 
 function failed(what: string, e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use.';
+  if (e instanceof HttpErrorResponse && e.status === 409) {
+    const err: unknown = e.error;
+    if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') return err.message;
+    return 'That name is already in use.';
+  }
   return e instanceof HttpErrorResponse ? `Could not ${what} person (${e.status}).` : `Could not ${what} person.`;
 }

@@ -51,6 +51,13 @@ import { PersonClaims } from '../claims/claims';
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
         />
+        <label for="person-form-contact">Contact (blank for none)</label>
+        <input
+          id="person-form-contact"
+          data-testid="person-form-contact"
+          [value]="contact()"
+          (input)="contact.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -162,7 +169,7 @@ import { PersonClaims } from '../claims/claims';
       </section>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -180,6 +187,7 @@ import { PersonClaims } from '../claims/claims';
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
               <td data-testid="person-settled-total">{{ money(figures.settledCents(p)) }}</td>
@@ -370,6 +378,8 @@ export class PeopleList {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in days; blank for none. */
   protected readonly terms = signal('');
+  /** The person's contact; blank for none. */
+  protected readonly contact = signal('');
   /** The id of the person whose editor is open, or null when the form adds. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded; a save from it is refused once someone else saved. */
@@ -609,6 +619,7 @@ export class PeopleList {
     this.grade.set(this.gradeToday(p));
     this.gradeFrom.set('');
     this.terms.set(p.terms === null ? '' : String(p.terms));
+    this.contact.set(p.contact ?? '');
   }
 
   protected reset(): void {
@@ -617,6 +628,7 @@ export class PeopleList {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.contact.set('');
     this.error.set(null);
   }
 
@@ -643,7 +655,8 @@ export class PeopleList {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const f = { name: this.name(), grade: this.grade(), gradeFrom: this.gradeFrom(), terms: this.terms() };
+      const f = { name: this.name(), grade: this.grade(), gradeFrom: this.gradeFrom(), terms: this.terms(),
+        contact: this.contact() };
       const id = this.editing();
       if (id === null) {
         const err = await this.people.add(f);

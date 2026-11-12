@@ -20,4 +20,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)"
             + " and (:exceptId is null or p.id <> :exceptId)")
     boolean nameTaken(String sheetId, String name, Long exceptId);
+
+    /** Whether someone on the sheet other than {@code exceptId} has the contact. */
+    @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and p.contact = :contact"
+            + " and (:exceptId is null or p.id <> :exceptId)")
+    boolean contactTaken(String sheetId, String contact, Long exceptId);
 }

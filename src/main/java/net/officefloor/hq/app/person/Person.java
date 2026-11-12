@@ -45,6 +45,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** Their contact, trimmed and lower-cased; null when they have none. Unique on the sheet. */
+    @Column(name = "contact")
+    private String contact;
+
     /** The date they are retired from; null while not retired. Set at all, they count as retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -120,6 +124,14 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    public String getContact() {
+        return contact;
+    }
+
+    public void setContact(String contact) {
+        this.contact = contact;
     }
 
     public LocalDate getRetiredFrom() {

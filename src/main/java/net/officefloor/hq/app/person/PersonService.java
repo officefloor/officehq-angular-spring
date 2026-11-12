@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -140,14 +141,18 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         requireSheet(sheetId);
         requireFreeName(sheetId, name.trim(), null);
+        String key = contactKey(contact);
+        requireFreeContact(sheetId, key, null);
         Rollup.Snapshot before = rollup.take(sheetId);
         Person person = new Person(sheetId, name.trim(), grade);
         person.setTerms(terms);
+        person.setContact(key);
         person = saved(person);
-        audit("PERSON_ADDED", person, user, today(sheetId), terms == null ? "" : " terms=" + terms);
+        audit("PERSON_ADDED", person, user, today(sheetId), (terms == null ? "" : " terms=" + terms)
+                + (key == null ? "" : " contact=" + key));
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
@@ -155,24 +160,30 @@ public class PersonService {
     @Transactional
     /** Change a person's name, and record the grade from a date (the sheet's today when none is given),
      *  keeping the grades already recorded; a save leaving the grade as it is on the sheet's today, with no
-     *  from-date, records nothing. Their own terms are set to those given (none clears them). */
+     *  from-date, records nothing. Their own terms are set to those given (none clears them), and their
+     *  contact to the one given (blank clears it). */
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonVersionConflictException(person);
         }
         requireFreeName(sheetId, name.trim(), person.getId());
+        String key = contactKey(contact);
+        requireFreeContact(sheetId, key, person.getId());
         Rollup.Snapshot before = rollup.take(sheetId);
         LocalDate today = today(sheetId);
         person.setName(name.trim());
         boolean termsChanged = !Objects.equals(terms, person.getTerms());
         person.setTerms(terms);
+        boolean contactChanged = !Objects.equals(key, person.getContact());
+        person.setContact(key);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
         Person updated = saved(person);
-        audit("PERSON_EDITED", updated, user, today, termsChanged ? " terms=" + (terms == null ? "" : terms) : "");
+        audit("PERSON_EDITED", updated, user, today, (termsChanged ? " terms=" + (terms == null ? "" : terms) : "")
+                + (contactChanged ? " contact=" + (key == null ? "" : key) : ""));
         rollup.recordChanges(sheetId, user, before);
         return updated;
     }
@@ -193,7 +204,7 @@ public class PersonService {
             throw new PersonNotFoundException();
         }
         return picked.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade, from,
-                p.getTerms())).toList();
+                p.getTerms(), p.getContact())).toList();
     }
 
     /** Retire a person from a date, the sheet's today when none is given. */
@@ -243,6 +254,20 @@ public class PersonService {
     private void requireFreeName(String sheetId, String name, Long exceptId) {
         if (people.nameTaken(sheetId, name, exceptId)) {
             throw new PersonNameTakenException();
+        }
+    }
+
+    /** A contact as stored: trimmed and lower-cased; none when blank. */
+    private static String contactKey(String contact) {
+        if (contact == null || contact.isBlank()) {
+            return null;
+        }
+        return contact.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void requireFreeContact(String sheetId, String contact, Long exceptId) {
+        if (contact != null && people.contactTaken(sheetId, contact, exceptId)) {
+            throw new PersonContactTakenException();
         }
     }
 
