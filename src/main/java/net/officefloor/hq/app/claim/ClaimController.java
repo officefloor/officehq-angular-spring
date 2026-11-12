@@ -150,6 +150,10 @@ public class ClaimController {
     public record BulkSettleRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
     }
 
+    /** The ids of the claims selected to void together, and the reason they are voided with (blank or missing for none). */
+    public record BulkVoidRequest(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @Size(max = 255) String reason) {
+    }
+
     /** Lines of name,amount,date,note to add as DRAFT claims. */
     public record PasteRequest(@NotNull @Size(max = 1000000) String text) {
     }
@@ -164,9 +168,12 @@ public class ClaimController {
     private final PasteClaimsService paste;
     private final BulkReassignService bulkReassign;
     private final BulkRedateService bulkRedate;
+    private final BulkVoidService bulkVoid;
 
     public ClaimController(ClaimService service, BulkOpenService bulkOpen, BulkSettleService bulkSettle,
-            PasteClaimsService paste, BulkReassignService bulkReassign, BulkRedateService bulkRedate) {
+            PasteClaimsService paste, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
+            BulkVoidService bulkVoid) {
+        this.bulkVoid = bulkVoid;
         this.bulkReassign = bulkReassign;
         this.bulkRedate = bulkRedate;
         this.service = service;
@@ -341,6 +348,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid BulkRedateRequest request) {
         return bulkRedate.redate(sheetId.trim(), user.trim(), request.ids(), request.date());
+    }
+
+    /** Void the selected claims in list order with one reason; each one that cannot be voided is left as it is. */
+    @PostMapping("/claims/bulk-void")
+    public BulkVoidService.Result bulkVoid(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid BulkVoidRequest request) {
+        return bulkVoid.voidAll(sheetId.trim(), user.trim(), request.ids(), request.reason());
     }
 
     /** The person a claim is moved to. */
