@@ -632,6 +632,15 @@ public class Sheet {
     }
 
     /**
+     * A holder's part of a shared claim dated {@code date} rounding by the rounding date: the amount times the share
+     * divided by 100, times the percent divided by 100, to two decimals rounded as the claim does.
+     */
+    public BigDecimal sharedPart(BigDecimal amount, BigDecimal share, BigDecimal pct, LocalDate date,
+            LocalDate roundingDate) {
+        return amount.multiply(share).multiply(pct).movePointLeft(4).setScale(2, rounding(date, roundingDate));
+    }
+
+    /**
      * The rate step: the amount at the percent, to two decimals rounded as a claim dated {@code date} rounding by the
      * rounding date does.
      */

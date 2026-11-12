@@ -3,9 +3,9 @@ import { FigurePipe } from '../../core/locale';
 import { Component, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
+import { Claim, ClaimShare, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, roundingOf, statusOn, sumAmounts, tagsOf } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { Rate, Rates, capped, changeFrom, excessOver, rateOn, scoreOf, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
+import { Rate, Rates, capped, changeFrom, excessOver, rateOn, scoreOf, sharedPartOf, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
 import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
@@ -1836,7 +1836,7 @@ export class People {
 
   /**
    * The parts of the shared claims each person holds, by holder id: for each claim that counts in its own person's live
-   * totals and has a due, the due times the holder's share divided by 100, rounded half to even.
+   * totals and has a due, the holder's part as {@link partOf} has it; a holder whose grade has no rate holds none.
    */
   private readonly heldParts = computed(() => {
     const today = this.session.today();
@@ -1847,8 +1847,10 @@ export class People {
         const due = claimDue(c, this.rates(), owner.grades, this.session);
         if (due === 'n/a') continue;
         for (const h of c.shares) {
+          const part = this.partOf(c, h, due);
+          if (part === 'n/a') continue;
           const list = by.get(h.personId) ?? [];
-          list.push({ claim: c, part: sumShared([{ figure: due, share: h.share }]) });
+          list.push({ claim: c, part });
           by.set(h.personId, list);
         }
       }
@@ -1856,10 +1858,24 @@ export class People {
     return by;
   });
 
+  /**
+   * A holder's part of a shared claim with the due: a SETTLED claim's frozen part, its settled due times the share
+   * divided by 100 rounded half to even; else the claim's amount times the share divided by 100, times the rate of the
+   * holder's own grade in force on the claim's date divided by 100, rounded like the claim; n/a when their grade has no
+   * rate then (0.00 off the claim's own person).
+   */
+  private partOf(claim: Claim, holding: ClaimShare, due: string): string {
+    if (claim.settledDue !== null) return sumShared([{ figure: due, share: holding.share }]);
+    const holder = this.people().find((p) => p.id === holding.personId);
+    const grade = holder === undefined ? undefined : gradeOn(holder.grades, claim.date);
+    const pct = grade === undefined ? undefined : rateOn(this.rates(), grade, claim.date, claim.rateStamp);
+    return pct === undefined ? 'n/a' : sharedPartOf(claim.amount, holding.share, pct, roundingOf(claim, this.session));
+  }
+
   /** The claim's due less the parts its holders have: what its own person's totals count of it. */
   private ownPartOf(claim: Claim, due: string): string {
     if (due === 'n/a' || (claim.shares ?? []).length === 0) return due;
-    return changeFrom(due, sumDues(claim.shares.map((h) => sumShared([{ figure: due, share: h.share }]))));
+    return changeFrom(due, sumDues(claim.shares.map((h) => this.partOf(claim, h, due)).filter((p) => p !== 'n/a')));
   }
 
   /**

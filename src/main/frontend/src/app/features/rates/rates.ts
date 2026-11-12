@@ -113,6 +113,20 @@ export function percentOf(amount: string, pct: string, times: number, rounding: 
   return decimalOf(signed < 0n ? -cents : cents);
 }
 
+/**
+ * A holder's part of a shared claim: the amount times the share divided by 100, times the pct divided by 100, rounded
+ * to cents as given (a half up or to the even cent).
+ */
+export function sharedPartOf(amount: string, share: string, pct: string, rounding: Rounding = 'half-even'): string {
+  // cents times hundredths of a percent times hundredths of a percent are 10^-10 of a unit: round them to cents.
+  const signed = hundredths(amount) * hundredths(share) * hundredths(pct);
+  const size = signed < 0n ? -signed : signed;
+  const rest = size % 100000000n;
+  let cents = size / 100000000n;
+  if (rest > 50000000n || (rest === 50000000n && (rounding === 'half-up' || cents % 2n === 1n))) cents += 1n;
+  return decimalOf(signed < 0n ? -cents : cents);
+}
+
 /** The due raised to the floor when below it; n/a, or no floor, leaves it as it is. */
 export function floored(due: string, floor: string | null): string {
   if (due === 'n/a' || floor === null) return due;

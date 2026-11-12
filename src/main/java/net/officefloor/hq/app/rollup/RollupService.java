@@ -213,6 +213,10 @@ public class RollupService {
         for (ClaimShare share : shares.findBySheetIdOrderByIdAsc(sheetId)) {
             sharesOf.computeIfAbsent(share.getClaimId(), id -> new ArrayList<>()).add(share);
         }
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        for (Person person : listed) {
+            byId.put(person.getId(), person);
+        }
         Map<Long, BigDecimal> held = new LinkedHashMap<>();
         Map<Long, BigDecimal> given = new LinkedHashMap<>();
         for (Person person : listed) {
@@ -226,13 +230,37 @@ public class RollupService {
                     continue;
                 }
                 for (ClaimShare share : claimShares) {
-                    BigDecimal part = share.partOf(claimDue.get());
-                    held.merge(share.getPersonId(), part, BigDecimal::add);
-                    given.merge(claim.getId(), part, BigDecimal::add);
+                    Optional<BigDecimal> part = partOf(sheet, sheetRates, byId.get(share.getPersonId()), claim, share,
+                            claimDue.get());
+                    part.ifPresent(p -> held.merge(share.getPersonId(), p, BigDecimal::add));
+                    given.merge(claim.getId(), part.orElse(zero()), BigDecimal::add);
                 }
             }
         }
         return new SharedParts(held, given);
+    }
+
+    /**
+     * A holder's part of a shared claim with the due: a settled claim's frozen part, its settled due times the share
+     * divided by 100 rounded half to even; else the claim's amount times the share divided by 100, times the rate of the
+     * holder's own grade in force on the claim's date divided by 100, rounded like the claim. Empty (0.00 off the
+     * claim's own person) when the holder's grade has no rate then.
+     */
+    private static Optional<BigDecimal> partOf(Sheet sheet, List<List<Rate>> sheetRates, Person holder, Claim claim,
+            ClaimShare share, BigDecimal due) {
+        if (claim.getSettledDue() != null) {
+            return Optional.of(share.partOf(due));
+        }
+        if (holder == null) {
+            return Optional.empty();
+        }
+        return rateOn(sheetRates, holder.gradeOn(claim.getDate()), claim.getDate(), claim.rateStamp())
+                .map(Rate::getPct)
+                .map(pct -> sheet == null
+                        ? claim.getAmount().multiply(share.getShare()).multiply(pct).movePointLeft(4)
+                                .setScale(2, RoundingMode.HALF_EVEN)
+                        : sheet.sharedPart(claim.getAmount(), share.getShare(), pct, claim.getDate(),
+                                claim.getRoundingDate()));
     }
 
     /**
