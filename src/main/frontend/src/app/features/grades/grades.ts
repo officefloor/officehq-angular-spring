@@ -35,6 +35,35 @@ const GRADES = ['A', 'B', 'C'];
           <p role="alert" data-testid="grade-error">{{ message | fig }}</p>
         }
       </form>
+      <form (submit)="merge($event)" aria-labelledby="grade-merge-heading">
+        <h3 id="grade-merge-heading">Merge a grade</h3>
+        <label for="grade-merge-from">Grade to merge</label>
+        <select
+          id="grade-merge-from"
+          data-testid="grade-merge-from"
+          [value]="mergeFrom()"
+          (change)="mergeFrom.set(value($event)); error.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === mergeFrom()">{{ g | fig }}</option>
+          }
+        </select>
+        <label for="grade-merge-into">Into grade</label>
+        <select
+          id="grade-merge-into"
+          data-testid="grade-merge-into"
+          [value]="mergeInto()"
+          (change)="mergeInto.set(value($event)); error.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === mergeInto()">{{ g | fig }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="grade-merge">Merge grade</button>
+        @if (merged() !== null) {
+          <p>Regraded <strong data-testid="grade-merged">{{ merged() | fig }}</strong></p>
+        }
+      </form>
       <table aria-label="Grades">
         <thead>
           <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
@@ -59,6 +88,13 @@ export class Grades {
   protected readonly retired = signal<string[]>([]);
   protected readonly grade = signal(GRADES[0]);
   protected readonly error = signal<string | null>(null);
+  protected readonly mergeFrom = signal(GRADES[0]);
+  protected readonly mergeInto = signal(GRADES[1]);
+  /** How many people the last merge regraded; null before one, while one runs, and after a sheet load. */
+  protected readonly merged = signal<number | null>(null);
+  /** The count of a merge done, shown once the sheet load it asked for has come in. */
+  private mergedPending: number | null = null;
+  private merging = false;
   /** Whether a retire is waiting for its answer: a second one meanwhile is ignored. */
   private retiring = false;
   private reads = 0;
@@ -70,6 +106,8 @@ export class Grades {
       untracked(() => {
         this.retired.set([]);
         this.error.set(null);
+        this.merged.set(this.mergedPending);
+        this.mergedPending = null;
         if (sheet) void this.read(sheet);
       });
     });
@@ -104,6 +142,47 @@ export class Grades {
       this.error.set(`The grade ${grade} could not be retired: it may already be retired.`);
     } finally {
       this.retiring = false;
+    }
+  }
+
+  /**
+   * Merge the chosen grade into the other: everyone on it today is given the other from the sheet's today. Then the
+   * sheet is re-loaded, so every part shows what the store holds.
+   */
+  protected async merge(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.merging) return;
+    this.error.set(null);
+    this.merged.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const from = this.mergeFrom();
+    const into = this.mergeInto();
+    if (from === into) {
+      this.error.set(`The grade ${from} cannot be merged into itself.`);
+      return;
+    }
+    this.merging = true;
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ changed: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/grade-merge`,
+          { from, into },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() !== sheet) return;
+      this.mergedPending = result.changed;
+      await this.session.loadSheet(sheet).catch(() => {
+        this.merged.set(this.mergedPending);
+        this.mergedPending = null;
+      });
+    } catch {
+      if (this.session.sheet() === sheet) {
+        this.error.set(`The grade ${from} could not be merged into ${into}: only a steward may, and not into a retired grade.`);
+      }
+    } finally {
+      this.merging = false;
     }
   }
 
