@@ -147,6 +147,10 @@ public class Claim {
     @Column(name = "held", nullable = false)
     private boolean held;
 
+    /** The user a steward assigned the claim's review to; null when no one. It stays once the claim is reviewed. */
+    @Column(name = "review_assignee")
+    private String reviewAssignee;
+
     protected Claim() {
     }
 
@@ -438,6 +442,14 @@ public class Claim {
         this.held = held;
     }
 
+    public String getReviewAssignee() {
+        return reviewAssignee;
+    }
+
+    public void setReviewAssignee(String reviewAssignee) {
+        this.reviewAssignee = reviewAssignee;
+    }
+
     public Long getSettleBatch() {
         return settleBatch;
     }
@@ -474,6 +486,7 @@ public class Claim {
         copy.voidReason = voidReason;
         copy.waived = waived;
         copy.held = held;
+        copy.reviewAssignee = reviewAssignee;
         copy.rateStamp = rateStamp();
         return copy;
     }

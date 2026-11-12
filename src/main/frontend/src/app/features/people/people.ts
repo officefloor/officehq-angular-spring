@@ -201,6 +201,7 @@ function csvField(value: string): string {
       [myDueTotal]="myDueTotal()"
       [myOverdueTotal]="myOverdueTotal()"
       [myCrewDueTotal]="myCrewDueTotal()"
+      [myReviewsCount]="myReviewsCount()"
     />
     <section aria-labelledby="consolidated-heading">
       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
@@ -1165,6 +1166,11 @@ export class People {
     const me = this.me();
     const led = me ? this.crewTotals().filter((c) => c.leadId === me.id) : [];
     return led.length ? sumDues(led.map((c) => c.dueTotal)) : '';
+  });
+  /** How many REVIEW claims on the sheet are assigned to the signed-in user. */
+  protected readonly myReviewsCount = computed(() => {
+    const user = this.session.user() ?? '';
+    return this.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssignee === user).length;
   });
   /**
    * The steward's dashboard over the sheet: how many claims are PENDING, how many in REVIEW, and how many that count

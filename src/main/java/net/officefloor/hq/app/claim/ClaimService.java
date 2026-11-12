@@ -782,6 +782,28 @@ public class ClaimService {
     }
 
     /**
+     * A steward assigns a REVIEW claim's review to a user, replacing whoever it was assigned to. Refused for any other
+     * status, or a user not a steward.
+     */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, Long id, String assignee) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimActionForbiddenException(id, user, "a review assignment", "only a steward assigns a review");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ClaimReviewAssignException(id, claim.getStatus());
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        claim.setReviewAssignee(assignee);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("REVIEW_ASSIGNED", user, person, saved) + " user=" + assignee);
+        return saved;
+    }
+
+    /**
      * A steward rejects a PENDING claim with a reason: it goes back to OPEN, bound again by its person's last statement
      * if that statement included it.
      */

@@ -45,7 +45,8 @@ public class ClaimController {
      * with (null when none); and its comments, oldest first; and the bulk settle batch that settled it (null when none);
      * and the stamp a forward-only rate is matched against (it sees one whose forwardAfter is below it); and the day it
      * last went to REVIEW (null when it never did); and whether a steward waived its late charge; and how many proofs
-     * it has of each kind, by kind (receipt, photo); and whether it is held.
+     * it has of each kind, by kind (receipt, photo); and whether it is held; and the user its review is assigned to
+     * (null when no one).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
@@ -53,7 +54,7 @@ public class ClaimController {
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
             String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
             List<ClaimLineView> lines, Long rateStamp, LocalDate reviewOn, boolean waived,
-            Map<String, Integer> proofsByKind, boolean held, List<ClaimShareView> shares) {
+            Map<String, Integer> proofsByKind, boolean held, List<ClaimShareView> shares, String reviewAssignee) {
 
         /** A claim with no comments, lines or shares yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
@@ -76,7 +77,7 @@ public class ClaimController {
                     comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
                     lines.stream().map(ClaimLineView::of).toList(), claim.rateStamp(), claim.getReviewOn(),
                     claim.isWaived(), proofsByKind(claim), claim.isHeld(),
-                    shares.stream().map(ClaimShareView::of).toList());
+                    shares.stream().map(ClaimShareView::of).toList(), claim.getReviewAssignee());
         }
 
         private static Map<String, Integer> proofsByKind(Claim claim) {
@@ -437,6 +438,19 @@ public class ClaimController {
 
     /** The new date of a claim re-dated. */
     public record RedateRequest(@NotNull LocalDate date) {
+    }
+
+    /** The user a REVIEW claim's review is assigned to. */
+    public record AssignReviewRequest(@NotBlank @Size(max = 100) String user) {
+    }
+
+    /** Assign a REVIEW claim's review to a user: a steward only. */
+    @PostMapping("/claims/{id}/assign-review")
+    public ClaimView assignReview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AssignReviewRequest request) {
+        return view(service.assignReview(sheetId.trim(), user.trim(), id, request.user().trim()));
     }
 
     /** Re-date an OPEN or PENDING claim: a steward only. */

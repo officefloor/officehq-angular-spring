@@ -73,6 +73,8 @@ export interface Claim {
   held: boolean;
   /** The people the claim is shared with, in the order they were added. */
   shares: ClaimShare[];
+  /** The user a steward assigned its review to; null when no one. */
+  reviewAssignee: string | null;
 }
 
 /** A person a claim is shared with, and their share of its due: a percent with two decimals, e.g. "33.33". */
@@ -351,7 +353,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Waived</th><th scope="col">Held</th>
-            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Timeline</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Shares</th>
+            <th scope="col">Status</th><th scope="col">Review assigned to</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Timeline</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Shares</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -377,6 +379,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-held">{{ c.held ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-status">{{ c.status | fig }}</td>
+              <td data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' | fig }}</td>
               <td data-testid="claim-batch">{{ c.settleBatch ?? '' | fig }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' | fig }}</td>
               <td data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' | fig }}</td>
@@ -671,6 +674,22 @@ export function sumAmounts(amounts: string[]): string {
                 >
                   Re-date
                 </button>
+                <label class="visually-hidden" [for]="'claim-review-user-' + c.id">Assign review to user</label>
+                <input
+                  [id]="'claim-review-user-' + c.id"
+                  data-testid="claim-review-user"
+                  placeholder="Review by user"
+                  [value]="reviewUsers()[c.id] ?? ''"
+                  (input)="setReviewUser(c.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-review-assign"
+                  [attr.aria-label]="'Assign review of claim of ' + c.amount + ' on ' + c.date"
+                  (click)="assignReview(c)"
+                >
+                  Assign review
+                </button>
                 <label class="visually-hidden" [for]="'claim-reassign-to-' + c.id">Reassign to</label>
                 <select
                   [id]="'claim-reassign-to-' + c.id"
@@ -803,6 +822,8 @@ export class Claims implements OnInit {
   protected readonly proofKindsChosen = signal<Record<number, string>>({});
   /** The new date (yyyy-mm-dd) picked to re-date each OPEN or PENDING claim to, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
+  /** The user typed to assign each claim's review to, by claim id. */
+  protected readonly reviewUsers = signal<Record<number, string>>({});
   /** The amount typed to split off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The amount typed to part-settle off each OPEN claim, by claim id. */
@@ -1107,6 +1128,37 @@ export class Claims implements OnInit {
               : retiredFrom !== null
                 ? `${this.personName()} is retired from ${retiredFrom}: the claim cannot be dated after that.`
                 : 'This claim could not be re-dated.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  protected setReviewUser(id: number, user: string): void {
+    this.reviewUsers.update((all) => ({ ...all, [id]: user }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /** Assign a REVIEW claim's review to the user typed for it; the store refuses any other status and a user who is not a steward. */
+  protected async assignReview(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const user = (this.reviewUsers()[claim.id] ?? '').trim();
+    if (!user) {
+      this.actionError.set({ id: claim.id, message: 'Type the user to assign this review to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/assign-review`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { user }, this.session.headers()));
+      this.setReviewUser(claim.id, '');
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can assign a review.'
+          : claim.status !== 'REVIEW'
+            ? `This claim is ${claim.status}: only a REVIEW claim can have its review assigned.`
+            : 'The review of this claim could not be assigned.';
       this.actionError.set({ id: claim.id, message });
     }
   }
