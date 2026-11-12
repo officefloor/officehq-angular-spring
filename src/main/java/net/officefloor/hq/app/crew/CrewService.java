@@ -8,6 +8,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -27,9 +28,11 @@ public class CrewService {
     private final PersonRepository people;
     private final SheetRepository sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
     public CrewService(CrewRepository crews, PoolRepository pools, PersonRepository people, SheetRepository sheets,
-            Audit audit) {
+            Audit audit, RollupService rollup) {
+        this.rollup = rollup;
         this.crews = crews;
         this.pools = pools;
         this.people = people;
@@ -77,6 +80,7 @@ public class CrewService {
         if (pools.existsBySheetIdAndName(sheetId, name)) {
             throw new CrewRefusedException(name + " is already a pool on sheet " + sheetId);
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Crew saved;
         try {
             saved = crews.saveAndFlush(new Crew(sheetId, name, leadId));
@@ -85,6 +89,8 @@ public class CrewService {
         }
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " lead=" + lead.getName());
+        // A crew is a pool, and a cut counts against the cap.
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -101,6 +107,7 @@ public class CrewService {
         if (crew.includes(personId)) {
             throw new CrewRefusedException(person.getName() + " is already in crew " + crew.getName());
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         crew.getMembers().add(new CrewMember(personId));
         try {
             crews.saveAndFlush(crew);
@@ -109,6 +116,7 @@ public class CrewService {
         }
         audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
                 + " name=" + person.getName());
+        rollup.recordChanges(sheetId, user, before);
         return crew;
     }
 }

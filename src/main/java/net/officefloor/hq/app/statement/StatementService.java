@@ -16,6 +16,8 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolCut;
+import net.officefloor.hq.app.pool.PoolCutService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.role.Role;
@@ -42,11 +44,13 @@ public class StatementService {
     private final Audit audit;
     private final RollupService rollup;
     private final RoleService roles;
+    private final PoolCutService poolCuts;
 
     public StatementService(StatementRepository statements, PersonRepository people, ClaimRepository claims,
             ClaimLogRepository claimLogs, RateService rates, SheetService sheets, Audit audit, RollupService rollup,
-            RoleService roles) {
+            RoleService roles, PoolCutService poolCuts) {
         this.roles = roles;
+        this.poolCuts = poolCuts;
         this.claimLogs = claimLogs;
         this.statements = statements;
         this.people = people;
@@ -133,7 +137,11 @@ public class StatementService {
             claim.setStated(true, due);
         }
         claims.saveAllAndFlush(theirs);
-        String dueTotal = anyDue ? sheet.capped(total).toPlainString() : "n/a";
+        // As on the screen: their cut total counts against the cap.
+        String member = PoolCut.person(personId);
+        BigDecimal cutTotal = poolCuts.cutsNow(sheetId).stream().filter(c -> c.member().equals(member))
+                .map(PoolCut::cut).reduce(BigDecimal.ZERO, BigDecimal::add);
+        String dueTotal = anyDue ? sheet.capped(total, cutTotal).toPlainString() : "n/a";
         statements.saveAndFlush(new Statement(sheetId, personId, today, today, dueTotal, counted,
                 nextSeq(sheetId, personId)));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

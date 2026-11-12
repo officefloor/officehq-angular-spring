@@ -29,6 +29,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonAlias;
 import net.officefloor.hq.app.person.PersonAliasRepository;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolCut;
+import net.officefloor.hq.app.pool.PoolCutService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateLog;
 import net.officefloor.hq.app.rate.RateLogRepository;
@@ -47,7 +49,7 @@ import org.springframework.stereotype.Service;
 public class RollupService {
 
     /**
-     * A person's figures as shown: claimed with two decimals, due-total (held down to the cap) with two decimals or
+     * A person's figures as shown: claimed with two decimals, due-total (held down to the cap less their cut total, not below 0.00) with two decimals or
      * n/a, and overdue-total (the dues of their overdue claims) with two decimals; and the grade in force on the
      * sheet's today, or null when the sheet has none; and the score: the dues of their settled claims that correct
      * nothing divided by 100, less 5 for each of their overdue claims, rounded half to even to a whole number.
@@ -75,12 +77,14 @@ public class RollupService {
     private final SheetSnapshotService snapshots;
     private final EntityManager entities;
     private final ClaimShareRepository shares;
+    private final PoolCutService poolCuts;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
             RateRepository rates, RateLogRepository rateLogs, RateVersionRepository rateVersions, SheetRepository sheets,
             PersonAliasRepository aliases, Audit audit, SheetSnapshotService snapshots, EntityManager entities,
-            ClaimShareRepository shares) {
+            ClaimShareRepository shares, PoolCutService poolCuts) {
         this.shares = shares;
+        this.poolCuts = poolCuts;
         this.people = people;
         this.claims = claims;
         this.logs = logs;
@@ -129,6 +133,11 @@ public class RollupService {
                     givenParts.merge(claim.getId(), part, BigDecimal::add);
                 }
             }
+        }
+        // Each person's cut total: their cuts in every pool they are a member of, added up.
+        Map<String, BigDecimal> cutTotals = new LinkedHashMap<>();
+        for (PoolCut cut : poolCuts.cutsNow(sheetId)) {
+            cutTotals.merge(cut.member(), cut.cut(), BigDecimal::add);
         }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
@@ -186,7 +195,7 @@ public class RollupService {
             overdues.add(overdue);
             sheetOverdueCount += overdueCount;
             if (anyDue && sheet != null) {
-                due = sheet.capped(due);
+                due = sheet.capped(due, cutTotals.getOrDefault(PoolCut.person(person.getId()), zero()));
             }
             if (anyDue) {
                 dues.add(due);

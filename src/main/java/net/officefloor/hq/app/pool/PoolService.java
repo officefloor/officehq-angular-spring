@@ -11,6 +11,7 @@ import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,9 +36,11 @@ public class PoolService {
     private final PersonRepository people;
     private final SheetRepository sheets;
     private final Audit audit;
+    private final RollupService rollup;
 
     public PoolService(PoolRepository pools, CrewRepository crews, PersonRepository people, SheetRepository sheets,
-            Audit audit) {
+            Audit audit, RollupService rollup) {
+        this.rollup = rollup;
         this.pools = pools;
         this.crews = crews;
         this.people = people;
@@ -78,7 +81,10 @@ public class PoolService {
         return saved;
     }
 
-    /** Add the person to the pool with the share (two decimals); refused when already in it or the share is out of range. */
+    /**
+     * Add the person to the pool with the share (two decimals); refused when already in it or the share is out of range.
+     * Recorded, then the figures it moved.
+     */
     @Transactional
     public Pool addMember(String sheetId, String user, Long poolId, Long personId, BigDecimal share,
             LocalDate from, LocalDate to) {
@@ -95,6 +101,7 @@ public class PoolService {
         if (pool.hasMember(personId)) {
             throw new PoolRefusedException(person.getName() + " is already in pool " + pool.getName());
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = share.setScale(2);
         PoolMember added = new PoolMember(personId, scaled);
         added.setDates(from, to);
@@ -106,6 +113,8 @@ public class PoolService {
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + person.getName() + " share=" + scaled.toPlainString() + dates(from, to));
+        // A cut counts against the cap, so a member's cuts moving may move due-totals.
+        rollup.recordChanges(sheetId, user, before);
         return pool;
     }
 
@@ -152,6 +161,7 @@ public class PoolService {
         if (levels + height(memberPoolId, all) > MAX_DEPTH) {
             throw new PoolRefusedException("A chain of pools is at most " + MAX_DEPTH + " deep");
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = share.setScale(2);
         PoolMember added = PoolMember.ofPool(memberPoolId, scaled);
         added.setDates(from, to);
@@ -163,6 +173,8 @@ public class PoolService {
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + member.getName() + " share=" + scaled.toPlainString() + dates(from, to));
+        // A cut counts against the cap, so a member's cuts moving may move due-totals.
+        rollup.recordChanges(sheetId, user, before);
         return pool;
     }
 

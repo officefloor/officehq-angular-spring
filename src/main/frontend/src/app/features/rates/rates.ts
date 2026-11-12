@@ -119,16 +119,25 @@ export function floored(due: string, floor: string | null): string {
   return hundredths(due) < hundredths(floor) ? floor : due;
 }
 
-/** The due-total held down to the cap when above it; n/a, or no cap, leaves it as it is. */
-export function capped(dueTotal: string, cap: string | null): string {
+/**
+ * The due-total held down to the cap less the cut total (not below 0.00) when above it; n/a, or no cap, leaves it as
+ * it is.
+ */
+export function capped(dueTotal: string, cap: string | null, cutTotal = '0.00'): string {
   if (dueTotal === 'n/a' || cap === null) return dueTotal;
-  return hundredths(dueTotal) > hundredths(cap) ? cap : dueTotal;
+  const left = hundredths(cap) - hundredths(cutTotal);
+  const room = left < 0n ? 0n : left;
+  return hundredths(dueTotal) > room ? decimalOf(room) : dueTotal;
 }
 
-/** How far the due-total is above the cap: 0.00 when it is not, or is n/a, or there is no cap. */
-export function excessOver(dueTotal: string, cap: string | null): string {
-  if (dueTotal === 'n/a' || cap === null || hundredths(dueTotal) <= hundredths(cap)) return '0.00';
-  return decimalOf(hundredths(dueTotal) - hundredths(cap));
+/**
+ * How far the due-total plus the cut total is above the cap: 0.00 when it is not, or the due-total is n/a, or there
+ * is no cap.
+ */
+export function excessOver(dueTotal: string, cap: string | null, cutTotal = '0.00'): string {
+  if (dueTotal === 'n/a' || cap === null) return '0.00';
+  const over = hundredths(dueTotal) + hundredths(cutTotal) - hundredths(cap);
+  return over <= 0n ? '0.00' : decimalOf(over);
 }
 
 /** The figure less the one before it, exactly to two decimals, with a minus sign when lower. */

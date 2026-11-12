@@ -649,8 +649,25 @@ public class Sheet {
 
     /** A due-total held down to the cap in force on {@code asOf}, standing in for the sheet's today. */
     public BigDecimal capped(BigDecimal dueTotal, LocalDate asOf) {
+        return capped(dueTotal, BigDecimal.ZERO, asOf);
+    }
+
+    /**
+     * A due-total held down to the cap in force on the sheet's today less the person's cut total (not below 0.00);
+     * null (n/a), or no cap, leaves it as it is.
+     */
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
+        return capped(dueTotal, cutTotal, today);
+    }
+
+    /** A due-total held down to the cap in force on {@code asOf} less the cut total (not below 0.00). */
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal, LocalDate asOf) {
         BigDecimal cap = decimalOn(CAP, asOf).orElse(null);
-        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+        if (dueTotal == null || cap == null) {
+            return dueTotal;
+        }
+        BigDecimal room = cap.subtract(cutTotal).max(BigDecimal.ZERO).setScale(Math.max(2, dueTotal.scale()));
+        return dueTotal.min(room);
     }
 
     /** A live due of a claim dated on the date raised to the floor in force on it; null (n/a) stays null. */

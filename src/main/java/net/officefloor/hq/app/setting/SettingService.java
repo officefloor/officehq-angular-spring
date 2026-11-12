@@ -318,14 +318,16 @@ public class SettingService {
         return saved;
     }
 
-    /** Set the pot, shared out over each balanced pool's members; null means none. Every save is recorded, even of the same value. */
+    /** Set the pot, shared out over each balanced pool's members; null means none. Every save is recorded, even of the same value, then the figures it moved (a cut counts against the cap). */
     @Transactional
     public Sheet setPot(String sheetId, String user, BigDecimal pot) {
         Sheet sheet = get(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         sheet.setPot(pot);
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=pot value="
                 + (pot == null ? "" : pot.toPlainString()));
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
