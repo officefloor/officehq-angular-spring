@@ -1,11 +1,12 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Loads sheets by id; a sheet never loaded before is started empty. */
+/** Loads sheets by id; a sheet never loaded before is started empty, its today the real date. */
 @Service
 public class SheetService {
 
@@ -19,11 +20,25 @@ public class SheetService {
     public Sheet load(String id, String user) {
         return sheets.findById(id).orElseGet(() -> {
             try {
-                return sheets.saveAndFlush(new Sheet(id, user, Instant.now()));
+                return sheets.saveAndFlush(new Sheet(id, user, Instant.now(), LocalDate.now()));
             } catch (DataIntegrityViolationException e) {
                 // Another user started the same sheet at the same moment.
                 return sheets.findById(id).orElseThrow(() -> e);
             }
         });
+    }
+
+    /** The sheet's today. Every date decision and default date in the sheet goes through this. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String id) {
+        return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
+    }
+
+    /** Change the sheet's today. */
+    @Transactional
+    public Sheet setToday(String id, LocalDate today) {
+        Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setToday(today);
+        return sheet;
     }
 }

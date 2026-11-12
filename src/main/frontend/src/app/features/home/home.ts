@@ -22,6 +22,23 @@ import { Session } from '../../core/session';
           <p role="alert" data-testid="sheet-load-error">{{ err }}</p>
         }
         <p>Sheet: <strong data-testid="sheet-current-id">{{ session.sheetId() ?? '' }}</strong></p>
+        @if (session.sheetId()) {
+          <p>Today: <strong data-testid="sheet-today">{{ session.today() ?? '' }}</strong></p>
+          <form (submit)="saveToday($event)">
+            <label for="sheet-today-input">Change today</label>
+            <input
+              id="sheet-today-input"
+              data-testid="sheet-today-input"
+              placeholder="YYYY-MM-DD"
+              [value]="todayInput()"
+              (input)="todayInput.set(value($event)); todayError.set(null)"
+            />
+            <button type="submit" data-testid="sheet-today-save" [disabled]="savingToday()">Set today</button>
+          </form>
+          @if (todayError(); as err) {
+            <p role="alert" data-testid="sheet-error">{{ err }}</p>
+          }
+        }
       </section>
     } @else {
       <form aria-label="Sign in" (submit)="signIn($event)">
@@ -47,6 +64,9 @@ export class Home {
   protected readonly sheetInput = signal('');
   protected readonly sheetError = signal<string | null>(null);
   protected readonly loading = signal(false);
+  protected readonly todayInput = signal('');
+  protected readonly todayError = signal<string | null>(null);
+  protected readonly savingToday = signal(false);
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
@@ -60,11 +80,23 @@ export class Home {
   protected async load(e: Event): Promise<void> {
     e.preventDefault();
     this.sheetError.set(null);
+    this.todayError.set(null);
     this.loading.set(true);
     try {
       this.sheetError.set(await this.session.loadSheet(this.sheetInput()));
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  protected async saveToday(e: Event): Promise<void> {
+    e.preventDefault();
+    this.todayError.set(null);
+    this.savingToday.set(true);
+    try {
+      this.todayError.set(await this.session.setToday(this.todayInput()));
+    } finally {
+      this.savingToday.set(false);
     }
   }
 }
