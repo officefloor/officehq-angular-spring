@@ -13,6 +13,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.history.AsOf;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -117,16 +119,21 @@ public class SheetController {
     }
 
     private final SheetService service;
+    private final AsOf asOf;
 
-    public SheetController(SheetService service) {
+    public SheetController(SheetService service, AsOf asOf) {
         this.service = service;
+        this.asOf = asOf;
     }
 
-    /** Load a sheet by id, starting it empty if it was never loaded before. */
+    /** Load a sheet by id, starting it empty if it was never loaded before; as it stood at the end of a date
+     *  when the screen views it as of one. */
     @PostMapping("/{id}/load")
     public SheetView load(@PathVariable @NotBlank @Size(max = 200) String id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return SheetView.of(service.load(id.trim(), user.trim()));
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        Sheet sheet = service.load(id.trim(), user.trim());
+        return SheetView.of(asOf == null ? sheet : this.asOf.sheet(sheet.getId(), asOf));
     }
 
     /** Archive the sheet (a steward only). */

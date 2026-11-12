@@ -10,6 +10,8 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.AsOf;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,16 +43,21 @@ public class RateController {
     }
 
     private final RateService service;
+    private final AsOf asOf;
 
-    public RateController(RateService service) {
+    public RateController(RateService service, AsOf asOf) {
         this.service = service;
+        this.asOf = asOf;
     }
 
-    /** The sheet's rates, by grade, each with its from-date; a grade with no rate is left out. */
+    /** The sheet's rates, by grade, each with its from-date; a grade with no rate is left out.; as they stood at the end of a date when the screen views the
+     *  sheet as of one. */
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return service.list(sheetId.trim()).stream().map(RateView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return (asOf == null ? service.list(sheetId.trim()) : this.asOf.rates(sheetId.trim(), asOf)).stream()
+                .map(RateView::of).toList();
     }
 
     /** Set a grade's rate from a date (or from the beginning of time), perhaps through a to-date,

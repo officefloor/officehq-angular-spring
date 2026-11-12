@@ -11,6 +11,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import net.officefloor.hq.app.history.AsOf;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -107,20 +110,30 @@ public class PersonController {
     }
 
     private final PersonService service;
+    private final AsOf asOf;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, AsOf asOf) {
         this.service = service;
+        this.asOf = asOf;
     }
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in the order they were added; as they stood at the end of a date when the screen
+     *  views the sheet as of one. */
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        Map<Long, List<Statement>> statements = service.statements(sheetId.trim());
-        Map<Long, List<Long>> patrons = service.patrons(sheetId.trim());
-        List<Person> people = service.list(sheetId.trim());
-        LocalDate today = service.today(sheetId.trim());
-        Set<Long> watched = service.watchedBy(sheetId.trim(), user.trim());
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        String id = sheetId.trim();
+        Map<Long, List<Statement>> statements = asOf == null ? service.statements(id)
+                : this.asOf.statements(id, asOf).stream().collect(Collectors.groupingBy(Statement::getPersonId));
+        Map<Long, List<Long>> patrons = asOf == null ? service.patrons(id)
+                : this.asOf.patrons(id, asOf).stream().collect(Collectors.groupingBy(Patron::getPersonId,
+                        Collectors.mapping(Patron::getPatronId, Collectors.toList())));
+        List<Person> people = asOf == null ? service.list(id) : this.asOf.people(id, asOf);
+        LocalDate today = asOf == null ? service.today(id) : this.asOf.today(id, asOf);
+        Set<Long> watched = asOf == null ? service.watchedBy(id, user.trim())
+                : this.asOf.watches(id, asOf).stream().filter(w -> w.getUser().equals(user.trim()))
+                        .map(Watch::getPersonId).collect(Collectors.toSet());
         return people.stream()
                 .map(p -> PersonView.of(p, today, statements.getOrDefault(p.getId(), List.of()),
                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))

@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.history.AsOf;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -38,16 +40,21 @@ public class DelegationController {
     }
 
     private final RoleService service;
+    private final AsOf asOf;
 
-    public DelegationController(RoleService service) {
+    public DelegationController(RoleService service, AsOf asOf) {
         this.service = service;
+        this.asOf = asOf;
     }
 
-    /** The sheet's delegations in the order they were made. */
+    /** The sheet's delegations in the order they were made.; as they stood at the end of a date when the screen views the
+     *  sheet as of one. */
     @GetMapping
     public List<DelegationView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return service.delegations(sheetId.trim()).stream().map(DelegationView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return (asOf == null ? service.delegations(sheetId.trim()) : this.asOf.delegations(sheetId.trim(), asOf))
+                .stream().map(DelegationView::of).toList();
     }
 
     /** Delegate the steward role to a user for a from-date to a to-date. */

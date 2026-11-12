@@ -13,8 +13,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.person.Patron;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.Statement;
+import net.officefloor.hq.app.person.Watch;
 import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.role.Delegation;
+import net.officefloor.hq.app.role.SheetRole;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -22,7 +28,8 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The versions of a sheet, its people, their claims and its rates: each change keeps the state it left the
+ * The versions of a sheet, its people, their claims, its rates, its periods, the statements taken, the
+ * patrons named, the watches kept, the roles given and the delegations made: each change keeps the state it left the
  * row in, with the sheet's today when it was made, so the rows can be read back as of a date — as the
  * changes made while the sheet's today was on or before it left them, each row's latest such change by the
  * order they were made, a change made later not counting whatever its today.
@@ -74,6 +81,24 @@ public class History {
         } else if (entity instanceof Rate rate) {
             sheetId = rate.getSheetId();
             entityId = String.valueOf(rate.getId());
+        } else if (entity instanceof Period period) {
+            sheetId = period.getSheetId();
+            entityId = String.valueOf(period.getId());
+        } else if (entity instanceof Statement statement) {
+            sheetId = statement.getSheetId();
+            entityId = String.valueOf(statement.getId());
+        } else if (entity instanceof Patron patron) {
+            sheetId = patron.getSheetId();
+            entityId = String.valueOf(patron.getId());
+        } else if (entity instanceof Watch watch) {
+            sheetId = watch.getSheetId();
+            entityId = String.valueOf(watch.getId());
+        } else if (entity instanceof SheetRole role) {
+            sheetId = role.getSheetId();
+            entityId = String.valueOf(role.getId());
+        } else if (entity instanceof Delegation delegation) {
+            sheetId = delegation.getSheetId();
+            entityId = String.valueOf(delegation.getId());
         } else {
             throw new IllegalArgumentException("No history kept of " + entity.getClass());
         }

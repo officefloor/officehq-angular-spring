@@ -2,13 +2,16 @@ package net.officefloor.hq.app.role;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import net.officefloor.hq.app.history.History;
 
 /** The role the sheet gives a user name. A name with none is a clerk. */
 @Entity
+@EntityListeners(History.class)
 @Table(name = "sheet_role")
 public class SheetRole {
 
@@ -36,6 +39,10 @@ public class SheetRole {
         this.sheetId = sheetId;
         this.userName = userName;
         this.role = role;
+    }
+
+    public Long getId() {
+        return id;
     }
 
     public String getSheetId() {

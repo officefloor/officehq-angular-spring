@@ -196,6 +196,7 @@ public class SheetService {
         String value = roles == null ? "" : roles.trim();
         sheet.setPermission(action, value);
         sheets.saveAndFlush(sheet);
+        history.keep(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
         return sheet;
     }

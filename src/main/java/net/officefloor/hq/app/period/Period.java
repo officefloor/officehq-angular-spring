@@ -4,6 +4,7 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -15,12 +16,14 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
+import net.officefloor.hq.app.history.History;
 
 /** A named period on the sheet, from one date to another, both inclusive. A claim belongs to the
  *  period whose dates contain its date, or to none. A closed period keeps the due-total it had when
  *  closed, and its claims can no longer change, until a steward reopens it. A soft-closed period keeps
  *  its figures fixed the same way, but its claims can still change. */
 @Entity
+@EntityListeners(History.class)
 @Table(name = "period")
 public class Period {
 

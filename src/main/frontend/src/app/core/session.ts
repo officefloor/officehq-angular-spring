@@ -102,6 +102,10 @@ export class Session {
   readonly graceDays = signal<number | null>(null);
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
+  /** The date (YYYY-MM-DD) this user's screen shows the sheet as of, while set: every figure as it stood at
+   *  the end of that date, the date standing in for the sheet's today, and every change refused; null when
+   *  the screen shows the sheet as it is. Kept for this screen only, across sheet loads. */
+  readonly asOf = signal<string | null>(null);
 
   signIn(name: string): boolean {
     const n = name.trim();

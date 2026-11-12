@@ -2,16 +2,19 @@ package net.officefloor.hq.app.person;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.History;
 
 /** A statement taken of a person: the sheet's today then, or the date it was taken as of, their due-total
  *  then (none when it was n/a) and how many of their claims counted. */
 @Entity
+@EntityListeners(History.class)
 @Table(name = "statement")
 public class Statement {
 

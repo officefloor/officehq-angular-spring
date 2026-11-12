@@ -8,6 +8,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import net.officefloor.hq.app.history.AsOf;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -48,16 +50,21 @@ public class PeriodController {
     }
 
     private final PeriodService service;
+    private final AsOf asOf;
 
-    public PeriodController(PeriodService service) {
+    public PeriodController(PeriodService service, AsOf asOf) {
         this.service = service;
+        this.asOf = asOf;
     }
 
-    /** The sheet's periods, by from-date. */
+    /** The sheet's periods, by from-date.; as they stood at the end of a date when the screen views the
+     *  sheet as of one. */
     @GetMapping
     public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return (asOf == null ? service.list(sheetId.trim()) : this.asOf.periods(sheetId.trim(), asOf)).stream()
+                .map(PeriodView::of).toList();
     }
 
     /** Add a period; refused when its name is taken, its dates run backwards or it overlaps another. */

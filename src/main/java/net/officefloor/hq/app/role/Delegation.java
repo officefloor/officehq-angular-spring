@@ -2,14 +2,17 @@ package net.officefloor.hq.app.role;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.History;
 
 /** A steward's delegation of the steward role to a user name, from a date to a date, inclusive. */
 @Entity
+@EntityListeners(History.class)
 @Table(name = "delegation")
 public class Delegation {
 

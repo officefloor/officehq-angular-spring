@@ -4,7 +4,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.AsOf;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,16 +35,21 @@ public class RoleController {
     }
 
     private final RoleService service;
+    private final AsOf asOf;
 
-    public RoleController(RoleService service) {
+    public RoleController(RoleService service, AsOf asOf) {
         this.service = service;
+        this.asOf = asOf;
     }
 
-    /** The names given a role on the sheet, by name; any other name is a clerk. */
+    /** The names given a role on the sheet, by name; any other name is a clerk.; as they stood at the end of a date when the screen views the
+     *  sheet as of one. */
     @GetMapping
     public List<RoleView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return service.list(sheetId.trim()).stream().map(RoleView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return (asOf == null ? service.list(sheetId.trim()) : this.asOf.roles(sheetId.trim(), asOf)).stream()
+                .map(RoleView::of).toList();
     }
 
     /** Give a user name a role: clerk, steward or viewer. */

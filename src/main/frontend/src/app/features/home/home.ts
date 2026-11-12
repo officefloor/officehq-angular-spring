@@ -4,7 +4,7 @@ import { People } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Roles } from '../../core/roles';
-import { Session } from '../../core/session';
+import { Session, isDate } from '../../core/session';
 import { BulkOpen } from '../claims/bulk-open';
 import { BulkSettle } from '../claims/bulk-settle';
 import { PasteClaims } from '../claims/paste-claims';
@@ -58,6 +58,22 @@ import { SummaryPanel } from '../summary/summary';
           @if (todayError(); as err) {
             <p role="alert" data-testid="sheet-error">{{ err }}</p>
           }
+          <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
+          <form (submit)="setAsOf($event)">
+            <label for="asof-date">Show the sheet as of</label>
+            <input
+              id="asof-date"
+              data-testid="asof-date"
+              placeholder="YYYY-MM-DD"
+              [value]="asOfInput()"
+              (input)="asOfInput.set(value($event)); asOfError.set(null)"
+            />
+            <button type="submit" data-testid="asof-set" [disabled]="loading()">Set as of</button>
+            <button type="button" data-testid="asof-clear" [disabled]="loading()" (click)="clearAsOf()">Clear as of</button>
+          </form>
+          @if (asOfError(); as err) {
+            <p role="alert" data-testid="asof-error">{{ err }}</p>
+          }
         }
       </section>
       @if (session.sheetId()) {
@@ -103,6 +119,8 @@ export class Home {
   protected readonly todayError = signal<string | null>(null);
   protected readonly savingToday = signal(false);
   protected readonly archiving = signal(false);
+  protected readonly asOfInput = signal('');
+  protected readonly asOfError = signal<string | null>(null);
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
@@ -119,11 +137,47 @@ export class Home {
     this.todayError.set(null);
     this.loading.set(true);
     try {
-      this.sheetError.set(
-        (await this.session.loadSheet(this.sheetInput())) ??
-          (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load()])).find((err) => err !== null) ??
-          null,
-      );
+      this.sheetError.set(await this.loadSheet(this.sheetInput()));
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  /** Load a sheet and everything on it, as of the screen's as-of date while one is set. */
+  private async loadSheet(id: string): Promise<string | null> {
+    return (
+      (await this.session.loadSheet(id)) ??
+      (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load()])).find((err) => err !== null) ??
+      null
+    );
+  }
+
+  /** Show the sheet as of a date on this screen only: everything is re-read as it stood at the end of it. */
+  protected async setAsOf(e: Event): Promise<void> {
+    e.preventDefault();
+    const d = this.asOfInput().trim();
+    this.asOfError.set(null);
+    if (!isDate(d)) {
+      this.asOfError.set('Enter an as-of date as YYYY-MM-DD.');
+      return;
+    }
+    await this.showAsOf(d);
+  }
+
+  /** Show the sheet as it is again. */
+  protected async clearAsOf(): Promise<void> {
+    this.asOfError.set(null);
+    await this.showAsOf(null);
+  }
+
+  private async showAsOf(date: string | null): Promise<void> {
+    const sid = this.session.sheetId();
+    if (sid === null || this.loading()) return;
+    this.todayError.set(null);
+    this.loading.set(true);
+    try {
+      this.session.asOf.set(date);
+      this.asOfError.set(await this.loadSheet(sid));
     } finally {
       this.loading.set(false);
     }

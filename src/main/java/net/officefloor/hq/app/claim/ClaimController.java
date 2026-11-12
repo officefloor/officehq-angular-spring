@@ -10,10 +10,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.history.AsOf;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.PersonService;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -110,19 +112,25 @@ public class ClaimController {
     private final QuickAddService quickAdd;
     private final PasteService paste;
     private final PersonService people;
+    private final AsOf asOf;
 
-    public ClaimController(ClaimService service, QuickAddService quickAdd, PasteService paste, PersonService people) {
+    public ClaimController(ClaimService service, QuickAddService quickAdd, PasteService paste, PersonService people,
+            AsOf asOf) {
+        this.asOf = asOf;
         this.service = service;
         this.quickAdd = quickAdd;
         this.paste = paste;
         this.people = people;
     }
 
-    /** The sheet's claims, newest first. */
+    /** The sheet's claims, newest first; as they stood at the end of a date when the screen views the sheet as
+     *  of one. */
     @GetMapping("/claims")
     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return (asOf == null ? service.list(sheetId.trim()) : this.asOf.claims(sheetId.trim(), asOf)).stream()
+                .map(ClaimView::of).toList();
     }
 
     /** Add a claim for a person. */
