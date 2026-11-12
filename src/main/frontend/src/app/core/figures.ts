@@ -5,8 +5,11 @@ import { Periods } from './periods';
 import { Rates, hundredths, money } from './rates';
 import { Session } from './session';
 
-// The due figures the screen shows, worked out in one place so the people list, the periods list
-// and the summary always agree.
+/** The statuses claims are counted by, in the order the screen shows them. */
+export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+
+// The due figures the screen shows, worked out in one place so the people list, the periods list,
+// the summary and the header always agree.
 @Injectable({ providedIn: 'root' })
 export class Figures {
   private readonly claims = inject(Claims);
@@ -31,6 +34,32 @@ export class Figures {
     const today = this.session.today();
     const rated = today ? this.rates.inForce(gradeOn(p.grades, today), today) !== undefined : false;
     return rated || keptFigure ? sum : null;
+  }
+
+  /** Everyone's due-total added up, skipping those whose grade has no rate. */
+  readonly dueTotal = computed(() =>
+    money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
+  );
+
+  /** The due of everyone's overdue claims that count, added up. */
+  readonly overdueTotal = computed(() =>
+    money(this.people.people().reduce((sum, p) => sum + this.overdueCents(p), 0n)),
+  );
+
+  /** The number of claims in each status, in the order of STATUSES. */
+  readonly statusCounts = computed(() => {
+    const claims = this.claims.claims();
+    return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
+  });
+
+  /** A person's claims that count live and are overdue. */
+  overdue(p: Person): Claim[] {
+    return this.claims.live().filter((c) => c.personId === p.id && this.claims.overdue(c));
+  }
+
+  /** The due of a person's overdue claims that count, added up. */
+  overdueCents(p: Person): bigint {
+    return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p), 0n);
   }
 
   /** A claim's figure: its settled due, else the figure its person's last statement bound it to (not

@@ -226,17 +226,13 @@ export class PeopleList {
   /** The id of the person being put on hold. */
   protected readonly holding = signal<number | null>(null);
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
-  protected readonly dueTotal = computed(() =>
-    money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
-  );
+  protected readonly dueTotal = this.figures.dueTotal;
   /** Everyone's overdue claims that count, counted. */
   protected readonly overdueCount = computed(() =>
     this.people.people().reduce((n, p) => n + this.overdue(p).length, 0),
   );
   /** The due of everyone's overdue claims that count, added up. */
-  protected readonly overdueTotal = computed(() =>
-    money(this.people.people().reduce((sum, p) => sum + this.overdueCents(p), 0n)),
-  );
+  protected readonly overdueTotal = this.figures.overdueTotal;
   protected readonly name = signal('');
   protected readonly grade = signal<string>('A');
   /** The date the editor's grade applies from; blank takes the sheet's today. */
@@ -285,12 +281,12 @@ export class PeopleList {
 
   /** A person's claims that count live and are overdue. */
   protected overdue(p: Person): Claim[] {
-    return this.claims.live().filter((c) => c.personId === p.id && this.claims.overdue(c));
+    return this.figures.overdue(p);
   }
 
   /** The due of a person's overdue claims that count, added up. */
   private overdueCents(p: Person): bigint {
-    return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+    return this.figures.overdueCents(p);
   }
 
   protected overdueDue(p: Person): string {

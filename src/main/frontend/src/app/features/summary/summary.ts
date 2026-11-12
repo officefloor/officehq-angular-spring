@@ -1,12 +1,8 @@
 import { Component, computed, inject } from '@angular/core';
-import { Claims } from '../../core/claims';
 import { Figures } from '../../core/figures';
 import { GRADES, People } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { money } from '../../core/rates';
-
-/** The statuses the summary counts claims by, in the order it shows them. */
-const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
 // The sheet at a glance, from the same figures the lists show: per grade, the people on it today
 // (retired people left out) and their due-totals added up (one that is n/a adds nothing); per period,
@@ -64,7 +60,6 @@ const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 })
 export class SummaryPanel {
   private readonly people = inject(People);
-  private readonly claims = inject(Claims);
   private readonly periods = inject(Periods);
   private readonly figures = inject(Figures);
 
@@ -85,8 +80,5 @@ export class SummaryPanel {
     return this.periods.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? live.get(p.id) ?? '0.00' }));
   });
 
-  protected readonly byStatus = computed(() => {
-    const claims = this.claims.claims();
-    return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
-  });
+  protected readonly byStatus = this.figures.statusCounts;
 }
