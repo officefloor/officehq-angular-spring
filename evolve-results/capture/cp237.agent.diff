@@ -1,0 +1,75 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 9f7d73511..4dbc09e4b 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -79,7 +79,7 @@ interface RoleView {
+ 
+ const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
+ /** The actions the permission matrix decides. */
+-const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
++const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'];
+ /** Roles typed for an action: clerk and/or steward, comma separated; blank keeps the standing rule. */
+ const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
+ /** A date typed as yyyy-mm-dd. */
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 82a34dfe2..a5793183c 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -558,7 +558,7 @@ public class SettingController {
+ 
+     @PutMapping("/perm/{action}")
+     public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
++            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
+             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+             @RequestBody @Valid PermissionRequest request) {
+         return view(service.setPermission(sheetId.trim(), user.trim(), action, request.rolesValue()));
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 20f0d2068..edef4d1c3 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -50,9 +50,9 @@ public class Sheet {
+     /** The actions the permission matrix decides, each with the roles that may take it when its entry is blank. */
+     public static final Map<String, String> STANDING_PERMISSIONS = Map.of("open", "clerk,steward", "settle",
+             "clerk,steward", "void", "clerk,steward", "reassign", "steward", "close", "clerk,steward", "reopen",
+-            "steward");
++            "steward", "today", "clerk,steward,restricted");
+     public static final List<String> PERMISSION_ACTIONS = List.of("open", "settle", "void", "reassign", "close",
+-            "reopen");
++            "reopen", "today");
+ 
+     /** The sheet's starting values, in force before a key's first from-date: none for a key not listed. */
+     private static final Map<String, String> STARTING = Map.of(FLOOR, "1.00", TERMS, "14", LATE_PCT, "0.00");
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 7fedd0a58..38b758afa 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -118,6 +118,9 @@ public class SheetService {
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
++        if (!roles.may(id, user, "today")) {
++            throw new TodayForbiddenException(id, user);
++        }
+         RollupService.Snapshot before = rollup.snapshot(id);
+         boolean changed = !today.equals(sheet.getToday());
+         if (changed) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/TodayForbiddenException.java b/src/main/java/net/officefloor/hq/app/sheet/TodayForbiddenException.java
+new file mode 100644
+index 000000000..7d5612bc4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/TodayForbiddenException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.sheet;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** Someone whose role the permission matrix does not allow tried to change the sheet's today. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class TodayForbiddenException extends RuntimeException {
++
++    public TodayForbiddenException(String sheetId, String user) {
++        super(user + " may not change the today of sheet " + sheetId);
++    }
++}
