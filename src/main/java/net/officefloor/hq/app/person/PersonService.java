@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -179,6 +180,88 @@ public class PersonService {
                 + (key == null ? "" : " contact=" + key));
         rollup.recordChanges(sheetId, user, before);
         return person;
+    }
+
+    /** A line of the import box: its number, and the person form's fields. */
+    private record ImportLine(int number, String name, String grade, Integer terms, String contact) {
+    }
+
+    /** The import box: lines of name,grade,terms,contact (the last two may be absent or blank), blank lines
+     *  skipped. Every line is checked first with the person form's rules, a name or contact repeated within
+     *  the import too (ignoring case); a refused line refuses the import, adding no one and writing nothing.
+     *  Otherwise each is added in order, exactly as the form adds them. The people added, in line order. */
+    @Transactional
+    public List<Person> importPeople(String sheetId, String user, String text) {
+        requireSheet(sheetId);
+        List<ImportLine> lines = new ArrayList<>();
+        Set<String> names = new HashSet<>();
+        Set<String> contacts = new HashSet<>();
+        Set<String> tree = namesInTree(sheetId, null);
+        String[] raw = text == null ? new String[0] : text.split("\\r?\\n");
+        for (int i = 0; i < raw.length; i++) {
+            if (raw[i].isBlank()) {
+                continue;
+            }
+            ImportLine line = parseImport(i + 1, raw[i]);
+            String lower = line.name().toLowerCase(Locale.ROOT);
+            if (!names.add(lower)) {
+                throw importRefused(line.number(), "the name " + line.name() + " is already in this import.");
+            }
+            if (people.nameTaken(sheetId, line.name(), null) || tree.contains(lower)) {
+                throw importRefused(line.number(), "the name " + line.name() + " is already in use.");
+            }
+            if (line.contact() != null) {
+                if (!contacts.add(line.contact())) {
+                    throw importRefused(line.number(), "the contact " + line.contact() + " is already in this import.");
+                }
+                if (people.contactTaken(sheetId, line.contact(), null)) {
+                    throw importRefused(line.number(), "the contact " + line.contact() + " is already in use.");
+                }
+            }
+            lines.add(line);
+        }
+        if (lines.isEmpty()) {
+            throw new PersonImportException("Paste at least one line of name,grade,terms,contact.");
+        }
+        List<Person> added = new ArrayList<>();
+        for (ImportLine line : lines) {
+            try {
+                added.add(add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+            } catch (PersonNameTakenException | PersonContactTakenException e) {
+                // taken by another user at the same moment
+                throw importRefused(line.number(), e.getMessage());
+            }
+        }
+        return added;
+    }
+
+    private static ImportLine parseImport(int number, String raw) {
+        String[] f = raw.split(",", 4);
+        String name = f[0].trim();
+        if (name.isEmpty()) {
+            throw importRefused(number, "enter a name.");
+        }
+        if (name.length() > 200) {
+            throw importRefused(number, "the name is too long.");
+        }
+        String grade = f.length > 1 ? f[1].trim() : "";
+        if (!grade.matches("[ABC]")) {
+            throw importRefused(number, "choose a grade of A, B or C.");
+        }
+        String terms = f.length > 2 ? f[2].trim() : "";
+        if (!terms.isEmpty() && !terms.matches("\\d{1,6}")) {
+            throw importRefused(number, "enter the terms as a whole number of days, or leave them blank.");
+        }
+        String contact = f.length > 3 ? f[3].trim() : "";
+        if (contact.length() > 200) {
+            throw importRefused(number, "enter a contact of at most 200 characters.");
+        }
+        return new ImportLine(number, name, grade, terms.isEmpty() ? null : Integer.valueOf(terms),
+                contactKey(contact));
+    }
+
+    private static PersonImportException importRefused(int number, String why) {
+        return new PersonImportException("Line " + number + ": " + why);
     }
 
     @Transactional

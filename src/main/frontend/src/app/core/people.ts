@@ -150,6 +150,26 @@ export class People {
     }
   }
 
+  /** Add a person for each pasted line of name,grade,terms,contact, in order; how many were added, or
+   *  an error message when any line is refused (then the server adds none). */
+  async importPeople(text: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!text.trim()) return 'Paste at least one line of name,grade,terms,contact.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ added: number; people: Person[] }>(`${this.url(sid)}/import`, { text }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => [...ps, ...done.people]);
+      return done.added;
+    } catch (e) {
+      return failed('add', e).replace(' person', ' people');
+    }
+  }
+
   /** Change a person's name and grade, from the version the editor loaded; the refusal when
    *  refused, carrying the person as stored now when someone else saved them in the meantime. */
   async update(id: number, version: number, f: PersonFields): Promise<Refusal | null> {

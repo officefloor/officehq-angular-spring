@@ -17,6 +17,7 @@ import { BulkSettle } from '../claims/bulk-settle';
 import { PasteClaims } from '../claims/paste-claims';
 import { HeaderCounters } from '../header/header';
 import { HolidaysPanel } from '../holidays/holidays';
+import { ImportPeople } from '../people/import-people';
 import { PeopleList } from '../people/people';
 import { PeriodsPanel } from '../periods/periods';
 import { PoolsPanel } from '../pools/pools';
@@ -28,7 +29,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [AuditPanel, BulkOpen, BulkReassign, BulkSettle, ClaimTemplatesPanel, HeaderCounters, HolidaysPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [AuditPanel, BulkOpen, BulkReassign, BulkSettle, ClaimTemplatesPanel, HeaderCounters, HolidaysPanel, ImportPeople, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -95,6 +96,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-void-reasons />
         <app-claim-templates />
         <app-people />
+        <app-import-people />
         <app-pools />
         <app-paste-claims />
         <app-bulk-open />

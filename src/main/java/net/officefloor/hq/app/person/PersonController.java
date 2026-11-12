@@ -174,6 +174,32 @@ public class PersonController {
                 service.clashing(added));
     }
 
+    /** The import box's lines of name,grade,terms,contact. */
+    public record ImportRequest(@NotNull @Size(max = 1000000) String text) {
+    }
+
+    /** How many an import added, and the people it added, in the order of their lines. */
+    public record ImportView(int added, List<PersonView> people) {
+    }
+
+    /** Add a person for each imported line, in order; one refused line refuses them all. */
+    @PostMapping("/import")
+    public ImportView importPeople(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ImportRequest request) {
+        List<Person> added = service.importPeople(sheetId.trim(), user.trim(), request.text());
+        LocalDate today = service.today(sheetId.trim());
+        return new ImportView(added.size(), added.stream()
+                .map(p -> PersonView.of(p, today, List.of(), List.of(), false, service.clashing(p))).toList());
+    }
+
+    /** An import with a refused line is refused with the reason, for the screen to show. */
+    @ExceptionHandler(PersonImportException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> importRefused(PersonImportException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     /** Change a person's name, and give them a grade from a date. */
     @PutMapping("/{personId}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId,
