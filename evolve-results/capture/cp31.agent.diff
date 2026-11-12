@@ -1,0 +1,330 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+new file mode 100644
+index 000000000..04bec99eb
+--- /dev/null
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -0,0 +1,75 @@
++import { Injectable, computed, inject } from '@angular/core';
++import { Claim, Claims } from './claims';
++import { People, Person, gradeOn } from './people';
++import { Periods } from './periods';
++import { Rates, hundredths, money } from './rates';
++import { Session } from './session';
++
++// The due figures the screen shows, worked out in one place so the people list, the periods list
++// and the summary always agree.
++@Injectable({ providedIn: 'root' })
++export class Figures {
++  private readonly claims = inject(Claims);
++  private readonly people = inject(People);
++  private readonly periods = inject(Periods);
++  private readonly rates = inject(Rates);
++  private readonly session = inject(Session);
++
++  /** The sum of the figures of a person's claims that count live (not OPEN while they are on hold): a settled claim's frozen due, else the
++   *  figure their last statement bound it to, else its live due at the rate in force on its date (a
++   *  claim with no figure adds nothing). Null when the grade in force on the sheet's today has no rate
++   *  there and no claim has a figure. */
++  dueCents(p: Person): bigint | null {
++    let sum = 0n;
++    let keptFigure = false;
++    for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
++      if (c.settledDue !== null || (c.stated && c.statedDue !== null)) keptFigure = true;
++      // a claim priced at the grade in force on its date keeps a figure too
++      else if (!c.stated && this.rates.inForce(gradeOn(p.grades, c.date), c.date) !== undefined) keptFigure = true;
++      sum += this.figureCents(c, p);
++    }
++    const today = this.session.today();
++    const rated = today ? this.rates.inForce(gradeOn(p.grades, today), today) !== undefined : false;
++    return rated || keptFigure ? sum : null;
++  }
++
++  /** A claim's figure: its settled due, else the figure its person's last statement bound it to,
++   *  else its live due at the rate in force on its date, an overdue claim's late charge on top;
++   *  nothing when it has no figure. */
++  figureCents(c: Claim, p: Person): bigint {
++    if (c.settledDue !== null) return hundredths(c.settledDue);
++    const f = c.stated
++      ? (c.statedDue === null ? 0n : hundredths(c.statedDue))
++      : (this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date) ?? 0n);
++    return f + this.claims.lateCents(c, f);
++  }
++
++  /** The grade in force on the sheet's today, the one the list shows. */
++  gradeToday(p: Person): string {
++    const today = this.session.today();
++    return today ? gradeOn(p.grades, today) : p.grade;
++  }
++
++  /** Each open period's live due-total, by period id: the figures of the claims that count live
++   *  whose date falls in it — a settled claim's frozen due, else as its person's last statement bound
++   *  it, else its live due, an overdue claim's late charge on top (a claim with no figure adds
++   *  nothing). */
++  readonly periodDueTotals = computed(() => {
++    const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
++    const sums = new Map<number, bigint>();
++    for (const c of this.claims.live()) {
++      const period = this.periods.of(c.date);
++      if (!period) continue;
++      let due: bigint | null;
++      if (c.settledDue !== null) due = hundredths(c.settledDue);
++      else if (c.stated) due = c.statedDue === null ? null : hundredths(c.statedDue);
++      else {
++        const grade = grades.get(c.personId);
++        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date);
++      }
++      if (due !== null && c.settledDue === null) due += this.claims.lateCents(c, due);
++      sums.set(period.id, (sums.get(period.id) ?? 0n) + (due ?? 0n));
++    }
++    return new Map([...sums].map(([id, sum]) => [id, money(sum)]));
++  });
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index c354fc44a..7f23976d1 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -9,11 +9,12 @@ import { PeopleList } from '../people/people';
+ import { PeriodsPanel } from '../periods/periods';
+ import { RatesPanel } from '../rates/rates';
+ import { SettingsPanel } from '../settings/settings';
++import { SummaryPanel } from '../summary/summary';
+ 
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [PeopleList, PeriodsPanel, RatesPanel, SettingsPanel],
++  imports: [PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
+   template: `
+     @if (session.user(); as user) {
+       <section aria-label="Session" data-testid="session-bar">
+@@ -55,6 +56,7 @@ import { SettingsPanel } from '../settings/settings';
+         <app-rates />
+         <app-periods />
+         <app-people />
++        <app-summary />
+       }
+     } @else {
+       <form aria-label="Sign in" (submit)="signIn($event)">
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0baf1de6c..c6554601c 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,8 +1,8 @@
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { Claim, Claims } from '../../core/claims';
+-import { GRADES, People, Person, gradeOn } from '../../core/people';
+-import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
+-import { Session } from '../../core/session';
++import { Figures } from '../../core/figures';
++import { GRADES, People, Person } from '../../core/people';
++import { NO_RATE, money } from '../../core/rates';
+ import { PersonClaims } from '../claims/claims';
+ 
+ // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
+@@ -187,8 +187,7 @@ import { PersonClaims } from '../claims/claims';
+ export class PeopleList {
+   protected readonly people = inject(People);
+   protected readonly claims = inject(Claims);
+-  private readonly rates = inject(Rates);
+-  private readonly session = inject(Session);
++  private readonly figures = inject(Figures);
+   protected readonly grades = GRADES;
+   /** The people the list shows: everyone, or only those not retired unless show retired is on. */
+   protected readonly shown = computed(() =>
+@@ -245,39 +244,17 @@ export class PeopleList {
+     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+ 
+-  /** The sum of the figures of a person's claims that count live (not OPEN while they are on hold): a settled claim's frozen due, else the
+-   *  figure their last statement bound it to, else its live due at the rate in force on its date (a
+-   *  claim with no figure adds nothing). Null when the grade in force on the sheet's today has no rate
+-   *  there and no claim has a figure. */
+   private dueCents(p: Person): bigint | null {
+-    let sum = 0n;
+-    let keptFigure = false;
+-    for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
+-      if (c.settledDue !== null || (c.stated && c.statedDue !== null)) keptFigure = true;
+-      // a claim priced at the grade in force on its date keeps a figure too
+-      else if (!c.stated && this.rates.inForce(gradeOn(p.grades, c.date), c.date) !== undefined) keptFigure = true;
+-      sum += this.figureCents(c, p);
+-    }
+-    const today = this.session.today();
+-    const rated = today ? this.rates.inForce(gradeOn(p.grades, today), today) !== undefined : false;
+-    return rated || keptFigure ? sum : null;
++    return this.figures.dueCents(p);
+   }
+ 
+-  /** A claim's figure: its settled due, else the figure its person's last statement bound it to,
+-   *  else its live due at the rate in force on its date, an overdue claim's late charge on top;
+-   *  nothing when it has no figure. */
+   private figureCents(c: Claim, p: Person): bigint {
+-    if (c.settledDue !== null) return hundredths(c.settledDue);
+-    const f = c.stated
+-      ? (c.statedDue === null ? 0n : hundredths(c.statedDue))
+-      : (this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date) ?? 0n);
+-    return f + this.claims.lateCents(c, f);
++    return this.figures.figureCents(c, p);
+   }
+ 
+   /** The grade in force on the sheet's today, the one the list shows. */
+   protected gradeToday(p: Person): string {
+-    const today = this.session.today();
+-    return today ? gradeOn(p.grades, today) : p.grade;
++    return this.figures.gradeToday(p);
+   }
+ 
+   /** A person's claims that count live and are overdue. */
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index c6db39d07..35bb090f2 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -1,8 +1,6 @@
+-import { Component, computed, inject, signal } from '@angular/core';
+-import { Claims } from '../../core/claims';
+-import { People, gradeOn } from '../../core/people';
++import { Component, inject, signal } from '@angular/core';
++import { Figures } from '../../core/figures';
+ import { Period, Periods } from '../../core/periods';
+-import { Rates, hundredths, money } from '../../core/rates';
+ 
+ // The sheet's periods: one form adds a period, and the list shows each with its dates and its
+ // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
+@@ -73,9 +71,6 @@ import { Rates, hundredths, money } from '../../core/rates';
+ })
+ export class PeriodsPanel {
+   protected readonly periods = inject(Periods);
+-  private readonly claims = inject(Claims);
+-  private readonly people = inject(People);
+-  private readonly rates = inject(Rates);
+   protected readonly name = signal('');
+   protected readonly from = signal('');
+   protected readonly to = signal('');
+@@ -85,27 +80,9 @@ export class PeriodsPanel {
+   protected readonly acting = signal<number | null>(null);
+   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
+ 
+-  /** Each period's due-total, by period id: the figures of the claims that count live whose date falls
+-   *  in it — a settled claim's frozen due, else as its person's last statement bound it, else its
+-   *  live due, an overdue claim's late charge on top (a claim with no figure adds nothing). */
+-  protected readonly dueTotals = computed(() => {
+-    const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
+-    const sums = new Map<number, bigint>();
+-    for (const c of this.claims.live()) {
+-      const period = this.periods.of(c.date);
+-      if (!period) continue;
+-      let due: bigint | null;
+-      if (c.settledDue !== null) due = hundredths(c.settledDue);
+-      else if (c.stated) due = c.statedDue === null ? null : hundredths(c.statedDue);
+-      else {
+-        const grade = grades.get(c.personId);
+-        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date);
+-      }
+-      if (due !== null && c.settledDue === null) due += this.claims.lateCents(c, due);
+-      sums.set(period.id, (sums.get(period.id) ?? 0n) + (due ?? 0n));
+-    }
+-    return new Map([...sums].map(([id, sum]) => [id, money(sum)]));
+-  });
++  /** Each open period's live due-total, by period id (a closed one shows the total fixed when it was
++   *  closed). */
++  protected readonly dueTotals = inject(Figures).periodDueTotals;
+ 
+   protected close(p: Period): Promise<void> {
+     return this.act(p, () => this.periods.close(p.id));
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+new file mode 100644
+index 000000000..fe57c241b
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -0,0 +1,92 @@
++import { Component, computed, inject } from '@angular/core';
++import { Claims } from '../../core/claims';
++import { Figures } from '../../core/figures';
++import { GRADES, People } from '../../core/people';
++import { Periods } from '../../core/periods';
++import { money } from '../../core/rates';
++
++/** The statuses the summary counts claims by, in the order it shows them. */
++const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
++
++// The sheet at a glance, from the same figures the lists show: per grade, the people on it today
++// (retired people left out) and their due-totals added up (one that is n/a adds nothing); per period,
++// its due-total; per status, the claims in it.
++@Component({
++  selector: 'app-summary',
++  template: `
++    <section aria-label="Summary" data-testid="summary">
++      <h2>Summary</h2>
++      <table data-testid="summary-grades">
++        <caption>By grade</caption>
++        <thead>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (g of byGrade(); track g.grade) {
++            <tr>
++              <th scope="row">{{ g.grade }}</th>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table data-testid="summary-periods">
++        <caption>By period</caption>
++        <thead>
++          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
++        </thead>
++        <tbody>
++          @for (p of byPeriod(); track p.name) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <table data-testid="summary-statuses">
++        <caption>By status</caption>
++        <thead>
++          <tr><th scope="col">Status</th><th scope="col">Claims</th></tr>
++        </thead>
++        <tbody>
++          @for (s of byStatus(); track s.status) {
++            <tr>
++              <th scope="row">{{ s.status }}</th>
++              <td [attr.data-testid]="'summary-status-' + s.status + '-count'">{{ s.count }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class SummaryPanel {
++  private readonly people = inject(People);
++  private readonly claims = inject(Claims);
++  private readonly periods = inject(Periods);
++  private readonly figures = inject(Figures);
++
++  protected readonly byGrade = computed(() => {
++    const current = this.people.people().filter((p) => !p.retired);
++    return GRADES.map((grade) => {
++      const on = current.filter((p) => this.figures.gradeToday(p) === grade);
++      return {
++        grade,
++        count: on.length,
++        dueTotal: money(on.reduce((sum, p) => sum + (this.figures.dueCents(p) ?? 0n), 0n)),
++      };
++    });
++  });
++
++  protected readonly byPeriod = computed(() => {
++    const live = this.figures.periodDueTotals();
++    return this.periods.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? live.get(p.id) ?? '0.00' }));
++  });
++
++  protected readonly byStatus = computed(() => {
++    const claims = this.claims.claims();
++    return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
++  });
++}
