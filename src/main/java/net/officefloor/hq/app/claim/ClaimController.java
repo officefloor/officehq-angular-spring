@@ -194,6 +194,14 @@ public class ClaimController {
         return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
     }
 
+    /** Re-settle a SETTLED claim at its figure today: a steward freezes it again. */
+    @PostMapping("/claims/{claimId}/resettle")
+    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.resettle(sheetId.trim(), user.trim(), claimId));
+    }
+
     /** Why a PENDING claim is rejected. */
     public record RejectRequest(@Size(max = 1000) String reason) {
     }
@@ -291,6 +299,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimApprovalException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> approvalRefused(ClaimApprovalException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A re-settle that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimResettleException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> resettleRefused(ClaimResettleException e) {
         return Map.of("message", e.getMessage());
     }
 }

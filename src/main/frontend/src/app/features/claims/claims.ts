@@ -159,6 +159,7 @@ export class PersonClaims {
     { action: 'open', label: 'Open' },
     { action: 'settle', label: 'Settle' },
     { action: 'void', label: 'Void' },
+    { action: 'resettle', label: 'Re-settle' },
   ];
   /** A steward's review of a PENDING claim, offered on every open claim (the server refuses it unless
    *  PENDING). */

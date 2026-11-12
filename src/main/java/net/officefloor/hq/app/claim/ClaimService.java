@@ -195,6 +195,36 @@ public class ClaimService {
         return updated;
     }
 
+    /** Re-settle a SETTLED claim: freeze it again at the figure it would have today as an OPEN claim bound by
+     *  no statement (today's rates, grades and floor, the late charge on the sheet's today on top). Refused
+     *  unless the claim is SETTLED and the user is a steward, and for a claim in a closed period. */
+    @Transactional
+    public Claim resettle(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ClaimResettleException("Only a steward can re-settle a claim.");
+        }
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ClaimResettleException("Only a SETTLED claim can be re-settled.");
+        }
+        Rollup.Snapshot before = rollup.take(sheetId);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        BigDecimal old = claim.getSettledDue();
+        BigDecimal figure = liveDue(claim, person);
+        BigDecimal due = figure == null || claim.isCorrection() ? figure
+                : figure.add(sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
+                        .lateCharge(figure, claim.getDueBy(), claim.getDate()));
+        claim.setSettledDue(due);
+        logStatus(claim, person, user);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("CLAIM_RESETTLED", updated, person, user, updated.getNumber(),
+                " old=" + show(old) + " new=" + show(due));
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
     /** Reject a PENDING claim with a reason: it goes back to OPEN, bound again by its person's last
      *  statement if that statement included it. Refused unless the claim is PENDING, the user is a
      *  steward and a reason is given. */
@@ -453,6 +483,11 @@ public class ClaimService {
     /** The due a settled claim was fixed at, as its audit line ends: n/a when it has none. */
     private static String dueField(Claim claim) {
         return " due=" + (claim.getSettledDue() == null ? "n/a" : claim.getSettledDue().toPlainString());
+    }
+
+    /** A due as an audit line shows it: n/a when there is none. */
+    private static String show(BigDecimal due) {
+        return due == null ? "n/a" : due.toPlainString();
     }
 
     /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */

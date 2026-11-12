@@ -46,11 +46,12 @@ export interface StatusLine {
 }
 
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT, OPEN or PENDING -> VOID. A clerk settling a
- *  due above the clerk limit makes it PENDING: a steward approves it (SETTLED) or rejects it (OPEN). */
+ *  due above the clerk limit makes it PENDING: a steward approves it (SETTLED) or rejects it (OPEN). A
+ *  steward can re-settle a SETTLED claim at its figure today. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change a claim's buttons ask for. */
-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
 
 /** Whether a claim in this status counts toward claimed, due-total and every total. */
 export function counts(c: Claim): boolean {
@@ -243,7 +244,7 @@ export class Claims {
     }
   }
 
-  /** Open, settle, void, approve or reject a claim (a rejection with its reason); an error message
+  /** Open, settle, void, approve, reject or re-settle a claim (a rejection with its reason); an error message
    *  when refused. */
   async act(id: number, action: ClaimAction, reason = ''): Promise<string | null> {
     const sid = this.session.sheetId();
