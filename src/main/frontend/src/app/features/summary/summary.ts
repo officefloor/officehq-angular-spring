@@ -5,7 +5,8 @@ import { Periods } from '../../core/periods';
 import { money } from '../../core/rates';
 
 // The sheet at a glance, from the same figures the lists show: per grade, the people on it today
-// (retired people left out) and their due-totals added up (one that is n/a adds nothing); per period,
+// (retired people left out), their due-totals added up (one that is n/a adds nothing) and how many
+// of them are active; per period,
 // its due-total; per status, the claims in it.
 @Component({
   selector: 'app-summary',
@@ -15,7 +16,7 @@ import { money } from '../../core/rates';
       <table data-testid="summary-grades">
         <caption>By grade</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th><th scope="col">Active</th></tr>
         </thead>
         <tbody>
           @for (g of byGrade(); track g.grade) {
@@ -23,6 +24,7 @@ import { money } from '../../core/rates';
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
@@ -71,6 +73,7 @@ export class SummaryPanel {
         grade,
         count: on.length,
         dueTotal: money(on.reduce((sum, p) => sum + (this.figures.dueCents(p) ?? 0n), 0n)),
+        active: on.filter((p) => this.figures.active(p)).length,
       };
     });
   });

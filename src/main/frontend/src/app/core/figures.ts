@@ -1,9 +1,9 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { Claim, Claims, bound, countsAt, statusAt } from './claims';
+import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
 import { People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
 import { Rates, hundredths, money } from './rates';
-import { Session } from './session';
+import { Session, addDays } from './session';
 
 /** The statuses claims are counted by, in the order the screen shows them. */
 export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
@@ -101,6 +101,15 @@ export class Figures {
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
       : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c));
     return f === null ? 0n : this.claims.chargedCents(c, f);
+  }
+
+  /** Whether a person is active: they have an OPEN or PENDING claim that counts live dated within the
+   *  30 days up to and including the sheet's today. */
+  active(p: Person): boolean {
+    const today = this.session.today();
+    if (!today) return false;
+    const from = addDays(today, -29);
+    return this.claims.live().some((c) => c.personId === p.id && isOpen(c) && c.date >= from && c.date <= today);
   }
 
   /** The grade in force on the sheet's today, the one the list shows. */

@@ -98,13 +98,14 @@ import { PersonClaims } from '../claims/claims';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+              <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
