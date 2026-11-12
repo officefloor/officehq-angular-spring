@@ -48,6 +48,11 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's own terms dated from a from-date, each in force until the next later-dated one. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private List<PersonTerms> datedTerms = new ArrayList<>();
+
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     @Column(name = "contact")
     private String contact;
@@ -153,12 +158,47 @@ public class Person {
         grades.add(new PersonGrade(grade, fromDate));
     }
 
+    /** The person's own terms from the beginning of time; null when they have none. */
     public Integer getTerms() {
         return terms;
     }
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** The person's dated terms by from-date. */
+    public List<PersonTerms> getDatedTerms() {
+        return datedTerms.stream().sorted(Comparator.comparing(PersonTerms::getFromDate)).toList();
+    }
+
+    /**
+     * Record the terms (null: none) from the date, replacing the ones recorded from that same date; with no date,
+     * from the beginning of time.
+     */
+    public void setTerms(Integer terms, LocalDate fromDate) {
+        if (fromDate == null) {
+            this.terms = terms;
+            return;
+        }
+        for (PersonTerms t : datedTerms) {
+            if (t.getFromDate().equals(fromDate)) {
+                t.setTerms(terms);
+                return;
+            }
+        }
+        datedTerms.add(new PersonTerms(terms, fromDate));
+    }
+
+    /** The person's own terms in force on the date: the ones with the latest from-date on or before it; null for none. */
+    public Integer termsOn(LocalDate date) {
+        Integer inForce = terms;
+        for (PersonTerms t : getDatedTerms()) {
+            if (date != null && !t.getFromDate().isAfter(date)) {
+                inForce = t.getTerms();
+            }
+        }
+        return inForce;
     }
 
     public String getContact() {
@@ -330,6 +370,7 @@ public class Person {
         Person copy = new Person(sheetId, name, theirGrades.get(0).getGrade());
         theirGrades.stream().skip(1).forEach(g -> copy.setGrade(g.getGrade(), g.getFromDate()));
         copy.terms = terms;
+        datedTerms.forEach(t -> copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFromDate())));
         copy.contact = contact;
         copy.tags = tags;
         copy.retiredFrom = retiredFrom;

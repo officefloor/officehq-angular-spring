@@ -147,11 +147,12 @@ public class TransferService {
         aliases.flush();
         Person saved;
         if (into == null) {
-            // The person, with every grade and its from-date, their terms and contact, and their aliases.
+            // The person, with every grade and its from-date, their terms and their dated terms, contact, and their aliases.
             List<PersonGrade> grades = from.getGrades();
             Person arrived = new Person(to, from.getName(), grades.get(0).getGrade());
             grades.stream().skip(1).forEach(g -> arrived.setGrade(g.getGrade(), g.getFromDate()));
             arrived.setTerms(from.getTerms());
+            from.getDatedTerms().forEach(t -> arrived.setTerms(t.getTerms(), t.getFromDate()));
             arrived.setContact(from.getContact());
             arrived.setTags(from.getTags());
             personService.noteTags(to, SheetTag.parse(from.getTags()));

@@ -1109,11 +1109,11 @@ public class ClaimService {
         return sheets.nextClaimNumber(sheetId, date);
     }
 
-    /** The terms of the person on the date: their own, else their grade's on that date, else the sheet's then. */
+    /** The terms of the person on the date: their own in force then, else their grade's on that date, else the sheet's then. */
 
     private int termsFor(String sheetId, Person person, LocalDate date) {
-        return person.getTerms() != null ? person.getTerms()
-                : settings.termsFor(sheetId, person.gradeOn(date), date);
+        Integer own = person.termsOn(date);
+        return own != null ? own : settings.termsFor(sheetId, person.gradeOn(date), date);
     }
 
     private LocalDate dateOr(String sheetId, LocalDate date) {

@@ -22,8 +22,10 @@ interface Person {
   grade: string;
   /** Every grade of the person, each from its from-date; the first one given from the beginning of time. */
   grades: PersonGrade[];
-  /** The person's own terms in whole days; null when they have none. */
+  /** The person's own terms in force on the sheet's today, in whole days; null when they have none. */
   terms: number | null;
+  /** The person's own terms from the beginning of time, in whole days; null when they have none. */
+  undatedTerms: number | null;
   /** The person's contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
   /** The person's tags: trimmed, lower-cased, without repeats, sorted and joined by commas; null when they have none. */
@@ -200,6 +202,14 @@ function csvField(value: string): string {
           inputmode="numeric"
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
+        />
+        <label for="person-form-terms-from">Terms from (blank: from the beginning)</label>
+        <input
+          id="person-form-terms-from"
+          data-testid="person-form-terms-from"
+          type="date"
+          [value]="termsFrom()"
+          (input)="termsFrom.set(value($event)); error.set(null)"
         />
         <label for="person-form-contact">Contact (blank: none)</label>
         <input
@@ -1094,6 +1104,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in whole days; blank for none. */
   protected readonly terms = signal('');
+  /** The date the form's terms apply from; blank for the beginning of time. */
+  protected readonly termsFrom = signal('');
   /** The person's contact; blank for none. */
   protected readonly contact = signal('');
   /** The person's tags, comma separated; blank for none. */
@@ -1376,7 +1388,7 @@ export class People {
       name: person.name,
       grade: this.inlineGradeOf(person),
       gradeFrom: null,
-      terms: person.terms === null ? null : String(person.terms),
+      terms: person.undatedTerms === null ? null : String(person.undatedTerms),
       contact: person.contact,
       tags: null,
       version: null,
@@ -2059,7 +2071,8 @@ export class People {
     this.name.set(person.name);
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set('');
-    this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.termsFrom.set('');
+    this.terms.set(person.undatedTerms === null ? '' : String(person.undatedTerms));
     this.contact.set(person.contact ?? '');
     this.personTags.set(this.personTagsOf(person).join(', '));
     this.error.set(null);
@@ -2077,6 +2090,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.termsFrom.set('');
     this.contact.set('');
     this.personTags.set('');
     this.error.set(null);
@@ -2094,6 +2108,7 @@ export class People {
       grade: this.grade(),
       gradeFrom: this.gradeFrom() || null,
       terms: this.terms().trim() || null,
+      termsFrom: this.termsFrom() || null,
       contact: this.contact().trim() || null,
       tags: this.personTags().trim(),
       version: editing === null ? null : this.editingVersion,
@@ -2335,7 +2350,7 @@ export class People {
       this.editingVersion = person.version;
       this.name.set(person.name);
       this.grade.set(this.gradeOf(person));
-      this.terms.set(person.terms === null ? '' : String(person.terms));
+      this.terms.set(person.undatedTerms === null ? '' : String(person.undatedTerms));
     this.contact.set(person.contact ?? '');
       this.personTags.set(this.personTagsOf(person).join(', '));
     }

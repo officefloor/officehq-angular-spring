@@ -115,6 +115,16 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, Long id, Long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, String tagText) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, null, contact, tagText);
+    }
+
+    /**
+     * Save the person as above, recording the terms (null: none) from the terms from-date, keeping the ones already
+     * recorded and replacing those recorded from that same date; with no terms from-date, from the beginning of time.
+     */
+    @Transactional
+    public Person update(String sheetId, String user, Long id, Long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tagText) {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
@@ -137,10 +147,12 @@ public class PersonService {
             throw new PersonContactTakenException(sheetId, contactKey);
         }
         LocalDate today = sheetService.today(sheetId);
-        Integer termsBefore = person.getTerms();
+        boolean termsChanged = termsFrom == null ? !Objects.equals(person.getTerms(), terms)
+                : person.getDatedTerms().stream().noneMatch(
+                        t -> t.getFromDate().equals(termsFrom) && Objects.equals(t.getTerms(), terms));
         String contactBefore = person.getContact();
         person.setName(name);
-        person.setTerms(terms);
+        person.setTerms(terms, termsFrom);
         person.setContact(contactKey);
         if (tagText != null) {
             person.setTags(tagged(sheetId, tagText));
@@ -150,7 +162,7 @@ public class PersonService {
         }
         Person saved = save(person);
         audit.recordOnCommit(record("PERSON_EDITED", user, saved, saved.gradeOn(today))
-                + (Objects.equals(termsBefore, terms) ? "" : " terms=" + (terms != null ? terms : ""))
+                + (termsChanged ? " terms=" + Objects.toString(saved.termsOn(today), "") : "")
                 + (Objects.equals(contactBefore, contactKey) ? "" : " contact=" + (contactKey != null ? contactKey : "")));
         rollup.recordChanges(sheetId, user, before);
         return saved;
