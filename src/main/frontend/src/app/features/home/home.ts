@@ -1,15 +1,17 @@
 import { Component, inject, signal } from '@angular/core';
 import { Claims } from '../../core/claims';
 import { People } from '../../core/people';
+import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PeopleList } from '../people/people';
+import { PeriodsPanel } from '../periods/periods';
 import { RatesPanel } from '../rates/rates';
 
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [PeopleList, RatesPanel],
+  imports: [PeopleList, PeriodsPanel, RatesPanel],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session" data-testid="session-bar">
@@ -48,6 +50,7 @@ import { RatesPanel } from '../rates/rates';
       </section>
       @if (session.sheetId()) {
         <app-rates />
+        <app-periods />
         <app-people />
       }
     } @else {
@@ -72,6 +75,7 @@ export class Home {
   private readonly people = inject(People);
   private readonly claims = inject(Claims);
   private readonly rates = inject(Rates);
+  private readonly periods = inject(Periods);
   protected readonly nameInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetInput = signal('');
@@ -98,7 +102,7 @@ export class Home {
     try {
       this.sheetError.set(
         (await this.session.loadSheet(this.sheetInput())) ??
-          (await Promise.all([this.people.load(), this.claims.load(), this.rates.load()])).find((err) => err !== null) ??
+          (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load()])).find((err) => err !== null) ??
           null,
       );
     } finally {
