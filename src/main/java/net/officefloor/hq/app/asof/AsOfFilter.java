@@ -9,8 +9,6 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -18,8 +16,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -37,14 +33,12 @@ public class AsOfFilter extends OncePerRequestFilter {
 
     private final SheetSnapshotService snapshots;
     private final SheetService sheets;
-    private final TransactionTemplate rolledBack;
-    /** One as-of read of a sheet at a time: each puts the whole sheet back in its own transaction. */
-    private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
+    private final AsOfReader reader;
 
-    public AsOfFilter(SheetSnapshotService snapshots, SheetService sheets, PlatformTransactionManager transactions) {
+    public AsOfFilter(SheetSnapshotService snapshots, SheetService sheets, AsOfReader reader) {
         this.snapshots = snapshots;
         this.sheets = sheets;
-        this.rolledBack = new TransactionTemplate(transactions);
+        this.reader = reader;
     }
 
     @Override
@@ -89,30 +83,19 @@ public class AsOfFilter extends OncePerRequestFilter {
             sheets.load(sheetId, user.trim());
             snapshots.capture(sheetId);
         }
-        ReentrantLock lock = locks.computeIfAbsent(sheetId, k -> new ReentrantLock());
-        lock.lock();
-        try {
-            Exception failed = rolledBack.execute(status -> {
-                status.setRollbackOnly();
-                snapshots.restore(sheetId, asOf);
-                AsOfContext.set(asOf);
-                try {
-                    chain.doFilter(request, response);
-                    return null;
-                } catch (IOException | ServletException e) {
-                    return e;
-                } finally {
-                    AsOfContext.clear();
-                }
-            });
-            if (failed instanceof IOException e) {
-                throw e;
+        Exception failed = reader.read(sheetId, asOf, () -> {
+            try {
+                chain.doFilter(request, response);
+                return null;
+            } catch (IOException | ServletException e) {
+                return e;
             }
-            if (failed instanceof ServletException e) {
-                throw e;
-            }
-        } finally {
-            lock.unlock();
+        });
+        if (failed instanceof IOException e) {
+            throw e;
+        }
+        if (failed instanceof ServletException e) {
+            throw e;
         }
     }
 

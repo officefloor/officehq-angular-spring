@@ -11,6 +11,8 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import net.officefloor.hq.app.asof.AsOfReader;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -169,10 +171,12 @@ public class ClaimController {
     private final BulkReassignService bulkReassign;
     private final BulkRedateService bulkRedate;
     private final BulkVoidService bulkVoid;
+    private final AsOfReader asOf;
 
     public ClaimController(ClaimService service, BulkOpenService bulkOpen, BulkSettleService bulkSettle,
             PasteClaimsService paste, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
-            BulkVoidService bulkVoid) {
+            BulkVoidService bulkVoid, AsOfReader asOf) {
+        this.asOf = asOf;
         this.bulkVoid = bulkVoid;
         this.bulkReassign = bulkReassign;
         this.bulkRedate = bulkRedate;
@@ -295,12 +299,29 @@ public class ClaimController {
         return bulkSettle.settle(sheetId.trim(), user.trim(), request.ids());
     }
 
-    /** Settle an OPEN claim; refused to the user who opened or last edited it; PENDING instead when a clerk settles it above the clerk limit. */
+    /** The date a claim is settled as of (null: as it stands today). */
+    public record SettleRequest(LocalDate on) {
+    }
+
+    /**
+     * Settle an OPEN claim; refused to the user who opened or last edited it; PENDING instead when a clerk settles it
+     * above the clerk limit. Settled as of a date on or before the sheet's today, its due is frozen at the one it had
+     * at the end of that date, as the as-of view works it out; refused for a later date or a claim that did not exist
+     * then.
+     */
     @PostMapping("/claims/{id}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(service.changeStatus(sheetId.trim(), user.trim(), id, ClaimStatus.SETTLED));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) SettleRequest request) {
+        String sheet = sheetId.trim();
+        if (request == null || request.on() == null) {
+            return view(service.changeStatus(sheet, user.trim(), id, ClaimStatus.SETTLED));
+        }
+        LocalDate on = request.on();
+        service.requireSettleDate(sheet, id, on);
+        Optional<ClaimService.DueThen> then = asOf.read(sheet, on, () -> service.dueNow(sheet, id));
+        return view(service.settleAsOf(sheet, user.trim(), id, on, then));
     }
 
     /** Re-settle a SETTLED claim at its figure as of today: a steward only. */

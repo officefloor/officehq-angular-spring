@@ -511,6 +511,16 @@ export function sumAmounts(amounts: string[]): string {
                   >
                     {{ a.label }}
                   </button>
+                  @if (a.action === 'settle') {
+                    <label class="visually-hidden" [for]="'claim-settle-date-' + c.id">Settle as of</label>
+                    <input
+                      [id]="'claim-settle-date-' + c.id"
+                      type="date"
+                      data-testid="claim-settle-date"
+                      [value]="settleDates()[c.id] ?? ''"
+                      (input)="setSettleDate(c.id, value($event))"
+                    />
+                  }
                 }
                 <label class="visually-hidden" [for]="'claim-proof-kind-' + c.id">Proof kind</label>
                 <select
@@ -745,6 +755,8 @@ export class Claims implements OnInit {
   protected readonly chosenVoidReasons = signal<Record<number, string>>({});
   /** The date (yyyy-mm-dd) picked to defer each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The date (yyyy-mm-dd) picked to settle each claim as of, by claim id; none: as it stands today. */
+  protected readonly settleDates = signal<Record<number, string>>({});
   /** The kinds of proof offered. */
   protected readonly proofKinds = PROOF_KINDS;
   /** The proof kind chosen for each claim's next proof, by claim id; none chosen: a receipt. */
@@ -971,6 +983,11 @@ export class Claims implements OnInit {
 
   protected setProofKind(id: number, kind: string): void {
     this.proofKindsChosen.update((all) => ({ ...all, [id]: kind }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  protected setSettleDate(id: number, date: string): void {
+    this.settleDates.update((all) => ({ ...all, [id]: date }));
     if (this.actionError()?.id === id) this.actionError.set(null);
   }
 
@@ -1434,12 +1451,24 @@ export class Claims implements OnInit {
       this.actionError.set({ id: claim.id, message: 'Choose a reason from the void reasons to void this claim.' });
       return;
     }
+    const on = action === 'settle' ? (this.settleDates()[claim.id] ?? '').trim() : '';
+    if (on !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(on)) {
+      this.actionError.set({ id: claim.id, message: 'Pick a date to settle this claim as of, or none for today.' });
+      return;
+    }
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/${action}`;
     try {
       const body =
-        action === 'reject' ? { reason } : action === 'void' ? { reason: listed.length > 0 ? voidReason : null } : null;
+        action === 'reject'
+          ? { reason }
+          : action === 'void'
+            ? { reason: listed.length > 0 ? voidReason : null }
+            : action === 'settle' && on !== ''
+              ? { on }
+              : null;
       const saved = await firstValueFrom(this.http.post<Claim>(url, body, this.session.headers()));
       if (action === 'reject') this.setRejectReason(claim.id, '');
+      if (action === 'settle') this.setSettleDate(claim.id, '');
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch (e) {
       const closed = this.closedOn(claim.dueBy);
@@ -1465,6 +1494,9 @@ export class Claims implements OnInit {
                 ? `This claim's due is above the proof threshold: add a proof, and one of each of the sheet's proof kinds, before it can be ${pastOf[action]}.`
               : e instanceof HttpErrorResponse && e.status === 409 && action === 'open' && claim.status === 'DRAFT' && capped?.cap != null
                 ? `This claim's person already has ${capped.cap} open claims in the period ${capped.name}, its cap: it cannot be opened.`
+              : e instanceof HttpErrorResponse && e.status === 409 && action === 'settle' && on !== ''
+                  && claim.status === 'OPEN' && !this.deferred(claim)
+                ? `This claim cannot be settled as of ${on}: the date is after the sheet's today, or the claim did not exist then.`
               : action === 'settle' && this.deferred(claim)
                 ? `This claim is deferred until ${claim.deferredUntil}: it cannot be settled before then.`
               : action === 'resettle'

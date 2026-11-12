@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.function.LongSupplier;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
@@ -358,7 +359,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason) {
-        return changeStatus(sheetId, user, id, status, voidReason, null, false);
+        return changeStatus(sheetId, user, id, status, voidReason, null, false, null);
     }
 
     /**
@@ -367,7 +368,7 @@ public class ClaimService {
      */
     @Transactional
     public Claim settleInBatch(String sheetId, String user, Long id, LongSupplier batch) {
-        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, batch, false);
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, batch, false, null);
     }
 
     /**
@@ -396,11 +397,57 @@ public class ClaimService {
             requireProof(sheetId, person, claim);
         }
         Claim part = split(sheetId, user, id, amount);
-        return changeStatus(sheetId, user, part.getId(), ClaimStatus.SETTLED, null, null, true);
+        return changeStatus(sheetId, user, part.getId(), ClaimStatus.SETTLED, null, null, true, null);
+    }
+
+    /** The due a claim settled as of a date is frozen at: its due as it stood at the end of that date. */
+    public record DueThen(LocalDate on, BigDecimal due) {
+    }
+
+    /**
+     * The claim's due as shown now (the one fixed when it was settled, else its live due; null for n/a), or nothing
+     * when the sheet has no such claim, or only a DELETED one. Read inside an as-of read, it is the due as it stood then.
+     */
+    @Transactional(readOnly = true)
+    public Optional<DueThen> dueNow(String sheetId, Long id) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId).orElse(null);
+        if (claim == null || claim.getStatus() == ClaimStatus.DELETED) {
+            return Optional.empty();
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).orElse(null);
+        if (person == null) {
+            return Optional.empty();
+        }
+        BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
+                : liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
+        return Optional.of(new DueThen(sheets.today(sheetId), due));
+    }
+
+    /**
+     * Settle a claim as of a date on or before the sheet's today, as {@link #changeStatus(String, String, Long,
+     * ClaimStatus)}, its due frozen at the one it had at the end of that date (found by the caller, null when the
+     * claim did not exist then). Refused for a date after today or a claim that did not exist then.
+     */
+    @Transactional
+    public Claim settleAsOf(String sheetId, String user, Long id, LocalDate on, Optional<DueThen> then) {
+        requireSettleDate(sheetId, id, on);
+        if (then.isEmpty()) {
+            throw new ClaimSettleDateException(id, "it did not exist on " + on);
+        }
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, null, false, then.get());
+    }
+
+    /** A claim is settled as of a date no later than the sheet's today; refused otherwise. */
+    public void requireSettleDate(String sheetId, Long id, LocalDate on) {
+        claims.findByIdAndSheetId(id, sheetId).orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        LocalDate today = sheets.today(sheetId);
+        if (on.isAfter(today)) {
+            throw new ClaimSettleDateException(id, on + " is after the sheet's today, " + today);
+        }
     }
 
     private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason,
-            LongSupplier batch, boolean judgedOnOriginal) {
+            LongSupplier batch, boolean judgedOnOriginal, DueThen asOf) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
@@ -453,13 +500,15 @@ public class ClaimService {
         if (status == ClaimStatus.SETTLED && roles.roleOf(sheetId, user) == Role.CLERK) {
             Sheet sheet = settings.get(sheetId);
             BigDecimal limit = sheet.clerkLimitFor(person.gradeOn(sheet.getToday()));
-            BigDecimal due = liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
+            BigDecimal due = asOf != null ? asOf.due()
+                    : liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
             if (limit != null && due != null && due.compareTo(limit) > 0) {
                 status = ClaimStatus.PENDING;
             }
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        String due = status == ClaimStatus.SETTLED ? settle(sheetId, person, claim)
+        String due = status == ClaimStatus.SETTLED && asOf != null ? settleAt(claim, asOf)
+                : status == ClaimStatus.SETTLED ? settle(sheetId, person, claim)
                 : voidsSettled ? " reversed=" + shownDue(sheetId, person, claim) : "";
         claim.setStatus(status);
         if (status == ClaimStatus.VOID) {
@@ -1094,6 +1143,12 @@ public class ClaimService {
                         : figure.add(sheet.lateCharge(figure, overdueBy(sheet, person, claim), claim.getDate())), claim.getDate());
         claim.setSettledDue(settledDue);
         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
+    }
+
+    /** Freeze the claim's due at the one it had as of a date; the CLAIM_SETTLED record names the date at its end. */
+    private static String settleAt(Claim claim, DueThen asOf) {
+        claim.setSettledDue(asOf.due());
+        return " due=" + (asOf.due() == null ? "n/a" : asOf.due().toPlainString()) + " on=" + asOf.on();
     }
 
     /** Logs the claim's status now: who changed it, the sheet's today, and its due as computed at this moment. */
