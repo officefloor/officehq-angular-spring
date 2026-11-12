@@ -165,7 +165,8 @@ public class PersonService {
             throw new PersonContactTakenException(sheetId, contactKey);
         }
         LocalDate today = sheetService.today(sheetId);
-        boolean termsChanged = termsFrom == null ? !Objects.equals(person.getTerms(), terms)
+        // With no from-date, the terms typed are judged against the terms in force on the sheet's today.
+        boolean termsChanged = termsFrom == null ? !Objects.equals(person.termsOn(today), terms)
                 : person.getDatedTerms().stream().noneMatch(
                         t -> t.getFromDate().equals(termsFrom) && Objects.equals(t.getTerms(), terms));
         String contactBefore = person.getContact();
