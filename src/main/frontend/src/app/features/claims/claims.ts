@@ -67,6 +67,7 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
           <span>Period <span data-testid="claim-period">{{ periods.of(c.date)?.name ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+          <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
@@ -108,6 +109,17 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
           />
           <button type="button" data-testid="claim-defer" [disabled]="acting() === c.id" (click)="defer(c)">
             Defer<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
+          <label [for]="'claim-split-amount-' + c.id">Split off</label>
+          <input
+            [id]="'claim-split-amount-' + c.id"
+            data-testid="claim-split-amount"
+            inputmode="decimal"
+            [value]="splitAmounts()[c.id] ?? ''"
+            (input)="setSplitAmount(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-split" [disabled]="acting() === c.id" (click)="split(c)">
+            Split<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
           </button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select
@@ -186,6 +198,8 @@ export class PersonClaims {
   ];
   /** The date typed to defer each claim to, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The amount typed to split off each claim, by claim id. */
+  protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The reason typed to reject each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
   protected readonly isOpen = isOpen;
@@ -282,6 +296,22 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.defer(c.id, this.deferDates()[c.id] ?? '');
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setSplitAmount(id: number, amount: string): void {
+    this.clearActionError(id);
+    this.splitAmounts.update((a) => ({ ...a, [id]: amount }));
+  }
+
+  protected async split(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.split(c.id, this.splitAmounts()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

@@ -88,6 +88,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The number of the claim it was split from; none when it was not split off another. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     /** Its status log: one line per status it has had, oldest first. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -247,6 +251,14 @@ public class Claim {
     /** Raise its proofs count by one. */
     public void addProof() {
         proofs++;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    public void setSplitFrom(String splitFrom) {
+        this.splitFrom = splitFrom;
     }
 
     public List<StatusChange> getStatusLog() {

@@ -338,6 +338,55 @@ public class ClaimService {
         return updated;
     }
 
+    /** What a split did: the claim it kept, with the rest of its amount, and the claim it split off. */
+    public record Split(Claim kept, Claim split) {
+    }
+
+    /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any figure a
+     *  statement bound it to; a new OPEN claim of the person with the amount split off, the same date and
+     *  note, the next number, opened by the user and due by its date plus the terms in force on it, is
+     *  listed as the sheet's newest, naming the original's number as split from. Refused unless the user's
+     *  role may open a claim, the claim is OPEN and not deferred, and the amount is above 0.00 and below the
+     *  claim's; and for a claim in a closed period. */
+    @Transactional
+    public Split split(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        roles.require(sheetId, user, "open");
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ClaimSplitException("Only an OPEN claim can be split.");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (claim.deferredOn(today)) {
+            throw new ClaimSplitException("The claim is deferred until " + claim.getDeferredUntil() + ".");
+        }
+        BigDecimal part = amount.setScale(2);
+        if (part.signum() <= 0 || part.compareTo(claim.getAmount()) >= 0) {
+            throw new ClaimSplitException("Split off more than 0.00 and less than the claim's amount.");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        claim.setAmount(claim.getAmount().subtract(part));
+        claim.setStated(false, null);
+        Claim kept = claims.saveAndFlush(claim);
+        int terms = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
+                .termsFor(person.gradeOn(claim.getDate()), claim.getDate());
+        Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(), claim.getDate().plusDays(terms),
+                claim.getNote(), null);
+        split.setListOrder(claims.maxListOrder(sheetId) + 1);
+        split.setStatus(ClaimStatus.OPEN);
+        split.setNumber(sheets.nextClaimNumber(sheetId, claim.getDate()));
+        split.setOpenedBy(user);
+        split.setSplitFrom(claim.getNumber());
+        logStatus(split, person, user);
+        split = claims.saveAndFlush(split);
+        audit("CLAIM_SPLIT", kept, person, user, kept.getNumber(), " into=" + split.getNumber());
+        audit("CLAIM_OPENED", split, person, user);
+        rollup.recordChanges(sheetId, user, before);
+        return new Split(kept, split);
+    }
+
     /** What a bulk open did: how many it opened and refused, and the claims it opened. */
     public record BulkOpened(int opened, int refused, List<Claim> claims) {
     }

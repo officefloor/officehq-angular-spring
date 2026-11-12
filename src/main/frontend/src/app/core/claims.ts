@@ -40,6 +40,8 @@ export interface Claim {
   /** How many proofs it has. One whose due is above the proof threshold in force on its date cannot be
    *  settled or approved with none. */
   proofs: number;
+  /** The number of the claim it was split from; null when it was not split off another. */
+  splitFrom: string | null;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -365,6 +367,31 @@ export class Claims {
       return null;
     } catch (e) {
       return failed('defer', e);
+    }
+  }
+
+  /** Split an amount (above 0.00, below the claim's) off an OPEN claim: the claim keeps the rest, unbound
+   *  from any statement, and a new OPEN claim of the same person with the amount split off is listed
+   *  newest; an error message when refused. */
+  async split(id: number, amount: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!/^\d+(\.\d{1,2})?$/.test(amount.trim())) return 'Enter the amount to split off, like 12.50.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ kept: Claim; split: Claim }>(
+          `${this.url(sid)}/claims/${id}/split`,
+          { amount: amount.trim() },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        this.claims.update((cs) => [done.split, ...cs.map((c) => (c.id === id ? done.kept : c))]);
+      }
+      return null;
+    } catch (e) {
+      return failed('split', e);
     }
   }
 

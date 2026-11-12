@@ -41,7 +41,7 @@ public class ClaimController {
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
-            int proofs) {
+            int proofs, String splitFrom) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -52,7 +52,7 @@ public class ClaimController {
                     claim.getCorrects(), claim.getDueBy().toString(),
                     claim.getStatusLog().stream().map(StatusLine::of).toList(),
                     claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
-                    claim.getProofs());
+                    claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -259,6 +259,24 @@ public class ClaimController {
         return ClaimView.of(service.defer(sheetId.trim(), user.trim(), claimId, request.until()));
     }
 
+    /** The amount split off a claim. */
+    public record SplitRequest(@NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount) {
+    }
+
+    /** The claim a split kept, with the rest of its amount, and the claim it split off. */
+    public record SplitView(ClaimView kept, ClaimView split) {
+    }
+
+    /** Split an amount off an OPEN claim into a new OPEN claim of the same person. */
+    @PostMapping("/claims/{claimId}/split")
+    public SplitView split(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid SplitRequest request) {
+        ClaimService.Split done = service.split(sheetId.trim(), user.trim(), claimId, request.amount());
+        return new SplitView(ClaimView.of(done.kept()), ClaimView.of(done.split()));
+    }
+
     /** The person a claim is moved to. */
     public record ReassignRequest(@NotNull Long personId) {
     }
@@ -365,6 +383,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimProofException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> proofRefused(ClaimProofException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A split that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimSplitException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> splitRefused(ClaimSplitException e) {
         return Map.of("message", e.getMessage());
     }
 
