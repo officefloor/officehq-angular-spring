@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d27b58bf9..6c6b5711e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -237,7 +237,7 @@ function csvField(value: string): string {
+       </dl>
+     </section>
+     <app-rates [grades]="grades()" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
+-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
++    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+       <form (submit)="submit($event)">
+@@ -1147,6 +1147,16 @@ export class People {
+       [...carried].map(([id, theirs]) => [id, new Map([...theirs].map(([name, list]) => [name, sumDues(list)]))]),
+     );
+   });
++  /** Each period's claim count by name: the claims due by a date in it, leaving out VOID and DELETED ones. */
++  protected readonly periodClaimCounts = computed(() => {
++    const counts = new Map<string, number>();
++    for (const c of this.claims()) {
++      const period = periodOn(this.periods(), c.dueBy);
++      if (!period || c.status === 'VOID' || c.status === 'DELETED') continue;
++      counts.set(period.name, (counts.get(period.name) ?? 0) + 1);
++    }
++    return counts;
++  });
+   /** Each period's due-total by name: the sum of everyone's due-total for it. */
+   protected readonly periodDueTotals = computed(
+     () =>
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index e9e98009f..d941f06cc 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -166,7 +166,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
+       </form>
+       <table>
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th>
++          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+@@ -180,6 +180,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
+               <td data-testid="period-fy">{{ p.fy | fig }}</td>
+               <td data-testid="period-cap">{{ p.cap ?? '' | fig }}</td>
+               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' | fig }}</td>
++              <td data-testid="period-claims-count">{{ claimCounts().get(p.name) ?? 0 | fig }}</td>
+               <td>
+                 <button
+                   type="button"
+@@ -242,6 +243,8 @@ export class Periods {
+   readonly periods = input.required<Period[]>();
+   /** Each period's due-total by its name: the due of the counting claims dated in it. */
+   readonly dueTotals = input.required<Map<string, string>>();
++  /** Each period's claim count by its name: the claims due by a date in it, VOID and DELETED ones left out. */
++  readonly claimCounts = input.required<Map<string, number>>();
+   /** A period was added, generated, closed or reopened. */
+   readonly saved = output<Period>();
+   /** Opening balances were imported: the screen is to re-read the periods. */
