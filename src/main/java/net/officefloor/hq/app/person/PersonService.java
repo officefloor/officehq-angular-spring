@@ -81,14 +81,14 @@ public class PersonService {
     /** The sheet's patrons: each person's patrons' ids, by person id. */
     @Transactional(readOnly = true)
     public Map<Long, List<Long>> patrons(String sheetId) {
-        return patrons.findBySheetId(sheetId).stream().collect(Collectors.groupingBy(Patron::getPersonId,
+        return patrons.findBySheetIdOrderByIdAsc(sheetId).stream().collect(Collectors.groupingBy(Patron::getPersonId,
                 Collectors.mapping(Patron::getPatronId, Collectors.toList())));
     }
 
     /** The ids of the person's patrons. */
     @Transactional(readOnly = true)
     public List<Long> patronsOf(long personId) {
-        return patrons.findByPersonId(personId).stream().map(Patron::getPatronId).toList();
+        return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(Patron::getPatronId).toList();
     }
 
     /** Name another person on the sheet as the person's patron: not themselves, and not twice. */
@@ -284,14 +284,14 @@ public class PersonService {
         claims.saveAll(moving);
 
         List<Long> intoPatrons = new ArrayList<>(patronsOf(into.getId()));
-        for (Patron patron : patrons.findByPersonId(from.getId())) {
+        for (Patron patron : patrons.findByPersonIdOrderByIdAsc(from.getId())) {
             if (!patron.getPatronId().equals(into.getId()) && !intoPatrons.contains(patron.getPatronId())) {
                 patrons.save(new Patron(sheetId, into.getId(), patron.getPatronId()));
                 intoPatrons.add(patron.getPatronId());
             }
             patrons.delete(patron);
         }
-        for (Patron patron : patrons.findBySheetId(sheetId)) {
+        for (Patron patron : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
             if (!patron.getPatronId().equals(from.getId())) {
                 continue;
             }

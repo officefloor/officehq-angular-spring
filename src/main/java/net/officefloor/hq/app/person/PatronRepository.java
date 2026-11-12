@@ -5,9 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PatronRepository extends JpaRepository<Patron, Long> {
 
-    List<Patron> findBySheetId(String sheetId);
+    List<Patron> findBySheetIdOrderByIdAsc(String sheetId);
 
-    List<Patron> findByPersonId(Long personId);
+    List<Patron> findByPersonIdOrderByIdAsc(Long personId);
 
     boolean existsByPersonIdAndPatronId(Long personId, Long patronId);
 }

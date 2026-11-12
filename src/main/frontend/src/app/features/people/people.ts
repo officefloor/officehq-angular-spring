@@ -4,7 +4,7 @@ import { Figures } from '../../core/figures';
 import { GRADES, People, Person } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Pools } from '../../core/pools';
-import { NO_RATE, money } from '../../core/rates';
+import { NO_RATE, halfEven, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
 
 // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
@@ -512,19 +512,30 @@ export class PeopleList {
     return this.people.people().filter((o) => o.id !== p.id);
   }
 
-  private patronsOf(p: Person): Person[] {
-    const ids = new Set(p.patronIds);
-    return this.people.people().filter((o) => ids.has(o.id));
+  /** A person's patrons in the order they were named, each with their share in hundredths: 100.00 split
+   *  equally, each rounded half to even, the remainder to the first named. */
+  private patronsOf(p: Person): { patron: Person; share: bigint }[] {
+    const byId = new Map(this.people.people().map((o) => [o.id, o]));
+    const named = p.patronIds.map((id) => byId.get(id)).filter((o): o is Person => o !== undefined);
+    if (named.length === 0) return [];
+    const each = halfEven(10000n, BigInt(named.length));
+    const first = 10000n - each * BigInt(named.length - 1);
+    return named.map((patron, i) => ({ patron, share: i === 0 ? first : each }));
   }
 
-  /** A person's patrons' names, sorted, comma and space separated. */
+  /** A person's patrons as <name> <share>, sorted by name, comma and space separated. */
   protected patrons(p: Person): string {
-    return this.patronsOf(p).map((o) => o.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
+    return this.patronsOf(p)
+      .sort((a, b) => (a.patron.name < b.patron.name ? -1 : a.patron.name > b.patron.name ? 1 : 0))
+      .map((o) => o.patron.name + ' ' + money(o.share))
+      .join(', ');
   }
 
-  /** A person's patrons' recent settled figures added up; 0.00 with no patrons. */
+  /** A person's patrons' recent settled figures, each times their share over 100, added up and rounded half to
+   *  even; 0.00 with no patrons. */
   protected backing(p: Person): string {
-    return money(this.patronsOf(p).reduce((sum, o) => sum + this.figures.recentSettledCents(o), 0n));
+    const sum = this.patronsOf(p).reduce((s, o) => s + this.figures.recentSettledCents(o.patron) * o.share, 0n);
+    return money(halfEven(sum, 10000n));
   }
 
   protected setPatronChoice(id: number, choice: string): void {
