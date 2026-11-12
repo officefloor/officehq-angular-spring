@@ -1,0 +1,564 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index e6eff4c77..932e4022f 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -51,7 +51,8 @@ export interface Person {
+   statementCount: number;
+   /** The last statement's due-total, two decimals or n/a; null before their first. */
+   statedTotal: string | null;
+-  /** The sheet's today when the last statement was taken; null before their first. */
++  /** The last statement's date: the sheet's today when it was taken, or the date it was taken as of; null
++   *  before their first. */
+   statementDate: string | null;
+   /** Whether a retirement date is set: then they count as retired at once, whatever the date. */
+   retired: boolean;
+@@ -165,21 +166,26 @@ export class People {
+     }
+   }
+ 
+-  /** Take a person's statement: the person and their claims as it left them, or an error message
+-   *  when refused. */
+-  async statement(id: number): Promise<Statement | string> {
++  /** Take a person's statement, as of a date on or before the sheet's today (blank takes it now): the
++   *  person and their claims as it left them, or an error message when refused. */
++  async statement(id: number, asOf = ''): Promise<Statement | string> {
+     const sid = this.session.sheetId();
+     const user = this.session.user();
+     if (!user || !sid) return 'Load a sheet first.';
++    const d = asOf.trim();
++    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'Enter a date as YYYY-MM-DD.';
+     try {
+       const stated = await firstValueFrom(
+-        this.http.post<Statement>(`${this.url(sid)}/${id}/statement`, null, { headers: { 'X-User': user } }),
++        this.http.post<Statement>(`${this.url(sid)}/${id}/statement`, { asOf: d || null }, { headers: { 'X-User': user } }),
+       );
+       if (this.session.sheetId() === sid) {
+         this.people.update((ps) => ps.map((p) => (p.id === id ? stated.person : p)));
+       }
+       return stated;
+     } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string') {
++        return e.error.message;
++      }
+       return failed('take statement of', e);
+     }
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2f8ba6259..b304bffd6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -179,6 +179,14 @@ import { PersonClaims } from '../claims/claims';
+                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
+                   Edit<span class="visually-hidden"> {{ p.name }}</span>
+                 </button>
++                <label [for]="'person-statement-asof-' + p.id">Statement as of<span class="visually-hidden"> for {{ p.name }}</span></label>
++                <input
++                  [id]="'person-statement-asof-' + p.id"
++                  data-testid="person-statement-asof"
++                  placeholder="YYYY-MM-DD"
++                  [value]="statementDates()[p.id] ?? ''"
++                  (input)="setStatementDate(p.id, value($event))"
++                />
+                 <button
+                   type="button"
+                   data-testid="person-statement"
+@@ -258,6 +266,8 @@ export class PeopleList {
+   );
+   /** The retire-from date typed on each person's row. */
+   protected readonly retireDates = signal<Record<number, string>>({});
++  /** The date typed on each person's row to take their statement as of; blank takes it now. */
++  protected readonly statementDates = signal<Record<number, string>>({});
+   /** The id of the person being retired. */
+   protected readonly retiring = signal<number | null>(null);
+   /** The hold from- and to-dates typed on each person's row. */
+@@ -406,7 +416,9 @@ export class PeopleList {
+     this.clearActionError(p.id);
+     this.stating.set(p.id);
+     try {
+-      const stated = await this.people.statement(p.id);
++      const asOf = this.statementDates()[p.id] ?? '';
++      this.statementDates.update((ds) => ({ ...ds, [p.id]: '' }));
++      const stated = await this.people.statement(p.id, asOf);
+       if (typeof stated === 'string') this.actionError.set({ id: p.id, message: stated });
+       else this.claims.replaceOf(p.id, stated.claims);
+     } finally {
+@@ -426,6 +438,11 @@ export class PeopleList {
+     }
+   }
+ 
++  protected setStatementDate(id: number, date: string): void {
++    this.clearActionError(id);
++    this.statementDates.update((ds) => ({ ...ds, [id]: date }));
++  }
++
+   protected setRetireDate(id: number, date: string): void {
+     this.clearActionError(id);
+     this.retireDates.update((ds) => ({ ...ds, [id]: date }));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 7d07ec28e..21b037560 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -4,6 +4,7 @@ import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.EnumType;
+ import jakarta.persistence.Enumerated;
+ import jakarta.persistence.FetchType;
+@@ -17,10 +18,12 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import net.officefloor.hq.app.history.History;
+ 
+ /** A claim by a person on a sheet: an amount (two decimals), a date, a note, a status and, once opened,
+  *  a number and who opened it. A negative amount is a correction, naming the number of the claim it corrects. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "claim")
+ public class Claim {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index e6bddd52c..3ab75d5e1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -335,12 +335,19 @@ public class ClaimController {
+     public record StatementView(PersonView person, List<ClaimView> claims) {
+     }
+ 
+-    /** Take a person's statement. */
++    /** A statement as of a date on or before the sheet's today; none takes it now. */
++    public record StatementRequest(LocalDate asOf) {
++    }
++
++    /** Take a person's statement, now or as of a date. */
+     @PostMapping("/people/{personId}/statement")
+     public StatementView statement(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @PathVariable long personId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        ClaimService.Stated stated = service.statement(sheetId.trim(), user.trim(), personId);
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody(required = false) @Valid StatementRequest request) {
++        LocalDate asOf = request == null ? null : request.asOf();
++        ClaimService.Stated stated = asOf == null ? service.statement(sheetId.trim(), user.trim(), personId)
++                : service.statementAsOf(sheetId.trim(), user.trim(), personId, asOf);
+         return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
+                 people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim())),
+                 stated.claims().stream().map(ClaimView::of).toList());
+@@ -357,6 +364,13 @@ public class ClaimController {
+                 stated.claims().stream().map(ClaimView::of).toList());
+     }
+ 
++    /** A statement as of a date that cannot be taken is refused with the reason, for the screen to show. */
++    @ExceptionHandler(StatementRefusedException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> statementRefused(StatementRefusedException e) {
++        return Map.of("message", e.getMessage());
++    }
++
+     /** A cancel of a statement that is not allowed is refused with the reason, for the screen to show. */
+     @ExceptionHandler(StatementCancelException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a03904678..7c68051be 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -10,8 +10,10 @@ import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.rollup.Rollup;
+@@ -48,11 +50,13 @@ public class ClaimService {
+     private final Rollup rollup;
+     private final RoleService roles;
+     private final WatchRepository watches;
++    private final History history;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+             SheetRepository sheetRows, PeriodRepository periods, StatementRepository statements, Rollup rollup,
+-            RoleService roles, WatchRepository watches, Audit audit) {
++            RoleService roles, WatchRepository watches, History history, Audit audit) {
++        this.history = history;
+         this.watches = watches;
+         this.roles = roles;
+         this.sheetRows = sheetRows;
+@@ -577,6 +581,66 @@ public class ClaimService {
+         return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
+     }
+ 
++    /** Take a person's statement as of a date on or before the sheet's today: the claims of theirs that
++     *  counted at the end of that date (as the changes made while the sheet's today was on or before it left
++     *  them; a later change does not count) are bound to their figures as they stood then, that date standing
++     *  in for the sheet's today in every figure (the grade and rate in force, the floor, late charges, holds,
++     *  retirements and the cap); every other claim of theirs is left unbound. The statement is dated that
++     *  date. Refused for a date after the sheet's today, and one before the person was on the sheet. */
++    @Transactional
++    public Stated statementAsOf(String sheetId, String user, long personId, LocalDate asOf) {
++        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++        LocalDate today = sheets.today(sheetId);
++        if (asOf.isAfter(today)) {
++            throw new StatementRefusedException("A statement cannot be taken as of a date after the sheet's today ("
++                    + today + ").");
++        }
++        Person then = history.findAsOf(Person.class, sheetId, personId, asOf)
++                .orElseThrow(() -> new StatementRefusedException(person.getName() + " was not on the sheet on " + asOf + "."));
++        Sheet sheetThen = history.findAsOf(Sheet.class, sheetId, sheetId, asOf).orElseGet(() -> {
++            // no change to the sheet counts by then: it stands as it was started
++            Sheet now = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++            return new Sheet(sheetId, now.getCreatedBy(), now.getCreatedAt(), asOf);
++        });
++        sheetThen.setToday(asOf);
++        Optional<Sheet> onDate = Optional.of(sheetThen);
++        List<Rate> ratesThen = history.listAsOf(Rate.class, sheetId, asOf);
++        List<Claim> claimsThen = history.listAsOf(Claim.class, sheetId, asOf).stream()
++                .filter(c -> c.getPersonId().equals(personId)).toList();
++        List<Claim> theirs = claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, personId);
++        Rollup.Snapshot before = rollup.take(sheetId);
++        Map<Long, BigDecimal> figures = new HashMap<>();
++        BigDecimal total = BigDecimal.ZERO.setScale(2);
++        boolean figure = false;
++        for (Claim claim : claimsThen) {
++            if (!claim.getStatus().counts() || Rollup.heldOut(claim, then, asOf) || claim.deferredOn(asOf)) {
++                continue;
++            }
++            BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
++                    : claim.isBound() ? claim.getStatedDue()
++                    : Rollup.inForce(ratesThen, then.gradeOn(claim.getDate()), claim.getDate())
++                            .map(rate -> Rollup.rated(onDate, claim, claimsThen, rate)).orElse(null);
++            if (due != null) {
++                total = total.add(Rollup.charged(onDate, claim, due));
++                figure = true;
++            }
++            figures.put(claim.getId(), due);
++        }
++        for (Claim claim : theirs) {
++            claim.setStated(figures.containsKey(claim.getId()), figures.get(claim.getId()));
++        }
++        boolean rated = Rollup.inForce(ratesThen, then.gradeOn(asOf), asOf).isPresent();
++        BigDecimal dueTotal = rated || figure ? sheetThen.capped(total) : null;
++        int counted = figures.size();
++        claims.saveAllAndFlush(theirs);
++        statements.saveAndFlush(new Statement(sheetId, personId, asOf, dueTotal, counted));
++        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted
++                + " asof=" + asOf);
++        rollup.recordChanges(sheetId, user, before);
++        return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
++    }
++
+     /** Cancel a person's last statement: the claims it bound are live again (a figure an earlier statement
+      *  bound is not restored), and the statement before it becomes their last. Refused unless the user is a
+      *  steward and the person has a statement. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/StatementRefusedException.java b/src/main/java/net/officefloor/hq/app/claim/StatementRefusedException.java
+new file mode 100644
+index 000000000..3899d2623
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/StatementRefusedException.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A statement as of a date that cannot be taken: a date after the sheet's today, or one before its person
++ *  was on the sheet. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class StatementRefusedException extends RuntimeException {
++
++    public StatementRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+new file mode 100644
+index 000000000..991ec205c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -0,0 +1,116 @@
++package net.officefloor.hq.app.history;
++
++import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
++import com.fasterxml.jackson.annotation.PropertyAccessor;
++import jakarta.persistence.PostPersist;
++import jakarta.persistence.PostRemove;
++import jakarta.persistence.PostUpdate;
++import java.sql.Date;
++import java.time.LocalDate;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Objects;
++import java.util.Optional;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.sheet.Sheet;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Component;
++import tools.jackson.databind.DeserializationFeature;
++import tools.jackson.databind.json.JsonMapper;
++
++/**
++ * The versions of a sheet, its people, their claims and its rates: each change keeps the state it left the
++ * row in, with the sheet's today when it was made, so the rows can be read back as of a date — as the
++ * changes made while the sheet's today was on or before it left them, each row's latest such change by the
++ * order they were made, a change made later not counting whatever its today.
++ * Kept by the entities' listener once the change is written, in the same transaction.
++ */
++@Component
++public class History {
++
++    private final JdbcTemplate jdbc;
++    private final JsonMapper json = JsonMapper.builder()
++            .changeDefaultVisibility(v -> v.withVisibility(PropertyAccessor.ALL, Visibility.NONE)
++                    .withVisibility(PropertyAccessor.FIELD, Visibility.ANY))
++            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
++            .build();
++
++    public History(JdbcTemplate jdbc) {
++        this.jdbc = jdbc;
++    }
++
++    @PostPersist
++    @PostUpdate
++    public void saved(Object entity) {
++        keep(entity, json.writeValueAsString(entity));
++    }
++
++    @PostRemove
++    public void removed(Object entity) {
++        keep(entity, null);
++    }
++
++    /** Keep the sheet's state now: for a change Hibernate does not see as an update of the sheet itself
++     *  (its dated settings). */
++    public void keep(Sheet sheet) {
++        saved(sheet);
++    }
++
++    private void keep(Object entity, String state) {
++        String sheetId;
++        String entityId;
++        if (entity instanceof Sheet sheet) {
++            sheetId = sheet.getId();
++            entityId = sheet.getId();
++        } else if (entity instanceof Claim claim) {
++            sheetId = claim.getSheetId();
++            entityId = String.valueOf(claim.getId());
++        } else if (entity instanceof Person person) {
++            sheetId = person.getSheetId();
++            entityId = String.valueOf(person.getId());
++        } else if (entity instanceof Rate rate) {
++            sheetId = rate.getSheetId();
++            entityId = String.valueOf(rate.getId());
++        } else {
++            throw new IllegalArgumentException("No history kept of " + entity.getClass());
++        }
++        LocalDate today = entity instanceof Sheet sheet ? sheet.getToday()
++                : jdbc.queryForList("SELECT today FROM sheet WHERE id = ?", Date.class, sheetId).stream()
++                        .filter(Objects::nonNull).findFirst().map(Date::toLocalDate).orElse(null);
++        if (today == null) {
++            return;
++        }
++        jdbc.update("INSERT INTO entity_version (sheet_id, kind, entity_id, recorded_on, state) VALUES (?, ?, ?, ?, ?)",
++                sheetId, entity.getClass().getSimpleName(), entityId, Date.valueOf(today), state);
++    }
++
++    /** The sheet's rows of a kind as of a date, by id in the order first kept: each one's latest version made
++     *  while the sheet's today was on or before it; none for a row removed then or not yet made. */
++    public <T> Map<String, T> asOf(Class<T> type, String sheetId, LocalDate date) {
++        Map<String, String> latest = new LinkedHashMap<>();
++        jdbc.query("SELECT entity_id, state FROM entity_version WHERE sheet_id = ? AND kind = ? AND recorded_on <= ?"
++                + " ORDER BY id", rs -> {
++                    latest.put(rs.getString(1), rs.getString(2));
++                }, sheetId, type.getSimpleName(), Date.valueOf(date));
++        Map<String, T> rows = new LinkedHashMap<>();
++        latest.forEach((id, state) -> {
++            if (state != null) {
++                rows.put(id, json.readValue(state, type));
++            }
++        });
++        return rows;
++    }
++
++    /** The sheet's rows of a kind as of a date, in the order first kept. */
++    public <T> List<T> listAsOf(Class<T> type, String sheetId, LocalDate date) {
++        return List.copyOf(asOf(type, sheetId, date).values());
++    }
++
++    /** A row as of a date; none when it was not made by then, or removed. */
++    public <T> Optional<T> findAsOf(Class<T> type, String sheetId, Object id, LocalDate date) {
++        return Optional.ofNullable(asOf(type, sheetId, date).get(String.valueOf(id)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 4ee403175..102388741 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
+ import jakarta.persistence.CascadeType;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+@@ -16,10 +17,12 @@ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.List;
+ import java.util.Objects;
++import net.officefloor.hq.app.history.History;
+ 
+ /** A person on a sheet, with a name and a dated grade (A, B or C): each grade they are given applies
+  *  from a date, the first from the beginning of time. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "person")
+ public class Person {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Statement.java b/src/main/java/net/officefloor/hq/app/person/Statement.java
+index dee178ba2..28cec6d0c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/person/Statement.java
+@@ -9,8 +9,8 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+-/** A statement taken of a person: the sheet's today then, their due-total then (none when it was n/a)
+- *  and how many of their claims counted. */
++/** A statement taken of a person: the sheet's today then, or the date it was taken as of, their due-total
++ *  then (none when it was n/a) and how many of their claims counted. */
+ @Entity
+ @Table(name = "statement")
+ public class Statement {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index fbb220363..6de50567f 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -2,16 +2,19 @@ package net.officefloor.hq.app.rate;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.history.History;
+ 
+ /** The sheet's rate for a grade from a date (or from the beginning of time when it has none),
+  *  perhaps through a to-date: a percent (0.00 or more, two decimals). */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "rate")
+ public class Rate {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index bcb42d6dc..5711b3ad3 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -228,7 +228,7 @@ public class Rollup {
+ 
+     /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on
+      *  the sheet (half to even with no sheet). */
+-    private static BigDecimal rated(Optional<Sheet> sheet, Claim claim, List<Claim> sheetClaims, Rate rate) {
++    public static BigDecimal rated(Optional<Sheet> sheet, Claim claim, List<Claim> sheetClaims, Rate rate) {
+         LocalDate on = roundingDate(claim, sheetClaims);
+         return claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
+                 .setScale(2, sheet.map(s -> s.rounding(on)).orElse(RoundingMode.HALF_EVEN));
+@@ -273,7 +273,7 @@ public class Rollup {
+ 
+     /** The grade's rate in force on a date: the latest from-date on or before it, none first; none
+      *  when the date is after that rate's to-date. */
+-    private static Optional<Rate> inForce(List<Rate> sheetRates, String grade, LocalDate date) {
++    public static Optional<Rate> inForce(List<Rate> sheetRates, String grade, LocalDate date) {
+         return sheetRates.stream()
+                 .filter(r -> r.getGrade().equals(grade))
+                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index ce7be7e39..f8419393e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -4,6 +4,7 @@ import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+@@ -22,9 +23,11 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.TreeMap;
++import net.officefloor.hq.app.history.History;
+ 
+ /** A sheet, chosen by its id. Everything else in the app is kept per sheet. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "sheet")
+ public class Sheet {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 3f0c72db8..fe0791746 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -5,6 +5,7 @@ import java.time.Instant;
+ import java.time.LocalDate;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.period.PeriodService;
+@@ -27,9 +28,12 @@ public class SheetService {
+     private final RoleService roles;
+     private final Audit audit;
+     private final ClaimRepository claims;
++    private final History history;
+ 
+     public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences, PeriodRepository periods,
+-            PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims) {
++            PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims,
++            History history) {
++        this.history = history;
+         this.claims = claims;
+         this.sheets = sheets;
+         this.sequences = sequences;
+@@ -163,6 +167,7 @@ public class SheetService {
+         Rollup.Snapshot before = movesFigures ? rollup.take(id) : null;
+         sheet.setSetting(key, from == null ? sheet.getToday() : from, value);
+         sheets.saveAndFlush(sheet);
++        history.keep(sheet);
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value="
+                 + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
+         if (movesFigures) {
+diff --git a/src/main/resources/db/migration/V49__entity_version.sql b/src/main/resources/db/migration/V49__entity_version.sql
+new file mode 100644
+index 000000000..ce7490f76
+--- /dev/null
++++ b/src/main/resources/db/migration/V49__entity_version.sql
+@@ -0,0 +1,13 @@
++-- Each change to a sheet, its people, their claims and its rates keeps the state it left the row in, with
++-- the sheet's today when it was made (none for a row removed), so a statement can be taken as of a date:
++-- the rows as the changes made while the sheet's today was on or before it left them. Oldest first (by id).
++-- Rows changed before this was kept have no versions.
++CREATE TABLE entity_version (
++    id          BIGINT       GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    sheet_id    VARCHAR(200) NOT NULL,
++    kind        VARCHAR(20)  NOT NULL,
++    entity_id   VARCHAR(200) NOT NULL,
++    recorded_on DATE         NOT NULL,
++    state       CLOB
++);
++CREATE INDEX entity_version_sheet ON entity_version (sheet_id, kind, recorded_on);
