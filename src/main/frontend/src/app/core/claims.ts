@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { People, Person } from './people';
 import { Session, isDate } from './session';
 
 export interface Claim {
@@ -49,6 +50,7 @@ export interface ClaimFields {
 export class Claims {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly people = inject(People);
 
   readonly claims = signal<Claim[]>([]);
   private loads = 0;
@@ -109,6 +111,37 @@ export class Claims {
         }),
       );
       if (this.session.sheetId() === sid) this.claims.update((cs) => [claim, ...cs]);
+      return null;
+    } catch (e) {
+      return failed('add', e);
+    }
+  }
+
+  /** Quick-add a DRAFT claim dated the sheet's today, with an empty note, for the person with the
+   *  name, the server adding them with grade A first when the sheet has no one by it; an error
+   *  message when refused. */
+  async quickAdd(name: string, amount: string): Promise<string | null> {
+    if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
+    if (!name.trim()) return 'Enter a name.';
+    const refused = this.check({ amount, date: '', note: '' });
+    if (refused) return refused;
+    const sid = this.session.sheetId()!;
+    try {
+      const added = await firstValueFrom(
+        this.http.post<{ person: Person; personAdded: boolean; claim: Claim }>(
+          `${this.url(sid)}/quick-claims`,
+          { name: name.trim(), amount: amount.trim() },
+          { headers: { 'X-User': this.session.user()! } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        this.people.people.update((ps) =>
+          ps.some((p) => p.id === added.person.id)
+            ? ps.map((p) => (p.id === added.person.id ? added.person : p))
+            : [...ps, added.person],
+        );
+        this.claims.update((cs) => [added.claim, ...cs]);
+      }
       return null;
     } catch (e) {
       return failed('add', e);

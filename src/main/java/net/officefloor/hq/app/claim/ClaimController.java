@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.person.PersonService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -59,10 +60,24 @@ public class ClaimController {
         }
     }
 
-    private final ClaimService service;
+    /** The quick-add bar's name and amount. */
+    public record QuickAddRequest(
+            @NotBlank @Size(max = 200) String name,
+            @NotNull @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal amount) {
+    }
 
-    public ClaimController(ClaimService service) {
+    /** The person a quick-add claimed for, whether it added them, and the claim. */
+    public record QuickAddView(PersonView person, boolean personAdded, ClaimView claim) {
+    }
+
+    private final ClaimService service;
+    private final QuickAddService quickAdd;
+    private final PersonService people;
+
+    public ClaimController(ClaimService service, QuickAddService quickAdd, PersonService people) {
         this.service = service;
+        this.quickAdd = quickAdd;
+        this.people = people;
     }
 
     /** The sheet's claims, newest first. */
@@ -80,6 +95,17 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.date(),
                 request.noteOrEmpty()));
+    }
+
+    /** Add a DRAFT claim dated the sheet's today for the person with the name, adding them first when
+     *  the sheet has no one by it. */
+    @PostMapping("/quick-claims")
+    public QuickAddView quickAdd(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid QuickAddRequest request) {
+        QuickAddService.Added added = quickAdd.add(sheetId.trim(), user.trim(), request.name(), request.amount());
+        return new QuickAddView(PersonView.of(added.person(), people.statementsOf(added.person().getId())),
+                added.personAdded(), ClaimView.of(added.claim()));
     }
 
     /** Change a claim's amount, date and note. */

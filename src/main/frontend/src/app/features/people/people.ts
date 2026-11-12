@@ -42,6 +42,27 @@ import { PersonClaims } from '../claims/claims';
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
         }
       </form>
+      <form (submit)="quickAdd($event)" data-testid="quick-form" aria-label="Quick-add a claim">
+        <label for="quick-name">Name</label>
+        <input
+          id="quick-name"
+          data-testid="quick-name"
+          [value]="quickName()"
+          (input)="quickName.set(value($event)); quickError.set(null)"
+        />
+        <label for="quick-amount">Amount</label>
+        <input
+          id="quick-amount"
+          data-testid="quick-amount"
+          inputmode="decimal"
+          [value]="quickAmount()"
+          (input)="quickAmount.set(value($event)); quickError.set(null)"
+        />
+        <button type="submit" data-testid="quick-submit" [disabled]="quickSaving()">Quick-add claim</button>
+        @if (quickError(); as err) {
+          <p role="alert" data-testid="quick-error">{{ err }}</p>
+        }
+      </form>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claims.total() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="person-list">
@@ -102,6 +123,10 @@ export class PeopleList {
   private readonly version = signal(0);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  protected readonly quickName = signal('');
+  protected readonly quickAmount = signal('');
+  protected readonly quickError = signal<string | null>(null);
+  protected readonly quickSaving = signal(false);
   /** The id of the person whose statement is being taken. */
   protected readonly stating = signal<number | null>(null);
   /** The last refused action on a person, shown on their row until the next action on it. */
@@ -171,6 +196,23 @@ export class PeopleList {
     this.name.set('');
     this.grade.set('A');
     this.error.set(null);
+  }
+
+  protected async quickAdd(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.quickSaving()) return; // a second submit before the first has answered
+    this.quickError.set(null);
+    this.quickSaving.set(true);
+    try {
+      const err = await this.claims.quickAdd(this.quickName(), this.quickAmount());
+      if (err) this.quickError.set(err);
+      else {
+        this.quickName.set('');
+        this.quickAmount.set('');
+      }
+    } finally {
+      this.quickSaving.set(false);
+    }
   }
 
   protected async submit(e: Event): Promise<void> {
