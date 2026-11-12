@@ -1,0 +1,594 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 7a6b6051c..137a1cd50 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -51,6 +51,8 @@ export interface Claim {
+   remindedOn: string | null;
+   /** Its external reference, unique on the sheet without regard to case; null when not given. */
+   ref: string | null;
++  /** Its tags: trimmed, lower-cased, without repeats, sorted; empty when it carries none. */
++  tags: string[];
+ }
+ 
+ /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
+@@ -110,6 +112,8 @@ export interface ClaimFields {
+   corrects: string;
+   /** The external reference, surrounding spaces removed; blank for none. */
+   ref: string;
++  /** The tags, comma separated; blank for none. */
++  tags: string;
+ }
+ 
+ // The people's claims on the active sheet, newest first, re-read from the server each time the
+@@ -122,6 +126,12 @@ export class Claims {
+   private readonly people = inject(People);
+ 
+   readonly claims = signal<Claim[]>([]);
++  /** The tags the sheet's claims have carried, as last read from the server. */
++  private readonly storedTags = signal<string[]>([]);
++  /** Every tag ever used on the sheet, sorted: those stored and those its claims carry now. */
++  readonly usedTags = computed(() =>
++    [...new Set([...this.storedTags(), ...this.claims().flatMap((c) => c.tags)])].sort(),
++  );
+   /** The ids of the claims chosen for a bulk action. */
+   readonly selected = signal<ReadonlySet<number>>(new Set());
+   private loads = 0;
+@@ -248,13 +258,18 @@ export class Claims {
+     const sid = this.session.sheetId();
+     const load = ++this.loads;
+     this.claims.set([]);
++    this.storedTags.set([]);
+     this.selected.set(new Set());
+     if (!user || !sid) return null;
+     try {
+-      const claims = await firstValueFrom(
+-        this.http.get<Claim[]>(`${this.url(sid)}/claims`, { headers: { 'X-User': user } }),
+-      );
+-      if (load === this.loads) this.claims.set(claims);
++      const [claims, tags] = await Promise.all([
++        firstValueFrom(this.http.get<Claim[]>(`${this.url(sid)}/claims`, { headers: { 'X-User': user } })),
++        firstValueFrom(this.http.get<string[]>(`${this.url(sid)}/claim-tags`, { headers: { 'X-User': user } })),
++      ]);
++      if (load === this.loads) {
++        this.claims.set(claims);
++        this.storedTags.set(tags);
++      }
+       return null;
+     } catch (e) {
+       return failed('load', e).replace(' claim', ' claims');
+@@ -285,7 +300,7 @@ export class Claims {
+   async quickAdd(name: string, amount: string): Promise<string | null> {
+     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
+     if (!name.trim()) return 'Enter a name.';
+-    const refused = this.check({ amount, date: '', note: '', corrects: '', ref: '' });
++    const refused = this.check({ amount, date: '', note: '', corrects: '', ref: '', tags: '' });
+     if (refused) return refused;
+     const sid = this.session.sheetId()!;
+     try {
+@@ -345,7 +360,12 @@ export class Claims {
+           headers: { 'X-User': this.session.user()! },
+         }),
+       );
+-      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
++      if (this.session.sheetId() === sid) {
++        // a tag the edit took off stays among those used on the sheet
++        const was = this.claims().find((c) => c.id === id)?.tags ?? [];
++        this.storedTags.update((ts) => [...new Set([...ts, ...was])]);
++        this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
++      }
+       return null;
+     } catch (e) {
+       if (e instanceof HttpErrorResponse && e.status === 409) {
+@@ -603,6 +623,7 @@ export class Claims {
+     const corrects = f.corrects.trim();
+     if (corrects.length > 220) return 'Enter the number of the claim it corrects.';
+     if (f.ref.trim().length > 200) return 'Enter a reference of up to 200 characters.';
++    if (f.tags.length > 2000) return 'Enter tags of up to 2000 characters.';
+     if (f.amount.trim().startsWith('-') && !corrects) {
+       return 'A negative amount is a correction: name the number of the settled claim it corrects.';
+     }
+@@ -615,6 +636,7 @@ export class Claims {
+     note: string;
+     corrects: string | null;
+     ref: string | null;
++    tags: string;
+   } {
+     const corrects = f.corrects.trim();
+     return {
+@@ -623,6 +645,7 @@ export class Claims {
+       note: f.note.trim(),
+       corrects: corrects || null,
+       ref: f.ref.trim() || null,
++      tags: f.tags,
+     };
+   }
+ 
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 8ba37f5a7..c8e6ffb8d 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -101,6 +101,20 @@ export class Figures {
+     money(trimmed(this.people.people().map((p) => this.overdueCents(p)))),
+   );
+ 
++  /** Each tag ever used on the sheet, sorted, with the due of the claims that count live and carry it
++   *  (a claim with two tags counts in both), not capped or trimmed. */
++  readonly tagTotals = computed(() => {
++    const byId = new Map(this.people.people().map((p) => [p.id, p]));
++    const sums = new Map<string, bigint>(this.claims.usedTags().map((t) => [t, 0n]));
++    for (const c of this.claims.live()) {
++      const p = byId.get(c.personId);
++      if (!p) continue;
++      const due = this.figureCents(c, p);
++      for (const t of c.tags) sums.set(t, (sums.get(t) ?? 0n) + due);
++    }
++    return [...sums].map(([tag, cents]) => ({ tag, dueTotal: money(cents) }));
++  });
++
+   /** The number of claims in each status, in the order of STATUSES. */
+   readonly statusCounts = computed(() => {
+     const claims = this.claims.claims();
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 62135a439..fff101e69 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -49,6 +49,13 @@ import { Session } from '../../core/session';
+         [value]="ref()"
+         (input)="ref.set(value($event)); clearErrors()"
+       />
++      <label [for]="fid('tags')">Tags (comma separated)</label>
++      <input
++        [id]="fid('tags')"
++        data-testid="claim-form-tags"
++        [value]="tags()"
++        (input)="tags.set(value($event)); clearErrors()"
++      />
+       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
+         {{ editing() === null ? 'Add claim' : 'Save claim' }}
+       </button>
+@@ -70,6 +77,7 @@ import { Session } from '../../core/session';
+           <span data-testid="claim-date">{{ c.date }}</span>
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
++          <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
+           <span>Due <span data-testid="claim-due">{{ figure(c) }}</span></span>
+           <span>Due by <span data-testid="claim-due-by">{{ claims.dueBy(c) }}</span></span>
+           <span>Overdue <span data-testid="claim-overdue">{{ claims.overdue(c) ? 'yes' : 'no' }}</span></span>
+@@ -218,6 +226,7 @@ export class PersonClaims {
+   protected readonly note = signal('');
+   protected readonly corrects = signal('');
+   protected readonly ref = signal('');
++  protected readonly tags = signal('');
+   /** The edit whose edit button was refused while no editor was open: the form's next submit is its save,
+    *  refused on the claim again, until the next action on that claim or another editor opens. */
+   private refusedEdit: { id: number; message: string } | null = null;
+@@ -299,7 +308,7 @@ export class PersonClaims {
+    *  shows on the claim and the form stays as it is. */
+   protected edit(c: Claim): Promise<boolean> {
+     this.clearActionError(c.id);
+-    const typed = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
++    const typed = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref(), tags: this.tags() };
+     const lock = (async () => {
+       const err = await this.claims.lock(c.id);
+       if (err) {
+@@ -309,13 +318,14 @@ export class PersonClaims {
+       }
+       const was = this.editing();
+       if (was !== null && was !== c.id) void this.claims.unlock(was);
+-      const now = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
++      const now = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref(), tags: this.tags() };
+       this.fill(this.list().find((o) => o.id === c.id) ?? c);
+       if (now.amount !== typed.amount) this.amount.set(now.amount);
+       if (now.date !== typed.date) this.date.set(now.date);
+       if (now.note !== typed.note) this.note.set(now.note);
+       if (now.corrects !== typed.corrects) this.corrects.set(now.corrects);
+       if (now.ref !== typed.ref) this.ref.set(now.ref);
++      if (now.tags !== typed.tags) this.tags.set(now.tags);
+       return true;
+     })();
+     this.locking = lock;
+@@ -340,6 +350,7 @@ export class PersonClaims {
+     this.note.set(c.note);
+     this.corrects.set(c.corrects ?? '');
+     this.ref.set(c.ref ?? '');
++    this.tags.set(c.tags.join(', '));
+     this.error.set(null);
+   }
+ 
+@@ -462,6 +473,7 @@ export class PersonClaims {
+         note: c.note,
+         corrects: c.corrects ?? '',
+         ref: c.ref ?? '',
++        tags: c.tags.join(','),
+       };
+       const refused = await this.claims.update(c.id, f);
+       if (refused) this.actionError.set({ id: c.id, message: refused.message });
+@@ -497,6 +509,7 @@ export class PersonClaims {
+     this.note.set('');
+     this.corrects.set('');
+     this.ref.set('');
++    this.tags.set('');
+     this.error.set(null);
+   }
+ 
+@@ -513,7 +526,7 @@ export class PersonClaims {
+         return;
+       }
+       this.clearErrors();
+-      const f = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
++      const f = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref(), tags: this.tags() };
+       const id = this.editing();
+       if (id === null) {
+         const err = await this.claims.add(this.personId(), f);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2c00c563f..c8f5b7ed2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -88,6 +88,22 @@ import { PersonClaims } from '../claims/claims';
+       <p>Open total: <strong data-testid="rollup-open-total">{{ figures.openTotal() }}</strong></p>
+       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+       <p>Overdue total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
++      @if (figures.tagTotals().length > 0) {
++        <table data-testid="tag-totals">
++          <caption>Due total by tag</caption>
++          <thead>
++            <tr><th scope="col">Tag</th><th scope="col">Due total</th></tr>
++          </thead>
++          <tbody>
++            @for (t of figures.tagTotals(); track t.tag) {
++              <tr>
++                <th scope="row">{{ t.tag }}</th>
++                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
++              </tr>
++            }
++          </tbody>
++        </table>
++      }
+       <label>
+         <input
+           type="checkbox"
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 1a579abfb..f2b1784c2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -113,6 +113,10 @@ public class Claim {
+     @Column(name = "ref")
+     private String ref;
+ 
++    /** Its tags, sorted and comma separated; none when it carries none. */
++    @Column(name = "tags")
++    private String tags;
++
+     /** Its status log: one line per status it has had, oldest first. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
+@@ -199,6 +203,16 @@ public class Claim {
+         this.ref = ref;
+     }
+ 
++    /** Its tags, sorted; empty when it carries none. */
++    public List<String> getTags() {
++        return tags == null ? List.of() : List.of(tags.split(","));
++    }
++
++    /** Carry the tags (normalised: trimmed, lower-cased, without repeats and sorted). */
++    public void setTags(List<String> tags) {
++        this.tags = tags.isEmpty() ? null : String.join(",", tags);
++    }
++
+     public String getNote() {
+         return note;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 9db21335d..2767f4938 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -8,7 +8,9 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.Arrays;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Map;
+ import net.officefloor.hq.app.history.AsOf;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+@@ -43,12 +45,12 @@ public class ClaimController {
+      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
+      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
+      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
+-     *  not given). */
++     *  not given), and its tags, sorted. */
+     public record ClaimView(long id, long personId, String amount, String date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
+             int proofs, String splitFrom, String lockedBy, boolean lateEntry,
+-            String remindedOn, String ref) {
++            String remindedOn, String ref, List<String> tags) {
+ 
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -61,7 +63,8 @@ public class ClaimController {
+                     claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
+                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
+                     claim.isLateEntry(),
+-                    claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef());
++                    claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
++                    claim.getTags());
+         }
+     }
+ 
+@@ -82,7 +85,8 @@ public class ClaimController {
+             LocalDate date,
+             @Size(max = 1000) String note,
+             @Size(max = 220) String corrects,
+-            @Size(max = 200) String ref) {
++            @Size(max = 200) String ref,
++            @Size(max = 2000) String tags) {
+ 
+         String noteOrEmpty() {
+             return note == null ? "" : note.trim();
+@@ -93,6 +97,13 @@ public class ClaimController {
+             return ref == null || ref.isBlank() ? null : ref.trim();
+         }
+ 
++        /** The tags, comma separated: each trimmed and lower-cased, blanks and repeats dropped, sorted. */
++        List<String> tagList() {
++            return tags == null ? List.of()
++                    : Arrays.stream(tags.split(",")).map(t -> t.trim().toLowerCase(Locale.ROOT))
++                            .filter(t -> !t.isEmpty()).distinct().sorted().toList();
++        }
++
+         /** The number a correction names, trimmed; none when blank. */
+         String correctsOrNone() {
+             return corrects == null || corrects.isBlank() ? null : corrects.trim();
+@@ -142,6 +153,13 @@ public class ClaimController {
+                 .map(ClaimView::of).toList();
+     }
+ 
++    /** Every tag ever used on the sheet's claims, sorted. */
++    @GetMapping("/claim-tags")
++    public List<String> tags(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
++        return service.tags(sheetId.trim());
++    }
++
+     /** Add a claim for a person. */
+     @PostMapping("/people/{personId}/claims")
+     public ClaimView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+@@ -149,7 +167,7 @@ public class ClaimController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid ClaimRequest request) {
+         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.date(),
+-                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone()));
++                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone(), request.tagList()));
+     }
+ 
+     /** Add a DRAFT claim dated the sheet's today for the person with the name, adding them first when
+@@ -180,7 +198,7 @@ public class ClaimController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid ClaimRequest request) {
+         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amount(), request.date(),
+-                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone()));
++                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone(), request.tagList()));
+     }
+ 
+     /** Open a DRAFT claim's editor, locking it for every other user. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a339d120b..ef952c07a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -54,11 +54,14 @@ public class ClaimService {
+     private final WatchRepository watches;
+     private final History history;
+     private final HolidayService holidays;
++    private final SheetTagRepository sheetTags;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+             SheetRepository sheetRows, PeriodRepository periods, StatementRepository statements, Rollup rollup,
+-            RoleService roles, WatchRepository watches, History history, HolidayService holidays, Audit audit) {
++            RoleService roles, WatchRepository watches, History history, HolidayService holidays,
++            SheetTagRepository sheetTags, Audit audit) {
++        this.sheetTags = sheetTags;
+         this.history = history;
+         this.holidays = holidays;
+         this.watches = watches;
+@@ -86,7 +89,7 @@ public class ClaimService {
+      *  is refused. */
+     @Transactional
+     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+-            String corrects, String ref) {
++            String corrects, String ref, List<String> tags) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
+         int terms = person.getTerms() != null ? person.getTerms()
+@@ -99,12 +102,15 @@ public class ClaimService {
+         Rollup.Snapshot before = rollup.take(sheetId);
+         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, dueBy, note, corrects);
+         claim.setRef(ref);
++        claim.setTags(tags);
+         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
+         claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
+         logStatus(claim, person, user);
+         claim = claims.saveAndFlush(claim);
+         audit("CLAIM_ADDED", claim, person, user, claim.getNumber(),
+-                claim.getRef() != null ? " ref=" + claim.getRef() : "");
++                (claim.getRef() != null ? " ref=" + claim.getRef() : "")
++                        + (tags.isEmpty() ? "" : " tags=" + String.join(",", tags)));
++        recordTags(sheetId, tags);
+         if (claim.isLateEntry()) {
+             audit("LATE_ENTRY", claim, person, user);
+         }
+@@ -116,7 +122,7 @@ public class ClaimService {
+      *  added. */
+     @Transactional
+     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
+-            String corrects, String ref) {
++            String corrects, String ref, List<String> tags) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+         if (claim.getStatus() != ClaimStatus.DRAFT) {
+             throw new ClaimNotDraftException(claim.getStatus());
+@@ -134,11 +140,13 @@ public class ClaimService {
+         claim.setNote(note);
+         claim.setCorrects(corrects);
+         claim.setRef(ref);
++        claim.setTags(tags);
+         claim.setLockedBy(null);
+         Claim updated = claims.saveAndFlush(claim);
+         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+         audit("CLAIM_EDITED", updated, person, user);
++        recordTags(sheetId, tags);
+         rollup.recordChanges(sheetId, user, before);
+         return updated;
+     }
+@@ -498,6 +506,7 @@ public class ClaimService {
+         split.setNumber(sheets.nextClaimNumber(sheetId, split.getDueBy()));
+         split.setOpenedBy(user);
+         split.setSplitFrom(claim.getNumber());
++        split.setTags(claim.getTags());
+         logStatus(split, person, user);
+         split = claims.saveAndFlush(split);
+         audit("CLAIM_SPLIT", kept, person, user, kept.getNumber(), " into=" + split.getNumber());
+@@ -748,6 +757,22 @@ public class ClaimService {
+ 
+     /** Refuse a reference (none: nothing to check) another claim on the sheet than the excluded one (none:
+      *  any claim) already has, compared without regard to case. */
++    /** Every tag ever used on the sheet's claims, sorted. */
++    @Transactional(readOnly = true)
++    public List<String> tags(String sheetId) {
++        sheets.today(sheetId);
++        return sheetTags.findBySheetIdOrderByTagAsc(sheetId).stream().map(SheetTag::getTag).toList();
++    }
++
++    /** Keep the tags a claim now carries among those used on the sheet. */
++    private void recordTags(String sheetId, List<String> tags) {
++        for (String tag : tags) {
++            if (!sheetTags.existsBySheetIdAndTag(sheetId, tag)) {
++                sheetTags.save(new SheetTag(sheetId, tag));
++            }
++        }
++    }
++
+     private void refuseRefUsed(String sheetId, String ref, Long excluded) {
+         if (ref != null && claims.refUsed(sheetId, ref, excluded)) {
+             throw new ClaimRefException("The reference " + ref + " is already used on this sheet.");
+diff --git a/src/main/java/net/officefloor/hq/app/claim/PasteService.java b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+index 7e755a129..b0582f191 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/PasteService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+@@ -67,7 +67,7 @@ public class PasteService {
+         for (Line line : lines) {
+             try {
+                 added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(),
+-                        null, line.ref()));
++                        null, line.ref(), List.of()));
+             } catch (PeriodClosedException | PersonRetiredException | ClaimCorrectionException
+                     | ClaimRefException e) {
+                 throw new ClaimPasteException("Line " + line.number() + ": " + e.getMessage());
+diff --git a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+index d422f06a4..b38ed60aa 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/QuickAddService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.claim;
+ 
+ import java.math.BigDecimal;
++import java.util.List;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.person.PersonService;
+@@ -36,7 +37,7 @@ public class QuickAddService {
+     public Added add(String sheetId, String user, String name, BigDecimal amount) {
+         Person found = people.findByName(sheetId, name.trim()).orElse(null);
+         Person person = found != null ? found : personService.add(sheetId, user, name, GRADE, null);
+-        Claim claim = claims.add(sheetId, user, person.getId(), amount, null, "", null, null);
++        Claim claim = claims.add(sheetId, user, person.getId(), amount, null, "", null, null, List.of());
+         return new Added(person, found == null, claim);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/SheetTag.java b/src/main/java/net/officefloor/hq/app/claim/SheetTag.java
+new file mode 100644
+index 000000000..01c13e32a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/SheetTag.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A tag used on one of a sheet's claims: kept once a claim carries it, whatever later becomes of the claim. */
++@Entity
++@Table(name = "sheet_tag")
++public class SheetTag {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "tag", nullable = false)
++    private String tag;
++
++    protected SheetTag() {
++    }
++
++    public SheetTag(String sheetId, String tag) {
++        this.sheetId = sheetId;
++        this.tag = tag;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getTag() {
++        return tag;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/SheetTagRepository.java b/src/main/java/net/officefloor/hq/app/claim/SheetTagRepository.java
+new file mode 100644
+index 000000000..0f1b809d2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/SheetTagRepository.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetTagRepository extends JpaRepository<SheetTag, Long> {
++
++    /** Every tag used on the sheet, in order. */
++    List<SheetTag> findBySheetIdOrderByTagAsc(String sheetId);
++
++    boolean existsBySheetIdAndTag(String sheetId, String tag);
++}
+diff --git a/src/main/resources/db/migration/V55__claim_tags.sql b/src/main/resources/db/migration/V55__claim_tags.sql
+new file mode 100644
+index 000000000..8762e0e6f
+--- /dev/null
++++ b/src/main/resources/db/migration/V55__claim_tags.sql
+@@ -0,0 +1,10 @@
++-- A claim's tags: trimmed, lower-cased, without repeats, sorted and comma separated; none when not given.
++ALTER TABLE claim ADD COLUMN tags VARCHAR(2000);
++
++-- Every tag ever used on a sheet's claims, once each: the sheet shows a due-total for each.
++CREATE TABLE sheet_tag (
++    id       BIGINT       GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    sheet_id VARCHAR(200) NOT NULL REFERENCES sheet (id),
++    tag      VARCHAR(2000) NOT NULL,
++    UNIQUE (sheet_id, tag)
++);
