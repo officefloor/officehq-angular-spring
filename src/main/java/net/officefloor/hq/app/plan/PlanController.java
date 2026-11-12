@@ -32,16 +32,34 @@ public class PlanController {
     /**
      * A plan as shown: its amount with two decimals, its dates as yyyy-mm-dd, its interval in days or its day of the
      * month (the other null), how many claims it has made, and its first five dates after the sheet's today up to its
-     * end, comma and space separated, those paused left out; and whether it is paused now.
+     * end, comma and space separated, those paused left out; whether it is paused now; and the changes of its amount,
+     * oldest first.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated, String nextDates, boolean paused) {
+            LocalDate end, long generated, String nextDates, boolean paused, List<ChangeView> changes) {
 
-        static PlanView of(Plan plan, long generated, List<LocalDate> nextDates, boolean paused) {
-            return new PlanView(plan.getId(), plan.getPersonId(),
-                    plan.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), plan.getStart(),
+        static PlanView of(Plan plan, long generated, List<LocalDate> nextDates, boolean paused,
+                List<PlanChange> changes) {
+            return new PlanView(plan.getId(), plan.getPersonId(), money(plan.getAmount()), plan.getStart(),
                     plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
-                    nextDates.stream().map(LocalDate::toString).collect(Collectors.joining(", ")), paused);
+                    nextDates.stream().map(LocalDate::toString).collect(Collectors.joining(", ")), paused,
+                    changes.stream().map(c -> new ChangeView(c.getChangedOn(), money(c.getAmount()))).toList());
+        }
+
+        private static String money(BigDecimal amount) {
+            return amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+        }
+    }
+
+    /** A change of a plan's amount: the day it was made and the new amount with two decimals. */
+    public record ChangeView(LocalDate date, String amount) {
+    }
+
+    /** A plan's new amount, with up to two decimals. */
+    public record AmountRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount) {
+
+        BigDecimal amountValue() {
+            return new BigDecimal(amount.trim()).setScale(2, RoundingMode.UNNECESSARY);
         }
     }
 
@@ -90,9 +108,11 @@ public class PlanController {
         Map<Long, Long> generated = service.generatedCounts(sheetId.trim());
         Map<Long, List<LocalDate>> next = service.nextDates(sheetId.trim());
         Set<Long> paused = service.paused(sheetId.trim());
+        Map<Long, List<PlanChange>> changes = service.changes(sheetId.trim());
         return service.list(sheetId.trim()).stream()
                 .map(plan -> PlanView.of(plan, generated.getOrDefault(plan.getId(), 0L),
-                        next.getOrDefault(plan.getId(), List.of()), paused.contains(plan.getId())))
+                        next.getOrDefault(plan.getId(), List.of()), paused.contains(plan.getId()),
+                        changes.getOrDefault(plan.getId(), List.of())))
                 .toList();
     }
 
@@ -104,7 +124,7 @@ public class PlanController {
             @RequestBody @Valid PlanRequest request) {
         Plan plan = service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.start(),
                 request.everyValue(), request.dayValue(), request.end());
-        return PlanView.of(plan, 0, service.nextDates(sheetId.trim(), plan), false);
+        return PlanView.of(plan, 0, service.nextDates(sheetId.trim(), plan), false, List.of());
     }
 
     /** Pause the plan from the sheet's today; refused when it is already paused. */
@@ -126,7 +146,19 @@ public class PlanController {
     private PlanView pauseOrResume(String sheetId, String user, Long planId, boolean on) {
         Plan plan = service.pause(sheetId, user, planId, on);
         return PlanView.of(plan, service.generatedCounts(sheetId).getOrDefault(planId, 0L),
-                service.nextDates(sheetId, plan), on);
+                service.nextDates(sheetId, plan), on, service.changes(sheetId, plan));
+    }
+
+    /** Change the plan's amount for the claims generated from now on; refused when it is not more than 0.00. */
+    @PostMapping("/plans/{planId}/amount")
+    public PlanView changeAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AmountRequest request) {
+        Plan plan = service.changeAmount(sheetId.trim(), user.trim(), planId, request.amountValue());
+        return PlanView.of(plan, service.generatedCounts(sheetId.trim()).getOrDefault(planId, 0L),
+                service.nextDates(sheetId.trim(), plan), service.paused(sheetId.trim()).contains(planId),
+                service.changes(sheetId.trim(), plan));
     }
 
     /** Make the claims of every plan date due and not yet made. */

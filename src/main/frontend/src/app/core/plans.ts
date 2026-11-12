@@ -24,6 +24,8 @@ export interface PlanView {
   nextDates: string;
   /** Whether the plan is paused now: its dates from the day it was paused are skipped until it is resumed. */
   paused: boolean;
+  /** The changes of the plan's amount, oldest first: the sheet's today each was made on and the new amount. */
+  changes: { date: string; amount: string }[];
 }
 
 // The active sheet's plans, in the order they were added, re-read whenever a sheet is loaded.
@@ -68,6 +70,20 @@ export class Plans {
       this.http.post<PlanView>(
         `/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/${on ? 'pause' : 'resume'}`,
         null,
+        this.session.headers(),
+      ),
+    );
+    if (this.session.sheet() === sheet) this.list.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+  }
+
+  /** Change the plan's amount for the claims generated from now on; throws when refused. */
+  async changeAmount(planId: number, amount: string): Promise<void> {
+    const sheet = this.session.sheet();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<PlanView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/amount`,
+        { amount },
         this.session.headers(),
       ),
     );

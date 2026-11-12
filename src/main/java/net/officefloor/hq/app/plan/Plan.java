@@ -113,6 +113,11 @@ public class Plan {
         return dates;
     }
 
+    /** Change the amount of the claims generated from now on. */
+    public void changeAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
+
     public Long getId() {
         return id;
     }

@@ -31,6 +31,7 @@ public class PlanService {
     private final PlanRepository plans;
     private final PlanDateRepository dates;
     private final PlanPauseRepository pauses;
+    private final PlanChangeRepository changes;
     private final PersonRepository people;
     private final ClaimService claims;
     private final SheetService sheets;
@@ -38,11 +39,13 @@ public class PlanService {
     /** Each plan date's claim is made in its own transaction, so one refused rolls back only itself. */
     private final TransactionTemplate each;
 
-    public PlanService(PlanRepository plans, PlanDateRepository dates, PlanPauseRepository pauses, PersonRepository people, ClaimService claims,
+    public PlanService(PlanRepository plans, PlanDateRepository dates, PlanPauseRepository pauses,
+            PlanChangeRepository changes, PersonRepository people, ClaimService claims,
             SheetService sheets, Audit audit, PlatformTransactionManager transactions) {
         this.plans = plans;
         this.dates = dates;
         this.pauses = pauses;
+        this.changes = changes;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
@@ -75,6 +78,17 @@ public class PlanService {
     public Set<Long> paused(String sheetId) {
         return pauses.findBySheetId(sheetId).stream().filter(PlanPause::isOpen).map(PlanPause::getPlanId)
                 .collect(Collectors.toSet());
+    }
+
+    /** The sheet's changes of each plan's amount, oldest first, by plan id. */
+    public Map<Long, List<PlanChange>> changes(String sheetId) {
+        return changes.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(PlanChange::getPlanId));
+    }
+
+    /** The plan's changes of its amount, oldest first. */
+    public List<PlanChange> changes(String sheetId, Plan plan) {
+        return changes.findByPlanIdAndSheetIdOrderByIdAsc(plan.getId(), sheetId);
     }
 
     /** The plan's first five dates after the sheet's today, up to its end, those paused left out. */
@@ -151,6 +165,27 @@ public class PlanService {
         }
         audit.recordOnCommit((on ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " start=" + plan.getStart());
+        return plan;
+    }
+
+    /**
+     * Change the plan's amount on the sheet's today: the claims generated from then on are of the new amount, those
+     * already generated keep theirs. An amount not more than 0.00 is refused.
+     */
+    @Transactional
+    public Plan changeAmount(String sheetId, String user, Long planId, BigDecimal amount) {
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new PlanNotFoundException(sheetId, planId));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, plan.getPersonId()));
+        if (amount.signum() <= 0) {
+            throw new PlanRefusedException("A plan's amount must be more than 0.00");
+        }
+        plan.changeAmount(amount);
+        plans.saveAndFlush(plan);
+        changes.saveAndFlush(new PlanChange(sheetId, planId, sheets.today(sheetId), amount));
+        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " start=" + plan.getStart() + " amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         return plan;
     }
 

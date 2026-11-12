@@ -26,6 +26,20 @@ const WHOLE = /^\d{1,6}$/;
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="plan-pause" (click)="pause(pl.id, true)">Pause</button>
           <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)">Resume</button>
+          <label [for]="'plan-amount-' + pl.id" class="visually-hidden">New plan amount</label>
+          <input
+            [id]="'plan-amount-' + pl.id"
+            data-testid="plan-amount"
+            placeholder="New amount"
+            [value]="newAmounts()[pl.id] ?? ''"
+            (input)="setNewAmount(pl.id, value($event))"
+          />
+          <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl.id)">Save amount</button>
+          <ul [attr.aria-label]="'Amount changes of the plan from ' + pl.start">
+            @for (c of pl.changes; track $index) {
+              <li data-testid="plan-change-line">{{ c.date }} amount={{ c.amount }}</li>
+            }
+          </ul>
           @if (rowErrors()[pl.id]; as message) {
             <p role="alert" data-testid="plan-error">{{ message | fig }}</p>
           }
@@ -95,6 +109,8 @@ export class PersonPlans {
   protected readonly error = signal<string | null>(null);
   /** The error of the last action on each plan's row, by plan id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The new amount typed on each plan's row, by plan id. */
+  protected readonly newAmounts = signal<Record<number, string>>({});
   /** Whether an add is waiting for its answer: a second add meanwhile is ignored. */
   private adding = false;
 
@@ -110,6 +126,27 @@ export class PersonPlans {
       const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
       const message = (on ? 'The plan could not be paused.' : 'The plan could not be resumed.') + detail;
       this.rowErrors.update((errors) => ({ ...errors, [planId]: message }));
+    }
+  }
+
+  protected setNewAmount(planId: number, amount: string): void {
+    this.newAmounts.update((amounts) => ({ ...amounts, [planId]: amount }));
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+  }
+
+  protected async changeAmount(planId: number): Promise<void> {
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+    const amount = (this.newAmounts()[planId] ?? '').trim();
+    if (!AMOUNT.test(amount) || Number(amount) <= 0) {
+      this.rowErrors.update((errors) => ({ ...errors, [planId]: 'Type an amount more than 0.00 with at most two decimals.' }));
+      return;
+    }
+    try {
+      await this.store.changeAmount(planId, amount);
+      this.newAmounts.update(({ [planId]: _, ...rest }) => rest);
+    } catch (e) {
+      const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+      this.rowErrors.update((errors) => ({ ...errors, [planId]: 'The plan\'s amount could not be changed.' + detail }));
     }
   }
 
