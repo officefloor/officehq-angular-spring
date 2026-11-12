@@ -1,0 +1,138 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index acba06db8..05e9344d8 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -17,6 +17,7 @@ interface SheetView {
+   archived: boolean;
+   viewer: boolean;
+   lastSettleBatch: number | null;
++  steward: boolean;
+ }
+ 
+ // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
+@@ -33,6 +34,9 @@ export class Session {
+   readonly archived = signal(false);
+   /** Whether the signed-in user is a viewer of the active sheet, as of its last load: they may change nothing. */
+   readonly viewer = signal(false);
++  /** Whether the signed-in user is a steward of the active sheet (in their own right or by delegation), as of its last
++   *  load. */
++  readonly steward = signal(false);
+   /** The number of the active sheet's last bulk settle batch; null while there has been none. */
+   readonly lastSettleBatch = signal<number | null>(null);
+   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
+@@ -207,6 +211,7 @@ export class Session {
+     this.today.set(view.today);
+     this.archived.set(view.archived);
+     this.viewer.set(view.viewer);
++    this.steward.set(view.steward);
+     this.lastSettleBatch.set(view.lastSettleBatch);
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index dff7245b3..a39ddd068 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -164,6 +164,17 @@ function csvField(value: string): string {
+         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | fig }}</dd>
+       </dl>
+     </section>
++    <section aria-labelledby="dashboard-heading">
++      <h2 id="dashboard-heading">Steward's dashboard</h2>
++      <dl>
++        <dt>Pending</dt>
++        <dd data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' | fig }}</dd>
++        <dt>In review</dt>
++        <dd data-testid="dash-review-count">{{ dashboard()?.review ?? '' | fig }}</dd>
++        <dt>Overdue</dt>
++        <dd data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' | fig }}</dd>
++      </dl>
++    </section>
+     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
+     <section aria-labelledby="people-heading">
+@@ -1004,6 +1015,19 @@ export class People {
+     const led = me ? this.crewTotals().filter((c) => c.leadId === me.id) : [];
+     return led.length ? sumDues(led.map((c) => c.dueTotal)) : '';
+   });
++  /**
++   * The steward's dashboard over the sheet: how many claims are PENDING, how many in REVIEW, and how many that count
++   * are overdue; none for a user who is not a steward (as of the as-of date, the role they had then).
++   */
++  protected readonly dashboard = computed(() => {
++    if (!this.session.steward()) return null;
++    const claims = this.claims();
++    return {
++      pending: claims.filter((c) => c.status === 'PENDING').length,
++      review: claims.filter((c) => c.status === 'REVIEW').length,
++      overdue: this.overdueCount(),
++    };
++  });
+   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
+   private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+   /** The sheet's people and its descendants' added up. */
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 878035e23..880bf0ea4 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -41,6 +41,11 @@ public class RoleService {
+         return roleOf(sheetId, user) == Role.VIEWER;
+     }
+ 
++    /** Whether the user is a steward on the sheet, in their own right or by a delegation covering its today. */
++    public boolean isSteward(String sheetId, String user) {
++        return roleOf(sheetId, user) == Role.STEWARD;
++    }
++
+     /** Whether the user's role may take the action (open, settle, void, reassign, close, reopen) on the sheet. */
+     public boolean may(String sheetId, String user, String action) {
+         return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId))
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 7dcf61073..4ed3eeb60 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -21,14 +21,16 @@ import org.springframework.web.bind.annotation.RestController;
+ public class SheetController {
+ 
+     /**
+-     * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, and the
+-     * number of its last bulk settle batch (null while there has been none).
++     * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, the
++     * number of its last bulk settle batch (null while there has been none), and whether the user is a steward of it
++     * (in their own right or by a delegation covering its today).
+      */
+-    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch) {
++    public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch,
++            boolean steward) {
+ 
+-        static SheetView of(Sheet sheet, boolean viewer) {
++        static SheetView of(Sheet sheet, boolean viewer, boolean steward) {
+             return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer,
+-                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
++                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), steward);
+         }
+     }
+ 
+@@ -78,6 +80,6 @@ public class SheetController {
+     }
+ 
+     private SheetView view(Sheet sheet, String user) {
+-        return SheetView.of(sheet, service.isViewer(sheet.getId(), user));
++        return SheetView.of(sheet, service.isViewer(sheet.getId(), user), service.isSteward(sheet.getId(), user));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index c46f9c9e1..688162d15 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -56,6 +56,11 @@ public class SheetService {
+         return roles.isViewer(id, user);
+     }
+ 
++    /** Whether the user is a steward of the sheet, in their own right or by a delegation covering its today. */
++    public boolean isSteward(String id, String user) {
++        return roles.isSteward(id, user);
++    }
++
+     public Sheet get(String id) {
+         return sheets.findById(id).orElseThrow(() -> new SheetNotFoundException(id));
+     }

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 178,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp178_steward-dashboard",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "25a19106f824cb4e3bef8169c89e752f69bd4006",
+  "reset_sha": "",
+  "preagent_sha": "9230c47be70551c4bf75587c853d1bba7923516b",
+  "prev_sha": "9230c47be70551c4bf75587c853d1bba7923516b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2551962,
+    "input_tokens": 64,
+    "output_tokens": 12766,
+    "cache_read_tokens": 1858101,
+    "cache_creation_tokens": 78500,
+    "num_turns": 33,
+    "duration_ms": 942311,
+    "duration_api_ms": 139671,
+    "model": "claude-opus-5-5",
+    "session_id": "fd825f3c-13d1-4b0a-a5f6-b91d8f08dacf",
+    "stop_reason": "success",
+    "result_text": "I've added the steward's dashboard. With the real clock, `bin/e2e` passes 3 of the 4 tests; scenario 3 fails at line 1171, before it gets to most of its dashboard checks. That failure is in the existing parent-rates feature, not the dashboard.\n\n**What I changed**\n- **Server:** the sheet view returned when a sheet is loaded now includes `steward`, which is true when the user is a steward in their own right or through a delegation covering the sheet's today (`RoleService.isSteward`, used in `SheetController.view`). Under an as-of date, loading a sheet already puts back its roles and today as they stood then. So the flag reflects the role the user had on that date, with no new stored data.\n- **Front end:** a dashboard section in `people.ts` with `dash-pending-count`, `dash-review-count` and `dash-overdue-count`. PENDING and REVIEW are counted by status across the sheet's claims. Overdue uses the same \"counts and is overdue\" logic as the existing `rollup-overdue-count`. A user who isn't a steward sees all three cells empty.\n\n**Scenario 3 failure**\n- The test expects the parent sheet's grade-A rate (`12.50`) to show as of 2026-03-20, but the screen shows `n/a`. A new sheet's starting today comes from the real clock (`SheetService.java:217`), and parent rates under an as-of date are read from a log stamped with that today (2026-11-12). On 2026-03-20 the parent therefore has no rates.\n- I tried temporarily pinning the clock to 2026-01-01 and 2026-03-10, then reverted it and rebuilt. Either way, scenario 3 got past that line and its dashboard check at line 1235 passed. But scenario 1 (line 216) expects `n/a` for the same kind of parent-rate check, so no clock date makes both pass. The pinned runs also failed scenario 3 at line 1336 on the order of statement lines. That check doesn't depend on the date.\n\nI didn't change the parent-rate or statement logic, since both are outside this change request. As a result, the dashboard checks at lines 1235 and 1548 aren't covered by a passing run under the real clock. Fixing the scenario 3 failures would mean deciding how parent rates should behave under an as-of date, because scenarios 1 and 3 currently expect opposite results. Do you want me to take that on?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2551962,
+        "num_turns": 33,
+        "duration_ms": 942311,
+        "duration_api_ms": 139671,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp178.agent.jsonl",
+  "agent_diff_file": "cp178.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
