@@ -63,6 +63,14 @@ public class PersonService {
         return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId)).defaultGradeOrA();
     }
 
+    /** Refuse a retired grade chosen for a person. */
+    private void refuseRetired(String sheetId, String grade) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId));
+        if (sheet.isGradeRetired(grade)) {
+            throw new GradeRetiredException(sheetId, grade);
+        }
+    }
+
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
@@ -85,6 +93,7 @@ public class PersonService {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException(sheetId);
         }
+        refuseRetired(sheetId, grade);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         if (people.existsBySheetIdAndNameKey(sheetId, Person.key(name))
                 || aliases.existsBySheetIdAndAliasKey(sheetId, Person.key(name))
@@ -167,6 +176,7 @@ public class PersonService {
             person.setTags(tagged(sheetId, tagText));
         }
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            refuseRetired(sheetId, grade);
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
         Person saved = save(person);

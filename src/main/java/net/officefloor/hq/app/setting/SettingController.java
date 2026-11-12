@@ -16,6 +16,7 @@ import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -35,13 +36,13 @@ public class SettingController {
      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
      * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the fiscal year start month (1 to 12); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the review threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the alert threshold with two decimals, null when off; the parent sheet's id, null when there is none; the proof kinds, comma separated, null when there are none; the escalation gap in whole days, null when blank (off); the default grade, null when blank (A); the review SLA in whole days, null when blank (none); the most OPEN or PENDING claims a person may have, null when blank (none); the mid and high score thresholds, whole numbers, null when blank; whether the score log is on;
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
-     * separated, null when blank (the standing rule).
+     * separated, null when blank (the standing rule). The grades retired, last.
      * Then every value recorded of each dated setting, by key (clerk-limit, clerk-limit-A, clerk-limit-B, clerk-limit-C, floor, terms, terms-A, terms-B, terms-C,
      * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold, review-threshold, rounding), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
-            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, String proofKinds, Integer escalateAfter, String defaultGrade, Integer reviewSla, Integer maxOpen, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
+            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, String proofKinds, Integer escalateAfter, String defaultGrade, Integer reviewSla, Integer maxOpen, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Map<String, String> permissions, Map<String, List<DatedValue>> dated, List<String> retiredGrades) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
@@ -54,7 +55,7 @@ public class SettingController {
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
                     sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), sheet.getFiscalStartMonth(), shown(sheet.proofThresholdOn(today)),
                     shown(sheet.noteThresholdOn(today)), shown(sheet.reviewThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), sheet.getProofKinds(), sheet.getEscalateAfter(), sheet.getDefaultGrade(), sheet.getReviewSla(), sheet.getMaxOpen(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), permissions,
-                    dated);
+                    dated, sheet.retiredGrades());
         }
 
         private static String shown(BigDecimal value) {
@@ -464,6 +465,14 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid DefaultGradeRequest request) {
         return view(service.setDefaultGrade(sheetId.trim(), user.trim(), request.defaultGradeValue()));
+    }
+
+    /** Retire a grade: it cannot be chosen for anyone from then on. */
+    @PostMapping("/grades/{grade}/retire")
+    public SettingsView retireGrade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @PathVariable @NotBlank @Size(max = 10) String grade) {
+        return view(service.retireGrade(sheetId.trim(), user.trim(), grade.trim()));
     }
 
     @PutMapping("/parent")

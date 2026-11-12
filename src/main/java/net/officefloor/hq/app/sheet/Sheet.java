@@ -152,6 +152,10 @@ public class Sheet {
     @Column(name = "default_grade")
     private String defaultGrade;
 
+    /** The grades retired on the sheet (comma separated): none can be given to anyone from then on; null: none. Not dated. */
+    @Column(name = "retired_grades")
+    private String retiredGrades;
+
     /** Whether a steward archived the sheet: everything stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -194,6 +198,7 @@ public class Sheet {
         copy.source = this.id;
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
+        copy.retiredGrades = retiredGrades;
         return copy;
     }
 
@@ -528,9 +533,23 @@ public class Sheet {
         this.defaultGrade = defaultGrade;
     }
 
-    /** The grade a person added without one takes: the default grade, else A. */
+    /** The grade a person added without one takes: the default grade while it is not retired, else A. */
     public String defaultGradeOrA() {
-        return defaultGrade == null ? "A" : defaultGrade;
+        return defaultGrade == null || isGradeRetired(defaultGrade) ? "A" : defaultGrade;
+    }
+
+    /** The grades retired on the sheet, in the order they were retired. */
+    public List<String> retiredGrades() {
+        return retiredGrades == null ? List.of() : Arrays.stream(retiredGrades.split(",")).toList();
+    }
+
+    public boolean isGradeRetired(String grade) {
+        return retiredGrades().contains(grade);
+    }
+
+    /** Retire the grade: it cannot be given to anyone from then on. */
+    public void retireGrade(String grade) {
+        retiredGrades = retiredGrades == null ? grade : retiredGrades + "," + grade;
     }
 
     /** The kinds of proof a claim above the proof threshold needs one of each of; empty while none are set. */

@@ -373,6 +373,26 @@ public class SettingService {
     }
 
     /**
+     * Retire the grade (A, B or C): it cannot be chosen for a new person or in an edit from then on, and the default
+     * grade falls back to A while it is retired; people already on it keep it. Refused for a grade that is not one of
+     * the sheet's or is already retired.
+     */
+    @Transactional
+    public Sheet retireGrade(String sheetId, String user, String grade) {
+        Sheet sheet = get(sheetId);
+        if (!GRADES.contains(grade)) {
+            throw new GradeRetireException(sheetId, grade, "not a grade");
+        }
+        if (sheet.isGradeRetired(grade)) {
+            throw new GradeRetireException(sheetId, grade, "already retired");
+        }
+        sheet.retireGrade(grade);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("GRADE_RETIRED sheet=" + sheetId + " by=" + user + " grade=" + grade);
+        return saved;
+    }
+
+    /**
      * Set the parent sheet, whose rates a grade with none in force on a date here falls back on; null means none.
      * Refused for the sheet itself, a sheet that has this sheet as an ancestor, and a sheet never loaded. Every save
      * is recorded, even of the same value, then the figures it moved.
