@@ -1,0 +1,64 @@
+{
+  "checkpoint": 118,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp118_import-rates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Rates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nRates can be pasted as lines of grade,rate,from,to (the last two may be absent or blank) into a\nrate import box. Every line is checked first with the rate form's rules; if any fails, an error\nshows and nothing is set; otherwise every line is set in order exactly as the form would set it\n(replacing a rate for the same grade and from-date, writing RATE_SET). Show how many were set.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "069e6623c8d68e06e43d8a16b79ae7a1545232a4",
+  "reset_sha": "",
+  "preagent_sha": "ff8efd218032169df662f7783265ade451851df2",
+  "prev_sha": "ff8efd218032169df662f7783265ade451851df2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6579119999999999,
+    "input_tokens": 28,
+    "output_tokens": 7639,
+    "cache_read_tokens": 545420,
+    "cache_creation_tokens": 49492,
+    "num_turns": 15,
+    "duration_ms": 291625,
+    "duration_api_ms": 70909,
+    "model": "claude-opus-5-5",
+    "session_id": "1487fbcd-c33d-47b8-ae29-6adb68819ca9",
+    "stop_reason": "success",
+    "result_text": "Rates can now be pasted into a new rate import box, and all 4 acceptance tests pass in `bin/e2e`.\n\n**What it does**\n- Each line is `grade,rate,from,to`. The from and to dates can be left out or blank, and blank lines are skipped.\n- Every line is checked first against the rate form's rules: grade A/B/C, a rate of 0.00 or more with up to two decimals, dates as `YYYY-MM-DD`, and a to-date not before the from-date.\n- If any line fails, or nothing was pasted, an error shows and nothing is stored or written to the audit file.\n- Otherwise each line is set in order, exactly as the form does it. A rate with the same grade and from-date is replaced, each line writes `RATE_SET`, and the totals update as they do after a single rate change.\n- The box then shows how many rates were set, and the rates list updates straight away.\n\n**Changes**\n- **Server:** `RateService.importRates` checks all the lines and then sets them in one transaction, using the existing `set` logic. A new `POST /api/sheets/{sheetId}/rates/import` returns the count and the sheet's updated rates. The existing permission checks cover the new endpoint, so a viewer can't import.\n- **Front end:** `Rates.importRates` in `core/rates.ts`, and a new `ImportRates` component (`features/rates/import-rates.ts`) placed on the home screen under the rates panel.\n\nThe error message is meant to name the bad line (e.g. \"Line 2: the grade must be A, B or C.\"). I didn't confirm the server sends that text through to the browser, though. If it doesn't, the screen shows a general \"nothing was imported\" message instead.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6579119999999999,
+        "num_turns": 15,
+        "duration_ms": 291625,
+        "duration_api_ms": 70909,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp118.agent.jsonl",
+  "agent_diff_file": "cp118.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
