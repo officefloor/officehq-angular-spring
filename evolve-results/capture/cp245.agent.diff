@@ -1,0 +1,247 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 30638db07..4773e18eb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -248,7 +248,7 @@ function csvField(value: string): string {
+         <dd data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' | fig }}</dd>
+       </dl>
+     </section>
+-    <app-rates [grades]="grades()" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
++    <app-rates [grades]="grades()" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" (withdrawn)="ratesImported()" />
+     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index a6a7389ef..3c1588941 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -337,7 +337,7 @@ export function trimmedSumDues(dues: string[]): string {
+       <table>
+         <caption>All rates</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (r of ownRates(); track r.grade + '-' + r.from) {
+@@ -347,6 +347,16 @@ export function trimmedSumDues(dues: string[]): string {
+               <td data-testid="rate-to">{{ r.to ?? 'no end' | fig }}</td>
+               <td data-testid="rate-pct">{{ r.pct | fig }}</td>
+               <td data-testid="rate-version">{{ r.version | fig }}</td>
++              <td>
++                <button
++                  type="button"
++                  data-testid="rate-withdraw"
++                  [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' rate from ' + (r.from ?? 'always')"
++                  (click)="withdraw(r)"
++                >
++                  Withdraw
++                </button>
++              </td>
+             </tr>
+           }
+         </tbody>
+@@ -366,6 +376,8 @@ export class Rates {
+   readonly saved = output<Rate>();
+   /** Rates were imported: the screen is to re-read them. */
+   readonly imported = output<void>();
++  /** A rate's newest version was withdrawn: the screen is to re-read the rates. */
++  readonly withdrawn = output<void>();
+ 
+   protected readonly grade = signal('A');
+   protected readonly pct = signal('');
+@@ -472,6 +484,36 @@ export class Rates {
+     }
+   }
+ 
++  /**
++   * Withdraw the rate's newest version: the one before it applies again, or the rate is gone. Only a steward may; a
++   * refusal shows on the rate form.
++   */
++  protected async withdraw(rate: Rate): Promise<void> {
++    if (this.submitting) return;
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.submitting = true;
++    try {
++      await firstValueFrom(
++        this.http.delete<void>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${rate.grade}`, {
++          ...this.session.headers(),
++          params: rate.from === null ? {} : { from: rate.from },
++        }),
++      );
++      if (this.session.sheet() === sheet) this.withdrawn.emit();
++    } catch (e) {
++      if (this.session.sheet() !== sheet) return;
++      this.error.set(
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'Only a steward can withdraw a rate.'
++          : 'The rate could not be withdrawn.',
++      );
++    } finally {
++      this.submitting = false;
++    }
++  }
++
+   /** Shows what the candidate rate would change for the grade; nothing is saved. */
+   protected async preview(event: Event): Promise<void> {
+     event.preventDefault();
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index d96491e3d..09b5163e0 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -15,6 +15,7 @@ import java.util.List;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.server.ResponseStatusException;
+ 
+@@ -85,7 +87,7 @@ public class RateController {
+             return date(to);
+         }
+ 
+-        private static LocalDate date(String value) {
++        static LocalDate date(String value) {
+             if (value == null || value.isBlank()) {
+                 return null;
+             }
+@@ -160,4 +162,17 @@ public class RateController {
+             @RequestBody @Valid ImportRequest request) {
+         return new ImportResult(imports.importRates(sheetId.trim(), user.trim(), request.text()));
+     }
++
++    /**
++     * Withdraw the newest version of the grade's rate from the from-date (missing or blank: its undated rate); the one
++     * before it applies again, or the rate is gone. Refused for a non-steward.
++     */
++    @DeleteMapping("/{grade}")
++    @ResponseStatus(HttpStatus.NO_CONTENT)
++    public void withdraw(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
++            @RequestParam(required = false) @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        service.withdraw(sheetId.trim(), user.trim(), grade, RateRequest.date(from));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateNotFoundException.java b/src/main/java/net/officefloor/hq/app/rate/RateNotFoundException.java
+new file mode 100644
+index 000000000..521786779
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateNotFoundException.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.rate;
++
++import java.time.LocalDate;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The grade has no rate of its own on the sheet with the from-date. */
++@ResponseStatus(HttpStatus.NOT_FOUND)
++public class RateNotFoundException extends RuntimeException {
++
++    public RateNotFoundException(String grade, LocalDate fromDate) {
++        super("Grade " + grade + " has no rate " + (fromDate == null ? "from the beginning of time" : "from " + fromDate));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 5f344e44d..85f264536 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -5,9 +5,11 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.Comparator;
+ import java.util.List;
++import java.util.Objects;
+ import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -26,9 +28,11 @@ public class RateService {
+     private final SheetRepository sheets;
+     private final Audit audit;
+     private final RollupService rollup;
++    private final RoleService roles;
+ 
+     public RateService(RateRepository rates, RateLogRepository logs, RateVersionRepository versions,
+-            ClaimRepository claims, SheetRepository sheets, Audit audit, RollupService rollup) {
++            ClaimRepository claims, SheetRepository sheets, Audit audit, RollupService rollup, RoleService roles) {
++        this.roles = roles;
+         this.claims = claims;
+         this.rates = rates;
+         this.logs = logs;
+@@ -146,4 +150,42 @@ public class RateService {
+         rollup.withOlder(List.of(saved));
+         return saved;
+     }
++
++    /**
++     * Withdraw the newest version of the grade's rate from the from-date (null: its undated rate): the version before
++     * it, when there is one, is in force again; with none the rate is gone. Its last logged setting goes with it.
++     * Refused unless the user is a steward on the sheet.
++     */
++    @Transactional
++    public void withdraw(String sheetId, String user, String grade, LocalDate fromDate) {
++        if (sheets.lockById(sheetId) == 0) {
++            throw new SheetNotFoundException(sheetId);
++        }
++        if (!roles.isSteward(sheetId, user)) {
++            throw new RateWithdrawForbiddenException(grade, user);
++        }
++        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, fromDate)
++                .orElseThrow(() -> new RateNotFoundException(grade, fromDate));
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        List<RateVersion> older = versions.findByRateIdOrderByVersionAsc(rate.getId());
++        if (older.isEmpty()) {
++            rates.delete(rate);
++        } else {
++            RateVersion previous = older.get(older.size() - 1);
++            versions.delete(previous);
++            rate.setVersion(previous.getVersion());
++            rate.setPct(previous.getPct());
++            rate.setToDate(previous.getToDate());
++            rate.setForwardAfter(previous.getForwardAfter());
++            rates.save(rate);
++        }
++        logs.findBySheetIdAndGradeOrderByIdAsc(sheetId, grade).stream()
++                .filter(l -> Objects.equals(l.getFromDate(), fromDate))
++                .reduce((first, second) -> second)
++                .ifPresent(logs::delete);
++        rates.flush();
++        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user + " grade=" + grade
++                + (fromDate == null ? "" : " from=" + fromDate));
++        rollup.recordChanges(sheetId, user, before);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateWithdrawForbiddenException.java b/src/main/java/net/officefloor/hq/app/rate/RateWithdrawForbiddenException.java
+new file mode 100644
+index 000000000..508808302
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateWithdrawForbiddenException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.rate;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The withdrawal of a rate by a user who is not a steward on the sheet. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class RateWithdrawForbiddenException extends RuntimeException {
++
++    public RateWithdrawForbiddenException(String grade, String user) {
++        super("The rate for grade " + grade + " cannot be withdrawn by " + user + ": only a steward can");
++    }
++}
