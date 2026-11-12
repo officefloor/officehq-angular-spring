@@ -185,7 +185,8 @@ public class StatementService {
             boolean bound = bindingsStood && claim.isStated();
             boolean counts = status != null && status.counts()
                     && !(status.isOpen() && !bound && person.retiredAsOf(asOf))
-                    && !(status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
+                    && !((status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !bound
+                            && claim.getDeferredUntil() != null
                             && asOf.isBefore(claim.getDeferredUntil()));
             if (!counts) {
                 claim.setStated(false, null);

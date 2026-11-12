@@ -152,11 +152,13 @@ export function counts(claim: Claim, today: string | null): boolean {
 }
 
 /**
- * Whether the claim is deferred on the sheet's today: an OPEN claim deferred until a later date. It then counts in no
- * total, is not overdue, cannot be settled and is left unbound by a statement.
+ * Whether the claim is deferred on the sheet's today: an OPEN claim deferred until a later date, and not bound by a
+ * statement. It then counts in no total, is not overdue, cannot be settled and is left unbound by a statement. While a
+ * statement binds it the deferral waits; once the binding ends it takes effect, on a claim settled meanwhile too.
  */
 export function deferred(claim: Claim, today: string | null): boolean {
-  return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+  return (claim.status === 'OPEN' || claim.status === 'SETTLED') && !bound(claim)
+    && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
 }
 
 /**
@@ -910,10 +912,13 @@ export class Claims implements OnInit {
     return deferred(claim, this.session.today());
   }
 
-  /** Whether the claim's deferral has not yet ended on the sheet's today, whatever its status now. */
+  /**
+   * Whether the claim's deferral has not yet ended on the sheet's today, whatever its status now; it waits while a
+   * statement binds the claim.
+   */
   protected deferralRunning(claim: Claim): boolean {
     const today = this.session.today();
-    return claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+    return !bound(claim) && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
   }
 
   /** The name of the period the claim's due-by falls in, or blank when none. */
