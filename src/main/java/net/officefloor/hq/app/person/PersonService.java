@@ -96,23 +96,30 @@ public class PersonService {
         requireFreeName(sheetId, name.trim(), null);
         Rollup.Snapshot before = rollup.take(sheetId);
         Person person = saved(new Person(sheetId, name.trim(), grade));
-        audit("PERSON_ADDED", person, user);
+        audit("PERSON_ADDED", person, user, today(sheetId));
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
 
     @Transactional
-    public Person update(String sheetId, String user, long personId, long version, String name, String grade) {
+    /** Change a person's name, and record the grade from a date (the sheet's today when none is given),
+     *  keeping the grades already recorded; a save leaving the grade as it is on the sheet's today, with no
+     *  from-date, records nothing. */
+    public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonVersionConflictException(person);
         }
         requireFreeName(sheetId, name.trim(), person.getId());
         Rollup.Snapshot before = rollup.take(sheetId);
+        LocalDate today = today(sheetId);
         person.setName(name.trim());
-        person.setGrade(grade);
+        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+        }
         Person updated = saved(person);
-        audit("PERSON_EDITED", updated, user);
+        audit("PERSON_EDITED", updated, user, today);
         rollup.recordChanges(sheetId, user, before);
         return updated;
     }
@@ -121,8 +128,7 @@ public class PersonService {
     @Transactional
     public Person retire(String sheetId, String user, long personId, LocalDate from) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
-        LocalDate on = from != null ? from
-                : sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
+        LocalDate on = from != null ? from : today(sheetId);
         person.setRetiredFrom(on);
         Person retired = saved(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + retired.getName()
@@ -143,9 +149,16 @@ public class PersonService {
         return toggled;
     }
 
-    private void audit(String event, Person person, String user) {
+    /** The grade recorded is the one in force on the sheet's today. */
+    private void audit(String event, Person person, String user, LocalDate today) {
         audit.recordOnCommit(event + " sheet=" + person.getSheetId() + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.getGrade());
+                + " name=" + person.getName() + " grade=" + person.gradeOn(today));
+    }
+
+    /** The sheet's today, the date the grade the screen shows is in force on. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).getToday();
     }
 
     private void requireFreeName(String sheetId, String name, Long exceptId) {

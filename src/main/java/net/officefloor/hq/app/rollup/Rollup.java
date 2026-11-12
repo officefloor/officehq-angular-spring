@@ -81,15 +81,19 @@ public class Rollup {
                     keptFigure = true;
                     due = due.add(charged(sheet, claim, kept));
                 } else if (!claim.isStated()) {
-                    BigDecimal live = inForce(sheetRates, person.getGrade(), claim.getDate())
+                    // a claim priced at the grade in force on its date keeps a figure too
+                    BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                             .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
                                     .setScale(2, RoundingMode.HALF_EVEN))
                             .map(d -> sheet.map(s -> s.floored(d)).orElse(d))
-                            .orElse(ZERO);
-                    due = due.add(charged(sheet, claim, live));
+                            .orElse(null);
+                    if (live != null) {
+                        keptFigure = true;
+                        due = due.add(charged(sheet, claim, live));
+                    }
                 }
             }
-            boolean rated = today != null && inForce(sheetRates, person.getGrade(), today).isPresent();
+            boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
             BigDecimal personDue = rated || keptFigure ? due : null;
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
             claimedTotal = claimedTotal.add(claimed);
@@ -107,10 +111,10 @@ public class Rollup {
     public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
-        Map<Long, String> grades = new LinkedHashMap<>();
+        Map<Long, Person> byId = new LinkedHashMap<>();
         Set<Long> held = new HashSet<>();
         people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
-            grades.put(p.getId(), p.getGrade());
+            byId.put(p.getId(), p);
             if (p.isHeld()) {
                 held.add(p.getId());
             }
@@ -126,8 +130,8 @@ public class Rollup {
             } else if (claim.isStated()) {
                 due = claim.getStatedDue();
             } else {
-                String grade = grades.get(claim.getPersonId());
-                due = grade == null ? null : inForce(sheetRates, grade, claim.getDate())
+                Person person = byId.get(claim.getPersonId());
+                due = person == null ? null : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                         .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
                                 .setScale(2, RoundingMode.HALF_EVEN))
                         .map(d -> sheet.map(s -> s.floored(d)).orElse(d))

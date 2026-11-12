@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Claims } from '../../core/claims';
-import { People } from '../../core/people';
+import { People, gradeOn } from '../../core/people';
 import { Period, Periods } from '../../core/periods';
 import { Rates, hundredths, money } from '../../core/rates';
 
@@ -86,7 +86,7 @@ export class PeriodsPanel {
    *  in it — a settled claim's frozen due, else as its person's last statement bound it, else its
    *  live due, an overdue claim's late charge on top (a claim with no figure adds nothing). */
   protected readonly dueTotals = computed(() => {
-    const grades = new Map(this.people.people().map((p) => [p.id, p.grade]));
+    const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
     const sums = new Map<number, bigint>();
     for (const c of this.claims.live()) {
       const period = this.periods.of(c.date);
@@ -96,7 +96,7 @@ export class PeriodsPanel {
       else if (c.stated) due = c.statedDue === null ? null : hundredths(c.statedDue);
       else {
         const grade = grades.get(c.personId);
-        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), grade, c.date);
+        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date);
       }
       if (due !== null && c.settledDue === null) due += this.claims.lateCents(c, due);
       sums.set(period.id, (sums.get(period.id) ?? 0n) + (due ?? 0n));

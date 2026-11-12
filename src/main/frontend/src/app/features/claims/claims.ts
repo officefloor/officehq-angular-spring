@@ -1,6 +1,7 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Claim, ClaimAction, Claims } from '../../core/claims';
 import { Periods } from '../../core/periods';
+import { GradeFrom, gradeOn } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 
 // A person's claims: one form adds a claim, or edits the one whose editor is open, and the list
@@ -83,9 +84,9 @@ export class PersonClaims {
   private readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);
   readonly personId = input.required<number>();
-  /** The person's grade, whose rate in force on each claim's date gives its due, unless fixed when
-   *  it was settled or bound by the person's last statement. */
-  readonly grade = input.required<string>();
+  /** The person's dated grades: the rate in force on each claim's date of the grade in force then
+   *  gives its due, unless fixed when it was settled or bound by the person's last statement. */
+  readonly grades = input.required<GradeFrom[]>();
   protected readonly list = computed(() => this.claims.of(this.personId()));
   protected readonly amount = signal('');
   protected readonly date = signal('');
@@ -111,7 +112,7 @@ export class PersonClaims {
     if (c.settledDue !== null) return c.settledDue;
     const f = c.stated
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
-      : this.rates.dueCents(hundredths(c.amount), this.grade(), c.date);
+      : this.rates.dueCents(hundredths(c.amount), gradeOn(this.grades(), c.date), c.date);
     return f === null ? NO_RATE : money(f + this.claims.lateCents(c, f));
   }
 

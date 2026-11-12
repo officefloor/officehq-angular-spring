@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Claim, Claims } from '../../core/claims';
-import { GRADES, People, Person } from '../../core/people';
+import { GRADES, People, Person, gradeOn } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
@@ -32,6 +32,16 @@ import { PersonClaims } from '../claims/claims';
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
+        @if (editing() !== null) {
+          <label for="person-form-grade-from">Grade from</label>
+          <input
+            id="person-form-grade-from"
+            data-testid="person-form-grade-from"
+            placeholder="YYYY-MM-DD"
+            [value]="gradeFrom()"
+            (input)="gradeFrom.set(value($event)); error.set(null)"
+          />
+        }
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -84,7 +94,7 @@ import { PersonClaims } from '../claims/claims';
           @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
               <td data-testid="person-overdue-count">{{ overdue(p).length }}</td>
@@ -126,7 +136,7 @@ import { PersonClaims } from '../claims/claims';
                 }
               </td>
               <td data-testid="person-backing">{{ backing(p) }}</td>
-              <td><app-person-claims [personId]="p.id" [grade]="p.grade" /></td>
+              <td><app-person-claims [personId]="p.id" [grades]="p.grades" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -204,6 +214,8 @@ export class PeopleList {
   );
   protected readonly name = signal('');
   protected readonly grade = signal<string>('A');
+  /** The date the editor's grade applies from; blank takes the sheet's today. */
+  protected readonly gradeFrom = signal('');
   /** The id of the person whose editor is open, or null when the form adds. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded; a save from it is refused once someone else saved. */
@@ -235,29 +247,37 @@ export class PeopleList {
 
   /** The sum of the figures of a person's claims that count live (not OPEN while they are on hold): a settled claim's frozen due, else the
    *  figure their last statement bound it to, else its live due at the rate in force on its date (a
-   *  claim with no figure adds nothing). Null when the grade has no rate on the sheet's today and no
-   *  settled or bound claim keeps a figure. */
+   *  claim with no figure adds nothing). Null when the grade in force on the sheet's today has no rate
+   *  there and no claim has a figure. */
   private dueCents(p: Person): bigint | null {
     let sum = 0n;
     let keptFigure = false;
     for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
       if (c.settledDue !== null || (c.stated && c.statedDue !== null)) keptFigure = true;
-      sum += this.figureCents(c, p.grade);
+      // a claim priced at the grade in force on its date keeps a figure too
+      else if (!c.stated && this.rates.inForce(gradeOn(p.grades, c.date), c.date) !== undefined) keptFigure = true;
+      sum += this.figureCents(c, p);
     }
     const today = this.session.today();
-    const rated = today ? this.rates.inForce(p.grade, today) !== undefined : false;
+    const rated = today ? this.rates.inForce(gradeOn(p.grades, today), today) !== undefined : false;
     return rated || keptFigure ? sum : null;
   }
 
   /** A claim's figure: its settled due, else the figure its person's last statement bound it to,
    *  else its live due at the rate in force on its date, an overdue claim's late charge on top;
    *  nothing when it has no figure. */
-  private figureCents(c: Claim, grade: string): bigint {
+  private figureCents(c: Claim, p: Person): bigint {
     if (c.settledDue !== null) return hundredths(c.settledDue);
     const f = c.stated
       ? (c.statedDue === null ? 0n : hundredths(c.statedDue))
-      : (this.rates.dueCents(hundredths(c.amount), grade, c.date) ?? 0n);
+      : (this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date) ?? 0n);
     return f + this.claims.lateCents(c, f);
+  }
+
+  /** The grade in force on the sheet's today, the one the list shows. */
+  protected gradeToday(p: Person): string {
+    const today = this.session.today();
+    return today ? gradeOn(p.grades, today) : p.grade;
   }
 
   /** A person's claims that count live and are overdue. */
@@ -267,7 +287,7 @@ export class PeopleList {
 
   /** The due of a person's overdue claims that count, added up. */
   private overdueCents(p: Person): bigint {
-    return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p.grade), 0n);
+    return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p), 0n);
   }
 
   protected overdueDue(p: Person): string {
@@ -375,13 +395,15 @@ export class PeopleList {
   private load(p: Person): void {
     this.version.set(p.version);
     this.name.set(p.name);
-    this.grade.set(p.grade);
+    this.grade.set(this.gradeToday(p));
+    this.gradeFrom.set('');
   }
 
   protected reset(): void {
     this.editing.set(null);
     this.name.set('');
     this.grade.set('A');
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -408,7 +430,7 @@ export class PeopleList {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const f = { name: this.name(), grade: this.grade() };
+      const f = { name: this.name(), grade: this.grade(), gradeFrom: this.gradeFrom() };
       const id = this.editing();
       if (id === null) {
         const err = await this.people.add(f);

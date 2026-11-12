@@ -168,12 +168,12 @@ public class ClaimService {
             BigDecimal due = due(claim, person);
             if (due != null) {
                 total = total.add(charged(claim, due));
-                figure |= claim.getSettledDue() != null || claim.isStated();
+                figure = true;
             }
             claim.setStated(true, due);
             counted++;
         }
-        boolean rated = rates.findInForce(sheetId, person.getGrade(), today).isPresent();
+        boolean rated = rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
         BigDecimal dueTotal = rated || figure ? total : null;
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
@@ -222,11 +222,11 @@ public class ClaimService {
         return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, figure);
     }
 
-    /** The claim's amount at its person's grade's rate in force on its date, at least the sheet's floor;
+    /** The claim's amount at the rate in force on its date of its person's grade in force then in force on its date, at least the sheet's floor;
      *  none when no rate applies. */
     private BigDecimal liveDue(Claim claim, Person person) {
         Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
-        return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
+        return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(rate -> sheet.floored(due(claim.getAmount(), rate)))
                 .orElse(null);
     }

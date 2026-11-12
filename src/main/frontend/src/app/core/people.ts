@@ -6,10 +6,28 @@ import { Session } from './session';
 
 export const GRADES = ['A', 'B', 'C'] as const;
 
+/** A grade a person was given, from a date (YYYY-MM-DD); null for the first, from the beginning of time. */
+export interface GradeFrom {
+  grade: string;
+  from: string | null;
+}
+
+/** The grade in force on a date (YYYY-MM-DD): the one whose from-date is the latest on or before it. */
+export function gradeOn(grades: GradeFrom[], date: string): string {
+  let found: string | undefined;
+  for (const g of grades) {
+    if (found === undefined || g.from === null || g.from <= date) found = g.grade;
+  }
+  return found ?? '';
+}
+
 export interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the server answered. */
   grade: string;
+  /** Every grade they were given, the first (no from-date) first, then by from-date. */
+  grades: GradeFrom[];
   /** Moved on by each save; an edit made from an older version is refused. */
   version: number;
   /** How many statements were taken of them. */
@@ -43,6 +61,8 @@ export interface Refusal {
 export interface PersonFields {
   name: string;
   grade: string;
+  /** The date an edit's grade applies from (YYYY-MM-DD); blank takes the sheet's today. */
+  gradeFrom?: string;
 }
 
 // The people on the active sheet, in the order they were added, re-read from the server each
@@ -103,7 +123,7 @@ export class People {
     try {
       put(
         await firstValueFrom(
-          this.http.put<Person>(`${this.url(sid)}/${id}`, { ...this.body(f), version }, {
+          this.http.put<Person>(`${this.url(sid)}/${id}`, { ...this.body(f), gradeFrom: f.gradeFrom?.trim() || null, version }, {
             headers: { 'X-User': this.session.user()! },
           }),
         ),
@@ -197,6 +217,8 @@ export class People {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!f.name.trim()) return 'Enter a name.';
     if (!(GRADES as readonly string[]).includes(f.grade)) return 'Choose a grade.';
+    const from = f.gradeFrom?.trim();
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
     return null;
   }
 

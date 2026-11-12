@@ -31,14 +31,16 @@ public class PersonController {
 
     /** A person as the screen shows it, with how many statements were taken of them and the last one's
      *  due-total (n/a when it was) and date; none of either before their first statement; and the ids
-     *  of their patrons. */
-    public record PersonView(long id, String name, String grade, long version, int statementCount,
+     *  of their patrons. Their grade is the one in force on the sheet's today; grades lists every grade
+     *  they were given, each with its from-date (YYYY-MM-DD, none for the first). */
+    public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
             boolean held, List<Long> patronIds) {
 
-        public static PersonView of(Person person, List<Statement> statements, List<Long> patronIds) {
+        public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds) {
             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+            return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                    person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
                     statements.size(),
                     last == null ? null : last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(),
                     last == null ? null : last.getTakenOn().toString(),
@@ -47,15 +49,26 @@ public class PersonController {
         }
     }
 
+    /** A grade a person was given and the date it applies from; none for the beginning of time. */
+    public record GradeView(String grade, String from) {
+
+        static GradeView of(PersonGrade grade) {
+            return new GradeView(grade.getGrade(), grade.getFromDate() == null ? null : grade.getFromDate().toString());
+        }
+    }
+
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
     }
 
-    /** A person's new name and grade, with the version of the person the editor loaded. */
+    /** A person's new name and grade, the date the grade applies from (none: the sheet's today, or
+     *  nothing recorded when the grade is the one in force then), with the version of the person the
+     *  editor loaded. */
     public record PersonUpdate(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate gradeFrom,
             @NotNull Long version) {
     }
 
@@ -79,8 +92,10 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         Map<Long, List<Statement>> statements = service.statements(sheetId.trim());
         Map<Long, List<Long>> patrons = service.patrons(sheetId.trim());
-        return service.list(sheetId.trim()).stream()
-                .map(p -> PersonView.of(p, statements.getOrDefault(p.getId(), List.of()),
+        List<Person> people = service.list(sheetId.trim());
+        LocalDate today = service.today(sheetId.trim());
+        return people.stream()
+                .map(p -> PersonView.of(p, today, statements.getOrDefault(p.getId(), List.of()),
                         patrons.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
@@ -90,10 +105,11 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()), List.of(), List.of());
+        Person added = service.add(sheetId.trim(), user.trim(), request.name(), request.grade());
+        return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of());
     }
 
-    /** Change a person's name and grade. */
+    /** Change a person's name, and give them a grade from a date. */
     @PutMapping("/{personId}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long personId,
@@ -101,7 +117,7 @@ public class PersonController {
             @RequestBody @Valid PersonUpdate request) {
         try {
             Person updated = service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade());
+                    request.name(), request.grade(), request.gradeFrom());
             return view(updated);
         } catch (ObjectOptimisticLockingFailureException e) {
             // saved by someone else between the version check and the write
@@ -145,7 +161,7 @@ public class PersonController {
     }
 
     private PersonView view(Person person) {
-        return PersonView.of(person, service.statementsOf(person.getId()), service.patronsOf(person.getId()));
+        return PersonView.of(person, service.today(person.getSheetId()), service.statementsOf(person.getId()), service.patronsOf(person.getId()));
     }
 
     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */
