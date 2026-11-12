@@ -1,0 +1,229 @@
+diff --git a/src/main/frontend/src/app/features/policy/policy-versions.ts b/src/main/frontend/src/app/features/policy/policy-versions.ts
+index db43ad6d2..c8c64e686 100644
+--- a/src/main/frontend/src/app/features/policy/policy-versions.ts
++++ b/src/main/frontend/src/app/features/policy/policy-versions.ts
+@@ -13,10 +13,18 @@ interface PolicyLineView {
+   /** yyyy-mm-dd; null: in force on every date. */
+   from: string | null;
+   claims: number;
++  /** The dues of those claims that count, added up, two decimals. */
++  dueTotal: string;
++}
++
++/** A CSV field, quoted when it holds a comma, a quote or a line break. */
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+ }
+ 
+ // The policy versions: one line per version, oldest first, as <version> <from or start> <key>=<value> <count of
+-// claims whose policy version it is>. It records nothing.
++// claims whose policy version it is>; and a button that downloads them as a CSV file with the due-total of those
++// claims that count. It records nothing.
+ @Component({
+   selector: 'app-policy-versions',
+   imports: [FigurePipe],
+@@ -24,9 +32,13 @@ interface PolicyLineView {
+     <section aria-labelledby="policy-heading">
+       <h2 id="policy-heading">Policy versions</h2>
+       <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++      <button type="button" data-testid="export-policy" (click)="exportCsv()">Export policy versions (CSV)</button>
+       @if (error(); as message) {
+         <p role="alert" data-testid="policy-error">{{ message | fig }}</p>
+       }
++      @if (exportError(); as message) {
++        <p role="alert" data-testid="export-policy-error">{{ message | fig }}</p>
++      }
+       <ol aria-label="Policy versions">
+         @for (line of lines(); track $index) {
+           <li data-testid="policy-line">{{ line | fig }}</li>
+@@ -41,6 +53,7 @@ export class PolicyVersions {
+ 
+   protected readonly lines = signal<string[]>([]);
+   protected readonly error = signal<string | null>(null);
++  protected readonly exportError = signal<string | null>(null);
+   private reads = 0;
+ 
+   constructor() {
+@@ -51,10 +64,41 @@ export class PolicyVersions {
+         this.reads++;
+         this.lines.set([]);
+         this.error.set(null);
++        this.exportError.set(null);
+       });
+     });
+   }
+ 
++  /**
++   * Download the policy versions as a CSV file, first made to last: each one's number, from-date (blank: every date),
++   * setting and value, the number of claims whose policy version it is, and the dues of those that count added up.
++   */
++  protected async exportCsv(): Promise<void> {
++    this.exportError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    try {
++      const versions = await firstValueFrom(
++        this.http.get<PolicyLineView[]>(
++          `/api/sheets/${encodeURIComponent(sheet)}/settings/policy`,
++          this.session.headers(),
++        ),
++      );
++      const lines = [['version', 'from', 'key', 'value', 'claims', 'due-total']].concat(
++        versions.map((v) => [String(v.number), v.from ?? '', v.key, v.value ?? '', String(v.claims), v.dueTotal]),
++      );
++      const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
++      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
++      const link = document.createElement('a');
++      link.href = url;
++      link.download = `policy-${sheet}.csv`;
++      link.click();
++      setTimeout(() => URL.revokeObjectURL(url));
++    } catch {
++      this.exportError.set('The policy versions could not be exported.');
++    }
++  }
++
+   protected async show(): Promise<void> {
+     this.error.set(null);
+     const sheet = this.session.sheet();
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index bc5baad09..ff62c8e39 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -640,6 +640,30 @@ public class RollupService {
+         return totals;
+     }
+ 
++    /**
++     * The due as shown now of each of the sheet's claims that counts in the live totals now, by claim id: an OPEN,
++     * PENDING or SETTLED one, not one their retirement leaves out nor one deferred on the sheet's today, skipping those
++     * with no due.
++     */
++    public Map<Long, BigDecimal> countingDues(String sheetId) {
++        Sheet sheet = sheets.findById(sheetId).orElse(null);
++        LocalDate today = sheet == null ? null : sheet.getToday();
++        List<List<Rate>> sheetRates = rateChain(sheetId);
++        Map<Long, Person> byId = new LinkedHashMap<>();
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            byId.put(person.getId(), person);
++        }
++        Map<Long, BigDecimal> dues = new LinkedHashMap<>();
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            Person person = byId.get(claim.getPersonId());
++            if (person == null || !person.countsAsOf(claim, claim.getStatus(), today)) {
++                continue;
++            }
++            dueOf(sheet, sheetRates, person, claim).ifPresent(due -> dues.put(claim.getId(), due));
++        }
++        return dues;
++    }
++
+     /**
+      * Each person's carried figure for the period, by person id for every person on the sheet, as the screen shows it
+      * while the period is open: the dues as shown now of their claims due by a date in one of the periods that ends
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 9cb982777..4acd54f42 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -76,14 +76,15 @@ public class SettingController {
+ 
+     /**
+      * A policy version as listed: its number, the setting changed, the value given it (null: none), the date it is in
+-     * force from (null: every date) and the number of claims whose policy version it is.
++     * force from (null: every date), the number of claims whose policy version it is, and the dues of those of them
++     * that count added up, two decimals.
+      */
+-    public record PolicyLineView(int number, String key, String value, LocalDate from, long claims) {
++    public record PolicyLineView(int number, String key, String value, LocalDate from, long claims, String dueTotal) {
+ 
+         static PolicyLineView of(SettingService.PolicyVersionCount count) {
+             PolicyVersion version = count.version();
+             return new PolicyLineView(version.getNumber(), version.getKey(), version.getValue(),
+-                    version.getFromDate(), count.claims());
++                    version.getFromDate(), count.claims(), count.dueTotal().toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 75c224b86..4ddf8978a 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.setting;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.HashMap;
+ import java.util.HashSet;
+@@ -43,23 +44,36 @@ public class SettingService {
+         return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId));
+     }
+ 
+-    /** A policy version with the number of the sheet's claims whose policy version it is. */
+-    public record PolicyVersionCount(PolicyVersion version, long claims) {
++    /**
++     * A policy version with the number of the sheet's claims whose policy version it is, and the dues of those of them
++     * that count added up.
++     */
++    public record PolicyVersionCount(PolicyVersion version, long claims, BigDecimal dueTotal) {
+     }
+ 
+     /**
+      * The sheet's policy versions, first made to last, each with the number of its claims whose policy version it is:
+-     * the version in force on the claim's date.
++     * the version in force on the claim's date; and the dues as shown now of those of them counting in the live totals,
++     * added up (0.00 with none).
+      */
+     @Transactional(readOnly = true)
+     public List<PolicyVersionCount> policyVersionCounts(String sheetId) {
+         Sheet sheet = get(sheetId);
++        Map<Long, BigDecimal> dues = rollup.countingDues(sheetId);
+         Map<Integer, Long> byVersion = new HashMap<>();
++        Map<Integer, BigDecimal> dueByVersion = new HashMap<>();
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+-            byVersion.merge(sheet.policyVersionOn(claim.getDate()), 1L, Long::sum);
++            int version = sheet.policyVersionOn(claim.getDate());
++            byVersion.merge(version, 1L, Long::sum);
++            BigDecimal due = dues.get(claim.getId());
++            if (due != null) {
++                dueByVersion.merge(version, due, BigDecimal::add);
++            }
+         }
+         return sheet.policyVersions().stream()
+-                .map(v -> new PolicyVersionCount(v, byVersion.getOrDefault(v.getNumber(), 0L))).toList();
++                .map(v -> new PolicyVersionCount(v, byVersion.getOrDefault(v.getNumber(), 0L),
++                        dueByVersion.getOrDefault(v.getNumber(), BigDecimal.ZERO).setScale(2, RoundingMode.HALF_EVEN)))
++                .toList();
+     }
+ 
+     /**
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index a55288865..28cc89ead 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -7,7 +7,7 @@ import java.util.List;
+ 
+ /**
+  * How many statements a person has had, and the due-total and date of the last one (null with none), with one line
+- * per statement, oldest first by the date it was taken as of: the date, then the due-total.
++ * per statement, oldest first by the sheet's today it was made on: the date it was taken as of, then the due-total.
+  */
+ public record StatementSummary(int count, String lastDueTotal, LocalDate lastDate, List<Statement> statements) {
+ 
+@@ -19,10 +19,13 @@ public record StatementSummary(int count, String lastDueTotal, LocalDate lastDat
+         return new StatementSummary(count + 1, statement.getDueTotal(), statement.getTakenOn(), all);
+     }
+ 
+-    /** One line per statement, oldest first (statements of the same date in their order): date, then due-total. */
++    /**
++     * One line per statement, oldest first by the sheet's today it was made on (one made before that was kept first,
++     * statements of the same date in their order): the date it was taken as of, then the due-total.
++     */
+     public List<String> lines() {
+         return statements.stream()
+-                .sorted(Comparator.comparing(Statement::getTakenOn))
++                .sorted(Comparator.comparing(Statement::getMadeOn, Comparator.nullsFirst(Comparator.naturalOrder())))
+                 .map(s -> s.getTakenOn() + " " + s.getDueTotal())
+                 .toList();
+     }
