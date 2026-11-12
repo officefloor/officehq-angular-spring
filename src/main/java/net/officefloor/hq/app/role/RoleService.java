@@ -1,0 +1,63 @@
+package net.officefloor.hq.app.role;
+
+import java.util.List;
+import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.sheet.SheetNotFoundException;
+import net.officefloor.hq.app.sheet.SheetRepository;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** Keeps the role each sheet gives a user name: clerk (any name with none) or steward. */
+@Service
+public class RoleService {
+
+    private final SheetRoleRepository roles;
+    private final SheetRepository sheets;
+    private final Audit audit;
+
+    public RoleService(SheetRoleRepository roles, SheetRepository sheets, Audit audit) {
+        this.roles = roles;
+        this.sheets = sheets;
+        this.audit = audit;
+    }
+
+    @Transactional(readOnly = true)
+    public List<SheetRole> list(String sheetId) {
+        requireSheet(sheetId);
+        return roles.findBySheetIdOrderByUserNameAsc(sheetId);
+    }
+
+    /** Give a user name a role on the sheet, replacing the one it had. */
+    @Transactional
+    public SheetRole set(String sheetId, String user, String name, String role) {
+        requireSheet(sheetId);
+        SheetRole row = roles.findBySheetIdAndUserName(sheetId, name).orElse(null);
+        if (row == null) {
+            try {
+                row = roles.saveAndFlush(new SheetRole(sheetId, name, role));
+            } catch (DataIntegrityViolationException e) {
+                throw new RoleConflictException();
+            }
+        } else {
+            row.setRole(role);
+            row = roles.saveAndFlush(row);
+        }
+        audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + user + " user=" + name + " role=" + role);
+        return row;
+    }
+
+    /** Whether the sheet makes the user name a steward. */
+    @Transactional(readOnly = true)
+    public boolean isSteward(String sheetId, String name) {
+        return roles.findBySheetIdAndUserName(sheetId, name)
+                .map(r -> SheetRole.STEWARD.equals(r.getRole()))
+                .orElse(false);
+    }
+
+    private void requireSheet(String sheetId) {
+        if (!sheets.existsById(sheetId)) {
+            throw new SheetNotFoundException();
+        }
+    }
+}

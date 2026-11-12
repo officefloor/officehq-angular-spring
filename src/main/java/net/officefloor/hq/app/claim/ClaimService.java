@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.Statement;
 import net.officefloor.hq.app.person.StatementRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -34,11 +35,13 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final StatementRepository statements;
     private final Rollup rollup;
+    private final RoleService roles;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
             SheetRepository sheetRows, PeriodRepository periods, StatementRepository statements, Rollup rollup,
-            Audit audit) {
+            RoleService roles, Audit audit) {
+        this.roles = roles;
         this.sheetRows = sheetRows;
         this.periods = periods;
         this.rollup = rollup;
@@ -95,7 +98,8 @@ public class ClaimService {
     }
 
     /** Move a claim to another status; refused when its current status does not allow it,
-     *  or when the user settling it is the one who opened it. Settling fixes the
+     *  or when the user settling it is the one who opened it, or is a clerk and its due is above the
+     *  sheet's clerk limit (a due of n/a is within any limit). Settling fixes the
      *  claim's due at its grade's rate in force on its date (a claim bound by a statement at the figure it
      *  bound); with no figure then, its due stays live. */
     @Transactional
@@ -117,7 +121,9 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (to == ClaimStatus.SETTLED) {
-            claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : liveDue(claim, person));
+            BigDecimal due = claim.isStated() ? claim.getStatedDue() : liveDue(claim, person);
+            refuseOverLimit(sheetId, user, due);
+            claim.setSettledDue(due);
         }
         claim.setStatus(to);
         claim.setNumber(number);
@@ -179,6 +185,15 @@ public class ClaimService {
         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException();
+        }
+    }
+
+    /** Refuse a clerk settling a due above the sheet's clerk limit; a steward settles anything, and a due
+     *  of n/a, or a sheet with no limit, is within it. */
+    private void refuseOverLimit(String sheetId, String user, BigDecimal due) {
+        BigDecimal limit = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).getClerkLimit();
+        if (limit != null && due != null && due.compareTo(limit) > 0 && !roles.isSteward(sheetId, user)) {
+            throw new ClaimLimitException();
         }
     }
 

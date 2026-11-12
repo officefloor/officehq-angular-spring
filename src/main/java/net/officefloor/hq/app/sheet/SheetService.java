@@ -1,7 +1,9 @@
 package net.officefloor.hq.app.sheet;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -13,10 +15,12 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final Rollup rollup;
+    private final Audit audit;
 
-    public SheetService(SheetRepository sheets, Rollup rollup) {
+    public SheetService(SheetRepository sheets, Rollup rollup, Audit audit) {
         this.sheets = sheets;
         this.rollup = rollup;
+        this.audit = audit;
     }
 
     @Transactional
@@ -44,6 +48,16 @@ public class SheetService {
         Rollup.Snapshot before = rollup.take(id);
         sheet.setToday(today);
         rollup.recordChanges(id, user, before);
+        return sheet;
+    }
+
+    /** Change the sheet's clerk limit: the largest due a clerk may settle; none for no limit. */
+    @Transactional
+    public Sheet setClerkLimit(String id, String user, BigDecimal limit) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setClerkLimit(limit == null ? null : limit.setScale(2));
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=clerk-limit value="
+                + (sheet.getClerkLimit() == null ? "" : sheet.getClerkLimit().toPlainString()));
         return sheet;
     }
 

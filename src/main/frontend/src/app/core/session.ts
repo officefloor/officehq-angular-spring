@@ -5,6 +5,8 @@ import { firstValueFrom } from 'rxjs';
 export interface SheetView {
   id: string;
   today: string;
+  /** The largest due a clerk may settle, two decimals; null when there is no limit. */
+  clerkLimit: string | null;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
@@ -17,6 +19,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The sheet's today (YYYY-MM-DD): every date decision and default date uses it, never the clock. */
   readonly today = signal<string | null>(null);
+  /** The sheet's clerk limit (two decimals); null when there is none. */
+  readonly clerkLimit = signal<string | null>(null);
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -38,6 +42,7 @@ export class Session {
       );
       this.sheetId.set(sheet.id);
       this.today.set(sheet.today);
+      this.clerkLimit.set(sheet.clerkLimit);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -60,6 +65,26 @@ export class Session {
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not change today (${e.status}).` : 'Could not change today.';
+    }
+  }
+
+  /** Change the sheet's clerk limit (blank: no limit); an error message when refused. */
+  async setClerkLimit(limit: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const l = limit.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (l && !/^\d+(\.\d{1,2})?$/.test(l)) return 'Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings`, { clerkLimit: l || null }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.clerkLimit.set(sheet.clerkLimit);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
   }
 }

@@ -184,4 +184,11 @@ public class ClaimController {
     public Map<String, String> settlerRefused(ClaimSettlerException e) {
         return Map.of("message", e.getMessage());
     }
+
+    /** A settle by a clerk of a due above the clerk limit is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimLimitException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> overLimit(ClaimLimitException e) {
+        return Map.of("message", e.getMessage());
+    }
 }
