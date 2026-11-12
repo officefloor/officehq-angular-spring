@@ -86,6 +86,12 @@ public class SheetService {
         });
     }
 
+    /** The sheet's pot; none when there is no pot. */
+    @Transactional(readOnly = true)
+    public BigDecimal pot(String id) {
+        return sheets.findById(id).orElseThrow(SheetNotFoundException::new).getPot();
+    }
+
     /** The sheet's today. Every date decision and default date in the sheet goes through this. */
     @Transactional(readOnly = true)
     public LocalDate today(String id) {
@@ -242,6 +248,17 @@ public class SheetService {
         sheet.setGraceDays(graceDays);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=grace-days value="
                 + (graceDays == null ? "" : graceDays.toString()));
+        return sheet;
+    }
+
+    /** Change the sheet's pot (none: no pot). Not dated. */
+    @Transactional
+    public Sheet setPot(String id, String user, BigDecimal pot) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        BigDecimal p = pot == null ? null : pot.setScale(2);
+        sheet.setPot(p);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
+                + (p == null ? "" : p.toPlainString()));
         return sheet;
     }
 

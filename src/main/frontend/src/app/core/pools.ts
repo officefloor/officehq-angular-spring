@@ -9,6 +9,9 @@ export interface PoolMemberView {
   name: string;
   share: string;
   retired: boolean;
+  /** Their cut of the sheet's pot, two decimals (0.00 when retired); null when the pool is unbalanced or
+   *  there is no pot. */
+  cut: string | null;
 }
 
 /** A pool: its members, their total share, and whether that is exactly 100.00. */

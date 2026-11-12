@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { GRADES } from '../../core/people';
+import { Pools } from '../../core/pools';
 import { ROLES, Roles } from '../../core/roles';
 import { PERMISSION_ACTIONS, Session } from '../../core/session';
 
@@ -256,6 +257,18 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="graceDaysTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-grace-days-current">{{ session.graceDays() ?? '' }}</strong></p>
+        <label for="setting-pot">Pot (shared out among the members of each balanced pool; blank for none)</label>
+        <input
+          id="setting-pot"
+          data-testid="setting-pot"
+          inputmode="decimal"
+          [value]="pot()"
+          (input)="pot.set(value($event)); potTouched.set(true); error.set(null)"
+          (focus)="focused.set('pot')"
+          (keydown.delete)="potTouched.set(true); error.set(null)"
+          (keydown.backspace)="potTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
         @for (a of actions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; blank for the standing rule)</label>
           <input
@@ -348,6 +361,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 export class SettingsPanel {
   protected readonly session = inject(Session);
   protected readonly roles = inject(Roles);
+  private readonly pools = inject(Pools);
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly limit = signal('');
   protected readonly limitTouched = signal(false);
@@ -387,6 +401,8 @@ export class SettingsPanel {
   protected readonly graceDaysTouched = signal(false);
   protected readonly entryDate = signal('');
   protected readonly entryDateTouched = signal(false);
+  protected readonly pot = signal('');
+  protected readonly potTouched = signal(false);
   /** The setting that may be blank whose field was focused last: an untouched save (a blank typed into a
    *  blank field fires no input) saves that one. */
   protected readonly focused = signal<string | null>(null);
@@ -469,7 +485,7 @@ export class SettingsPanel {
         && !this.noteThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
-        && !this.graceDaysTouched() && !this.entryDateTouched()
+        && !this.graceDaysTouched() && !this.entryDateTouched() && !this.potTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
         && this.gradeProofThresholdTouched().size === 0
         && this.permsTouched().size === 0;
@@ -498,9 +514,11 @@ export class SettingsPanel {
         || (guess && this.graceDays().trim() !== (this.session.graceDays()?.toString() ?? ''));
       const entryDate = this.entryDateTouched() || pick === 'entry-date'
         || (guess && this.entryDate().trim() !== (this.session.entryDate() ?? ''));
+      const pot = this.potTouched() || pick === 'pot'
+        || (guess && this.pot().trim() !== (this.session.pot() ?? ''));
       const limit = this.limitTouched() || pick === 'limit'
         || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
-          && !entryDate)
+          && !entryDate && !pot)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
@@ -520,7 +538,8 @@ export class SettingsPanel {
         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null)
         ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null)
-        ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null);
+        ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null)
+        ?? (pot ? await this.savePot() : null);
       if (err) this.error.set(err);
       else {
         this.limit.set('');
@@ -554,11 +573,20 @@ export class SettingsPanel {
         this.graceDaysTouched.set(false);
         this.entryDate.set('');
         this.entryDateTouched.set(false);
+        this.pot.set('');
+        this.potTouched.set(false);
         this.focused.set(null);
       }
     } finally {
       this.saving.set(false);
     }
+  }
+
+  /** Save the pot, then re-read the pools: their cuts are shares of it. */
+  private async savePot(): Promise<string | null> {
+    const err = await this.session.setPot(this.pot());
+    if (!err) await this.pools.load();
+    return err;
   }
 
   /** Save the terms of each grade typed into, in grade order; the first refusal stops the rest. */

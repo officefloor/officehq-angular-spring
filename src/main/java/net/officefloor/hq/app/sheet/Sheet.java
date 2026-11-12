@@ -104,6 +104,11 @@ public class Sheet {
     @Column(name = "entry_date")
     private LocalDate entryDate;
 
+    /** The pot: shared out among the members of each balanced pool by their shares; none means no pot. Not
+     *  dated. */
+    @Column(name = "pot", precision = 15, scale = 2)
+    private BigDecimal pot;
+
     /** Whether the sheet is archived: everything stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -334,6 +339,14 @@ public class Sheet {
 
     public void setEntryDate(LocalDate entryDate) {
         this.entryDate = entryDate;
+    }
+
+    public BigDecimal getPot() {
+        return pot;
+    }
+
+    public void setPot(BigDecimal pot) {
+        this.pot = pot;
     }
 
     public Integer getGraceDays() {

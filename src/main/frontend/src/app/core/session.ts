@@ -40,6 +40,8 @@ export interface SheetView {
   entryDate: string | null;
   /** The number of the sheet's last bulk settle batch; null before the first. */
   lastSettleBatch: number | null;
+  /** The pot shared out among the members of each balanced pool, two decimals; null for no pot. */
+  pot: string | null;
 }
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
@@ -134,6 +136,9 @@ export class Session {
   /** The sheet's entry date (YYYY-MM-DD); null when off. While set, it is the default date of a new claim
    *  in place of the sheet's today. */
   readonly entryDate = signal<string | null>(null);
+  /** The sheet's pot, two decimals; null for no pot. Shared out among the members of each balanced pool by
+   *  their shares. Not dated. */
+  readonly pot = signal<string | null>(null);
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** The number of the sheet's last bulk settle batch; null before the first. */
@@ -169,6 +174,7 @@ export class Session {
       this.permissions.set(sheet.permissions);
       this.graceDays.set(sheet.graceDays);
       this.entryDate.set(sheet.entryDate);
+      this.pot.set(sheet.pot);
       this.archived.set(sheet.archived);
       this.lastSettleBatch.set(sheet.lastSettleBatch);
       return null;
@@ -544,6 +550,25 @@ export class Session {
           { graceDays: d ? Number(d) : null }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.graceDays.set(sheet.graceDays);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's pot (blank: no pot); an error message when refused. */
+  async setPot(pot: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const p = pot.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (p && !/^\d{1,13}(\.\d{1,2})?$/.test(p)) return 'Enter the pot as an amount in two decimals, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/pot`,
+          { pot: p || null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.pot.set(sheet.pot);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

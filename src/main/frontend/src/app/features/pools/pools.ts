@@ -3,7 +3,7 @@ import { People } from '../../core/people';
 import { PoolView, Pools } from '../../core/pools';
 
 // One pool's row: its members with their shares, its total share and whether it is balanced (exactly
-// 100.00; a retired member counts 0.00), and a form adding a person with a share.
+// 100.00; a retired member counts 0.00), each member's cut of the sheet's pot while balanced, and a form adding a person with a share.
 @Component({
   selector: 'app-pool-row',
   template: `
@@ -18,6 +18,7 @@ import { PoolView, Pools } from '../../core/pools';
         <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
           <span data-testid="pool-member-name">{{ m.name }}</span>
           <span data-testid="pool-share">{{ m.share }}</span>
+          <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
           @if (m.retired) {
             <span data-testid="pool-member-retired">retired</span>
           }
