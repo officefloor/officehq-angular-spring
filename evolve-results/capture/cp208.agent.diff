@@ -1,0 +1,154 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+index f137b2067..7259ae03a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
+ 
+ /**
+  * Opens a selection of claims together, in list order: the people in the order they were added, each person's claims
+- * newest first. Each claim is opened on its own, as its Open button would, so each gets the next number; one that
++ * newest first. Each claim is opened on its own, as its Open button would; one that
+  * cannot be opened (not a DRAFT, dated in a closed period, above the note threshold with an empty note, over its period's cap, or gone) is left as it is and counted as refused.
+  */
+ @Service
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 366136d55..c485ce75e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -547,14 +547,17 @@ public class ClaimService {
+         if (status == ClaimStatus.SETTLED || status == ClaimStatus.PENDING) {
+             claim.setSettleBatch(batch == null ? null : batch.getAsLong());
+         }
+-        // A voided claim keeps its number (never reused), and the CLAIM_VOIDED record carries it.
++        // A claim takes its number when it is settled (a claim numbered before keeps its own); a voided claim keeps
++        // its number (never reused), and the CLAIM_VOIDED record carries it.
+         String number = claim.getNumber();
+-        if (status == ClaimStatus.OPEN) {
++        if (status == ClaimStatus.SETTLED && number == null) {
+             number = nextNumber(sheetId, claim.getDueBy());
+             claim.setNumber(number);
++        }
++        if (status == ClaimStatus.OPEN) {
+             claim.setOpenedBy(user);
+         }
+-        // Sent to REVIEW, it records who opened it and its review day but takes no number until it is reviewed.
++        // Sent to REVIEW, it records who opened it and its review day; like an OPEN claim it has no number yet.
+         if (status == ClaimStatus.REVIEW) {
+             claim.setOpenedBy(user);
+             claim.setReviewOn(sheets.today(sheetId));
+@@ -681,6 +684,10 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         String due = settle(sheetId, person, claim);
+         claim.setStatus(ClaimStatus.SETTLED);
++        // Approved, it takes its number now unless it was numbered before.
++        if (claim.getNumber() == null) {
++            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
++        }
+         Claim saved = claims.saveAndFlush(claim);
+         log(sheetId, user, person, saved);
+         audit.recordOnCommit(record("CLAIM_APPROVED", user, person, saved) + numberOf(saved.getNumber()) + due);
+@@ -690,7 +697,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * A steward reviews a REVIEW claim: it becomes OPEN, taking its number then; it keeps whoever opened it. Refused
++     * A steward reviews a REVIEW claim: it becomes OPEN, still with no number until it is settled; it keeps whoever opened it. Refused
+      * for any other status, a claim due by a date in a closed period, one over its period's cap, or a user not a
+      * steward.
+      */
+@@ -710,12 +717,10 @@ public class ClaimService {
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         claim.setStatus(ClaimStatus.OPEN);
+-        String number = nextNumber(sheetId, claim.getDueBy());
+-        claim.setNumber(number);
+         Claim saved = claims.saveAndFlush(claim);
+         log(sheetId, user, person, saved);
+         audit.recordOnCommit(record("CLAIM_REVIEWED", user, person, saved));
+-        audit.recordOnCommit(record("CLAIM_OPENED", user, person, saved) + numberOf(number));
++        audit.recordOnCommit(record("CLAIM_OPENED", user, person, saved) + numberOf(saved.getNumber()));
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+@@ -743,7 +748,7 @@ public class ClaimService {
+ 
+     /**
+      * A user whose role may reassign moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date and,
+-     * unless a draft, takes the next number in the sequence it is numbered in (its old one is never used again), loses any figure a statement bound it to (live again until its new person's next statement), and is listed as
++     * if it was numbered before settlement, takes the next number in the sequence it is numbered in (its old one is never used again), loses any figure a statement bound it to (live again until its new person's next statement), and is listed as
+      * its new person's newest claim. Refused for a SETTLED or VOID claim, its own person, a closed period, a new person
+      * retired before its date, or a user whose role may not reassign.
+      */
+@@ -941,7 +946,7 @@ public class ClaimService {
+     /**
+      * Split an amount (more than 0.00 and less than its own) off an OPEN claim not deferred. The claim keeps the rest
+      * and loses any figure a statement bound it to; a new OPEN claim of the same person with the amount split off, the
+-     * same date and note, the next number, opened by the user, due by its date plus the terms in force on the sheet's today,
++     * same date and note, no number (it takes one when settled), opened by the user, due by its date plus the terms in force on the sheet's today,
+      * names the claim's number as the one it was split from. Refused for any other status, a claim due by a date in a
+      * closed period (the new claim's own due-by is not weighed), or a user
+      * whose role may not open a claim.
+@@ -978,16 +983,15 @@ public class ClaimService {
+         part.setListed(sheets.nextListed(sheetId));
+         part.setLateEntry(periods.softClosedOn(sheetId, part.getDueBy()));
+         part.setStatus(ClaimStatus.OPEN);
+-        String number = nextNumber(sheetId, part.getDueBy());
+-        part.setNumber(number);
++        // The part split off is OPEN, so it has no number until it is settled.
+         part.setOpenedBy(user);
+         part.setSplitFrom(kept.getNumber());
+         part.setTags(kept.getTags());
+         Claim saved = claims.saveAndFlush(part);
+         log(sheetId, user, person, saved);
+         audit.recordOnCommit(record("CLAIM_SPLIT", user, person, kept) + numberOf(kept.getNumber())
+-                + " into=" + number);
+-        audit.recordOnCommit(record("CLAIM_OPENED", user, person, saved) + numberOf(number));
++                + " into=");
++        audit.recordOnCommit(record("CLAIM_OPENED", user, person, saved));
+         rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+@@ -1292,7 +1296,7 @@ public class ClaimService {
+     }
+ 
+     /**
+-     * The number a claim due by the date gets when opened: while the sheet numbers by period, the next in its
++     * The number a claim due by the date gets when settled or approved: while the sheet numbers by period, the next in its
+      * period's own sequence (X for no period); otherwise the next sheet-wide number in the fiscal
+      * year of the date (<FY>-<n>).
+      */
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 92b926d74..e0edd79f4 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -361,7 +361,7 @@ public class SettingService {
+ 
+     /**
+      * Set the period numbering from; null means off. Every save is recorded, even of the same value. Claims already
+-     * opened keep their numbers.
++     * numbered keep their numbers.
+      */
+     @Transactional
+     public Sheet setPeriodNumberingFrom(String sheetId, String user, LocalDate from) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index c31fa396c..1a93391fd 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -85,7 +85,7 @@ public class Sheet {
+     @Column(name = "policy_date")
+     private LocalDate policyDate;
+ 
+-    /** From this date (on the sheet's today) a claim opened is numbered within its period; null: off. */
++    /** From this date (on the sheet's today) a claim settled is numbered within its period; null: off. */
+     @Column(name = "period_numbering_from")
+     private LocalDate periodNumberingFrom;
+ 
+@@ -494,7 +494,7 @@ public class Sheet {
+         this.archived = archived;
+     }
+ 
+-    /** Whether a claim opened now is numbered within its period: the setting is a date and today is on or after it. */
++    /** Whether a claim settled now is numbered within its period: the setting is a date and today is on or after it. */
+     public boolean numbersByPeriod() {
+         return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
+     }
