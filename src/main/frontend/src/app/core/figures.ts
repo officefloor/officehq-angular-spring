@@ -101,6 +101,20 @@ export class Figures {
     money(trimmed(this.people.people().map((p) => this.overdueCents(p)))),
   );
 
+  /** Each tag ever used on the sheet, sorted, with the due of the claims that count live and carry it
+   *  (a claim with two tags counts in both), not capped or trimmed. */
+  readonly tagTotals = computed(() => {
+    const byId = new Map(this.people.people().map((p) => [p.id, p]));
+    const sums = new Map<string, bigint>(this.claims.usedTags().map((t) => [t, 0n]));
+    for (const c of this.claims.live()) {
+      const p = byId.get(c.personId);
+      if (!p) continue;
+      const due = this.figureCents(c, p);
+      for (const t of c.tags) sums.set(t, (sums.get(t) ?? 0n) + due);
+    }
+    return [...sums].map(([tag, cents]) => ({ tag, dueTotal: money(cents) }));
+  });
+
   /** The number of claims in each status, in the order of STATUSES. */
   readonly statusCounts = computed(() => {
     const claims = this.claims.claims();

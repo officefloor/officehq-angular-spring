@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.claim;
 
 import java.math.BigDecimal;
+import java.util.List;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
@@ -36,7 +37,7 @@ public class QuickAddService {
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         Person found = people.findByName(sheetId, name.trim()).orElse(null);
         Person person = found != null ? found : personService.add(sheetId, user, name, GRADE, null);
-        Claim claim = claims.add(sheetId, user, person.getId(), amount, null, "", null, null);
+        Claim claim = claims.add(sheetId, user, person.getId(), amount, null, "", null, null, List.of());
         return new Added(person, found == null, claim);
     }
 }

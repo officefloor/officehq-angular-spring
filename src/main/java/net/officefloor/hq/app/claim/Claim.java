@@ -113,6 +113,10 @@ public class Claim {
     @Column(name = "ref")
     private String ref;
 
+    /** Its tags, sorted and comma separated; none when it carries none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** Its status log: one line per status it has had, oldest first. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -197,6 +201,16 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    /** Its tags, sorted; empty when it carries none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Carry the tags (normalised: trimmed, lower-cased, without repeats and sorted). */
+    public void setTags(List<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", tags);
     }
 
     public String getNote() {

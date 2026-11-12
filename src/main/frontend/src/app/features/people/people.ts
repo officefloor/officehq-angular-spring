@@ -88,6 +88,22 @@ import { PersonClaims } from '../claims/claims';
       <p>Open total: <strong data-testid="rollup-open-total">{{ figures.openTotal() }}</strong></p>
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      @if (figures.tagTotals().length > 0) {
+        <table data-testid="tag-totals">
+          <caption>Due total by tag</caption>
+          <thead>
+            <tr><th scope="col">Tag</th><th scope="col">Due total</th></tr>
+          </thead>
+          <tbody>
+            @for (t of figures.tagTotals(); track t.tag) {
+              <tr>
+                <th scope="row">{{ t.tag }}</th>
+                <td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       <label>
         <input
           type="checkbox"

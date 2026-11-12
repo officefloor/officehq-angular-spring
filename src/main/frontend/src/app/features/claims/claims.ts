@@ -49,6 +49,13 @@ import { Session } from '../../core/session';
         [value]="ref()"
         (input)="ref.set(value($event)); clearErrors()"
       />
+      <label [for]="fid('tags')">Tags (comma separated)</label>
+      <input
+        [id]="fid('tags')"
+        data-testid="claim-form-tags"
+        [value]="tags()"
+        (input)="tags.set(value($event)); clearErrors()"
+      />
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -70,6 +77,7 @@ import { Session } from '../../core/session';
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+          <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Due <span data-testid="claim-due">{{ figure(c) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ claims.dueBy(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ claims.overdue(c) ? 'yes' : 'no' }}</span></span>
@@ -218,6 +226,7 @@ export class PersonClaims {
   protected readonly note = signal('');
   protected readonly corrects = signal('');
   protected readonly ref = signal('');
+  protected readonly tags = signal('');
   /** The edit whose edit button was refused while no editor was open: the form's next submit is its save,
    *  refused on the claim again, until the next action on that claim or another editor opens. */
   private refusedEdit: { id: number; message: string } | null = null;
@@ -299,7 +308,7 @@ export class PersonClaims {
    *  shows on the claim and the form stays as it is. */
   protected edit(c: Claim): Promise<boolean> {
     this.clearActionError(c.id);
-    const typed = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
+    const typed = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref(), tags: this.tags() };
     const lock = (async () => {
       const err = await this.claims.lock(c.id);
       if (err) {
@@ -309,13 +318,14 @@ export class PersonClaims {
       }
       const was = this.editing();
       if (was !== null && was !== c.id) void this.claims.unlock(was);
-      const now = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
+      const now = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref(), tags: this.tags() };
       this.fill(this.list().find((o) => o.id === c.id) ?? c);
       if (now.amount !== typed.amount) this.amount.set(now.amount);
       if (now.date !== typed.date) this.date.set(now.date);
       if (now.note !== typed.note) this.note.set(now.note);
       if (now.corrects !== typed.corrects) this.corrects.set(now.corrects);
       if (now.ref !== typed.ref) this.ref.set(now.ref);
+      if (now.tags !== typed.tags) this.tags.set(now.tags);
       return true;
     })();
     this.locking = lock;
@@ -340,6 +350,7 @@ export class PersonClaims {
     this.note.set(c.note);
     this.corrects.set(c.corrects ?? '');
     this.ref.set(c.ref ?? '');
+    this.tags.set(c.tags.join(', '));
     this.error.set(null);
   }
 
@@ -462,6 +473,7 @@ export class PersonClaims {
         note: c.note,
         corrects: c.corrects ?? '',
         ref: c.ref ?? '',
+        tags: c.tags.join(','),
       };
       const refused = await this.claims.update(c.id, f);
       if (refused) this.actionError.set({ id: c.id, message: refused.message });
@@ -497,6 +509,7 @@ export class PersonClaims {
     this.note.set('');
     this.corrects.set('');
     this.ref.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -513,7 +526,7 @@ export class PersonClaims {
         return;
       }
       this.clearErrors();
-      const f = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref() };
+      const f = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects(), ref: this.ref(), tags: this.tags() };
       const id = this.editing();
       if (id === null) {
         const err = await this.claims.add(this.personId(), f);

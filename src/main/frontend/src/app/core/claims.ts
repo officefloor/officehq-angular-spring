@@ -51,6 +51,8 @@ export interface Claim {
   remindedOn: string | null;
   /** Its external reference, unique on the sheet without regard to case; null when not given. */
   ref: string | null;
+  /** Its tags: trimmed, lower-cased, without repeats, sorted; empty when it carries none. */
+  tags: string[];
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -110,6 +112,8 @@ export interface ClaimFields {
   corrects: string;
   /** The external reference, surrounding spaces removed; blank for none. */
   ref: string;
+  /** The tags, comma separated; blank for none. */
+  tags: string;
 }
 
 // The people's claims on the active sheet, newest first, re-read from the server each time the
@@ -122,6 +126,12 @@ export class Claims {
   private readonly people = inject(People);
 
   readonly claims = signal<Claim[]>([]);
+  /** The tags the sheet's claims have carried, as last read from the server. */
+  private readonly storedTags = signal<string[]>([]);
+  /** Every tag ever used on the sheet, sorted: those stored and those its claims carry now. */
+  readonly usedTags = computed(() =>
+    [...new Set([...this.storedTags(), ...this.claims().flatMap((c) => c.tags)])].sort(),
+  );
   /** The ids of the claims chosen for a bulk action. */
   readonly selected = signal<ReadonlySet<number>>(new Set());
   private loads = 0;
@@ -248,13 +258,18 @@ export class Claims {
     const sid = this.session.sheetId();
     const load = ++this.loads;
     this.claims.set([]);
+    this.storedTags.set([]);
     this.selected.set(new Set());
     if (!user || !sid) return null;
     try {
-      const claims = await firstValueFrom(
-        this.http.get<Claim[]>(`${this.url(sid)}/claims`, { headers: { 'X-User': user } }),
-      );
-      if (load === this.loads) this.claims.set(claims);
+      const [claims, tags] = await Promise.all([
+        firstValueFrom(this.http.get<Claim[]>(`${this.url(sid)}/claims`, { headers: { 'X-User': user } })),
+        firstValueFrom(this.http.get<string[]>(`${this.url(sid)}/claim-tags`, { headers: { 'X-User': user } })),
+      ]);
+      if (load === this.loads) {
+        this.claims.set(claims);
+        this.storedTags.set(tags);
+      }
       return null;
     } catch (e) {
       return failed('load', e).replace(' claim', ' claims');
@@ -285,7 +300,7 @@ export class Claims {
   async quickAdd(name: string, amount: string): Promise<string | null> {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!name.trim()) return 'Enter a name.';
-    const refused = this.check({ amount, date: '', note: '', corrects: '', ref: '' });
+    const refused = this.check({ amount, date: '', note: '', corrects: '', ref: '', tags: '' });
     if (refused) return refused;
     const sid = this.session.sheetId()!;
     try {
@@ -345,7 +360,12 @@ export class Claims {
           headers: { 'X-User': this.session.user()! },
         }),
       );
-      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      if (this.session.sheetId() === sid) {
+        // a tag the edit took off stays among those used on the sheet
+        const was = this.claims().find((c) => c.id === id)?.tags ?? [];
+        this.storedTags.update((ts) => [...new Set([...ts, ...was])]);
+        this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      }
       return null;
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 409) {
@@ -603,6 +623,7 @@ export class Claims {
     const corrects = f.corrects.trim();
     if (corrects.length > 220) return 'Enter the number of the claim it corrects.';
     if (f.ref.trim().length > 200) return 'Enter a reference of up to 200 characters.';
+    if (f.tags.length > 2000) return 'Enter tags of up to 2000 characters.';
     if (f.amount.trim().startsWith('-') && !corrects) {
       return 'A negative amount is a correction: name the number of the settled claim it corrects.';
     }
@@ -615,6 +636,7 @@ export class Claims {
     note: string;
     corrects: string | null;
     ref: string | null;
+    tags: string;
   } {
     const corrects = f.corrects.trim();
     return {
@@ -623,6 +645,7 @@ export class Claims {
       note: f.note.trim(),
       corrects: corrects || null,
       ref: f.ref.trim() || null,
+      tags: f.tags,
     };
   }
 

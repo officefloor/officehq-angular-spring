@@ -8,7 +8,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import net.officefloor.hq.app.history.AsOf;
 import net.officefloor.hq.app.period.PeriodClosedException;
@@ -43,12 +45,12 @@ public class ClaimController {
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
-     *  not given). */
+     *  not given), and its tags, sorted. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            String remindedOn, String ref) {
+            String remindedOn, String ref, List<String> tags) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -61,7 +63,8 @@ public class ClaimController {
                     claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
                     claim.isLateEntry(),
-                    claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef());
+                    claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
+                    claim.getTags());
         }
     }
 
@@ -82,7 +85,8 @@ public class ClaimController {
             LocalDate date,
             @Size(max = 1000) String note,
             @Size(max = 220) String corrects,
-            @Size(max = 200) String ref) {
+            @Size(max = 200) String ref,
+            @Size(max = 2000) String tags) {
 
         String noteOrEmpty() {
             return note == null ? "" : note.trim();
@@ -91,6 +95,13 @@ public class ClaimController {
         /** The external reference, trimmed; none when blank. */
         String refOrNone() {
             return ref == null || ref.isBlank() ? null : ref.trim();
+        }
+
+        /** The tags, comma separated: each trimmed and lower-cased, blanks and repeats dropped, sorted. */
+        List<String> tagList() {
+            return tags == null ? List.of()
+                    : Arrays.stream(tags.split(",")).map(t -> t.trim().toLowerCase(Locale.ROOT))
+                            .filter(t -> !t.isEmpty()).distinct().sorted().toList();
         }
 
         /** The number a correction names, trimmed; none when blank. */
@@ -142,6 +153,13 @@ public class ClaimController {
                 .map(ClaimView::of).toList();
     }
 
+    /** Every tag ever used on the sheet's claims, sorted. */
+    @GetMapping("/claim-tags")
+    public List<String> tags(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return service.tags(sheetId.trim());
+    }
+
     /** Add a claim for a person. */
     @PostMapping("/people/{personId}/claims")
     public ClaimView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -149,7 +167,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.date(),
-                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone()));
+                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone(), request.tagList()));
     }
 
     /** Add a DRAFT claim dated the sheet's today for the person with the name, adding them first when
@@ -180,7 +198,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amount(), request.date(),
-                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone()));
+                request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone(), request.tagList()));
     }
 
     /** Open a DRAFT claim's editor, locking it for every other user. */

@@ -67,7 +67,7 @@ public class PasteService {
         for (Line line : lines) {
             try {
                 added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(),
-                        null, line.ref()));
+                        null, line.ref(), List.of()));
             } catch (PeriodClosedException | PersonRetiredException | ClaimCorrectionException
                     | ClaimRefException e) {
                 throw new ClaimPasteException("Line " + line.number() + ": " + e.getMessage());
