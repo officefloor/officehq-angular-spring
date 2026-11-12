@@ -1,0 +1,74 @@
+{
+  "checkpoint": 36,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp36_approvals",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    23,
+    26,
+    27,
+    32
+  ],
+  "replaced_tests": [
+    "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+    "cp26_late-charge.spec.ts::late charge scenario 3",
+    "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1"
+  ],
+  "request": {
+    "spec": "When a clerk settles a claim whose due is above the clerk limit, the claim now goes to PENDING\ninstead of being refused (CLAIM_PENDING, naming the claim like every claim line). A PENDING claim\ncounts as open in every total, but is not bound by a statement: while PENDING it shows and totals\nits live figure. A steward approves it (it becomes SETTLED, frozen at that moment, CLAIM_APPROVED\nwith due=<due> at the end like CLAIM_SETTLED) or rejects it with a reason (back to OPEN, bound\nagain by the last statement if that statement included it, CLAIM_REJECTED with reason=<reason> at\nthe end). The opener cannot approve their own claim. In every other way a PENDING claim is handled\nlike an OPEN one: it cannot be edited, it can be voided (CLAIM_VOIDED), it goes overdue and bears\nthe late charge, and a hold takes it out of the totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a clerk settles a claim whose due is above the clerk limit, the claim now goes to PENDING\ninstead of being refused (CLAIM_PENDING, naming the claim like every claim line). A PENDING claim\ncounts as open in every total, but is not bound by a statement: while PENDING it shows and totals\nits live figure. A steward approves it (it becomes SETTLED, frozen at that moment, CLAIM_APPROVED\nwith due=<due> at the end like CLAIM_SETTLED) or rejects it with a reason (back to OPEN, bound\nagain by the last statement if that statement included it, CLAIM_REJECTED with reason=<reason> at\nthe end). The opener cannot approve their own claim. In every other way a PENDING claim is handled\nlike an OPEN one: it cannot be edited, it can be voided (CLAIM_VOIDED), it goes overdue and bears\nthe late charge, and a hold takes it out of the totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "67ff8149610bc9bf188a25ebbc62305b215929f7",
+  "reset_sha": "",
+  "preagent_sha": "e44fcc3437cbbf99d211a4ad24f238b5200cc720",
+  "prev_sha": "e44fcc3437cbbf99d211a4ad24f238b5200cc720",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5347809999999997,
+    "input_tokens": 60,
+    "output_tokens": 22067,
+    "cache_read_tokens": 1940685,
+    "cache_creation_tokens": 88133,
+    "num_turns": 32,
+    "duration_ms": 531294,
+    "duration_api_ms": 197178,
+    "model": "claude-opus-5-5",
+    "session_id": "524757ed-0940-4155-8959-2eec0670d02f",
+    "stop_reason": "success",
+    "result_text": "I've added the PENDING approval flow, and all 4 tests in `bin/e2e` now pass.\n\n**How it works now**\n- **Settling over the limit:** when a clerk settles a claim whose due is above the clerk limit, it goes to PENDING and writes `CLAIM_PENDING` instead of being refused. Its due stays live rather than being fixed.\n- **Totals while PENDING:** the claim counts in every total, but uses its live figure instead of the figure its last statement bound. It still shows `claim-stated` as yes.\n- **Like an OPEN claim:** it goes overdue and bears the late charge, a hold takes it out of the totals, it can't be edited, and it can be voided.\n- **Approve:** a steward who isn't the opener can approve it. It becomes SETTLED with its due frozen at that moment, and writes `CLAIM_APPROVED \u2026 due=<due>`.\n- **Reject:** a steward rejects it with a reason. It goes back to OPEN, bound again by the last statement if that statement included it, and writes `CLAIM_REJECTED \u2026 reason=<reason>`.\n- **Refusals:** approve or reject is refused if the user isn't a steward, if the opener tries to approve, if a rejection has no reason, or if the claim isn't PENDING.\n\n**Where the changes are**\n- **Stored data:** a new migration, `V28__claim_pending.sql`, rebuilds the status column so its check allows PENDING. I tried the column rebuild on the same H2 version first, because H2's original check constraint has no name to drop it by.\n- **Server:** `ClaimStatus` has the new status. `Claim.isBound()` is the rule that a PENDING claim isn't held to its statement figure. `ClaimService` gains `approve` and `reject`, and the controller has new `/approve` and `/reject` endpoints. `Rollup` covers the totals, holds and late charges. The old over-limit error is replaced by `ClaimApprovalException`.\n- **Front end:** the claim list, totals and figures handle PENDING. Each OPEN or PENDING claim row has a reject-reason box with Approve and Reject buttons. They also show on OPEN claims because the test clicks Approve on an OPEN claim and expects a refusal; the server refuses anything not PENDING.\n\n**One fix outside the request:** \"approvals scenario 1\" failed on a settings bug that has nothing to do with approvals. Clearing the policy date when it was already blank fires no change event, so the form treated the save as untouched. It then cleared the period-numbering setting instead and logged it under the wrong key. In `features/settings/settings.ts`, pressing Delete or Backspace in either of those two date fields now counts as editing it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5347809999999997,
+        "num_turns": 32,
+        "duration_ms": 531294,
+        "duration_api_ms": 197178,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp36.agent.jsonl",
+  "agent_diff_file": "cp36.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
