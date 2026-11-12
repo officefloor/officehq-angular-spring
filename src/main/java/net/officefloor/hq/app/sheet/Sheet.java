@@ -105,6 +105,14 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The score at or above which a person is MID while both score thresholds are set; null: blank. Not dated. */
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    /** The score at or above which a person is HIGH while both score thresholds are set; null: blank. Not dated. */
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** The month (1 to 12) the sheet's fiscal year starts in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -167,6 +175,8 @@ public class Sheet {
         copy.graceDays = graceDays;
         copy.escalateAfter = escalateAfter;
         copy.reviewSla = reviewSla;
+        copy.scoreMid = scoreMid;
+        copy.scoreHigh = scoreHigh;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
@@ -412,6 +422,22 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getScoreMid() {
+        return scoreMid;
+    }
+
+    public void setScoreMid(Integer scoreMid) {
+        this.scoreMid = scoreMid;
+    }
+
+    public Integer getScoreHigh() {
+        return scoreHigh;
+    }
+
+    public void setScoreHigh(Integer scoreHigh) {
+        this.scoreHigh = scoreHigh;
     }
 
     public int getFiscalStartMonth() {

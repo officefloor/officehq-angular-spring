@@ -253,6 +253,28 @@ public class SettingService {
         return saved;
     }
 
+    /** Set the mid score threshold; null means blank. Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setScoreMid(String sheetId, String user, Integer score) {
+        Sheet sheet = get(sheetId);
+        sheet.setScoreMid(score);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=score-mid value="
+                + (score == null ? "" : score.toString()));
+        return saved;
+    }
+
+    /** Set the high score threshold; null means blank. Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setScoreHigh(String sheetId, String user, Integer score) {
+        Sheet sheet = get(sheetId);
+        sheet.setScoreHigh(score);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=score-high value="
+                + (score == null ? "" : score.toString()));
+        return saved;
+    }
+
     /** Set the escalation gap in days; null means off. Every save is recorded, even of the same value. */
     @Transactional
     public Sheet setEscalateAfter(String sheetId, String user, Integer days) {

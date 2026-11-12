@@ -77,6 +77,12 @@ export class Session {
   /** The active sheet's review SLA in days: a REVIEW claim whose review day plus it is before the sheet's today is
    *  late; blank means none; null until the settings are read. */
   readonly reviewSla = signal<string | null>(null);
+  /** The active sheet's mid score threshold (a whole number): while both thresholds are set, a person whose score is at
+   *  or above it is MID; blank means none; null until the settings are read. */
+  readonly scoreMid = signal<string | null>(null);
+  /** The active sheet's high score threshold (a whole number): while both thresholds are set, a person whose score is
+   *  at or above it is HIGH; blank means none; null until the settings are read. */
+  readonly scoreHigh = signal<string | null>(null);
   /** The default date of a new claim: the entry date while it is set, else the sheet's today. */
   readonly newClaimDate = computed(() => this.entryDate() || this.today());
   /** The active sheet's cap (two decimals) in force on its today: a person's due-total is at most it; null when there

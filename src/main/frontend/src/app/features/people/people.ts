@@ -406,7 +406,7 @@ function csvField(value: string): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
-            <th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shows('terms')) { <th scope="col">Terms</th> }@if (columns.shows('contact')) { <th scope="col">Contact</th> }<th scope="col">Tags</th>@if (columns.shows('aliases')) { <th scope="col">Aliases</th> }<th scope="col">From sheet</th><th scope="col">Clashing</th>@if (columns.shows('claimed')) { <th scope="col">Claimed</th> }@if (columns.shows('due-total')) { <th scope="col">Due</th> }<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Score</th>
+            <th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shows('terms')) { <th scope="col">Terms</th> }@if (columns.shows('contact')) { <th scope="col">Contact</th> }<th scope="col">Tags</th>@if (columns.shows('aliases')) { <th scope="col">Aliases</th> }<th scope="col">From sheet</th><th scope="col">Clashing</th>@if (columns.shows('claimed')) { <th scope="col">Claimed</th> }@if (columns.shows('due-total')) { <th scope="col">Due</th> }<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Score</th><th scope="col">Band</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
               <th scope="col">Carried into {{ per.name }}</th>
@@ -454,6 +454,7 @@ function csvField(value: string): string {
               <td data-testid="person-settled-total">{{ settledTotalOf(p) | fig }}</td>
               <td data-testid="person-open-total">{{ openTotalOf(p) | fig }}</td>
               <td data-testid="person-score">{{ personScoreOf(p) }}</td>
+              <td data-testid="person-band">{{ personBandOf(p) }}</td>
               @for (per of periods(); track per.id) {
                 <td [attr.data-testid]="'person-period-' + per.name + '-due-total'">{{ periodDueTotalOf(p, per) | fig }}</td>
                 <td [attr.data-testid]="'person-period-' + per.name + '-carried'">{{ carriedOf(p, per) | fig }}</td>
@@ -1794,6 +1795,20 @@ export class People {
   /** The person's score: their settled figures divided by 100, less 5 for each of their overdue claims that counts. */
   protected personScoreOf(person: Person): string {
     return scoreOf(this.settledTotalOf(person), this.overdueOf(person).length);
+  }
+
+  /**
+   * The person's band while both score thresholds are set: HIGH when their score is at or above the high one, MID when
+   * at or above the mid one, else LOW; blank while either is blank.
+   */
+  protected personBandOf(person: Person): string {
+    const mid = this.session.scoreMid();
+    const high = this.session.scoreHigh();
+    if (!mid || !high) return '';
+    const score = Number(this.personScoreOf(person));
+    if (score >= Number(high)) return 'HIGH';
+    if (score >= Number(mid)) return 'MID';
+    return 'LOW';
   }
 
   /** The sum of the dues of the person's overdue claims, skipping the n/a ones. */
