@@ -386,7 +386,7 @@ function csvField(value: string): string {
                   (change)="selectPerson(p.id, checked($event))"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name | fig }}</td>
+              <td data-testid="person-name">{{ shownName(p) | fig }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) | fig }}</td>
               @if (columns.shows('terms')) {
                 <td data-testid="person-terms">{{ p.terms ?? '' | fig }}</td>
@@ -899,7 +899,7 @@ function csvField(value: string): string {
     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
     <app-pools #poolsView [people]="people()" />
     <app-crews
-      [people]="people()"
+      [people]="crewPeople()"
       [dueTotals]="personDueTotals()"
       (totals)="crewTotals.set($event)"
       (changed)="poolsView.reread()"
@@ -1563,6 +1563,16 @@ export class People {
   }
 
   /** The person's grade in force on the sheet's today. */
+  /** The person's name as the screen shows it: with the grade in force on the sheet's today. */
+  protected shownName(person: Person): string {
+    return `${person.name} (${this.gradeOf(person)})`;
+  }
+
+  /** The people as the crews know them: each with the name the screen shows for them. */
+  protected readonly crewPeople = computed(() =>
+    this.people().map((p) => ({ id: p.id, name: p.name, shownName: this.shownName(p) })),
+  );
+
   protected gradeOf(person: Person): string {
     const today = this.session.today();
     return (today === null ? undefined : gradeOn(person.grades, today)) ?? person.grade;
@@ -1695,7 +1705,7 @@ export class People {
   protected patronsOf(person: Person): string {
     return this.patronsListOf(person)
       .sort((a, b) => a.patron.name.localeCompare(b.patron.name))
-      .map((p) => `${p.patron.name} ${p.share}`)
+      .map((p) => `${this.shownName(p.patron)} ${p.share}`)
       .join(', ');
   }
 

@@ -20,10 +20,11 @@ export interface CrewTotal {
   dueTotal: string;
 }
 
-/** What a crew needs to know of a person: their name. */
+/** What a crew needs to know of a person: their name, and their name as the screen shows it (with their grade). */
 export interface CrewPerson {
   id: number;
   name: string;
+  shownName: string;
 }
 
 // The sheet's crews: each with its lead, its members and its due-total, the lead's and the members' due-totals added
@@ -117,7 +118,7 @@ export class Crews {
       id: crew.id,
       name: crew.name,
       leadId: crew.leadId,
-      lead: crew.leadId === null ? '' : (byId.get(crew.leadId)?.name ?? ''),
+      lead: crew.leadId === null ? '' : (byId.get(crew.leadId)?.shownName ?? ''),
       members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
       dueTotal: sumDues(
         [...(crew.leadId === null ? [] : [crew.leadId]), ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a'),

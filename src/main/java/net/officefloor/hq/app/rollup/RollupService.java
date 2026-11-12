@@ -45,9 +45,10 @@ public class RollupService {
 
     /**
      * A person's figures as shown: claimed with two decimals, due-total (held down to the cap) with two decimals or
-     * n/a, and overdue-total (the dues of their overdue claims) with two decimals.
+     * n/a, and overdue-total (the dues of their overdue claims) with two decimals; and the grade in force on the
+     * sheet's today, or null when the sheet has none.
      */
-    public record Figures(String name, String claimed, String dueTotal, String overdueTotal) {
+    public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade) {
     }
 
     /** Everyone's figures, by person id in the order they were added, and the sheet's totals. */
@@ -138,7 +139,7 @@ public class RollupService {
                 dues.add(due);
             }
             figures.put(person.getId(), new Figures(person.getName(), shown(claimed), anyDue ? shown(due) : "n/a",
-                    shown(overdue)));
+                    shown(overdue), today == null ? null : person.gradeOn(today)));
         }
         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
     }
@@ -210,11 +211,16 @@ public class RollupService {
                         || aliasesOf.getOrDefault(entry.getKey(), List.of()).stream()
                                 .anyMatch(alias -> alias.toLowerCase(Locale.ROOT).contains(wanted));
                 if (matches) {
-                    lines.add(id + " " + person.name() + " " + person.dueTotal());
+                    lines.add(id + " " + named(person) + " " + person.dueTotal());
                 }
             }
         }
         return lines;
+    }
+
+    /** The person's name as the screen shows it: with the grade in force on the sheet's today, when there is one. */
+    private static String named(Figures person) {
+        return person.grade() == null ? person.name() : person.name() + " (" + person.grade() + ")";
     }
 
     /**
