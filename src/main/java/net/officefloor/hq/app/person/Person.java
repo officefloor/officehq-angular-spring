@@ -367,6 +367,16 @@ public class Person {
     }
 
     /**
+     * Whether the claim's amount counts in claimed: as {@link #counts(Claim, LocalDate)}, but a hold (the person's or
+     * the claim's) does not take it out; only its due leaves the totals while held.
+     */
+    public boolean countsClaimed(Claim claim, LocalDate today) {
+        ClaimStatus status = claim.getStatus();
+        return status.counts() && !(status.isOpen() && !claim.isBound() && retiredOn(today))
+                && !claim.isDeferredOn(today);
+    }
+
+    /**
      * Whether the claim counts in a period's due-total, given the status it had at the end of the period's last day
      * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and still open now and held or dated
      * within a hold, or once the person's retirement date is reached on the sheet's today, not unless a statement binds

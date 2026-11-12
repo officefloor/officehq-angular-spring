@@ -99,7 +99,7 @@ public class RollupService {
         List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
             List<Claim> theirs = counted.getOrDefault(person.getId(), List.of()).stream()
-                    .filter(claim -> person.counts(claim, today))
+                    .filter(claim -> person.countsClaimed(claim, today))
                     .toList();
             BigDecimal claimed = zero();
             BigDecimal due = zero();
@@ -109,6 +109,10 @@ public class RollupService {
                 // A correction leaves claimed alone; only its due counts.
                 if (claim.getCorrects() == null) {
                     claimed = claimed.add(claim.getAmount());
+                }
+                // A held claim stays in claimed; its due leaves the totals.
+                if (!person.counts(claim, today)) {
+                    continue;
                 }
                 if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
                     anyDue = true;
