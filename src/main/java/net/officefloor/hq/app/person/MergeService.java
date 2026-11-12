@@ -10,6 +10,8 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolRepository;
@@ -40,6 +42,7 @@ public class MergeService {
     private final ClaimRepository claims;
     private final StatementRepository statements;
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final PeriodRepository periods;
     private final RoleService roles;
     private final SheetService sheets;
@@ -49,7 +52,8 @@ public class MergeService {
     public MergeService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, StatementRepository statements,
             PoolRepository pools, PeriodRepository periods, RoleService roles, SheetService sheets,
-            RollupService rollup, Audit audit) {
+            RollupService rollup, Audit audit, CrewRepository crews) {
+        this.crews = crews;
         this.people = people;
         this.aliases = aliases;
         this.patrons = patrons;
@@ -145,6 +149,30 @@ public class MergeService {
                 membership.setPersonId(into.getId());
             }
             pools.saveAndFlush(pool);
+        }
+
+        // Crews follow: a crew the person leads is led by the other, and a membership moves, dropped where the other
+        // already leads or is in the crew.
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            boolean changed = false;
+            if (from.getId().equals(crew.getLeadId())) {
+                crew.setLeadId(into.getId());
+                crew.getMembers().removeIf(m -> into.getId().equals(m.getPersonId()));
+                changed = true;
+            }
+            var membership = crew.getMembers().stream()
+                    .filter(m -> from.getId().equals(m.getPersonId())).findFirst().orElse(null);
+            if (membership != null) {
+                if (crew.includes(into.getId())) {
+                    crew.getMembers().remove(membership);
+                } else {
+                    membership.setPersonId(into.getId());
+                }
+                changed = true;
+            }
+            if (changed) {
+                crews.saveAndFlush(crew);
+            }
         }
 
         // A closed period's fixed figures follow the claims.

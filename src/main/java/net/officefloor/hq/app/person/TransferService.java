@@ -17,6 +17,8 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.SheetTag;
 import net.officefloor.hq.app.claim.SheetTagRepository;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.Role;
@@ -40,7 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
  * their claims are listed after that person's, their name and aliases join that person's aliases, and their grades,
  * terms and contact are dropped (two such people, or a retired one, refuse the transfer). Otherwise a name or alias
  * used elsewhere in the other sheet's tree, or a contact the other sheet has already, refuses the transfer. The person
- * leaves this sheet entirely: their holds, patron links, pool memberships and watches are dropped.
+ * leaves this sheet entirely: their holds, patron links, pool and crew memberships and watches are dropped.
  */
 @Service
 public class TransferService {
@@ -57,6 +59,7 @@ public class TransferService {
     private final SheetTagRepository tags;
     private final StatementRepository statements;
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final RoleService roles;
     private final SheetService sheets;
     private final RollupService rollup;
@@ -67,7 +70,8 @@ public class TransferService {
             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
             ClaimCommentRepository comments, ClaimService claimService, SheetTagRepository tags,
             StatementRepository statements, PoolRepository pools, RoleService roles, SheetService sheets,
-            RollupService rollup, Audit audit, PersonService personService, ClaimLineRepository lines) {
+            RollupService rollup, Audit audit, PersonService personService, ClaimLineRepository lines, CrewRepository crews) {
+        this.crews = crews;
         this.lines = lines;
         this.people = people;
         this.aliases = aliases;
@@ -198,7 +202,7 @@ public class TransferService {
             lines.moveTo(claimIds, to);
         }
 
-        // The statements follow the person; patron links, pool memberships and watches are dropped.
+        // The statements follow the person; patron links, pool and crew memberships and watches are dropped.
         statements.follow(from, saved);
         patrons.deleteAll(patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(p -> p.getPersonId().equals(from.getId()) || p.getPatronId().equals(from.getId()))
@@ -206,6 +210,15 @@ public class TransferService {
         for (Pool pool : pools.findBySheetIdOrderByIdAsc(sheetId)) {
             if (pool.getMembers().removeIf(m -> from.getId().equals(m.getPersonId()))) {
                 pools.saveAndFlush(pool);
+            }
+        }
+        // Crew memberships are dropped, and so is a crew the person leads.
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (from.getId().equals(crew.getLeadId())) {
+                crews.delete(crew);
+                crews.flush();
+            } else if (crew.getMembers().removeIf(m -> from.getId().equals(m.getPersonId()))) {
+                crews.saveAndFlush(crew);
             }
         }
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));

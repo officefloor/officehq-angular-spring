@@ -29,6 +29,9 @@ import net.officefloor.hq.app.person.PersonAliasRepository;
 import net.officefloor.hq.app.person.PersonPatron;
 import net.officefloor.hq.app.person.PersonPatronRepository;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolRepository;
@@ -49,7 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Clones a sheet to another id never used (a steward only). The clone gets the sheet's today, settings, roles, rates,
- * holidays, void reasons, templates, people (grades, terms, contacts, aliases, holds, retirements, patrons), pools,
+ * holidays, void reasons, templates, people (grades, terms, contacts, aliases, holds, retirements, patrons), pools, crews,
  * periods (all open) and claims with their status, frozen figures, dates, notes and logs. Each claim that had a number
  * takes the next number of the clone, in the order the originals were opened (by the sheet's today when each was
  * opened, then by the order they were added to the clone: person by person as listed, each person's claims in the
@@ -73,6 +76,7 @@ public class SheetCloneService {
     private final PersonAliasRepository aliases;
     private final PersonPatronRepository patrons;
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final PeriodRepository periods;
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
@@ -86,7 +90,8 @@ public class SheetCloneService {
             VoidReasonRepository voidReasons, ClaimTemplateRepository templates, SheetTagRepository tags,
             PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PoolRepository pools, PeriodRepository periods, ClaimRepository claims, ClaimLogRepository logs,
-            ClaimService claimService, RollupService rollup, Audit audit) {
+            ClaimService claimService, RollupService rollup, Audit audit, CrewRepository crews) {
+        this.crews = crews;
         this.sheets = sheets;
         this.entities = entities;
         this.roleService = roleService;
@@ -193,6 +198,15 @@ public class SheetCloneService {
                 copy.getMembers().add(copied);
             }
             pools.saveAndFlush(copy);
+        }
+
+        // The crews, with their leads and members.
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            Crew copy = new Crew(to, crew.getName(), personIds.get(crew.getLeadId()));
+            for (CrewMember member : crew.getMembers()) {
+                copy.getMembers().add(new CrewMember(personIds.get(member.getPersonId())));
+            }
+            crews.saveAndFlush(copy);
         }
 
         // The claims, person by person as listed, each person's in the order they were added, listed as they were.

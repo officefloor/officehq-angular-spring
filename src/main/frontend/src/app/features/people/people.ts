@@ -9,6 +9,7 @@ import { Rate, Rates, capped, changeFrom, excessOver, rateOn, sumDues, sumShared
 import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
+import { Crews } from '../crews/crews';
 import { Pools } from '../pools/pools';
 import { PersonPlans } from '../plans/plans';
 import { Plans } from '../../core/plans';
@@ -139,7 +140,7 @@ function csvField(value: string): string {
 // person's editor is opened, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ClassicSummary, Claims, Header, Periods, PersonPlans, Pools, Rates, Summary, FigurePipe],
+  imports: [ClassicSummary, Claims, Crews, Header, Periods, PersonPlans, Pools, Rates, Summary, FigurePipe],
   template: `
     <app-header
       [peopleCount]="people().length"
@@ -807,6 +808,7 @@ function csvField(value: string): string {
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
     <app-pools [people]="people()" />
+    <app-crews [people]="people()" [dueTotals]="personDueTotals()" />
   `,
 })
 export class People {
@@ -937,6 +939,9 @@ export class People {
       ),
   );
   /** Everyone's due-total added up, skipping the n/a ones and, with three or more, the highest and lowest. */
+  /** Each person's due-total as shown on their row, by person id. */
+  protected readonly personDueTotals = computed(() => new Map(this.people().map((p) => [p.id, this.dueTotalOf(p)])));
+
   protected readonly dueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.dueTotalOf(p))));
   /** Everyone's settled-total added up, not trimmed. */
   protected readonly settledTotal = computed(() => sumDues(this.people().map((p) => this.settledTotalOf(p))));
