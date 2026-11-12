@@ -65,7 +65,7 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         sheets.today(sheetId);
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListOrderDesc(sheetId);
     }
 
     /** Add a claim; a negative amount (a correction) must name a SETTLED claim of the person by number,
@@ -79,7 +79,9 @@ public class ClaimService {
         refuseRetired(person, on);
         refuseCorrection(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.take(sheetId);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note, corrects));
+        Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, note, corrects);
+        claim.setListOrder(claims.maxListOrder(sheetId) + 1);
+        claim = claims.saveAndFlush(claim);
         audit("CLAIM_ADDED", claim, person, user);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -214,6 +216,38 @@ public class ClaimService {
         return updated;
     }
 
+    /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
+     *  loses any figure a statement bound it to (live again until its new person's next statement), and is
+     *  listed as its new person's newest claim. Refused unless the user is a steward, and for a settled or
+     *  voided claim, a claim in a closed period, the claim's own person, or a person retired on its date. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long claimId, long toPersonId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ClaimReassignException("Only a steward can reassign a claim.");
+        }
+        if (!claim.getStatus().canMove()) {
+            throw new ClaimReassignException("A " + claim.getStatus() + " claim cannot be reassigned.");
+        }
+        Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        Person to = people.findByIdAndSheetId(toPersonId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (from.getId().equals(to.getId())) {
+            throw new ClaimReassignException("The claim is already " + to.getName() + "'s.");
+        }
+        refuseRetired(to, claim.getDate());
+        Rollup.Snapshot before = rollup.take(sheetId);
+        claim.setPersonId(to.getId());
+        claim.setStated(false, null);
+        claim.setListOrder(claims.maxListOrder(sheetId) + 1);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("CLAIM_REASSIGNED", updated, to, user, updated.getNumber(),
+                " from=" + from.getName() + " to=" + to.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
     /** What a bulk open did: how many it opened and refused, and the claims it opened. */
     public record BulkOpened(int opened, int refused, List<Claim> claims) {
     }
@@ -228,7 +262,7 @@ public class ClaimService {
         for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
             personOrder.put(person.getId(), personOrder.size());
         }
-        List<Claim> inOrder = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        List<Claim> inOrder = claims.findBySheetIdOrderByListOrderDesc(sheetId).stream()
                 .filter(c -> chosen.contains(c.getId()))
                 .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
                 .toList();
@@ -255,7 +289,7 @@ public class ClaimService {
     public Stated statement(String sheetId, String user, long personId) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate today = sheets.today(sheetId);
-        List<Claim> theirs = claims.findForUpdateBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        List<Claim> theirs = claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, personId);
         Rollup.Snapshot before = rollup.take(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean figure = false;

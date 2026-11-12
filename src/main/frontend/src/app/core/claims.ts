@@ -249,6 +249,24 @@ export class Claims {
     }
   }
 
+  /** Move a DRAFT, OPEN or PENDING claim to another person (a steward's action): it becomes their newest
+   *  claim, unbound from any statement; an error message when refused. */
+  async reassign(id: number, personId: number | null): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (personId === null) return 'Choose the person to move the claim to.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/reassign`, { personId }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => [claim, ...cs.filter((c) => c.id !== id)]);
+      return null;
+    } catch (e) {
+      return failed('reassign', e);
+    }
+  }
+
   /** Choose a claim for a bulk action, or leave it out. */
   select(id: number, on: boolean): void {
     this.selected.update((s) => {

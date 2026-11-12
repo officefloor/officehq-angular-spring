@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Claim, ClaimAction, Claims, bound, isOpen } from '../../core/claims';
 import { Periods } from '../../core/periods';
-import { GradeFrom, gradeOn } from '../../core/people';
+import { GradeFrom, People, gradeOn } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 
 // A person's claims: one form adds a claim, or edits the one whose editor is open, and the list
@@ -87,6 +87,20 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
             </button>
           }
+          <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+          <select
+            [id]="'claim-reassign-to-' + c.id"
+            data-testid="claim-reassign-to"
+            (change)="setReassignTo(c.id, value($event))"
+          >
+            <option value="" [selected]="reassignTo()[c.id] === undefined">Choose a person</option>
+            @for (p of others(); track p.id) {
+              <option [value]="p.id" [selected]="reassignTo()[c.id] === p.id">{{ p.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" [disabled]="acting() === c.id" (click)="reassign(c)">
+            Reassign<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           @if (isOpen(c)) {
             <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
             <input
@@ -122,7 +136,12 @@ export class PersonClaims {
   /** The person's dated grades: the rate in force on each claim's date of the grade in force then
    *  gives its due, unless fixed when it was settled or bound by the person's last statement. */
   readonly grades = input.required<GradeFrom[]>();
+  private readonly people = inject(People);
   protected readonly list = computed(() => this.claims.of(this.personId()));
+  /** The other people on the sheet, whom a steward can move a claim to. */
+  protected readonly others = computed(() => this.people.people().filter((p) => p.id !== this.personId()));
+  /** The person chosen to move each claim to, by claim id. */
+  protected readonly reassignTo = signal<Record<number, number>>({});
   protected readonly amount = signal('');
   protected readonly date = signal('');
   protected readonly note = signal('');
@@ -189,6 +208,27 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.act(c.id, action, this.rejectReasons()[c.id] ?? '');
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setReassignTo(id: number, personId: string): void {
+    this.clearActionError(id);
+    this.reassignTo.update((r) => {
+      const next = { ...r };
+      if (personId) next[id] = Number(personId);
+      else delete next[id];
+      return next;
+    });
+  }
+
+  protected async reassign(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.reassign(c.id, this.reassignTo()[c.id] ?? null);
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

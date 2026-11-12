@@ -27,6 +27,10 @@ public class Claim {
     @Column(name = "person_id", nullable = false)
     private Long personId;
 
+    /** Its place in the sheet's list, newest (highest) first: set when added, and again when reassigned. */
+    @Column(name = "list_order", nullable = false)
+    private long listOrder;
+
     @Column(name = "amount", nullable = false)
     private BigDecimal amount;
 
@@ -86,6 +90,19 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    /** Move the claim to another person on the sheet. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    public long getListOrder() {
+        return listOrder;
+    }
+
+    public void setListOrder(long listOrder) {
+        this.listOrder = listOrder;
     }
 
     public BigDecimal getAmount() {

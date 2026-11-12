@@ -184,6 +184,19 @@ public class ClaimController {
                 request.reason() == null ? "" : request.reason().trim()));
     }
 
+    /** The person a claim is moved to. */
+    public record ReassignRequest(@NotNull Long personId) {
+    }
+
+    /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet: a steward reassigns it. */
+    @PostMapping("/claims/{claimId}/reassign")
+    public ClaimView reassign(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ReassignRequest request) {
+        return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, request.personId()));
+    }
+
     /** Void a DRAFT, OPEN or PENDING claim. */
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -240,6 +253,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimSettlerException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> settlerRefused(ClaimSettlerException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A reassignment that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimReassignException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> reassignRefused(ClaimReassignException e) {
         return Map.of("message", e.getMessage());
     }
 

@@ -19,6 +19,11 @@ public enum ClaimStatus {
         };
     }
 
+    /** Whether a claim in this status can be reassigned to another person: DRAFT, OPEN or PENDING. */
+    public boolean canMove() {
+        return this == DRAFT || this == OPEN || this == PENDING;
+    }
+
     /** Whether a claim in this status counts toward claimed, due-total and statements. */
     public boolean counts() {
         return this == OPEN || this == PENDING || this == SETTLED;
