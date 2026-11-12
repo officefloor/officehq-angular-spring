@@ -1,0 +1,164 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0b37991e1..6d15181d0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -79,11 +79,16 @@ interface PersonHold {
+   to: string | null;
+ }
+ 
+-/** The figures of a sheet's descendants added up: their people, due-totals and overdue-totals. */
++/**
++ * The figures of a sheet's descendants added up: their people, due-totals and overdue-totals; per grade, the due-totals
++ * of the people on it not retired; and per status, how many claims have it.
++ */
+ interface DescendantFigures {
+   people: number;
+   dueTotal: string;
+   overdueTotal: string;
++  gradeDueTotals: Record<string, string>;
++  statusCounts: Record<string, number>;
+ }
+ 
+ /** A name as names are compared: trimmed, ignoring case. */
+@@ -97,7 +102,13 @@ function compareKeys(a: string, b: string): number {
+   return a < b ? -1 : a > b ? 1 : 0;
+ }
+ 
+-const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
++const NO_DESCENDANTS: DescendantFigures = {
++  people: 0,
++  dueTotal: '0.00',
++  overdueTotal: '0.00',
++  gradeDueTotals: {},
++  statusCounts: {},
++};
+ 
+ /** What decides which of a person's open claims leave the live totals: their retirement date (a hold does not). */
+ type LeftOutBy = Pick<Person, 'retiredFrom'>;
+@@ -167,6 +178,14 @@ function csvField(value: string): string {
+         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | fig }}</dd>
+         <dt>Overdue total</dt>
+         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | fig }}</dd>
++        @for (g of consolidatedGrades(); track g.grade) {
++          <dt>Grade {{ g.grade }} due total</dt>
++          <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | fig }}</dd>
++        }
++        @for (s of consolidatedStatuses(); track s.status) {
++          <dt>{{ s.status }} claims</dt>
++          <dd [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count | fig }}</dd>
++        }
+       </dl>
+     </section>
+     <section aria-labelledby="dashboard-heading">
+@@ -1135,6 +1154,20 @@ export class People {
+   protected readonly consolidatedOverdueTotal = computed(() =>
+     sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
+   );
++  /** Per grade: the sheet's due-total of the people on it not retired, as the summary shows it, and its descendants'. */
++  protected readonly consolidatedGrades = computed(() =>
++    this.gradeSummary().map((g) => ({
++      grade: g.grade,
++      dueTotal: sumDues([g.dueTotal, this.descendantFigures().gradeDueTotals[g.grade] ?? '0.00']),
++    })),
++  );
++  /** Per status: how many of the sheet's claims have it, and its descendants'. */
++  protected readonly consolidatedStatuses = computed(() =>
++    this.statusSummary().map((s) => ({
++      status: s.status,
++      count: s.count + (this.descendantFigures().statusCounts[s.status] ?? 0),
++    })),
++  );
+   /** The person's tags, sorted; none when they have none. */
+   protected personTagsOf(person: Person): string[] {
+     return person.tags ? person.tags.split(',') : [];
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 7198874a5..50d747a8b 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -144,8 +144,12 @@ public class RollupService {
+         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
+     }
+ 
+-    /** Figures added up over sheets: the number of people, the due-totals and the overdue-totals (two decimals). */
+-    public record Consolidated(int people, String dueTotal, String overdueTotal) {
++    /**
++     * Figures added up over sheets: the number of people, the due-totals and the overdue-totals (two decimals); per
++     * grade, the due-totals of the people on it not retired (two decimals); and per status, how many claims have it.
++     */
++    public record Consolidated(int people, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
++            Map<String, Integer> statusCounts) {
+     }
+ 
+     /**
+@@ -153,16 +157,33 @@ public class RollupService {
+      * sheet's people, due-total and overdue-total as that sheet shows them, added up.
+      */
+     public Consolidated descendantFigures(String sheetId) {
++        return figuresOf(descendantsAsOf(sheetId));
++    }
++
++    /** The figures of the sheets, each sheet's as that sheet shows them, added up. */
++    private Consolidated figuresOf(List<String> sheetIds) {
+         int count = 0;
+         BigDecimal due = zero();
+         BigDecimal overdue = zero();
+-        for (String id : descendantsAsOf(sheetId)) {
++        Map<String, BigDecimal> gradeDues = new TreeMap<>();
++        Map<String, Integer> statuses = new TreeMap<>();
++        for (String id : sheetIds) {
+             Snapshot figures = snapshot(id);
+             count += figures.people().size();
+             due = due.add(new BigDecimal(figures.dueTotal()));
+             overdue = overdue.add(new BigDecimal(figures.overdueTotal()));
++            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
++                Figures theirs = figures.people().get(person.getId());
++                if (person.isRetired() || theirs == null || theirs.grade() == null || theirs.dueTotal().equals("n/a")) {
++                    continue;
++                }
++                gradeDues.merge(theirs.grade(), new BigDecimal(theirs.dueTotal()), BigDecimal::add);
++            }
++            for (Claim claim : claims.findBySheetIdOrderByIdDesc(id)) {
++                statuses.merge(claim.getStatus().name(), 1, Integer::sum);
++            }
+         }
+-        return new Consolidated(count, shown(due), shown(overdue));
++        return new Consolidated(count, shown(due), shown(overdue), shownAll(gradeDues), statuses);
+     }
+ 
+     /**
+@@ -171,11 +192,18 @@ public class RollupService {
+      * the end of that date, with the date as its today.
+      */
+     public Consolidated consolidatedFigures(String sheetId) {
+-        Snapshot own = snapshot(sheetId);
++        Consolidated own = figuresOf(List.of(sheetId));
+         Consolidated descendants = descendantFigures(sheetId);
+-        return new Consolidated(own.people().size() + descendants.people(),
++        Map<String, BigDecimal> gradeDues = new TreeMap<>();
++        own.gradeDueTotals().forEach((grade, total) -> gradeDues.merge(grade, new BigDecimal(total), BigDecimal::add));
++        descendants.gradeDueTotals()
++                .forEach((grade, total) -> gradeDues.merge(grade, new BigDecimal(total), BigDecimal::add));
++        Map<String, Integer> statuses = new TreeMap<>(own.statusCounts());
++        descendants.statusCounts().forEach((status, n) -> statuses.merge(status, n, Integer::sum));
++        return new Consolidated(own.people() + descendants.people(),
+                 shown(new BigDecimal(own.dueTotal()).add(new BigDecimal(descendants.dueTotal()))),
+-                shown(new BigDecimal(own.overdueTotal()).add(new BigDecimal(descendants.overdueTotal()))));
++                shown(new BigDecimal(own.overdueTotal()).add(new BigDecimal(descendants.overdueTotal()))),
++                shownAll(gradeDues), statuses);
+     }
+ 
+     /**
+@@ -624,6 +652,13 @@ public class RollupService {
+         return BigDecimal.ZERO.setScale(2);
+     }
+ 
++    /** Each figure with two decimals. */
++    private static Map<String, String> shownAll(Map<String, BigDecimal> values) {
++        Map<String, String> shown = new TreeMap<>();
++        values.forEach((key, value) -> shown.put(key, shown(value)));
++        return shown;
++    }
++
+     private static String shown(BigDecimal value) {
+         return value.setScale(2, RoundingMode.HALF_EVEN).toPlainString();
+     }
