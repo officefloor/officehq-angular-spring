@@ -1,0 +1,1127 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 9bda0fcb4..94dc55699 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -122,13 +122,13 @@ export class Claims {
+   }
+ 
+   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, the sheet's late
+-   *  percent of the figure for every full 30 days past its due-by, rounded to cents as its date rounds; none
++   *  percent in force on its date of the figure for every full 30 days past its due-by, rounded to cents as its date rounds; none
+    *  otherwise, and none on a correction. Never bound by a statement; frozen into the due when settled. */
+   lateCents(c: Claim, figureCents: bigint): bigint {
+     const today = this.session.today();
+     if (!this.overdue(c) || today === null || c.amount.startsWith('-')) return 0n;
+     const periods = BigInt(Math.floor(daysBetween(this.dueBy(c), today) / 30));
+-    return rounded(figureCents * hundredths(this.session.latePct()) * periods, 10000n, this.session.roundsHalfUp(c.date));
++    return rounded(figureCents * hundredths(this.session.latePctOn(c.date)) * periods, 10000n, this.session.roundsHalfUp(c.date));
+   }
+ 
+   /** The date a claim's figures round by: its own, or for a correction the date of the claim of the same
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index adac6131e..a9ce8a065 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -46,14 +46,14 @@ export class Rates {
+   }
+ 
+   /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded to cents as
+-   *  a claim dated `roundOn` rounds (half up before the policy date, else half to even), and at least the sheet's floor unless the amount is negative (a correction has no
++   *  a claim dated `roundOn` rounds (half up before the policy date, else half to even), and at least the sheet's floor in force on `date` unless the amount is negative (a correction has no
+    *  floor); null when no rate of the grade applies then. */
+   dueCents(amountCents: bigint, grade: string, date: string, roundOn: string = date): bigint | null {
+     const rate = this.inForce(grade, date);
+     if (rate === undefined) return null;
+     const due = rounded(amountCents * hundredths(rate.rate), 10000n, this.session.roundsHalfUp(roundOn));
+     if (amountCents < 0n) return due;
+-    const floor = hundredths(this.session.floor());
++    const floor = hundredths(this.session.floorOn(date));
+     return due < floor ? floor : due;
+   }
+ 
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 4d165ebd4..2a6e87e22 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+-import { Injectable, inject, signal } from '@angular/core';
++import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
+ export interface SheetView {
+@@ -21,8 +21,21 @@ export interface SheetView {
+   gradeTerms: Record<string, number>;
+   /** The most a person's due-total can be, two decimals; null when there is no cap. */
+   cap: string | null;
++  /** Every value recorded for a dated setting, by key then from-date. */
++  settings: DatedSetting[];
+ }
+ 
++/** A value a dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit or cap) takes from a date
++ *  on; null for no limit, no cap, or a grade using the sheet's terms. */
++export interface DatedSetting {
++  key: string;
++  from: string;
++  value: string | null;
++}
++
++/** What the floor, the late percent and the terms are before every from-date. */
++const STARTING: Record<string, string> = { floor: '1.00', 'late-pct': '0.00', terms: '14' };
++
+ // The signed-in user (a typed name, no password) and the active sheet. Every request to the
+ // server carries the user's name in the X-User header.
+ @Injectable({ providedIn: 'root' })
+@@ -33,20 +46,31 @@ export class Session {
+   readonly sheetId = signal<string | null>(null);
+   /** The sheet's today (YYYY-MM-DD): every date decision and default date uses it, never the clock. */
+   readonly today = signal<string | null>(null);
+-  /** The sheet's clerk limit (two decimals); null when there is none. */
+-  readonly clerkLimit = signal<string | null>(null);
+-  /** The sheet's floor (two decimals): the least a claim's live due can be. */
+-  readonly floor = signal<string>('1.00');
+-  /** The sheet's cap (two decimals): the most a person's due-total can be; null when there is none. */
+-  readonly cap = signal<string | null>(null);
+-  /** The sheet's terms: the number of days after a claim's date it is due by. */
+-  readonly terms = signal<number>(14);
+-  /** The terms of each grade that has its own (a claim added for it is due that many days after its date);
+-   *  a grade without uses the sheet's terms. */
+-  readonly gradeTerms = signal<Record<string, number>>({});
+-  /** The sheet's late percent (two decimals): what an overdue claim's due gains of its figure for every
+-   *  full 30 days it is overdue. */
+-  readonly latePct = signal<string>('0.00');
++  /** Every value recorded for the sheet's dated settings, each from a date. */
++  readonly settings = signal<DatedSetting[]>([]);
++  /** The sheet's clerk limit (two decimals) in force on its today; null when there is none. */
++  readonly clerkLimit = computed(() => this.onToday('clerk-limit'));
++  /** The sheet's floor (two decimals) in force on its today: the least a claim's live due can be. */
++  readonly floor = computed(() => this.onToday('floor') ?? STARTING['floor']);
++  /** The sheet's cap (two decimals) in force on its today: the most a person's due-total can be; null when
++   *  there is none. */
++  readonly cap = computed(() => this.onToday('cap'));
++  /** The sheet's terms in force on its today: the number of days after a claim's date it is due by. */
++  readonly terms = computed(() => Number(this.onToday('terms') ?? STARTING['terms']));
++  /** The terms of each grade that has its own in force on the sheet's today (a claim added for it is due
++   *  that many days after its date); a grade without uses the sheet's terms. */
++  readonly gradeTerms = computed(() => {
++    const out: Record<string, number> = {};
++    for (const key of new Set(this.settings().map((s) => s.key))) {
++      if (!key.startsWith('terms-')) continue;
++      const t = this.onToday(key);
++      if (t !== null) out[key.slice('terms-'.length)] = Number(t);
++    }
++    return out;
++  });
++  /** The sheet's late percent (two decimals) in force on its today: what an overdue claim's due gains of its
++   *  figure for every full 30 days it is overdue. */
++  readonly latePct = computed(() => this.onToday('late-pct') ?? STARTING['late-pct']);
+   /** The sheet's policy date (YYYY-MM-DD); null when it is the sheet's today. A claim dated before it
+    *  rounds half up, one dated on or after it half to even. */
+   readonly policyDate = signal<string | null>(null);
+@@ -74,12 +98,7 @@ export class Session {
+       );
+       this.sheetId.set(sheet.id);
+       this.today.set(sheet.today);
+-      this.clerkLimit.set(sheet.clerkLimit);
+-      this.floor.set(sheet.floor);
+-      this.cap.set(sheet.cap);
+-      this.terms.set(sheet.terms);
+-      this.gradeTerms.set(sheet.gradeTerms);
+-      this.latePct.set(sheet.latePct);
++      this.settings.set(sheet.settings);
+       this.policyDate.set(sheet.policyDate);
+       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
+       return null;
+@@ -107,108 +126,144 @@ export class Session {
+     }
+   }
+ 
+-  /** Change the sheet's clerk limit (blank: no limit); an error message when refused. */
+-  async setClerkLimit(limit: string): Promise<string | null> {
++  /** Record the sheet's clerk limit (blank: no limit) from a date (blank: the sheet's today); an error message when refused. */
++  async setClerkLimit(limit: string, from = ''): Promise<string | null> {
+     const user = this.user();
+     const sid = this.sheetId();
+     const l = limit.trim();
+     if (!user || !sid) return 'Load a sheet first.';
++    const d = from.trim();
++    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+     if (l && !/^\d+(\.\d{1,2})?$/.test(l)) return 'Enter a clerk limit of 0.00 or more, with up to two decimals, or leave it blank.';
+     try {
+       const sheet = await firstValueFrom(
+-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings`, { clerkLimit: l || null }, {
++        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings`, { clerkLimit: l || null, from: d || null }, {
+           headers: { 'X-User': user },
+         }),
+       );
+-      if (this.sheetId() === sheet.id) this.clerkLimit.set(sheet.clerkLimit);
++      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+       return null;
+     } catch (e) {
+       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+     }
+   }
+ 
+-  /** Change the sheet's floor; an error message when refused. */
+-  async setFloor(floor: string): Promise<string | null> {
++  /** Record the sheet's floor from a date (blank: the sheet's today); an error message when refused. */
++  async setFloor(floor: string, from = ''): Promise<string | null> {
+     const user = this.user();
+     const sid = this.sheetId();
+     const f = floor.trim();
+     if (!user || !sid) return 'Load a sheet first.';
++    const d = from.trim();
++    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+     if (!/^\d+(\.\d{1,2})?$/.test(f)) return 'Enter a floor of 0.00 or more, with up to two decimals.';
+     try {
+       const sheet = await firstValueFrom(
+-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/floor`, { floor: f }, {
++        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/floor`, { floor: f, from: d || null }, {
+           headers: { 'X-User': user },
+         }),
+       );
+-      if (this.sheetId() === sheet.id) this.floor.set(sheet.floor);
++      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+       return null;
+     } catch (e) {
+       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+     }
+   }
+ 
+-  /** Change the sheet's cap (blank: no cap); an error message when refused. */
+-  async setCap(cap: string): Promise<string | null> {
++  /** Record the sheet's cap (blank: no cap) from a date (blank: the sheet's today); an error message when refused. */
++  async setCap(cap: string, from = ''): Promise<string | null> {
+     const user = this.user();
+     const sid = this.sheetId();
+     const c = cap.trim();
+     if (!user || !sid) return 'Load a sheet first.';
++    const d = from.trim();
++    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+     if (c && !/^\d+(\.\d{1,2})?$/.test(c)) return 'Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.';
+     try {
+       const sheet = await firstValueFrom(
+-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/cap`, { cap: c || null }, {
++        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/cap`, { cap: c || null, from: d || null }, {
+           headers: { 'X-User': user },
+         }),
+       );
+-      if (this.sheetId() === sheet.id) this.cap.set(sheet.cap);
++      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+       return null;
+     } catch (e) {
+       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+     }
+   }
+ 
+-  /** Change the sheet's terms (whole days); an error message when refused. */
+-  async setTerms(terms: string): Promise<string | null> {
++  /** Record the sheet's terms (whole days) from a date (blank: the sheet's today); an error message when refused. */
++  async setTerms(terms: string, from = ''): Promise<string | null> {
+     const user = this.user();
+     const sid = this.sheetId();
+     const t = terms.trim();
+     if (!user || !sid) return 'Load a sheet first.';
++    const d = from.trim();
++    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+     if (!/^\d{1,5}$/.test(t) || Number(t) > 36500) return 'Enter terms as a whole number of days, 0 or more.';
+     try {
+       const sheet = await firstValueFrom(
+-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms`, { terms: Number(t) }, {
++        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms`, { terms: Number(t), from: d || null }, {
+           headers: { 'X-User': user },
+         }),
+       );
+-      if (this.sheetId() === sheet.id) this.terms.set(sheet.terms);
++      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+       return null;
+     } catch (e) {
+       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+     }
+   }
+ 
+-  /** Change a grade's own terms (whole days; blank: it uses the sheet's terms); an error message when
+-   *  refused. */
+-  async setGradeTerms(grade: string, terms: string): Promise<string | null> {
++  /** Record a grade's own terms (whole days; blank: it uses the sheet's terms) from a date (blank: the
++   *  sheet's today); an error message when refused. */
++  async setGradeTerms(grade: string, terms: string, from = ''): Promise<string | null> {
+     const user = this.user();
+     const sid = this.sheetId();
+     const t = terms.trim();
+     if (!user || !sid) return 'Load a sheet first.';
++    const d = from.trim();
++    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+     if (t && (!/^\d{1,5}$/.test(t) || Number(t) > 36500)) {
+       return `Enter terms for grade ${grade} as a whole number of days, 0 or more, or leave it blank.`;
+     }
+     try {
+       const sheet = await firstValueFrom(
+         this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms/${encodeURIComponent(grade)}`,
+-          { terms: t ? Number(t) : null }, { headers: { 'X-User': user } }),
++          { terms: t ? Number(t) : null, from: d || null }, { headers: { 'X-User': user } }),
+       );
+-      if (this.sheetId() === sheet.id) this.gradeTerms.set(sheet.gradeTerms);
++      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+       return null;
+     } catch (e) {
+       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+     }
+   }
+ 
++  /** The value of a dated setting in force on a date (YYYY-MM-DD): the one with the latest from-date on or
++   *  before it; null when none is recorded by then, or the one in force is none. */
++  valueOn(key: string, date: string): string | null {
++    let found: DatedSetting | undefined;
++    for (const s of this.settings()) {
++      if (s.key === key && s.from <= date && (found === undefined || s.from > found.from)) found = s;
++    }
++    return found?.value ?? null;
++  }
++
++  /** The floor (two decimals) in force on a date: the least a live due of a claim dated then can be. */
++  floorOn(date: string): string {
++    return this.valueOn('floor', date) ?? STARTING['floor'];
++  }
++
++  /** The late percent (two decimals) in force on a date: what an overdue claim dated then gains of its
++   *  figure for every full 30 days. */
++  latePctOn(date: string): string {
++    return this.valueOn('late-pct', date) ?? STARTING['late-pct'];
++  }
++
++  private onToday(key: string): string | null {
++    const today = this.today();
++    return today === null ? null : this.valueOn(key, today);
++  }
++
+   /** Whether a claim dated on a date rounds half up: it is before the policy date (the sheet's today when
+    *  there is none); otherwise it rounds half to even. */
+   roundsHalfUp(date: string): boolean {
+@@ -255,20 +310,22 @@ export class Session {
+     }
+   }
+ 
+-  /** Change the sheet's late percent; an error message when refused. */
+-  async setLatePct(pct: string): Promise<string | null> {
++  /** Record the sheet's late percent from a date (blank: the sheet's today); an error message when refused. */
++  async setLatePct(pct: string, from = ''): Promise<string | null> {
+     const user = this.user();
+     const sid = this.sheetId();
+     const p = pct.trim();
+     if (!user || !sid) return 'Load a sheet first.';
++    const d = from.trim();
++    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+     if (!/^\d{1,7}(\.\d{1,2})?$/.test(p)) return 'Enter a late percent of 0.00 or more, with up to two decimals.';
+     try {
+       const sheet = await firstValueFrom(
+-        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/late-pct`, { latePct: p }, {
++        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/late-pct`, { latePct: p, from: d || null }, {
+           headers: { 'X-User': user },
+         }),
+       );
+-      if (this.sheetId() === sheet.id) this.latePct.set(sheet.latePct);
++      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+       return null;
+     } catch (e) {
+       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index b57e10b24..4660df8a0 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -3,7 +3,9 @@ import { GRADES } from '../../core/people';
+ import { ROLES, Roles } from '../../core/roles';
+ import { Session } from '../../core/session';
+ 
+-// The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
++// The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the terms, each grade's
++// terms and the late percent) are saved from a from-date (blank for the sheet's today), keeping the values
++// already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
+ // floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the terms (the days after a claim's date it is due by, fixed
+ // when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), the
+ // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
+@@ -26,6 +28,13 @@ import { Session } from '../../core/session';
+           (input)="limit.set(value($event)); limitTouched.set(true); error.set(null)"
+           (focus)="focused.set('limit')"
+         />
++        <label for="setting-clerk-limit-from">Clerk limit from (YYYY-MM-DD; blank for the sheet's today)</label>
++        <input
++          id="setting-clerk-limit-from"
++          data-testid="setting-clerk-limit-from"
++          [value]="fromOf('clerk-limit')"
++          (input)="setFrom('clerk-limit', value($event))"
++        />
+         <p>In force: <strong data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</strong></p>
+         <label for="setting-floor">Floor (the least a live due can be)</label>
+         <input
+@@ -35,6 +44,13 @@ import { Session } from '../../core/session';
+           [value]="floor()"
+           (input)="floor.set(value($event)); floorTouched.set(true); error.set(null)"
+         />
++        <label for="setting-floor-from">Floor from (YYYY-MM-DD; blank for the sheet's today)</label>
++        <input
++          id="setting-floor-from"
++          data-testid="setting-floor-from"
++          [value]="fromOf('floor')"
++          (input)="setFrom('floor', value($event))"
++        />
+         <p>In force: <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
+         <label for="setting-cap">Cap (the most a person's due-total can be; blank for none)</label>
+         <input
+@@ -47,6 +63,13 @@ import { Session } from '../../core/session';
+           (keydown.delete)="capTouched.set(true); error.set(null)"
+           (keydown.backspace)="capTouched.set(true); error.set(null)"
+         />
++        <label for="setting-cap-from">Cap from (YYYY-MM-DD; blank for the sheet's today)</label>
++        <input
++          id="setting-cap-from"
++          data-testid="setting-cap-from"
++          [value]="fromOf('cap')"
++          (input)="setFrom('cap', value($event))"
++        />
+         <p>In force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
+         <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
+         <input
+@@ -56,6 +79,13 @@ import { Session } from '../../core/session';
+           [value]="terms()"
+           (input)="terms.set(value($event)); termsTouched.set(true); error.set(null)"
+         />
++        <label for="setting-terms-from">Terms from (YYYY-MM-DD; blank for the sheet's today)</label>
++        <input
++          id="setting-terms-from"
++          data-testid="setting-terms-from"
++          [value]="fromOf('terms')"
++          (input)="setFrom('terms', value($event))"
++        />
+         <p>In force: <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
+         @for (g of grades; track g) {
+           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (blank for the sheet's terms)</label>
+@@ -69,6 +99,13 @@ import { Session } from '../../core/session';
+             (keydown.delete)="touchGradeTerms(g)"
+             (keydown.backspace)="touchGradeTerms(g)"
+           />
++          <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from (YYYY-MM-DD; blank for the sheet's today)</label>
++          <input
++            [id]="'setting-terms-' + g + '-from'"
++            [attr.data-testid]="'setting-terms-' + g + '-from'"
++            [value]="fromOf('terms-' + g)"
++            (input)="setFrom('terms-' + g, value($event))"
++          />
+           <p>In force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.gradeTerms()[g] ?? '' }}</strong></p>
+         }
+         <label for="setting-late-pct">Late percent (of an overdue claim's figure, per full 30 days)</label>
+@@ -79,6 +116,13 @@ import { Session } from '../../core/session';
+           [value]="latePct()"
+           (input)="latePct.set(value($event)); latePctTouched.set(true); error.set(null)"
+         />
++        <label for="setting-late-pct-from">Late percent from (YYYY-MM-DD; blank for the sheet's today)</label>
++        <input
++          id="setting-late-pct-from"
++          data-testid="setting-late-pct-from"
++          [value]="fromOf('late-pct')"
++          (input)="setFrom('late-pct', value($event))"
++        />
+         <p>In force: <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
+         <label for="setting-policy-date">Policy date (YYYY-MM-DD; blank for the sheet's today)</label>
+         <input
+@@ -163,6 +207,8 @@ export class SettingsPanel {
+   protected readonly gradeTermsTouched = signal<ReadonlySet<string>>(new Set());
+   protected readonly latePct = signal('');
+   protected readonly latePctTouched = signal(false);
++  /** The from-date typed for each dated setting (blank: the sheet's today). */
++  protected readonly froms = signal<Record<string, string>>({});
+   protected readonly policyDate = signal('');
+   protected readonly policyDateTouched = signal(false);
+   protected readonly numberingFrom = signal('');
+@@ -177,6 +223,15 @@ export class SettingsPanel {
+   protected readonly roleError = signal<string | null>(null);
+   protected readonly settingRole = signal(false);
+ 
++  protected fromOf(key: string): string {
++    return this.froms()[key] ?? '';
++  }
++
++  protected setFrom(key: string, from: string): void {
++    this.froms.update((f) => ({ ...f, [key]: from }));
++    this.error.set(null);
++  }
++
+   protected setGradeTerms(grade: string, terms: string): void {
+     this.gradeTerms.update((t) => ({ ...t, [grade]: terms }));
+     this.touchGradeTerms(grade);
+@@ -218,12 +273,12 @@ export class SettingsPanel {
+         || (guess && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
+       const limit = this.limitTouched() || pick === 'limit' || (guess && !cap && !policyDate && !numberingFrom)
+         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
+-      const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
+-        ?? (floor ? await this.session.setFloor(this.floor()) : null)
+-        ?? (cap ? await this.session.setCap(this.cap()) : null)
+-        ?? (terms ? await this.session.setTerms(this.terms()) : null)
++      const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
++        ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
++        ?? (cap ? await this.session.setCap(this.cap(), this.fromOf('cap')) : null)
++        ?? (terms ? await this.session.setTerms(this.terms(), this.fromOf('terms')) : null)
+         ?? (await this.saveGradeTerms())
+-        ?? (latePct ? await this.session.setLatePct(this.latePct()) : null)
++        ?? (latePct ? await this.session.setLatePct(this.latePct(), this.fromOf('late-pct')) : null)
+         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
+         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null);
+       if (err) this.error.set(err);
+@@ -238,6 +293,7 @@ export class SettingsPanel {
+         this.termsTouched.set(false);
+         this.gradeTerms.set({});
+         this.gradeTermsTouched.set(new Set());
++        this.froms.set({});
+         this.latePct.set('');
+         this.latePctTouched.set(false);
+         this.policyDate.set('');
+@@ -255,7 +311,7 @@ export class SettingsPanel {
+   private async saveGradeTerms(): Promise<string | null> {
+     for (const g of this.grades) {
+       if (!this.gradeTermsTouched().has(g)) continue;
+-      const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '');
++      const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '', this.fromOf('terms-' + g));
+       if (err) return err;
+     }
+     return null;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 851e0de16..b3917aae8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -80,7 +80,7 @@ public class ClaimService {
+         refuseCorrection(sheetId, personId, amount, corrects);
+         Rollup.Snapshot before = rollup.take(sheetId);
+         int terms = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
+-                .termsFor(person.gradeOn(on));
++                .termsFor(person.gradeOn(on), on);
+         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
+         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
+         logStatus(claim, person, user);
+@@ -455,14 +455,14 @@ public class ClaimService {
+         return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, figure);
+     }
+ 
+-    /** The claim's amount at the rate in force on its date of its person's grade in force then in force on its date, at least the sheet's floor
++    /** The claim's amount at the rate in force on its date of its person's grade in force then, at least the sheet's floor in force then
+      *  (a correction has none); none when no rate applies. */
+     private BigDecimal liveDue(Claim claim, Person person) {
+         Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
+         RoundingMode rounding = sheet.rounding(roundingDate(claim));
+         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
+                 .map(rate -> claim.isCorrection() ? due(claim.getAmount(), rate, rounding)
+-                        : sheet.floored(due(claim.getAmount(), rate, rounding)))
++                        : sheet.floored(due(claim.getAmount(), rate, rounding), claim.getDate()))
+                 .orElse(null);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index f8bcfde6a..1b9e85283 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -210,9 +210,10 @@ public class Rollup {
+                 .findFirst().map(Claim::getDate).orElse(claim.getDate());
+     }
+ 
+-    /** A live due as it counts: at least the sheet's floor, unless its claim is a correction. */
++    /** A live due as it counts: at least the sheet's floor in force on its claim's date, unless its claim is
++     *  a correction. */
+     private static BigDecimal floored(Optional<Sheet> sheet, Claim claim, BigDecimal due) {
+-        return claim.isCorrection() ? due : sheet.map(s -> s.floored(due)).orElse(due);
++        return claim.isCorrection() ? due : sheet.map(s -> s.floored(due, claim.getDate())).orElse(due);
+     }
+ 
+     /** A figure with its late charge on top while its claim is OPEN or PENDING (only those go overdue); a
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 67461e380..0b4485450 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -7,14 +7,17 @@ import jakarta.persistence.Entity;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+-import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.Instant;
+ import java.time.LocalDate;
+ import java.time.temporal.ChronoUnit;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import java.util.TreeMap;
+ 
+ /** A sheet, chosen by its id. Everything else in the app is kept per sheet. */
+@@ -22,6 +25,15 @@ import java.util.TreeMap;
+ @Table(name = "sheet")
+ public class Sheet {
+ 
++    public static final String FLOOR = "floor";
++    public static final String LATE_PCT = "late-pct";
++    public static final String TERMS = "terms";
++    public static final String CLERK_LIMIT = "clerk-limit";
++    public static final String CAP = "cap";
++    private static final BigDecimal START_FLOOR = new BigDecimal("1.00");
++    private static final BigDecimal START_LATE_PCT = new BigDecimal("0.00");
++    private static final int START_TERMS = 14;
++
+     @Id
+     private String id;
+ 
+@@ -39,29 +51,11 @@ public class Sheet {
+     @Column(name = "last_claim_number", nullable = false)
+     private int lastClaimNumber;
+ 
+-    /** The largest due a clerk may settle; none when there is no limit. */
+-    @Column(name = "clerk_limit")
+-    private BigDecimal clerkLimit;
+-
+-    /** The least a claim's live due can be; a sheet starts at 1.00. */
+-    @Column(name = "due_floor", nullable = false)
+-    private BigDecimal floor = new BigDecimal("1.00");
+-
+-    /** The number of days after a claim's date it is due by; a sheet starts at 14. */
+-    @Column(name = "terms", nullable = false)
+-    private int terms = 14;
+-
+-    /** The terms of each grade that has its own; a grade without uses the sheet's terms. */
++    /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
++     *  each grade's terms (terms-<grade>), the clerk limit and the cap. */
+     @ElementCollection(fetch = FetchType.EAGER)
+-    @CollectionTable(name = "sheet_grade_terms", joinColumns = @JoinColumn(name = "sheet_id"))
+-    @MapKeyColumn(name = "grade")
+-    @Column(name = "terms", nullable = false)
+-    private Map<String, Integer> gradeTerms = new TreeMap<>();
+-
+-    /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue; a sheet
+-     *  starts at 0.00. */
+-    @Column(name = "late_pct", nullable = false)
+-    private BigDecimal latePct = new BigDecimal("0.00");
++    @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
++    private List<SheetSetting> settings = new ArrayList<>();
+ 
+     /** The policy date: a claim dated before it rounds half up, on or after it half to even; none means
+      *  the sheet's today. */
+@@ -73,10 +67,6 @@ public class Sheet {
+     @Column(name = "period_numbering_from")
+     private LocalDate periodNumberingFrom;
+ 
+-    /** The most a person's due-total can be; none when there is no cap. */
+-    @Column(name = "due_cap")
+-    private BigDecimal cap;
+-
+     protected Sheet() {
+     }
+ 
+@@ -107,69 +97,101 @@ public class Sheet {
+         this.today = today;
+     }
+ 
+-    public BigDecimal getClerkLimit() {
+-        return clerkLimit;
++    /** Every value recorded for a setting that carries a figure, by key, then from-date. */
++    public List<SheetSetting> getSettings() {
++        return settings.stream()
++                .sorted(Comparator.comparing(SheetSetting::getKey).thenComparing(SheetSetting::getFromDate))
++                .toList();
+     }
+ 
+-    public void setClerkLimit(BigDecimal clerkLimit) {
+-        this.clerkLimit = clerkLimit;
++    /** Record a setting's value from a date, keeping its other values; one already from that date is
++     *  replaced. None is a value too (no limit, no cap, a grade using the sheet's terms). */
++    public void setSetting(String key, LocalDate from, String value) {
++        settings.removeIf(s -> s.getKey().equals(key) && s.getFromDate().equals(from));
++        settings.add(new SheetSetting(key, from, value));
+     }
+ 
+-    public BigDecimal getFloor() {
+-        return floor;
++    /** The value of a setting in force on a date: the one with the latest from-date on or before it; empty
++     *  when none is recorded by then, null inside when the one in force is none. */
++    private Optional<SheetSetting> inForce(String key, LocalDate date) {
++        return settings.stream()
++                .filter(s -> s.getKey().equals(key) && !s.getFromDate().isAfter(date))
++                .max(Comparator.comparing(SheetSetting::getFromDate));
+     }
+ 
+-    public void setFloor(BigDecimal floor) {
+-        this.floor = floor;
++    private BigDecimal decimalOn(String key, LocalDate date, BigDecimal start) {
++        return inForce(key, date).map(s -> s.getValue() == null ? null : new BigDecimal(s.getValue())).orElse(start);
+     }
+ 
+-    public BigDecimal getCap() {
+-        return cap;
++    /** The largest due a clerk may settle, in force on the sheet's today; none when there is no limit. */
++    public BigDecimal getClerkLimit() {
++        return decimalOn(CLERK_LIMIT, today, null);
+     }
+ 
+-    public void setCap(BigDecimal cap) {
+-        this.cap = cap;
++    /** The least a claim's live due can be on a date; 1.00 before every from-date. */
++    public BigDecimal floorOn(LocalDate date) {
++        return decimalOn(FLOOR, date, START_FLOOR);
++    }
++
++    /** The floor in force on the sheet's today. */
++    public BigDecimal getFloor() {
++        return floorOn(today);
++    }
++
++    /** The most a person's due-total can be, in force on the sheet's today; none when there is no cap. */
++    public BigDecimal getCap() {
++        return decimalOn(CAP, today, null);
+     }
+ 
+     /** A person's due-total as it counts: at most the cap; none (n/a) stays none. */
+     public BigDecimal capped(BigDecimal dueTotal) {
++        BigDecimal cap = getCap();
+         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+     }
+ 
++    /** The sheet's terms on a date; 14 before every from-date. */
++    public int termsOn(LocalDate date) {
++        return inForce(TERMS, date).map(s -> Integer.valueOf(s.getValue())).orElse(START_TERMS);
++    }
++
++    /** The sheet's terms in force on its today. */
+     public int getTerms() {
+-        return terms;
++        return termsOn(today);
+     }
+ 
+-    public void setTerms(int terms) {
+-        this.terms = terms;
++    /** A grade's own terms on a date; none when it uses the sheet's terms then. */
++    public Integer gradeTermsOn(String grade, LocalDate date) {
++        return inForce(TERMS + "-" + grade, date).map(SheetSetting::getValue).map(Integer::valueOf).orElse(null);
+     }
+ 
+-    /** The grades with their own terms, and their terms. */
++    /** The grades with their own terms in force on the sheet's today, and their terms. */
+     public Map<String, Integer> getGradeTerms() {
+-        return new TreeMap<>(gradeTerms);
++        Map<String, Integer> out = new TreeMap<>();
++        settings.stream().map(SheetSetting::getKey).filter(k -> k.startsWith(TERMS + "-")).distinct()
++                .forEach(k -> {
++                    String grade = k.substring(TERMS.length() + 1);
++                    Integer own = gradeTermsOn(grade, today);
++                    if (own != null) {
++                        out.put(grade, own);
++                    }
++                });
++        return out;
+     }
+ 
+-    /** Give a grade its own terms; none takes them away, so it uses the sheet's terms. */
+-    public void setGradeTerms(String grade, Integer terms) {
+-        if (terms == null) {
+-            gradeTerms.remove(grade);
+-        } else {
+-            gradeTerms.put(grade, terms);
+-        }
++    /** The terms of a grade on a date: its own, else the sheet's (the sheet's for no grade). */
++    public int termsFor(String grade, LocalDate date) {
++        Integer own = grade == null ? null : gradeTermsOn(grade, date);
++        return own != null ? own : termsOn(date);
+     }
+ 
+-    /** The terms of a grade: its own, else the sheet's (the sheet's for no grade). */
+-    public int termsFor(String grade) {
+-        Integer own = grade == null ? null : gradeTerms.get(grade);
+-        return own != null ? own : terms;
++    /** The late percent on a date; 0.00 before every from-date. */
++    public BigDecimal latePctOn(LocalDate date) {
++        return decimalOn(LATE_PCT, date, START_LATE_PCT);
+     }
+ 
++    /** The late percent in force on the sheet's today. */
+     public BigDecimal getLatePct() {
+-        return latePct;
+-    }
+-
+-    public void setLatePct(BigDecimal latePct) {
+-        this.latePct = latePct;
++        return latePctOn(today);
+     }
+ 
+     public LocalDate getPolicyDate() {
+@@ -201,21 +223,22 @@ public class Sheet {
+         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+     }
+ 
+-    /** The late charge on an overdue claim's figure: the late percent of it for every full 30 days past its
+-     *  due-by on the sheet's today, rounded to cents as its date rounds; 0.00 for no figure (n/a). Only an
+-     *  OPEN or PENDING claim is overdue, so the caller asks only for those. */
++    /** The late charge on an overdue claim's figure: the late percent in force on the claim's date, of the
++     *  figure for every full 30 days past its due-by on the sheet's today, rounded to cents as its date rounds;
++     *  0.00 for no figure (n/a). Only an OPEN or PENDING claim is overdue, so the caller asks only for those. */
+     public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
+         long late = ChronoUnit.DAYS.between(dueBy, today);
+         if (figure == null || late < 30) {
+             return BigDecimal.ZERO.setScale(2);
+         }
+-        return figure.multiply(latePct).multiply(BigDecimal.valueOf(late / 30)).movePointLeft(2)
++        return figure.multiply(latePctOn(date)).multiply(BigDecimal.valueOf(late / 30)).movePointLeft(2)
+                 .setScale(2, rounding(date));
+     }
+ 
+-    /** A live due as it counts: at least the floor; none (n/a) stays none. */
+-    public BigDecimal floored(BigDecimal due) {
+-        return due == null ? null : due.max(floor);
++    /** A live due of a claim dated on a date as it counts: at least the floor in force then; none (n/a)
++     *  stays none. */
++    public BigDecimal floored(BigDecimal due, LocalDate date) {
++        return due == null ? null : due.max(floorOn(date));
+     }
+ 
+     /** Give out the sheet's next claim number. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index d8c2b0a66..d87a9289c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.List;
+ import java.util.Map;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -28,9 +29,12 @@ import org.springframework.web.bind.annotation.RestController;
+ public class SheetController {
+ 
+     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
+-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap). */
++     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap).
++     *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
++     *  settings. */
+     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+-            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
++            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
++            List<SettingView> settings) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(),
+@@ -38,32 +42,50 @@ public class SheetController {
+                     sheet.getFloor().toPlainString(), sheet.getTerms(),
+                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
+                     sheet.getPeriodNumberingFrom(), sheet.getGradeTerms(),
+-                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
++                    sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
++                    sheet.getSettings().stream().map(SettingView::of).toList());
+         }
+     }
+ 
+-    /** The sheet's settings; a missing clerk limit means no limit. */
+-    public record SettingsRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal clerkLimit) {
++    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, clerk-limit or cap)
++     *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
++    public record SettingView(String key, LocalDate from, String value) {
++
++        static SettingView of(SheetSetting setting) {
++            return new SettingView(setting.getKey(), setting.getFromDate(), setting.getValue());
++        }
++    }
++
++    /** The sheet's clerk limit from a date; a missing limit means no limit, a missing date the sheet's today. */
++    public record SettingsRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal clerkLimit,
++            LocalDate from) {
+     }
+ 
+-    /** The sheet's floor: the least a claim's live due can be. */
+-    public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal floor) {
++    /** The sheet's floor from a date (missing: the sheet's today): the least a claim's live due can be. */
++    public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal floor,
++            LocalDate from) {
+     }
+ 
+-    /** The sheet's cap: the most a person's due-total can be; a missing one means no cap. */
+-    public record CapRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal cap) {
++    /** The sheet's cap from a date (missing: the sheet's today): the most a person's due-total can be; a
++     *  missing one means no cap. */
++    public record CapRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal cap,
++            LocalDate from) {
+     }
+ 
+-    /** The sheet's terms: the number of days after a claim's date it is due by. */
+-    public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer terms) {
++    /** The sheet's terms from a date (missing: the sheet's today): the number of days after a claim's date it
++     *  is due by. */
++    public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer terms, LocalDate from) {
+     }
+ 
+-    /** A grade's own terms; a missing one means the grade uses the sheet's terms. */
+-    public record GradeTermsRequest(@Min(0) @Max(36500) Integer terms) {
++    /** A grade's own terms from a date (missing: the sheet's today); missing terms mean the grade uses the
++     *  sheet's terms. */
++    public record GradeTermsRequest(@Min(0) @Max(36500) Integer terms, LocalDate from) {
+     }
+ 
+-    /** The sheet's late percent: what an overdue claim's due gains of its figure for every full 30 days. */
+-    public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal latePct) {
++    /** The sheet's late percent from a date (missing: the sheet's today): what an overdue claim's due gains of
++     *  its figure for every full 30 days. */
++    public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal latePct,
++            LocalDate from) {
+     }
+ 
+     /** The sheet's policy date; a missing one means the sheet's today. */
+@@ -103,7 +125,7 @@ public class SheetController {
+     public SheetView setSettings(@PathVariable @NotBlank @Size(max = 200) String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid SettingsRequest request) {
+-        return SheetView.of(service.setClerkLimit(id.trim(), user.trim(), request.clerkLimit()));
++        return SheetView.of(service.setClerkLimit(id.trim(), user.trim(), request.clerkLimit(), request.from()));
+     }
+ 
+     /** Change the sheet's floor. */
+@@ -111,7 +133,7 @@ public class SheetController {
+     public SheetView setFloor(@PathVariable @NotBlank @Size(max = 200) String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid FloorRequest request) {
+-        return SheetView.of(service.setFloor(id.trim(), user.trim(), request.floor()));
++        return SheetView.of(service.setFloor(id.trim(), user.trim(), request.floor(), request.from()));
+     }
+ 
+     /** Change the sheet's cap. */
+@@ -119,7 +141,7 @@ public class SheetController {
+     public SheetView setCap(@PathVariable @NotBlank @Size(max = 200) String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid CapRequest request) {
+-        return SheetView.of(service.setCap(id.trim(), user.trim(), request.cap()));
++        return SheetView.of(service.setCap(id.trim(), user.trim(), request.cap(), request.from()));
+     }
+ 
+     /** Change the sheet's terms. */
+@@ -127,7 +149,7 @@ public class SheetController {
+     public SheetView setTerms(@PathVariable @NotBlank @Size(max = 200) String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid TermsRequest request) {
+-        return SheetView.of(service.setTerms(id.trim(), user.trim(), request.terms()));
++        return SheetView.of(service.setTerms(id.trim(), user.trim(), request.terms(), request.from()));
+     }
+ 
+     /** Change a grade's own terms. */
+@@ -136,7 +158,7 @@ public class SheetController {
+             @PathVariable @Pattern(regexp = "[ABC]") String grade,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid GradeTermsRequest request) {
+-        return SheetView.of(service.setGradeTerms(id.trim(), user.trim(), grade, request.terms()));
++        return SheetView.of(service.setGradeTerms(id.trim(), user.trim(), grade, request.terms(), request.from()));
+     }
+ 
+     /** Change the sheet's late percent. */
+@@ -144,7 +166,7 @@ public class SheetController {
+     public SheetView setLatePct(@PathVariable @NotBlank @Size(max = 200) String id,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid LatePctRequest request) {
+-        return SheetView.of(service.setLatePct(id.trim(), user.trim(), request.latePct()));
++        return SheetView.of(service.setLatePct(id.trim(), user.trim(), request.latePct(), request.from()));
+     }
+ 
+     /** Change the sheet's policy date. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 626105a17..bf894ef0d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -58,71 +58,62 @@ public class SheetService {
+         return sheet;
+     }
+ 
+-    /** Change the sheet's clerk limit: the largest due a clerk may settle; none for no limit. */
++    /** Record the sheet's clerk limit from a date (none: the sheet's today): the largest due a clerk may
++     *  settle; none for no limit. */
+     @Transactional
+-    public Sheet setClerkLimit(String id, String user, BigDecimal limit) {
+-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+-        sheet.setClerkLimit(limit == null ? null : limit.setScale(2));
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=clerk-limit value="
+-                + (sheet.getClerkLimit() == null ? "" : sheet.getClerkLimit().toPlainString()));
+-        return sheet;
++    public Sheet setClerkLimit(String id, String user, BigDecimal limit, LocalDate from) {
++        return setDated(id, user, Sheet.CLERK_LIMIT, limit == null ? null : limit.setScale(2).toPlainString(), from,
++                false);
+     }
+ 
+-    /** Change the sheet's floor: the least a claim's live due can be, recording the figures it moves. */
++    /** Record the sheet's floor from a date (none: the sheet's today): the least a claim's live due can be,
++     *  recording the figures it moves. */
+     @Transactional
+-    public Sheet setFloor(String id, String user, BigDecimal floor) {
+-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+-        Rollup.Snapshot before = rollup.take(id);
+-        sheet.setFloor(floor.setScale(2));
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=floor value="
+-                + sheet.getFloor().toPlainString());
+-        rollup.recordChanges(id, user, before);
+-        return sheet;
++    public Sheet setFloor(String id, String user, BigDecimal floor, LocalDate from) {
++        return setDated(id, user, Sheet.FLOOR, floor.setScale(2).toPlainString(), from, true);
+     }
+ 
+-    /** Change the sheet's cap: the most a person's due-total can be (none: no cap), recording the figures
+-     *  it moves. */
++    /** Record the sheet's cap from a date (none: the sheet's today): the most a person's due-total can be
++     *  (none: no cap), recording the figures it moves. */
+     @Transactional
+-    public Sheet setCap(String id, String user, BigDecimal cap) {
+-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+-        Rollup.Snapshot before = rollup.take(id);
+-        sheet.setCap(cap == null ? null : cap.setScale(2));
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=cap value="
+-                + (sheet.getCap() == null ? "" : sheet.getCap().toPlainString()));
+-        rollup.recordChanges(id, user, before);
+-        return sheet;
++    public Sheet setCap(String id, String user, BigDecimal cap, LocalDate from) {
++        return setDated(id, user, Sheet.CAP, cap == null ? null : cap.setScale(2).toPlainString(), from, true);
+     }
+ 
+-    /** Change the sheet's terms: the number of days after a claim's date it is due by, for a claim added
+-     *  later whose grade has no terms of its own. A claim already added keeps its due-by. */
++    /** Record the sheet's terms from a date (none: the sheet's today): the number of days after a claim's
++     *  date it is due by, for a claim added later dated then whose grade has no terms of its own. A claim
++     *  already added keeps its due-by. */
+     @Transactional
+-    public Sheet setTerms(String id, String user, int terms) {
+-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+-        sheet.setTerms(terms);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
+-        return sheet;
++    public Sheet setTerms(String id, String user, int terms, LocalDate from) {
++        return setDated(id, user, Sheet.TERMS, Integer.toString(terms), from, false);
+     }
+ 
+-    /** Change a grade's own terms (none: it uses the sheet's terms), for a claim added later. A claim already
+-     *  added keeps its due-by. */
++    /** Record a grade's own terms from a date (none: the sheet's today; no terms: it uses the sheet's
++     *  terms), for a claim added later. A claim already added keeps its due-by. */
+     @Transactional
+-    public Sheet setGradeTerms(String id, String user, String grade, Integer terms) {
+-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+-        sheet.setGradeTerms(grade, terms);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms-" + grade + " value="
+-                + (terms == null ? "" : terms.toString()));
+-        return sheet;
++    public Sheet setGradeTerms(String id, String user, String grade, Integer terms, LocalDate from) {
++        return setDated(id, user, Sheet.TERMS + "-" + grade, terms == null ? null : terms.toString(), from, false);
+     }
+ 
+-    /** Change the sheet's late percent, recording the figures it moves. */
++    /** Record the sheet's late percent from a date (none: the sheet's today), recording the figures it
++     *  moves. */
+     @Transactional
+-    public Sheet setLatePct(String id, String user, BigDecimal latePct) {
++    public Sheet setLatePct(String id, String user, BigDecimal latePct, LocalDate from) {
++        return setDated(id, user, Sheet.LATE_PCT, latePct.setScale(2).toPlainString(), from, true);
++    }
++
++    /** Record a dated setting's value (none: blank) from a date, the sheet's today when none is given,
++     *  replacing one already from that date; when it can move figures, record those that moved. */
++    private Sheet setDated(String id, String user, String key, String value, LocalDate from, boolean movesFigures) {
+         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+-        Rollup.Snapshot before = rollup.take(id);
+-        sheet.setLatePct(latePct.setScale(2));
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=late-pct value="
+-                + sheet.getLatePct().toPlainString());
+-        rollup.recordChanges(id, user, before);
++        Rollup.Snapshot before = movesFigures ? rollup.take(id) : null;
++        sheet.setSetting(key, from == null ? sheet.getToday() : from, value);
++        sheets.saveAndFlush(sheet);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value="
++                + (value == null ? "" : value) + (from == null ? "" : " from=" + from));
++        if (movesFigures) {
++            rollup.recordChanges(id, user, before);
++        }
+         return sheet;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetSetting.java b/src/main/java/net/officefloor/hq/app/sheet/SheetSetting.java
+new file mode 100644
+index 000000000..ece1d5ddd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetSetting.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.time.LocalDate;
++
++/** A value a setting of the sheet takes from a date on, until the next from-date of the same setting; none
++ *  (null) for no limit, no cap, or a grade using the sheet's terms. */
++@Embeddable
++public class SheetSetting {
++
++    @Column(name = "setting_key", nullable = false)
++    private String key;
++
++    @Column(name = "from_date", nullable = false)
++    private LocalDate fromDate;
++
++    @Column(name = "setting_value")
++    private String value;
++
++    protected SheetSetting() {
++    }
++
++    SheetSetting(String key, LocalDate fromDate, String value) {
++        this.key = key;
++        this.fromDate = fromDate;
++        this.value = value;
++    }
++
++    public String getKey() {
++        return key;
++    }
++
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++
++    public String getValue() {
++        return value;
++    }
++}
+diff --git a/src/main/resources/db/migration/V36__sheet_setting_dated.sql b/src/main/resources/db/migration/V36__sheet_setting_dated.sql
+new file mode 100644
+index 000000000..8c9f41f79
+--- /dev/null
++++ b/src/main/resources/db/migration/V36__sheet_setting_dated.sql
+@@ -0,0 +1,32 @@
++-- Settings that carry a figure are dated: each save records its value from a from-date, and the value in force
++-- on a date is the one with the latest from-date on or before it. Keys: floor, late-pct, terms, terms-<grade>,
++-- clerk-limit, cap. A value of none (blank) means no limit, no cap, or a grade using the sheet's terms.
++-- Before every from-date the floor is 1.00, the late percent 0.00 and the terms 14; the others are none.
++CREATE TABLE sheet_setting (
++    sheet_id      VARCHAR(200) NOT NULL REFERENCES sheet (id),
++    setting_key   VARCHAR(20)  NOT NULL,
++    from_date     DATE         NOT NULL,
++    setting_value VARCHAR(20),
++    PRIMARY KEY (sheet_id, setting_key, from_date)
++);
++
++-- The values a sheet already holds keep applying on every date, as they did before they were dated.
++INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)
++    SELECT id, 'floor', DATE '0001-01-01', CAST(due_floor AS VARCHAR) FROM sheet WHERE due_floor <> 1.00;
++INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)
++    SELECT id, 'late-pct', DATE '0001-01-01', CAST(late_pct AS VARCHAR) FROM sheet WHERE late_pct <> 0.00;
++INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)
++    SELECT id, 'terms', DATE '0001-01-01', CAST(terms AS VARCHAR) FROM sheet WHERE terms <> 14;
++INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)
++    SELECT id, 'clerk-limit', DATE '0001-01-01', CAST(clerk_limit AS VARCHAR) FROM sheet WHERE clerk_limit IS NOT NULL;
++INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)
++    SELECT id, 'cap', DATE '0001-01-01', CAST(due_cap AS VARCHAR) FROM sheet WHERE due_cap IS NOT NULL;
++INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)
++    SELECT sheet_id, 'terms-' || grade, DATE '0001-01-01', CAST(terms AS VARCHAR) FROM sheet_grade_terms;
++
++DROP TABLE sheet_grade_terms;
++ALTER TABLE sheet DROP COLUMN due_floor;
++ALTER TABLE sheet DROP COLUMN late_pct;
++ALTER TABLE sheet DROP COLUMN terms;
++ALTER TABLE sheet DROP COLUMN clerk_limit;
++ALTER TABLE sheet DROP COLUMN due_cap;
