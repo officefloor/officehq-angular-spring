@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { Claims } from '../../core/claims';
 import { GRADES, People, Person } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
+import { Session } from '../../core/session';
 import { PersonClaims } from '../claims/claims';
 
 // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
@@ -71,6 +72,7 @@ export class PeopleList {
   protected readonly people = inject(People);
   protected readonly claims = inject(Claims);
   private readonly rates = inject(Rates);
+  private readonly session = inject(Session);
   protected readonly grades = GRADES;
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = computed(() =>
@@ -87,10 +89,10 @@ export class PeopleList {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
   }
 
-  /** A person's claimed times their grade's rate, divided by 100, rounded half up; null when the
-   *  grade has no rate. */
+  /** A person's claimed times their grade's rate in force on the sheet's today, divided by 100,
+   *  rounded half up; null when the grade has no rate then. */
   private dueCents(p: Person): bigint | null {
-    return this.rates.dueCents(hundredths(this.claims.claimed(p.id)), p.grade);
+    return this.rates.dueCents(hundredths(this.claims.claimed(p.id)), p.grade, this.session.today() ?? '');
   }
 
   protected due(p: Person): string {

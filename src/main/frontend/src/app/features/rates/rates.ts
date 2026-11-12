@@ -1,9 +1,10 @@
 import { Component, inject, signal } from '@angular/core';
 import { GRADES } from '../../core/people';
-import { NO_RATE, Rates } from '../../core/rates';
+import { Rates } from '../../core/rates';
 
-// The sheet's rate for each grade: one form sets a grade's rate, and the table shows each grade's
-// current rate, or n/a when it has none.
+// The sheet's rates for each grade: one form sets a grade's rate from a date (or from the beginning
+// of time), one table shows each grade's rate in force on the sheet's today, or n/a when none
+// applies, and another lists every rate with its from-date.
 @Component({
   selector: 'app-rates',
   template: `
@@ -29,26 +30,43 @@ import { NO_RATE, Rates } from '../../core/rates';
           [value]="pct()"
           (input)="pct.set(value($event)); error.set(null)"
         />
+        <label for="rate-form-from">From (YYYY-MM-DD, blank for always)</label>
+        <input
+          id="rate-form-from"
+          data-testid="rate-form-from"
+          [value]="from()"
+          (input)="from.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
         }
       </form>
-      <table data-testid="rate-list">
+      <table data-testid="rate-today">
+        <caption>In force today</caption>
         <thead>
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (g of grades; track g) {
-            <tr [attr.data-testid]="rates.current(g) === noRate ? null : 'rate-row-' + g + '-start'">
+            <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">
-                @if (rates.current(g) !== noRate) {
-                  <span data-testid="rate-pct">{{ rates.current(g) }}</span>
-                } @else {
-                  {{ noRate }}
-                }
-              </td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ rates.current(g) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table data-testid="rate-list">
+        <caption>All rates</caption>
+        <thead>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+        </thead>
+        <tbody>
+          @for (r of rates.rates(); track r.grade + '-' + (r.from ?? 'start')) {
+            <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+              <th scope="row">{{ r.grade }}</th>
+              <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
+              <td><span data-testid="rate-pct">{{ r.rate }}</span></td>
             </tr>
           }
         </tbody>
@@ -59,9 +77,9 @@ import { NO_RATE, Rates } from '../../core/rates';
 export class RatesPanel {
   protected readonly rates = inject(Rates);
   protected readonly grades = GRADES;
-  protected readonly noRate = NO_RATE;
   protected readonly grade = signal<string>('A');
   protected readonly pct = signal('');
+  protected readonly from = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
 
@@ -74,9 +92,12 @@ export class RatesPanel {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const err = await this.rates.set(this.grade(), this.pct());
+      const err = await this.rates.set(this.grade(), this.pct(), this.from());
       if (err) this.error.set(err);
-      else this.pct.set('');
+      else {
+        this.pct.set('');
+        this.from.set('');
+      }
     } finally {
       this.saving.set(false);
     }

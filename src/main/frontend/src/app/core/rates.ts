@@ -1,10 +1,12 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Session } from './session';
+import { Session, isDate } from './session';
 
 export interface Rate {
   grade: string;
+  /** The first day the rate applies (YYYY-MM-DD); null when it applies from the beginning of time. */
+  from: string | null;
   /** A percent with two decimals, as the server stores it. */
   rate: string;
 }
@@ -12,35 +14,45 @@ export interface Rate {
 /** What due shows for a grade with no rate. */
 export const NO_RATE = 'n/a';
 
-// The active sheet's rate for each grade, re-read from the server each time the sheet is loaded.
+// The active sheet's rates for each grade, re-read from the server each time the sheet is loaded.
+// A grade may have several, each from a date; on a date the one in force is the one whose from-date
+// is the latest on or before it, a rate with no from-date applying from the beginning of time.
 // Due is worked out in whole cents and hundredths of a percent, with BigInt, so it is exact.
 @Injectable({ providedIn: 'root' })
 export class Rates {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
+  /** By grade, then from-date, the one with none first. */
   readonly rates = signal<Rate[]>([]);
   private loads = 0;
 
-  /** Each grade's rate in hundredths of a percent, by grade. */
-  private readonly basisPoints = computed(() => new Map(this.rates().map((r) => [r.grade, hundredths(r.rate)])));
+  /** The grade's rate in force on a date (YYYY-MM-DD), or undefined when none applies. */
+  inForce(grade: string, date: string): Rate | undefined {
+    let found: Rate | undefined;
+    for (const r of this.rates()) {
+      if (r.grade === grade && (r.from === null || r.from <= date)) found = r;
+    }
+    return found;
+  }
 
-  /** A grade's rate with two decimals, or n/a when it has none. */
+  /** A grade's rate in force on the sheet's today, with two decimals, or n/a when it has none. */
   current(grade: string): string {
-    return this.rates().find((r) => r.grade === grade)?.rate ?? NO_RATE;
+    const today = this.session.today();
+    return (today ? this.inForce(grade, today)?.rate : undefined) ?? NO_RATE;
   }
 
-  /** An amount in cents times the grade's rate, divided by 100, rounded half up to cents; null
-   *  when the grade has no rate. */
-  dueCents(amountCents: bigint, grade: string): bigint | null {
-    const bp = this.basisPoints().get(grade);
-    return bp === undefined ? null : (amountCents * bp + 5000n) / 10000n;
+  /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded half up
+   *  to cents; null when no rate of the grade applies then. */
+  dueCents(amountCents: bigint, grade: string, date: string): bigint | null {
+    const rate = this.inForce(grade, date);
+    return rate === undefined ? null : (amountCents * hundredths(rate.rate) + 5000n) / 10000n;
   }
 
-  /** An amount written with two decimals times the grade's rate, as `dueCents`, shown with two
-   *  decimals or n/a. */
-  due(amount: string, grade: string): string {
-    const d = this.dueCents(hundredths(amount), grade);
+  /** An amount written with two decimals times the grade's rate on a date, as `dueCents`, shown
+   *  with two decimals or n/a. */
+  due(amount: string, grade: string, date: string): string {
+    const d = this.dueCents(hundredths(amount), grade, date);
     return d === null ? NO_RATE : money(d);
   }
 
@@ -53,26 +65,30 @@ export class Rates {
     if (!user || !sid) return null;
     try {
       const rates = await firstValueFrom(this.http.get<Rate[]>(this.url(sid), { headers: { 'X-User': user } }));
-      if (load === this.loads) this.rates.set(rates);
+      if (load === this.loads) this.rates.set([...rates].sort(byGradeAndFrom));
       return null;
     } catch (e) {
       return failed('load', e).replace(' rate', ' rates');
     }
   }
 
-  /** Set a grade's rate; an error message when refused. */
-  async set(grade: string, pct: string): Promise<string | null> {
+  /** Set a grade's rate from a date (blank: from the beginning of time), replacing the one it had
+   *  from that date; an error message when refused. */
+  async set(grade: string, pct: string, from: string): Promise<string | null> {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!/^\d+(\.\d{1,2})?$/.test(pct.trim())) return 'Enter a rate of 0.00 or more, with up to two decimals.';
+    if (from.trim() && !isDate(from.trim())) return 'Enter a from-date as YYYY-MM-DD, or leave it blank.';
     const sid = this.session.sheetId()!;
     try {
       const rate = await firstValueFrom(
-        this.http.put<Rate>(`${this.url(sid)}/${encodeURIComponent(grade)}`, { rate: pct.trim() }, {
+        this.http.put<Rate>(`${this.url(sid)}/${encodeURIComponent(grade)}`, { rate: pct.trim(), from: from.trim() || null }, {
           headers: { 'X-User': this.session.user()! },
         }),
       );
       if (this.session.sheetId() === sid) {
-        this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade), rate].sort((a, b) => a.grade.localeCompare(b.grade)));
+        this.rates.update((rs) =>
+          [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate].sort(byGradeAndFrom),
+        );
       }
       return null;
     } catch (e) {
@@ -83,6 +99,11 @@ export class Rates {
   private url(sid: string): string {
     return `/api/sheets/${encodeURIComponent(sid)}/rates`;
   }
+}
+
+/** By grade, then from-date, the one with none first. */
+function byGradeAndFrom(a: Rate, b: Rate): number {
+  return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
 }
 
 /** A number written with up to two decimals, in hundredths. */

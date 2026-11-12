@@ -63,7 +63,7 @@ public class ClaimService {
     }
 
     /** Move a claim to another status; refused when its current status does not allow it. Settling fixes the
-     *  claim's due at its grade's rate now; with no rate then, its due stays live. */
+     *  claim's due at its grade's rate in force on its date; with no rate then, its due stays live. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -77,7 +77,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (to == ClaimStatus.SETTLED) {
-            claim.setSettledDue(rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+            claim.setSettledDue(rates.findInForce(sheetId, person.getGrade(), claim.getDate())
                     .map(rate -> due(claim.getAmount(), rate))
                     .orElse(null));
         }

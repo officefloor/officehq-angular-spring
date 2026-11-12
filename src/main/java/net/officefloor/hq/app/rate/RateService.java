@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rate;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -9,7 +10,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps each sheet's rate for each grade. Setting a grade's rate replaces the one it had. */
+/** Keeps each sheet's rates for each grade, each from a date or from the beginning of time.
+ *  Setting a grade's rate for a from-date it already has replaces that rate. */
 @Service
 public class RateService {
 
@@ -30,15 +32,15 @@ public class RateService {
     }
 
     @Transactional
-    public Rate set(String sheetId, String user, String grade, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
         requireSheet(sheetId);
         BigDecimal value = pct.setScale(2);
-        Rate rate = rates.findBySheetIdAndGrade(sheetId, grade).orElse(null);
+        Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
         if (rate == null) {
             try {
-                rate = rates.saveAndFlush(new Rate(sheetId, grade, value));
+                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, value));
             } catch (DataIntegrityViolationException e) {
-                // Another user set the same grade's first rate at the same moment.
+                // Another user set the same grade and from-date's first rate at the same moment.
                 throw new RateConflictException();
             }
         } else {
@@ -46,7 +48,8 @@ public class RateService {
             rate = rates.saveAndFlush(rate);
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
-                + " grade=" + grade + " rate=" + rate.getRate().toPlainString());
+                + " grade=" + grade + " rate=" + rate.getRate().toPlainString()
+                + (from == null ? "" : " from=" + from));
         return rate;
     }
 
