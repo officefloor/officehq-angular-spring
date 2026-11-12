@@ -91,6 +91,24 @@ export class Figures {
     return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p), 0n);
   }
 
+  /** The due of a person's OPEN and PENDING claims that count live, split by the claim's age on the
+   *  sheet's today (the days from its date): 0 to 30 (a claim dated after today too), 31 to 60, and 61
+   *  or more. All 0 with no today. */
+  agedCents(p: Person): { upTo30: bigint; upTo60: bigint; over60: bigint } {
+    const aged = { upTo30: 0n, upTo60: 0n, over60: 0n };
+    const today = this.session.today();
+    if (!today) return aged;
+    const from30 = addDays(today, -30);
+    const from60 = addDays(today, -60);
+    for (const c of this.claims.live().filter((c) => c.personId === p.id && isOpen(c))) {
+      const due = this.figureCents(c, p);
+      if (c.date >= from30) aged.upTo30 += due;
+      else if (c.date >= from60) aged.upTo60 += due;
+      else aged.over60 += due;
+    }
+    return aged;
+  }
+
   /** A claim's figure: its settled due, else the figure its person's last statement bound it to (not
    *  while PENDING), else its live due at the rate in force on its date, an overdue claim's late charge on top, at
    *  least the floor;
