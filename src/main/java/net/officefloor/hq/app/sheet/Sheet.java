@@ -66,7 +66,8 @@ public class Sheet {
     private int lastClaimNumber;
 
     /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
-     *  each grade's terms (terms-<grade>), each grade's grace days (grace-<grade>), the clerk limit, the cap, the proof threshold and the note threshold. */
+     *  each grade's terms (terms-<grade>), each grade's grace days (grace-<grade>), the clerk limit, the cap, the proof threshold, each grade's proof
+     *  threshold (proof-threshold-<grade>) and the note threshold. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<SheetSetting> settings = new ArrayList<>();
@@ -183,6 +184,17 @@ public class Sheet {
      *  settled or approved; none when there is no threshold. */
     public BigDecimal proofThresholdOn(LocalDate date) {
         return decimalOn(PROOF_THRESHOLD, date, null);
+    }
+
+    /** A grade's own proof threshold on a date; none when it has none then (and for no grade). */
+    public BigDecimal gradeProofThresholdOn(String grade, LocalDate date) {
+        return grade == null ? null : decimalOn(PROOF_THRESHOLD + "-" + grade, date, null);
+    }
+
+    /** The proof threshold of a grade on a date: its own when one is set then, else the sheet's. */
+    public BigDecimal proofThresholdFor(String grade, LocalDate date) {
+        BigDecimal own = gradeProofThresholdOn(grade, date);
+        return own != null ? own : proofThresholdOn(date);
     }
 
     /** The proof threshold in force on the sheet's today; none when there is no threshold. */

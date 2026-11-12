@@ -54,7 +54,7 @@ public class SheetController {
         }
     }
 
-    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold or note-threshold)
+    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade> or note-threshold)
      *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
     public record SettingView(String key, LocalDate from, String value) {
 
@@ -97,6 +97,12 @@ public class SheetController {
     /** A grade's own terms from a date (missing: the sheet's today); missing terms mean the grade uses the
      *  sheet's terms. */
     public record GradeTermsRequest(@Min(0) @Max(36500) Integer terms, LocalDate from) {
+    }
+
+    /** A grade's proof threshold from a date (missing: the sheet's today); a missing one means the grade uses
+     *  the sheet's. */
+    public record GradeProofThresholdRequest(
+            @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal proofThreshold, LocalDate from) {
     }
 
     /** A grade's grace days from a date (missing: the sheet's today); missing days mean the grade has none. */
@@ -221,6 +227,16 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GradeTermsRequest request) {
         return SheetView.of(service.setGradeTerms(id.trim(), user.trim(), grade, request.terms(), request.from()));
+    }
+
+    /** Change a grade's proof threshold. */
+    @PutMapping("/{id}/settings/proof-threshold/{grade}")
+    public SheetView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 200) String id,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GradeProofThresholdRequest request) {
+        return SheetView.of(service.setGradeProofThreshold(id.trim(), user.trim(), grade, request.proofThreshold(),
+                request.from()));
     }
 
     /** Change a grade's grace days. */

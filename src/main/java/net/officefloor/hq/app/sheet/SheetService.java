@@ -146,6 +146,15 @@ public class SheetService {
                 from, false);
     }
 
+    /** Record a grade's own proof threshold from a date (none: the sheet's today; no threshold: the grade uses
+     *  the sheet's): a claim whose person's grade in force on its date has one in force then needs a proof to
+     *  be settled or approved when its due is above it. */
+    @Transactional
+    public Sheet setGradeProofThreshold(String id, String user, String grade, BigDecimal threshold, LocalDate from) {
+        return setDated(id, user, Sheet.PROOF_THRESHOLD + "-" + grade,
+                threshold == null ? null : threshold.setScale(2).toPlainString(), from, false);
+    }
+
     /** Record the sheet's note threshold from a date (none: the sheet's today): a claim dated then whose due
      *  is above it cannot be opened with an empty note; none for no threshold. */
     @Transactional

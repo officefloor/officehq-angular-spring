@@ -246,7 +246,7 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
             BigDecimal due = figure == null ? null : charged(claim, person, figure);
-            refuseUnproved(claim, due);
+            refuseUnproved(claim, person, due);
             if (overLimit(sheetId, user, due)) {
                 to = ClaimStatus.PENDING;
             } else {
@@ -299,7 +299,7 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new);
         BigDecimal figure = liveDue(claim, person);
         BigDecimal due = figure == null ? null : charged(claim, person, figure);
-        refuseUnproved(claim, due);
+        refuseUnproved(claim, person, due);
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
         logStatus(claim, person, user);
@@ -841,10 +841,11 @@ public class ClaimService {
     }
 
     /** Refuse settling or approving a claim with no proof whose due is above the proof threshold in force on
-     *  its date; a due of n/a, or no threshold then, needs none. */
-    private void refuseUnproved(Claim claim, BigDecimal due) {
+     *  its date (its person's grade's then when one is set, else the sheet's); a due of n/a, or no threshold
+     *  then, needs none. */
+    private void refuseUnproved(Claim claim, Person person, BigDecimal due) {
         BigDecimal threshold = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new)
-                .proofThresholdOn(claim.getDate());
+                .proofThresholdFor(person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold != null && due != null && due.compareTo(threshold) > 0 && claim.getProofs() == 0) {
             throw new ClaimProofException("The claim's due is above the proof threshold: add a proof first.");
         }

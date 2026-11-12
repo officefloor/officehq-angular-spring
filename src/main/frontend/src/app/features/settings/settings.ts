@@ -3,7 +3,7 @@ import { GRADES } from '../../core/people';
 import { ROLES, Roles } from '../../core/roles';
 import { PERMISSION_ACTIONS, Session } from '../../core/session';
 
-// The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the proof threshold, the note threshold, the terms, each grade's
+// The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the proof threshold, each grade's proof threshold, the note threshold, the terms, each grade's
 // terms and the late percent) are saved from a from-date (blank for the sheet's today), keeping the values
 // already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
 // floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
@@ -97,6 +97,27 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('proof-threshold', value($event))"
         />
         <p>In force: <strong data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</strong></p>
+        @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (blank: the sheet's)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g"
+            [attr.data-testid]="'setting-proof-threshold-' + g"
+            inputmode="decimal"
+            [value]="gradeProofThreshold()[g] ?? ''"
+            (input)="setGradeProofThreshold(g, value($event))"
+            (focus)="focused.set('proof-threshold-' + g)"
+            (keydown.delete)="touchGradeProofThreshold(g)"
+            (keydown.backspace)="touchGradeProofThreshold(g)"
+          />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from (YYYY-MM-DD; blank for the sheet's today)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g + '-from'"
+            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
+            [value]="fromOf('proof-threshold-' + g)"
+            (input)="setFrom('proof-threshold-' + g, value($event))"
+          />
+          <p>In force: <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ session.gradeProofThreshold()[g] ?? '' }}</strong></p>
+        }
         <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to be opened; blank for none)</label>
         <input
           id="setting-note-threshold"
@@ -344,6 +365,9 @@ export class SettingsPanel {
   /** What is typed for each grade's terms, and the grades typed into since the last save. */
   protected readonly gradeTerms = signal<Record<string, string>>({});
   protected readonly gradeTermsTouched = signal<ReadonlySet<string>>(new Set());
+  /** What is typed for each grade's proof threshold, and the grades typed into since the last save. */
+  protected readonly gradeProofThreshold = signal<Record<string, string>>({});
+  protected readonly gradeProofThresholdTouched = signal<ReadonlySet<string>>(new Set());
   /** What is typed for each grade's grace days, and the grades typed into since the last save. */
   protected readonly gradeGrace = signal<Record<string, string>>({});
   protected readonly gradeGraceTouched = signal<ReadonlySet<string>>(new Set());
@@ -397,6 +421,16 @@ export class SettingsPanel {
     this.error.set(null);
   }
 
+  protected setGradeProofThreshold(grade: string, threshold: string): void {
+    this.gradeProofThreshold.update((t) => ({ ...t, [grade]: threshold }));
+    this.touchGradeProofThreshold(grade);
+  }
+
+  protected touchGradeProofThreshold(grade: string): void {
+    this.gradeProofThresholdTouched.update((t) => new Set([...t, grade]));
+    this.error.set(null);
+  }
+
   protected setGradeGrace(grade: string, days: string): void {
     this.gradeGrace.update((t) => ({ ...t, [grade]: days }));
     this.touchGradeGrace(grade);
@@ -437,12 +471,15 @@ export class SettingsPanel {
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
         && !this.graceDaysTouched() && !this.entryDateTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
+        && this.gradeProofThresholdTouched().size === 0
         && this.permsTouched().size === 0;
       const pick = untouched ? this.focused() : null;
       if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
       if (pick?.startsWith('perm-')) this.touchPerm(pick.slice('perm-'.length));
       const graceGrade = this.grades.find((g) => pick === 'grace-' + g);
       if (graceGrade) this.touchGradeGrace(graceGrade);
+      const proofGrade = this.grades.find((g) => pick === 'proof-threshold-' + g);
+      if (proofGrade) this.touchGradeProofThreshold(proofGrade);
       const guess = untouched && pick === null;
       const floor = this.floorTouched();
       const cap = this.capTouched() || pick === 'cap'
@@ -471,6 +508,7 @@ export class SettingsPanel {
         ?? (proofThreshold
           ? await this.session.setProofThreshold(this.proofThreshold(), this.fromOf('proof-threshold'))
           : null)
+        ?? (await this.saveGradeProofThreshold())
         ?? (noteThreshold
           ? await this.session.setNoteThreshold(this.noteThreshold(), this.fromOf('note-threshold'))
           : null)
@@ -501,6 +539,8 @@ export class SettingsPanel {
         this.gradeTermsTouched.set(new Set());
         this.gradeGrace.set({});
         this.gradeGraceTouched.set(new Set());
+        this.gradeProofThreshold.set({});
+        this.gradeProofThresholdTouched.set(new Set());
         this.perms.set({});
         this.permsTouched.set(new Set());
         this.froms.set({});
@@ -526,6 +566,17 @@ export class SettingsPanel {
     for (const g of this.grades) {
       if (!this.gradeTermsTouched().has(g)) continue;
       const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '', this.fromOf('terms-' + g));
+      if (err) return err;
+    }
+    return null;
+  }
+
+  /** Save the proof threshold of each grade typed into, in grade order; the first refusal stops the rest. */
+  private async saveGradeProofThreshold(): Promise<string | null> {
+    for (const g of this.grades) {
+      if (!this.gradeProofThresholdTouched().has(g)) continue;
+      const err = await this.session.setGradeProofThreshold(g, this.gradeProofThreshold()[g] ?? '',
+        this.fromOf('proof-threshold-' + g));
       if (err) return err;
     }
     return null;
