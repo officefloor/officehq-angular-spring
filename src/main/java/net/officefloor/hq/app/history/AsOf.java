@@ -39,12 +39,14 @@ public class AsOf {
         this.sheets = sheets;
     }
 
-    /** The sheet as of the date, its today the date; as it was started when no change to it counts by then. */
+    /** The sheet as of the date, its today the date, its parent the one it has now; as it was started when no change to it counts by then. */
     public Sheet sheet(String sheetId, LocalDate asOf) {
         Sheet now = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
         Sheet then = history.findAsOf(Sheet.class, sheetId, sheetId, asOf)
                 .orElseGet(() -> new Sheet(sheetId, now.getCreatedBy(), now.getCreatedAt(), asOf));
         then.setToday(asOf);
+        // the parent is not dated: the sheet names the one it names now
+        then.setParent(now.getParent());
         return then;
     }
 

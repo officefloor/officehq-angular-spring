@@ -42,6 +42,8 @@ export interface SheetView {
   lastSettleBatch: number | null;
   /** The pot shared out among the members of each balanced pool, two decimals; null for no pot. */
   pot: string | null;
+  /** The parent sheet's id: a grade with no rate in force on a date takes the parent's; null for none. */
+  parent: string | null;
 }
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
@@ -139,6 +141,9 @@ export class Session {
   /** The sheet's pot, two decimals; null for no pot. Shared out among the members of each balanced pool by
    *  their shares. Not dated. */
   readonly pot = signal<string | null>(null);
+  /** The parent sheet's id; null for none. A grade with no rate in force on a date on this sheet takes the
+   *  parent's, then the parent's parent's, up to three levels up. Not dated. */
+  readonly parent = signal<string | null>(null);
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** The number of the sheet's last bulk settle batch; null before the first. */
@@ -175,6 +180,7 @@ export class Session {
       this.graceDays.set(sheet.graceDays);
       this.entryDate.set(sheet.entryDate);
       this.pot.set(sheet.pot);
+      this.parent.set(sheet.parent);
       this.archived.set(sheet.archived);
       this.lastSettleBatch.set(sheet.lastSettleBatch);
       return null;
@@ -571,6 +577,28 @@ export class Session {
       if (this.sheetId() === sheet.id) this.pot.set(sheet.pot);
       return null;
     } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's parent (blank: none); an error message when refused. */
+  async setParent(parent: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const p = parent.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (p === sid) return 'A sheet cannot be its own parent.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/parent`,
+          { parent: p || null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.parent.set(sheet.parent);
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 422) {
+        return 'The parent must be a loaded sheet that is not this one and does not have this one as an ancestor.';
+      }
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
     }
   }

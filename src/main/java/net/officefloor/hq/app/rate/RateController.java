@@ -60,6 +60,20 @@ public class RateController {
                 .map(RateView::of).toList();
     }
 
+    /** The rates of each of the sheet's ancestors (its parent first, up to three levels up), each by grade;
+     *  as they stood at the end of a date when the screen views the sheet as of one. */
+    @GetMapping("/inherited")
+    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf == null) {
+            return service.inherited(sheetId.trim()).stream().map(level -> level.stream().map(RateView::of).toList())
+                    .toList();
+        }
+        return service.ancestors(sheetId.trim()).stream()
+                .map(a -> this.asOf.rates(a, asOf).stream().map(RateView::of).toList()).toList();
+    }
+
     /** Set a grade's rate from a date (or from the beginning of time), perhaps through a to-date,
      *  replacing the one it had then. */
     @PutMapping("/{grade}")

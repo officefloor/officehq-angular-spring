@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { GRADES } from '../../core/people';
 import { Pools } from '../../core/pools';
+import { Rates } from '../../core/rates';
 import { ROLES, Roles } from '../../core/roles';
 import { PERMISSION_ACTIONS, Session } from '../../core/session';
 
@@ -269,6 +270,17 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="potTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
+        <label for="setting-parent">Parent sheet (its rates apply to a grade with none in force here; blank for none)</label>
+        <input
+          id="setting-parent"
+          data-testid="setting-parent"
+          [value]="parent()"
+          (input)="parent.set(value($event)); parentTouched.set(true); error.set(null)"
+          (focus)="focused.set('parent')"
+          (keydown.delete)="parentTouched.set(true); error.set(null)"
+          (keydown.backspace)="parentTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
         @for (a of actions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; blank for the standing rule)</label>
           <input
@@ -362,6 +374,7 @@ export class SettingsPanel {
   protected readonly session = inject(Session);
   protected readonly roles = inject(Roles);
   private readonly pools = inject(Pools);
+  private readonly rates = inject(Rates);
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly limit = signal('');
   protected readonly limitTouched = signal(false);
@@ -403,6 +416,8 @@ export class SettingsPanel {
   protected readonly entryDateTouched = signal(false);
   protected readonly pot = signal('');
   protected readonly potTouched = signal(false);
+  protected readonly parent = signal('');
+  protected readonly parentTouched = signal(false);
   /** The setting that may be blank whose field was focused last: an untouched save (a blank typed into a
    *  blank field fires no input) saves that one. */
   protected readonly focused = signal<string | null>(null);
@@ -485,7 +500,7 @@ export class SettingsPanel {
         && !this.noteThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
-        && !this.graceDaysTouched() && !this.entryDateTouched() && !this.potTouched()
+        && !this.graceDaysTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
         && this.gradeProofThresholdTouched().size === 0
         && this.permsTouched().size === 0;
@@ -516,9 +531,11 @@ export class SettingsPanel {
         || (guess && this.entryDate().trim() !== (this.session.entryDate() ?? ''));
       const pot = this.potTouched() || pick === 'pot'
         || (guess && this.pot().trim() !== (this.session.pot() ?? ''));
+      const parent = this.parentTouched() || pick === 'parent'
+        || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
       const limit = this.limitTouched() || pick === 'limit'
         || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
-          && !entryDate && !pot)
+          && !entryDate && !pot && !parent)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
@@ -539,7 +556,8 @@ export class SettingsPanel {
         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null)
         ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null)
         ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null)
-        ?? (pot ? await this.savePot() : null);
+        ?? (pot ? await this.savePot() : null)
+        ?? (parent ? await this.saveParent() : null);
       if (err) this.error.set(err);
       else {
         this.limit.set('');
@@ -575,6 +593,8 @@ export class SettingsPanel {
         this.entryDateTouched.set(false);
         this.pot.set('');
         this.potTouched.set(false);
+        this.parent.set('');
+        this.parentTouched.set(false);
         this.focused.set(null);
       }
     } finally {
@@ -586,6 +606,13 @@ export class SettingsPanel {
   private async savePot(): Promise<string | null> {
     const err = await this.session.setPot(this.pot());
     if (!err) await this.pools.load();
+    return err;
+  }
+
+  /** Save the parent, then re-read the rates: a grade with none in force here takes the parent's. */
+  private async saveParent(): Promise<string | null> {
+    const err = await this.session.setParent(this.parent());
+    if (!err) await this.rates.load();
     return err;
   }
 

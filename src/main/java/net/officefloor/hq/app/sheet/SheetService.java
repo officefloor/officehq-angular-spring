@@ -3,6 +3,8 @@ package net.officefloor.hq.app.sheet;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.history.History;
@@ -260,6 +262,45 @@ public class SheetService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
                 + (p == null ? "" : p.toPlainString()));
         return sheet;
+    }
+
+    /** Change the sheet's parent (none: no parent), recording the figures it moves. Not dated. The sheet
+     *  cannot be its own parent, nor name a sheet that has it as an ancestor, and the parent must exist. */
+    @Transactional
+    public Sheet setParent(String id, String user, String parent) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        String p = parent == null || parent.isBlank() ? null : parent.trim();
+        if (p != null) {
+            if (p.equals(id)) {
+                throw new ParentRefusedException("A sheet cannot be its own parent.");
+            }
+            if (!sheets.existsById(p)) {
+                throw new ParentRefusedException("The parent must be a sheet that has been loaded.");
+            }
+            if (hasAncestor(p, id)) {
+                throw new ParentRefusedException("The parent cannot be a sheet that has this sheet as an ancestor.");
+            }
+        }
+        Rollup.Snapshot before = rollup.take(id);
+        sheet.setParent(p);
+        sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=parent value="
+                + (p == null ? "" : p));
+        rollup.recordChanges(id, user, before);
+        return sheet;
+    }
+
+    /** Whether a sheet has another among all its ancestors, however far up. */
+    private boolean hasAncestor(String id, String ancestor) {
+        Set<String> seen = new HashSet<>();
+        String at = sheets.findById(id).map(Sheet::getParent).orElse(null);
+        while (at != null && seen.add(at)) {
+            if (at.equals(ancestor)) {
+                return true;
+            }
+            at = sheets.findById(at).map(Sheet::getParent).orElse(null);
+        }
+        return false;
     }
 
     /** Change the sheet's entry date (none: off, a new claim takes the sheet's today). Not dated. */

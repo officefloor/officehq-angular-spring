@@ -721,7 +721,7 @@ public class ClaimService {
             claim.setStated(true, due);
             counted++;
         }
-        boolean rated = rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
+        boolean rated = Rollup.inForce(rates.findWithAncestors(sheetId, sheetRows.ancestors(sheetId)), person.gradeOn(today), today).isPresent();
         BigDecimal summed = total;
         BigDecimal dueTotal = rated || figure
                 ? sheetRows.findById(sheetId).map(s -> s.capped(summed)).orElse(summed) : null;
@@ -756,7 +756,8 @@ public class ClaimService {
         });
         sheetThen.setToday(asOf);
         Optional<Sheet> onDate = Optional.of(sheetThen);
-        List<Rate> ratesThen = history.listAsOf(Rate.class, sheetId, asOf);
+        List<Rate> ratesThen = new ArrayList<>(history.listAsOf(Rate.class, sheetId, asOf));
+        sheetRows.ancestors(sheetId).forEach(a -> ratesThen.addAll(history.listAsOf(Rate.class, a, asOf)));
         List<Claim> claimsThen = history.listAsOf(Claim.class, sheetId, asOf).stream()
                 .filter(c -> c.getPersonId().equals(personId)).toList();
         List<Claim> theirs = claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, personId);
@@ -985,7 +986,8 @@ public class ClaimService {
     private BigDecimal liveDue(Claim claim, Person person) {
         Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
         RoundingMode rounding = sheet.rounding(roundingDate(claim));
-        return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
+        return Rollup.inForce(rates.findWithAncestors(claim.getSheetId(), sheetRows.ancestors(claim.getSheetId())),
+                        person.gradeOn(claim.getDate()), claim.getDate())
                 .map(rate -> due(claim.getAmount(), rate, rounding))
                 .orElse(null);
     }

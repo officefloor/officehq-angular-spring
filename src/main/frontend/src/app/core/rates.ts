@@ -19,7 +19,8 @@ export const NO_RATE = 'n/a';
 // The active sheet's rates for each grade, re-read from the server each time the sheet is loaded.
 // A grade may have several, each from a date; on a date the one in force is the one whose from-date
 // is the latest on or before it, a rate with no from-date applying from the beginning of time; none
-// is in force when the date is after that rate's to-date.
+// is in force when the date is after that rate's to-date. A grade with none in force on a date takes the
+// one in force then on the sheet's parent, then the parent's parent, up to three levels up.
 // Due is worked out in whole cents and hundredths of a percent, with BigInt, so it is exact.
 @Injectable({ providedIn: 'root' })
 export class Rates {
@@ -28,15 +29,18 @@ export class Rates {
 
   /** By grade, then from-date, the one with none first. */
   readonly rates = signal<Rate[]>([]);
+  /** The rates of each of the sheet's ancestors, its parent first, each by grade then from-date. */
+  readonly inherited = signal<Rate[][]>([]);
   private loads = 0;
 
-  /** The grade's rate in force on a date (YYYY-MM-DD), or undefined when none applies. */
+  /** The grade's rate in force on a date (YYYY-MM-DD) on the sheet, else on the nearest ancestor with one,
+   *  or undefined when none applies. */
   inForce(grade: string, date: string): Rate | undefined {
-    let found: Rate | undefined;
-    for (const r of this.rates()) {
-      if (r.grade === grade && (r.from === null || r.from <= date)) found = r;
+    for (const rates of [this.rates(), ...this.inherited()]) {
+      const found = inForceAmong(rates, grade, date);
+      if (found) return found;
     }
-    return found && (found.to === null || date <= found.to) ? found : undefined;
+    return undefined;
   }
 
   /** A grade's rate in force on the sheet's today, with two decimals, or n/a when it has none. */
@@ -67,10 +71,17 @@ export class Rates {
     const sid = this.session.sheetId();
     const load = ++this.loads;
     this.rates.set([]);
+    this.inherited.set([]);
     if (!user || !sid) return null;
     try {
-      const rates = await firstValueFrom(this.http.get<Rate[]>(this.url(sid), { headers: { 'X-User': user } }));
-      if (load === this.loads) this.rates.set([...rates].sort(byGradeAndFrom));
+      const [rates, inherited] = await Promise.all([
+        firstValueFrom(this.http.get<Rate[]>(this.url(sid), { headers: { 'X-User': user } })),
+        firstValueFrom(this.http.get<Rate[][]>(`${this.url(sid)}/inherited`, { headers: { 'X-User': user } })),
+      ]);
+      if (load === this.loads) {
+        this.rates.set([...rates].sort(byGradeAndFrom));
+        this.inherited.set(inherited.map((level) => [...level].sort(byGradeAndFrom)));
+      }
       return null;
     } catch (e) {
       return failed('load', e).replace(' rate', ' rates');
@@ -106,6 +117,15 @@ export class Rates {
   private url(sid: string): string {
     return `/api/sheets/${encodeURIComponent(sid)}/rates`;
   }
+}
+
+/** The grade's rate in force on a date among one sheet's rates (by grade then from-date), or undefined. */
+function inForceAmong(rates: Rate[], grade: string, date: string): Rate | undefined {
+  let found: Rate | undefined;
+  for (const r of rates) {
+    if (r.grade === grade && (r.from === null || r.from <= date)) found = r;
+  }
+  return found && (found.to === null || date <= found.to) ? found : undefined;
 }
 
 /** By grade, then from-date, the one with none first. */

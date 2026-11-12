@@ -6,10 +6,12 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -63,7 +65,7 @@ public class Rollup {
     public Snapshot take(String sheetId) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
+        List<Rate> sheetRates = rates.findWithAncestors(sheetId, sheets.ancestors(sheetId));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
@@ -135,7 +137,7 @@ public class Rollup {
     public Map<Long, BigDecimal> dueBetweenByPerson(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
+        List<Rate> sheetRates = rates.findWithAncestors(sheetId, sheets.ancestors(sheetId));
         Map<Long, Person> byId = new LinkedHashMap<>();
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
         people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
@@ -288,10 +290,23 @@ public class Rollup {
     }
 
     /** The grade's rate in force on a date: the latest from-date on or before it, none first; none
-     *  when the date is after that rate's to-date. */
+     *  when the date is after that rate's to-date. The rates may be a sheet's followed by its ancestors',
+     *  nearest first: the first sheet, in that order, with a rate of the grade in force then gives it. */
     public static Optional<Rate> inForce(List<Rate> sheetRates, String grade, LocalDate date) {
+        Set<String> sheetIds = new LinkedHashSet<>();
+        sheetRates.forEach(r -> sheetIds.add(r.getSheetId()));
+        for (String sheetId : sheetIds) {
+            Optional<Rate> found = inForceOn(sheetRates, sheetId, grade, date);
+            if (found.isPresent()) {
+                return found;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<Rate> inForceOn(List<Rate> sheetRates, String sheetId, String grade, LocalDate date) {
         return sheetRates.stream()
-                .filter(r -> r.getGrade().equals(grade))
+                .filter(r -> r.getSheetId().equals(sheetId) && r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
                 .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(r -> r.coversThrough(date));

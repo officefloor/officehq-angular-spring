@@ -69,6 +69,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
             <p role="alert" data-testid="sheet-error">{{ err }}</p>
           }
           <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
+          <p>Parent sheet: <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
           <form (submit)="setAsOf($event)">
             <label for="asof-date">Show the sheet as of</label>
             <input

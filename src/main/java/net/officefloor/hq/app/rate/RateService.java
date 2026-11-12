@@ -35,6 +35,21 @@ public class RateService {
         return rates.findBySheetIdOrderByGradeAsc(sheetId);
     }
 
+    /** The rates of each of the sheet's ancestors, nearest first, each by grade: a grade with no rate in force
+     *  on a date on the sheet takes the first of them with one. */
+    @Transactional(readOnly = true)
+    public List<List<Rate>> inherited(String sheetId) {
+        requireSheet(sheetId);
+        return sheets.ancestors(sheetId).stream().map(rates::findBySheetIdOrderByGradeAsc).toList();
+    }
+
+    /** The sheet's ancestors, nearest first, up to three levels up. */
+    @Transactional(readOnly = true)
+    public List<String> ancestors(String sheetId) {
+        requireSheet(sheetId);
+        return sheets.ancestors(sheetId);
+    }
+
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         requireSheet(sheetId);

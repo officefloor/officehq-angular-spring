@@ -109,6 +109,11 @@ public class Sheet {
     @Column(name = "pot", precision = 15, scale = 2)
     private BigDecimal pot;
 
+    /** The parent sheet's id: a grade with no rate in force on a date here takes the parent's, then its
+     *  parent's, up to three levels up; none means no parent. Not dated. */
+    @Column(name = "parent")
+    private String parent;
+
     /** Whether the sheet is archived: everything stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -347,6 +352,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public String getParent() {
+        return parent;
+    }
+
+    public void setParent(String parent) {
+        this.parent = parent;
     }
 
     public Integer getGraceDays() {
