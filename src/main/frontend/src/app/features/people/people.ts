@@ -43,6 +43,14 @@ import { PersonClaims } from '../claims/claims';
             (input)="gradeFrom.set(value($event)); error.set(null)"
           />
         }
+        <label for="person-form-terms">Terms (days; blank for none)</label>
+        <input
+          id="person-form-terms"
+          data-testid="person-form-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -90,13 +98,14 @@ import { PersonClaims } from '../claims/claims';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
               <td>
@@ -260,6 +269,8 @@ export class PeopleList {
   protected readonly grade = signal<string>('A');
   /** The date the editor's grade applies from; blank takes the sheet's today. */
   protected readonly gradeFrom = signal('');
+  /** The person's own terms in days; blank for none. */
+  protected readonly terms = signal('');
   /** The id of the person whose editor is open, or null when the form adds. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded; a save from it is refused once someone else saved. */
@@ -456,6 +467,7 @@ export class PeopleList {
     this.name.set(p.name);
     this.grade.set(this.gradeToday(p));
     this.gradeFrom.set('');
+    this.terms.set(p.terms === null ? '' : String(p.terms));
   }
 
   protected reset(): void {
@@ -463,6 +475,7 @@ export class PeopleList {
     this.name.set('');
     this.grade.set('A');
     this.gradeFrom.set('');
+    this.terms.set('');
     this.error.set(null);
   }
 
@@ -489,7 +502,7 @@ export class PeopleList {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const f = { name: this.name(), grade: this.grade(), gradeFrom: this.gradeFrom() };
+      const f = { name: this.name(), grade: this.grade(), gradeFrom: this.gradeFrom(), terms: this.terms() };
       const id = this.editing();
       if (id === null) {
         const err = await this.people.add(f);
@@ -499,7 +512,9 @@ export class PeopleList {
         const refusal = await this.people.update(id, this.version(), f);
         if (!refusal) this.reset();
         else {
+          // a conflict shows the stored values for review; any other refusal returns the form to adding
           if (refusal.current) this.load(refusal.current);
+          else this.reset();
           this.error.set(refusal.error);
         }
       }

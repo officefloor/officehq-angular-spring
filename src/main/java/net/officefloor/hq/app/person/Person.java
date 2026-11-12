@@ -38,6 +38,10 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonGrade> grades = new ArrayList<>();
 
+    /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+    @Column(name = "terms")
+    private Integer terms;
+
     /** The date they are retired from; null while not retired. Set at all, they count as retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -105,6 +109,14 @@ public class Person {
             }
         }
         grades.add(new PersonGrade(grade, from));
+    }
+
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public LocalDate getRetiredFrom() {

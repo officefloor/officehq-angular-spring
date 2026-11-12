@@ -61,6 +61,8 @@ export interface Person {
   patronIds: number[];
   /** Whether the signed-in user watches them. */
   watched: boolean;
+  /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+  terms: number | null;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -80,6 +82,8 @@ export interface PersonFields {
   grade: string;
   /** The date an edit's grade applies from (YYYY-MM-DD); blank takes the sheet's today. */
   gradeFrom?: string;
+  /** Their own terms in days; blank for none. */
+  terms?: string;
 }
 
 // The people on the active sheet, in the order they were added, re-read from the server each
@@ -263,11 +267,14 @@ export class People {
     if (!(GRADES as readonly string[]).includes(f.grade)) return 'Choose a grade.';
     const from = f.gradeFrom?.trim();
     if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
+    const terms = f.terms?.trim();
+    if (terms && !/^\d{1,6}$/.test(terms)) return 'Enter the terms as a whole number of days, or leave them blank.';
     return null;
   }
 
-  private body(f: PersonFields): PersonFields {
-    return { name: f.name.trim(), grade: f.grade };
+  private body(f: PersonFields): { name: string; grade: string; terms: number | null } {
+    const terms = f.terms?.trim();
+    return { name: f.name.trim(), grade: f.grade, terms: terms ? Number(terms) : null };
   }
 
   private url(sid: string): string {

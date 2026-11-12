@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -38,7 +39,7 @@ public class PersonController {
      *  the signed-in user watches them. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
-            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched) {
+            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
                 boolean watched) {
@@ -50,7 +51,7 @@ public class PersonController {
                     last == null ? null : last.getTakenOn().toString(),
                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
-                    watched);
+                    watched, person.getTerms());
         }
     }
 
@@ -78,7 +79,8 @@ public class PersonController {
 
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @Min(0) Integer terms) {
     }
 
     /** A person's new name and grade, the date the grade applies from (none: the sheet's today, or
@@ -88,6 +90,7 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
+            @Min(0) Integer terms,
             @NotNull Long version) {
     }
 
@@ -129,7 +132,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonRequest request) {
-        Person added = service.add(sheetId.trim(), user.trim(), request.name(), request.grade());
+        Person added = service.add(sheetId.trim(), user.trim(), request.name(), request.grade(), request.terms());
         return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of(), false);
     }
 
@@ -141,7 +144,7 @@ public class PersonController {
             @RequestBody @Valid PersonUpdate request) {
         try {
             Person updated = service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade(), request.gradeFrom());
+                    request.name(), request.grade(), request.gradeFrom(), request.terms());
             return view(updated, user.trim());
         } catch (ObjectOptimisticLockingFailureException e) {
             // saved by someone else between the version check and the write

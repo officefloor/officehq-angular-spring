@@ -84,8 +84,8 @@ public class ClaimService {
         refuseRetired(person, on);
         refuseCorrection(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.take(sheetId);
-        int terms = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
-                .termsFor(person.gradeOn(on), on);
+        int terms = person.getTerms() != null ? person.getTerms()
+                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
         logStatus(claim, person, user);
@@ -379,8 +379,9 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(part));
         claim.setStated(false, null);
         Claim kept = claims.saveAndFlush(claim);
-        int terms = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
-                .termsFor(person.gradeOn(claim.getDate()), claim.getDate());
+        int terms = person.getTerms() != null ? person.getTerms()
+                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
+                        .termsFor(person.gradeOn(claim.getDate()), claim.getDate());
         Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(), claim.getDate().plusDays(terms),
                 claim.getNote(), null);
         split.setListOrder(claims.maxListOrder(sheetId) + 1);

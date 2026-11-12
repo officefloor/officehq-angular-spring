@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -136,12 +137,14 @@ public class PersonService {
     }
 
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         requireSheet(sheetId);
         requireFreeName(sheetId, name.trim(), null);
         Rollup.Snapshot before = rollup.take(sheetId);
-        Person person = saved(new Person(sheetId, name.trim(), grade));
-        audit("PERSON_ADDED", person, user, today(sheetId));
+        Person person = new Person(sheetId, name.trim(), grade);
+        person.setTerms(terms);
+        person = saved(person);
+        audit("PERSON_ADDED", person, user, today(sheetId), terms == null ? "" : " terms=" + terms);
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
@@ -149,9 +152,9 @@ public class PersonService {
     @Transactional
     /** Change a person's name, and record the grade from a date (the sheet's today when none is given),
      *  keeping the grades already recorded; a save leaving the grade as it is on the sheet's today, with no
-     *  from-date, records nothing. */
+     *  from-date, records nothing. Their own terms are set to those given (none clears them). */
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonVersionConflictException(person);
@@ -160,11 +163,13 @@ public class PersonService {
         Rollup.Snapshot before = rollup.take(sheetId);
         LocalDate today = today(sheetId);
         person.setName(name.trim());
+        boolean termsChanged = !Objects.equals(terms, person.getTerms());
+        person.setTerms(terms);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
         Person updated = saved(person);
-        audit("PERSON_EDITED", updated, user, today);
+        audit("PERSON_EDITED", updated, user, today, termsChanged ? " terms=" + (terms == null ? "" : terms) : "");
         rollup.recordChanges(sheetId, user, before);
         return updated;
     }
@@ -199,10 +204,10 @@ public class PersonService {
         return held;
     }
 
-    /** The grade recorded is the one in force on the sheet's today. */
-    private void audit(String event, Person person, String user, LocalDate today) {
+    /** The grade recorded is the one in force on the sheet's today; extra ends the line. */
+    private void audit(String event, Person person, String user, LocalDate today, String extra) {
         audit.recordOnCommit(event + " sheet=" + person.getSheetId() + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.gradeOn(today));
+                + " name=" + person.getName() + " grade=" + person.gradeOn(today) + extra);
     }
 
     /** The sheet's today, the date the grade the screen shows is in force on. */
