@@ -133,6 +133,23 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.OPEN));
     }
 
+    /** The claims chosen for a bulk action. */
+    public record BulkRequest(@NotNull @Size(max = 10000) List<@NotNull Long> claimIds) {
+    }
+
+    /** How many a bulk open opened and refused, and the claims it opened. */
+    public record BulkOpenView(int opened, int refused, List<ClaimView> claims) {
+    }
+
+    /** Open the chosen claims together, in list order; each that cannot be opened is left as it is. */
+    @PostMapping("/claims/bulk-open")
+    public BulkOpenView bulkOpen(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkRequest request) {
+        ClaimService.BulkOpened done = service.bulkOpen(sheetId.trim(), user.trim(), request.claimIds());
+        return new BulkOpenView(done.opened(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
+    }
+
     /** Settle an OPEN claim. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,

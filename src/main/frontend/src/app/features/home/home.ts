@@ -5,6 +5,7 @@ import { Periods } from '../../core/periods';
 import { Rates } from '../../core/rates';
 import { Roles } from '../../core/roles';
 import { Session } from '../../core/session';
+import { BulkOpen } from '../claims/bulk-open';
 import { PeopleList } from '../people/people';
 import { PeriodsPanel } from '../periods/periods';
 import { RatesPanel } from '../rates/rates';
@@ -14,7 +15,7 @@ import { SummaryPanel } from '../summary/summary';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
+  imports: [BulkOpen, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session" data-testid="session-bar">
@@ -56,6 +57,7 @@ import { SummaryPanel } from '../summary/summary';
         <app-rates />
         <app-periods />
         <app-people />
+        <app-bulk-open />
         <app-summary />
       }
     } @else {

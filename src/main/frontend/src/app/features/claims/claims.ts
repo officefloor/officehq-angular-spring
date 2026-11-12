@@ -51,6 +51,13 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
     <ul data-testid="claim-list">
       @for (c of list(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input
+            type="checkbox"
+            data-testid="claim-select"
+            [attr.aria-label]="'Select claim ' + c.amount + ' on ' + c.date"
+            [checked]="claims.selected().has(c.id)"
+            (change)="claims.select(c.id, checked($event))"
+          />
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
@@ -132,6 +139,10 @@ export class PersonClaims {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  protected checked(e: Event): boolean {
+    return (e.target as HTMLInputElement).checked;
   }
 
   protected edit(c: Claim): void {

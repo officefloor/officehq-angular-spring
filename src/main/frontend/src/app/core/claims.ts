@@ -59,6 +59,8 @@ export class Claims {
   private readonly people = inject(People);
 
   readonly claims = signal<Claim[]>([]);
+  /** The ids of the claims chosen for a bulk action. */
+  readonly selected = signal<ReadonlySet<number>>(new Set());
   private loads = 0;
 
   /** The claims that count in the live totals: those that count, less the OPEN claims of a person
@@ -128,6 +130,7 @@ export class Claims {
     const sid = this.session.sheetId();
     const load = ++this.loads;
     this.claims.set([]);
+    this.selected.set(new Set());
     if (!user || !sid) return null;
     try {
       const claims = await firstValueFrom(
@@ -225,6 +228,43 @@ export class Claims {
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 409) return refusal(e, action);
       return failed(action, e);
+    }
+  }
+
+  /** Choose a claim for a bulk action, or leave it out. */
+  select(id: number, on: boolean): void {
+    this.selected.update((s) => {
+      const next = new Set(s);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Open the chosen claims together, the server numbering them in list order and leaving each that
+   *  cannot be opened as it is; how many were opened and refused, or an error message. */
+  async bulkOpen(): Promise<{ opened: number; refused: number } | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const claimIds = [...this.selected()];
+    if (claimIds.length === 0) return 'Select the claims to open.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ opened: number; refused: number; claims: Claim[] }>(
+          `${this.url(sid)}/claims/bulk-open`,
+          { claimIds },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        const byId = new Map(done.claims.map((c) => [c.id, c]));
+        this.claims.update((cs) => cs.map((c) => byId.get(c.id) ?? c));
+        this.selected.set(new Set());
+      }
+      return { opened: done.opened, refused: done.refused };
+    } catch (e) {
+      return failed('open', e).replace(' claim', ' claims');
     }
   }
 

@@ -3,7 +3,14 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
@@ -148,6 +155,35 @@ public class ClaimService {
                 : "");
         rollup.recordChanges(sheetId, user, before);
         return updated;
+    }
+
+    /** What a bulk open did: how many it opened and refused, and the claims it opened. */
+    public record BulkOpened(int opened, int refused, List<Claim> claims) {
+    }
+
+    /** Open the chosen claims together, numbering them in list order (people in the order they were added,
+     *  each person's claims newest first); a claim that cannot be opened is left as it is and counted as
+     *  refused, as is one not on the sheet. */
+    @Transactional
+    public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> claimIds) {
+        Set<Long> chosen = new HashSet<>(claimIds);
+        Map<Long, Integer> personOrder = new HashMap<>();
+        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            personOrder.put(person.getId(), personOrder.size());
+        }
+        List<Claim> inOrder = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> chosen.contains(c.getId()))
+                .sorted(Comparator.comparing((Claim c) -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
+                .toList();
+        List<Claim> opened = new ArrayList<>();
+        for (Claim claim : inOrder) {
+            try {
+                opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
+            } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkOpened(opened.size(), chosen.size() - opened.size(), opened);
     }
 
     /** A person, their statements in the order taken, and their claims newest first. */
