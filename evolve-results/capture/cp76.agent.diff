@@ -1,0 +1,39 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 5711b3ad3..447e1cc37 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -166,6 +166,14 @@ public class Rollup {
+         return totals;
+     }
+ 
++    /** Record, once the change commits, a SNAPSHOT line of each person's due-total in a snapshot, in the
++     *  order they were added. */
++    public void recordSnapshot(String sheetId, String user, Snapshot snapshot) {
++        String prefix = " sheet=" + sheetId + " by=" + user;
++        snapshot.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT" + prefix
++                + " name=" + figures.name() + " due-total=" + show(figures.dueTotal())));
++    }
++
+     /** Record, once the change commits, the lines for every figure that moved since {@code before}. */
+     public void recordChanges(String sheetId, String user, Snapshot before) {
+         Snapshot after = take(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index ce63e4f12..8be21f2be 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -93,12 +93,14 @@ public class SheetService {
+     }
+ 
+     /** Change the sheet's today, closing the periods past their grace days and recording the figures it
+-     *  moves; a new today releases every claim's lock (their editors close). */
++     *  moves; a new today first records a SNAPSHOT line of each person's due-total on the day being left, in
++     *  list order, and releases every claim's lock (their editors close). */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+         Rollup.Snapshot before = rollup.take(id);
+         if (!today.equals(sheet.getToday())) {
++            rollup.recordSnapshot(id, user, before);
+             claims.unlockAll(id);
+         }
+         sheet.setToday(today);
