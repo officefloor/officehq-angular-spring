@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { hundredths } from './rates';
 import { Session } from './session';
 
 /** A member of a pool with its share percent: a person (personId), or another pool (poolId). A retired
@@ -39,6 +40,20 @@ export class Pools {
   /** In the order they were added. */
   readonly pools = signal<PoolView[]>([]);
   private loads = 0;
+
+  /** Each person's cuts across every pool they are a member of, added up, in hundredths, by person id; a pool
+   *  that shows no cuts adds nothing. */
+  readonly cutCents = computed(() => {
+    const out = new Map<number, bigint>();
+    for (const pool of this.pools()) {
+      for (const m of pool.members) {
+        if (m.personId !== null && m.cut !== null) {
+          out.set(m.personId, (out.get(m.personId) ?? 0n) + hundredths(m.cut));
+        }
+      }
+    }
+    return out;
+  });
 
   /** Re-read the active sheet's pools from the server; an error message when that failed. */
   async load(): Promise<string | null> {
