@@ -85,6 +85,30 @@ export class Periods {
     }
   }
 
+  /** Generate a period per calendar month from the from-date's month to the to-date's month (a blank
+   *  from-date takes the sheet's today), leaving out any month whose name is taken or that overlaps a
+   *  period: how many were made, or an error message when refused. */
+  async generate(fromDate: string, toDate: string): Promise<number | string> {
+    if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
+    const from = fromDate.trim() || this.session.today() || '';
+    const to = toDate.trim();
+    if (!isDate(from) || !isDate(to)) return 'Enter the from and to dates as YYYY-MM-DD.';
+    if (to < from) return 'The to-date must be on or after the from-date.';
+    const sid = this.session.sheetId()!;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(`${this.url(sid)}/generate`, { from, to }, { headers: { 'X-User': this.session.user()! } }),
+      );
+      if (this.session.sheetId() === sid) this.periods.update((ps) => [...ps, ...made].sort(byFrom));
+      return made.length;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not add periods.';
+      if (e instanceof HttpErrorResponse && e.status === 409) return 'The to-date must be on or after the from-date.';
+      if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the from and to dates as YYYY-MM-DD.';
+      return e instanceof HttpErrorResponse ? `Could not generate periods (${e.status}).` : 'Could not generate periods.';
+    }
+  }
+
   /** Close a period, fixing its due-total; an error message when refused. */
   async close(id: number): Promise<string | null> {
     const sid = this.session.sheetId();

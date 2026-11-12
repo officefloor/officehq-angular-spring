@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { Figures } from '../../core/figures';
 import { Period, Periods } from '../../core/periods';
 
-// The sheet's periods: one form adds a period, and the list shows each with its dates and its
+// The sheet's periods: one form adds a period, another generates one per calendar month, and the list shows each with its dates and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
 // whether it is closed, with buttons to close it and reopen it (by the roles the sheet allows).
 @Component({
@@ -37,6 +37,31 @@ import { Period, Periods } from '../../core/periods';
         <button type="submit" data-testid="period-form-submit" [disabled]="saving()">Add period</button>
         @if (error(); as err) {
           <p role="alert" data-testid="period-form-error">{{ err }}</p>
+        }
+      </form>
+      <form (submit)="generate($event)" data-testid="period-generate-form">
+        <label for="period-generate-from">Generate monthly periods from (YYYY-MM-DD)</label>
+        <input
+          id="period-generate-from"
+          data-testid="period-generate-from"
+          placeholder="YYYY-MM-DD"
+          [value]="genFrom()"
+          (input)="genFrom.set(value($event)); genError.set(null)"
+        />
+        <label for="period-generate-to">To (YYYY-MM-DD)</label>
+        <input
+          id="period-generate-to"
+          data-testid="period-generate-to"
+          placeholder="YYYY-MM-DD"
+          [value]="genTo()"
+          (input)="genTo.set(value($event)); genError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate" [disabled]="generating()">Generate periods</button>
+        @if (generated() !== null) {
+          <p>Made <span data-testid="period-generated">{{ generated() }}</span> period(s)</p>
+        }
+        @if (genError(); as err) {
+          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
         }
       </form>
       <table data-testid="period-list">
@@ -76,6 +101,12 @@ export class PeriodsPanel {
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** The generate form: its dates, how many it last made, and its refusal. */
+  protected readonly genFrom = signal('');
+  protected readonly genTo = signal('');
+  protected readonly generating = signal(false);
+  protected readonly generated = signal<number | null>(null);
+  protected readonly genError = signal<string | null>(null);
   /** The period whose action is under way, and the last action's refusal, by period. */
   protected readonly acting = signal<number | null>(null);
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
@@ -106,6 +137,21 @@ export class PeriodsPanel {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  protected async generate(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.generating()) return;
+    this.generated.set(null);
+    this.genError.set(null);
+    this.generating.set(true);
+    try {
+      const made = await this.periods.generate(this.genFrom(), this.genTo());
+      if (typeof made === 'string') this.genError.set(made);
+      else this.generated.set(made);
+    } finally {
+      this.generating.set(false);
+    }
   }
 
   protected async submit(e: Event): Promise<void> {

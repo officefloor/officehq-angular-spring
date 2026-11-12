@@ -2,11 +2,14 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -64,6 +67,36 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
                 + " period=" + n + " from=" + from + " to=" + to);
         return period;
+    }
+
+    /** Generate one period per calendar month from the from-date's month to the to-date's month, each from
+     *  the first to the last day of its month and named yyyy-mm; a month whose name is taken or whose days
+     *  overlap a period on the sheet is left out. A blank from-date takes the sheet's today. Refused when
+     *  the to-date is before the from-date. The periods made, in order. */
+    @Transactional
+    public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
+        // Locking the sheet makes two users' periods go one after the other, so neither misses an overlap.
+        Sheet sheet = sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
+        LocalDate start = from == null ? sheet.getToday() : from;
+        if (to.isBefore(start)) {
+            throw new PeriodRefusedException("The to-date must be on or after the from-date.");
+        }
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromDateAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (YearMonth m = YearMonth.from(start); !m.isAfter(YearMonth.from(to)); m = m.plusMonths(1)) {
+            String name = m.toString();
+            LocalDate first = m.atDay(1);
+            LocalDate last = m.atEndOfMonth();
+            if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(name) || p.overlaps(first, last))) {
+                continue;
+            }
+            Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            existing.add(period);
+            made.add(period);
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
+                    + " period=" + name + " from=" + first + " to=" + last);
+        }
+        return made;
     }
 
     /** Close a period, fixing each person's due-total for it and its own as it is now; refused when the user's role may not
