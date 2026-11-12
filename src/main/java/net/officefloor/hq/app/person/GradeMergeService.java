@@ -12,8 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Merges a grade into another: every person whose grade in force on the sheet's today is the merged grade is given the
  * other from the sheet's today, in list order, each saved as the person form would save them (keeping their name,
- * terms and contact), so each records its own PERSON_EDITED and rollup lines; then the figures the whole merge moved
- * are recorded. Only a steward may merge, and never a
+ * terms and contact), so each records its own PERSON_EDITED and rollup lines; then the merge is made retroactive: every
+ * grade record of theirs on the merged grade, whatever its date, becomes the other; then the figures the whole merge
+ * moved are recorded. Only a steward may merge, and never a
  * grade into itself. One person that cannot be saved refuses the whole merge: nothing is saved.
  */
 @Service
@@ -57,6 +58,12 @@ public class GradeMergeService {
         for (Person person : merged) {
             service.update(sheetId, user, person.getId(), null, person.getName(), into, null, person.getTerms(),
                     person.getContact());
+        }
+        // The merge is retroactive: every grade record of the merged grade, whatever its date, becomes the other.
+        for (Person person : merged) {
+            Person saved = people.findByIdAndSheetId(person.getId(), sheetId).orElseThrow();
+            saved.regrade(from, into);
+            people.saveAndFlush(saved);
         }
         rollup.recordChanges(sheetId, user, before);
         return new Result(merged.size());

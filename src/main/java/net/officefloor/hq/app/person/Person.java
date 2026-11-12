@@ -174,6 +174,15 @@ public class Person {
         grades.add(new PersonGrade(grade, fromDate));
     }
 
+    /** Make every grade record of the one grade the other (a grade merge), whatever its from-date. */
+    public void regrade(String from, String into) {
+        for (PersonGrade g : grades) {
+            if (from.equals(g.getGrade())) {
+                g.setGrade(into);
+            }
+        }
+    }
+
     /** The person's own terms from the beginning of time; null when they have none. */
     public Integer getTerms() {
         return terms;
