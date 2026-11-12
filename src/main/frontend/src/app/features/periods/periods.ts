@@ -27,6 +27,8 @@ export interface Period {
   fy: string;
   /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
   cap: number | null;
+  /** Whether a steward has locked the period: it cannot be reopened while locked. */
+  locked: boolean;
 }
 
 /** The period whose dates contain the date; undefined when none does. */
@@ -133,7 +135,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
@@ -146,6 +148,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' | fig }}</td>
               <td data-testid="period-fy">{{ p.fy | fig }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' | fig }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' | fig }}</td>
               <td>
                 <button
                   type="button"
@@ -170,6 +173,22 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
                   (click)="reopen(p)"
                 >
                   Reopen
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-lock"
+                  [attr.aria-label]="'Lock period ' + p.name"
+                  (click)="setLocked(p, true)"
+                >
+                  Lock
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-unlock"
+                  [attr.aria-label]="'Unlock period ' + p.name"
+                  (click)="setLocked(p, false)"
+                >
+                  Unlock
                 </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
@@ -273,7 +292,26 @@ export class Periods {
       const message =
         e instanceof HttpErrorResponse && e.status === 403
           ? `Only a steward can reopen the period ${period.name}.`
-          : `The period ${period.name} could not be reopened: it is not closed or soft-closed.`;
+          : `The period ${period.name} could not be reopened: it is locked, or not closed or soft-closed.`;
+      this.rowError.set({ id: period.id, message });
+    }
+  }
+
+  /** Lock or unlock a period; the store refuses a non-steward, or a period already locked or not locked. */
+  protected async setLocked(period: Period, locked: boolean): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const action = locked ? 'lock' : 'unlock';
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(period.name)}/${action}`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Period>(url, null, this.session.headers()));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? `Only a steward can ${action} the period ${period.name}.`
+          : `The period ${period.name} could not be ${action}ed: it is ${locked ? 'already locked' : 'not locked'}.`;
       this.rowError.set({ id: period.id, message });
     }
   }

@@ -207,12 +207,36 @@ public class PeriodService {
         if (!roles.may(sheetId, user, "reopen")) {
             throw new PeriodReopenForbiddenException(name, user);
         }
+        if (period.isLocked()) {
+            throw new PeriodLockedException("The period " + name + " is locked: unlock it to reopen it");
+        }
         if (!period.isClosed() && !period.isSoftClosed()) {
             throw new PeriodNotClosedException(name);
         }
         period.reopen();
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + saved.getName());
+        return saved;
+    }
+
+    /** Lock or unlock a period; refused unless the user is a steward and the period is not already so. */
+    @Transactional
+    public Period setLocked(String sheetId, String user, String name, boolean locked) {
+        if (sheets.lockById(sheetId) == 0) {
+            throw new SheetNotFoundException(sheetId);
+        }
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new PeriodNotFoundException(sheetId, name));
+        if (!roles.isSteward(sheetId, user)) {
+            throw new PeriodLockForbiddenException(name, user);
+        }
+        if (period.isLocked() == locked) {
+            throw new PeriodLockedException("The period " + name + (locked ? " is already locked" : " is not locked"));
+        }
+        period.setLocked(locked);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit((locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + user
+                + " period=" + saved.getName());
         return saved;
     }
 

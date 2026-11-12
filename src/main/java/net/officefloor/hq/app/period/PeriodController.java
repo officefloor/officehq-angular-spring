@@ -33,12 +33,13 @@ public class PeriodController {
      * A period as shown, its dates as yyyy-mm-dd; once closed, the due-total fixed then (null while open) and each
      * person's due-total for it fixed then, by person id (empty while open), and each person's carried figure fixed
      * then, likewise; the fiscal year (FYyyyy) its from-date
-     * falls in; and each person's opening balance for it, by person id, added to their carried figure.
+     * falls in; each person's opening balance for it, by person id, added to their carried figure; and whether a
+     * steward has locked it.
      */
     public record PeriodView(Long id, String name, String from, String to, boolean closed, boolean softClosed,
             String closedTotal,
             Map<Long, String> personTotals, String fy, Integer cap, Map<Long, String> personCarried,
-            Map<Long, String> personOpenings) {
+            Map<Long, String> personOpenings, boolean locked) {
 
         static PeriodView of(Period period, Function<LocalDate, String> fiscalYears) {
             Map<Long, String> personTotals = new TreeMap<>();
@@ -51,7 +52,7 @@ public class PeriodController {
                     period.getToDate().toString(), period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(), personTotals,
                     fiscalYears.apply(period.getFromDate()), period.getCap(), personCarried,
-                    personOpenings);
+                    personOpenings, period.isLocked());
         }
     }
 
@@ -176,5 +177,21 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) String name,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return view(sheetId.trim(), service.reopen(sheetId.trim(), user.trim(), name.trim()));
+    }
+
+    /** Lock a period so it cannot be reopened; refused for a non-steward or a period already locked. */
+    @PostMapping("/{name}/lock")
+    public PeriodView lock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @NotBlank @Size(max = 100) String name,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId.trim(), service.setLocked(sheetId.trim(), user.trim(), name.trim(), true));
+    }
+
+    /** Unlock a locked period; refused for a non-steward or a period not locked. */
+    @PostMapping("/{name}/unlock")
+    public PeriodView unlock(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @NotBlank @Size(max = 100) String name,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(sheetId.trim(), service.setLocked(sheetId.trim(), user.trim(), name.trim(), false));
     }
 }
