@@ -68,9 +68,13 @@ public class ClaimService {
         return claim;
     }
 
+    /** Change a DRAFT claim; a claim in any other status is refused. */
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotDraftException(claim.getStatus());
+        }
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
@@ -112,7 +116,7 @@ public class ClaimService {
             claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : liveDue(claim, person));
         }
         claim.setStatus(to);
-        claim.setNumber(to == ClaimStatus.VOID ? null : number);
+        claim.setNumber(number);
         Claim updated = claims.saveAndFlush(claim);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
@@ -200,7 +204,7 @@ public class ClaimService {
         audit(event, claim, person, user, claim.getNumber(), "");
     }
 
-    /** A claim with a number (or one voided while it had one) follows its date with number=, then any extra fields. */
+    /** A claim with a number (a voided claim keeps its own) follows its date with number=, then any extra fields. */
     private void audit(String event, Claim claim, Person person, String user, Integer number, String extra) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
                 + " person=" + person.getName() + " amount=" + claim.getAmount().toPlainString()

@@ -15,7 +15,7 @@ import { NO_RATE, Rates } from '../../core/rates';
         data-testid="claim-form-amount"
         inputmode="decimal"
         [value]="amount()"
-        (input)="amount.set(value($event)); error.set(null)"
+        (input)="amount.set(value($event)); clearErrors()"
       />
       <label [for]="fid('date')">Date</label>
       <input
@@ -23,14 +23,14 @@ import { NO_RATE, Rates } from '../../core/rates';
         data-testid="claim-form-date"
         placeholder="YYYY-MM-DD"
         [value]="date()"
-        (input)="date.set(value($event)); error.set(null)"
+        (input)="date.set(value($event)); clearErrors()"
       />
       <label [for]="fid('note')">Note</label>
       <input
         [id]="fid('note')"
         data-testid="claim-form-note"
         [value]="note()"
-        (input)="note.set(value($event)); error.set(null)"
+        (input)="note.set(value($event)); clearErrors()"
       />
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
@@ -99,7 +99,8 @@ export class PersonClaims {
   ];
   /** The id of the claim whose status change is under way. */
   protected readonly acting = signal<number | null>(null);
-  /** The last refused status change, shown on its claim until the next action on that claim. */
+  /** The last refused status change, or edit of a claim that is no longer a DRAFT, shown on its claim
+   *  until the next action on that claim. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
   /** The claim's due: fixed when settled, else as its person's last statement bound it, else live. */
@@ -141,7 +142,16 @@ export class PersonClaims {
     if (this.actionError()?.id === id) this.actionError.set(null);
   }
 
+  /** The form was changed: its error, and its claim's refused edit, no longer apply. */
+  protected clearErrors(): void {
+    this.error.set(null);
+    const id = this.editing();
+    if (id !== null) this.clearActionError(id);
+  }
+
   protected reset(): void {
+    const id = this.editing();
+    if (id !== null) this.clearActionError(id);
     this.editing.set(null);
     this.amount.set('');
     this.date.set('');
@@ -152,14 +162,22 @@ export class PersonClaims {
   protected async submit(e: Event): Promise<void> {
     e.preventDefault();
     if (this.saving()) return; // a second submit before the first has answered
-    this.error.set(null);
+    this.clearErrors();
     this.saving.set(true);
     try {
       const f = { amount: this.amount(), date: this.date(), note: this.note() };
       const id = this.editing();
-      const err = id === null ? await this.claims.add(this.personId(), f) : await this.claims.update(id, f);
-      if (err) this.error.set(err);
-      else this.reset();
+      if (id === null) {
+        const err = await this.claims.add(this.personId(), f);
+        if (err) this.error.set(err);
+        else this.reset();
+      } else {
+        // a refused edit leaves the editor open; a claim no longer a DRAFT shows the refusal on itself
+        const refused = await this.claims.update(id, f);
+        if (refused?.onClaim) this.actionError.set({ id, message: refused.message });
+        else if (refused) this.error.set(refused.message);
+        else this.reset();
+      }
     } finally {
       this.saving.set(false);
     }

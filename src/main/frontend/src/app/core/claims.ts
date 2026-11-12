@@ -148,10 +148,11 @@ export class Claims {
     }
   }
 
-  /** Change a claim's amount, date and note; an error message when refused. */
-  async update(id: number, f: ClaimFields): Promise<string | null> {
+  /** Change a DRAFT claim's amount, date and note; when refused, the reason and whether it is the
+   *  claim itself that refused it (it is no longer a DRAFT) rather than the fields typed. */
+  async update(id: number, f: ClaimFields): Promise<{ message: string; onClaim: boolean } | null> {
     const refused = this.check(f);
-    if (refused) return refused;
+    if (refused) return { message: refused, onClaim: false };
     const sid = this.session.sheetId()!;
     try {
       const claim = await firstValueFrom(
@@ -162,7 +163,10 @@ export class Claims {
       if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
       return null;
     } catch (e) {
-      return failed('save', e);
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        return { message: message(e) ?? 'Only a DRAFT claim can be edited.', onClaim: true };
+      }
+      return { message: failed('save', e), onClaim: false };
     }
   }
 

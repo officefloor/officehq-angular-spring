@@ -108,7 +108,7 @@ public class ClaimController {
                 added.personAdded(), ClaimView.of(added.claim()));
     }
 
-    /** Change a claim's amount, date and note. */
+    /** Change a DRAFT claim's amount, date and note. */
     @PutMapping("/claims/{claimId}")
     public ClaimView update(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long claimId,
@@ -160,6 +160,13 @@ public class ClaimController {
     @ExceptionHandler(PeriodClosedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> periodClosed(PeriodClosedException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** An edit of a claim that is not a DRAFT is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimNotDraftException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> notDraft(ClaimNotDraftException e) {
         return Map.of("message", e.getMessage());
     }
 
