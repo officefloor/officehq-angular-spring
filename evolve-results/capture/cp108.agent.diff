@@ -1,0 +1,105 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5ef1f3570..ae073f619 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { Figures } from '../../core/figures';
+ import { GRADES, People, Person } from '../../core/people';
+ import { Periods } from '../../core/periods';
+ import { Pools } from '../../core/pools';
+-import { NO_RATE, money } from '../../core/rates';
++import { NO_RATE, halfEven, money } from '../../core/rates';
+ import { PersonClaims } from '../claims/claims';
+ 
+ // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
+@@ -512,19 +512,30 @@ export class PeopleList {
+     return this.people.people().filter((o) => o.id !== p.id);
+   }
+ 
+-  private patronsOf(p: Person): Person[] {
+-    const ids = new Set(p.patronIds);
+-    return this.people.people().filter((o) => ids.has(o.id));
++  /** A person's patrons in the order they were named, each with their share in hundredths: 100.00 split
++   *  equally, each rounded half to even, the remainder to the first named. */
++  private patronsOf(p: Person): { patron: Person; share: bigint }[] {
++    const byId = new Map(this.people.people().map((o) => [o.id, o]));
++    const named = p.patronIds.map((id) => byId.get(id)).filter((o): o is Person => o !== undefined);
++    if (named.length === 0) return [];
++    const each = halfEven(10000n, BigInt(named.length));
++    const first = 10000n - each * BigInt(named.length - 1);
++    return named.map((patron, i) => ({ patron, share: i === 0 ? first : each }));
+   }
+ 
+-  /** A person's patrons' names, sorted, comma and space separated. */
++  /** A person's patrons as <name> <share>, sorted by name, comma and space separated. */
+   protected patrons(p: Person): string {
+-    return this.patronsOf(p).map((o) => o.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
++    return this.patronsOf(p)
++      .sort((a, b) => (a.patron.name < b.patron.name ? -1 : a.patron.name > b.patron.name ? 1 : 0))
++      .map((o) => o.patron.name + ' ' + money(o.share))
++      .join(', ');
+   }
+ 
+-  /** A person's patrons' recent settled figures added up; 0.00 with no patrons. */
++  /** A person's patrons' recent settled figures, each times their share over 100, added up and rounded half to
++   *  even; 0.00 with no patrons. */
+   protected backing(p: Person): string {
+-    return money(this.patronsOf(p).reduce((sum, o) => sum + this.figures.recentSettledCents(o), 0n));
++    const sum = this.patronsOf(p).reduce((s, o) => s + this.figures.recentSettledCents(o.patron) * o.share, 0n);
++    return money(halfEven(sum, 10000n));
+   }
+ 
+   protected setPatronChoice(id: number, choice: string): void {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PatronRepository.java b/src/main/java/net/officefloor/hq/app/person/PatronRepository.java
+index 420d2b044..1e20077e3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PatronRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PatronRepository.java
+@@ -5,9 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface PatronRepository extends JpaRepository<Patron, Long> {
+ 
+-    List<Patron> findBySheetId(String sheetId);
++    List<Patron> findBySheetIdOrderByIdAsc(String sheetId);
+ 
+-    List<Patron> findByPersonId(Long personId);
++    List<Patron> findByPersonIdOrderByIdAsc(Long personId);
+ 
+     boolean existsByPersonIdAndPatronId(Long personId, Long patronId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index bc149451f..702acd6b5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -81,14 +81,14 @@ public class PersonService {
+     /** The sheet's patrons: each person's patrons' ids, by person id. */
+     @Transactional(readOnly = true)
+     public Map<Long, List<Long>> patrons(String sheetId) {
+-        return patrons.findBySheetId(sheetId).stream().collect(Collectors.groupingBy(Patron::getPersonId,
++        return patrons.findBySheetIdOrderByIdAsc(sheetId).stream().collect(Collectors.groupingBy(Patron::getPersonId,
+                 Collectors.mapping(Patron::getPatronId, Collectors.toList())));
+     }
+ 
+     /** The ids of the person's patrons. */
+     @Transactional(readOnly = true)
+     public List<Long> patronsOf(long personId) {
+-        return patrons.findByPersonId(personId).stream().map(Patron::getPatronId).toList();
++        return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(Patron::getPatronId).toList();
+     }
+ 
+     /** Name another person on the sheet as the person's patron: not themselves, and not twice. */
+@@ -284,14 +284,14 @@ public class PersonService {
+         claims.saveAll(moving);
+ 
+         List<Long> intoPatrons = new ArrayList<>(patronsOf(into.getId()));
+-        for (Patron patron : patrons.findByPersonId(from.getId())) {
++        for (Patron patron : patrons.findByPersonIdOrderByIdAsc(from.getId())) {
+             if (!patron.getPatronId().equals(into.getId()) && !intoPatrons.contains(patron.getPatronId())) {
+                 patrons.save(new Patron(sheetId, into.getId(), patron.getPatronId()));
+                 intoPatrons.add(patron.getPatronId());
+             }
+             patrons.delete(patron);
+         }
+-        for (Patron patron : patrons.findBySheetId(sheetId)) {
++        for (Patron patron : patrons.findBySheetIdOrderByIdAsc(sheetId)) {
+             if (!patron.getPatronId().equals(from.getId())) {
+                 continue;
+             }
