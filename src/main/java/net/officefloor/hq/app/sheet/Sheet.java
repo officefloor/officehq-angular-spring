@@ -132,6 +132,10 @@ public class Sheet {
     @Column(name = "proof_kinds")
     private String proofKinds;
 
+    /** The grade a person added without one takes (quick add, an import line with a blank grade); null: A. Not dated. */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /** Whether a steward archived the sheet: everything stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -169,6 +173,7 @@ public class Sheet {
         copy.parent = parent;
         copy.source = this.id;
         copy.proofKinds = proofKinds;
+        copy.defaultGrade = defaultGrade;
         return copy;
     }
 
@@ -447,6 +452,19 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
+    }
+
+    /** The grade a person added without one takes: the default grade, else A. */
+    public String defaultGradeOrA() {
+        return defaultGrade == null ? "A" : defaultGrade;
     }
 
     /** The kinds of proof a claim above the proof threshold needs one of each of; empty while none are set. */

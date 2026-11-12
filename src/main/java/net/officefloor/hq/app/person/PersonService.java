@@ -58,6 +58,11 @@ public class PersonService {
         this.rollup = rollup;
     }
 
+    /** The grade a person added without one takes on the sheet: its default grade, else A. */
+    public String defaultGrade(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId)).defaultGradeOrA();
+    }
+
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }

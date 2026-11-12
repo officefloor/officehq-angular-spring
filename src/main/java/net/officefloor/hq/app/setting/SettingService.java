@@ -304,6 +304,20 @@ public class SettingService {
     }
 
     /**
+     * Set the default grade (A, B or C), which the quick-add bar gives a new person and an imported line with a blank
+     * grade takes; null means A. It changes no one already on the sheet. Every save is recorded, even of the same value.
+     */
+    @Transactional
+    public Sheet setDefaultGrade(String sheetId, String user, String grade) {
+        Sheet sheet = get(sheetId);
+        sheet.setDefaultGrade(grade);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=default-grade value="
+                + (grade == null ? "" : grade));
+        return saved;
+    }
+
+    /**
      * Set the parent sheet, whose rates a grade with none in force on a date here falls back on; null means none.
      * Refused for the sheet itself, a sheet that has this sheet as an ancestor, and a sheet never loaded. Every save
      * is recorded, even of the same value, then the figures it moved.

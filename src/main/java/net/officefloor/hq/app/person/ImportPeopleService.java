@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Adds or updates a person per pasted line of name,grade,terms,contact, in order, each as the person form would (the
  * terms and the contact may be absent or blank). A line whose name matches a person on the sheet, by name or alias,
  * updates them: their grade is recorded from the sheet's today, and their terms and contact are set when the line
- * gives them. Every other line adds a person. Every line is checked first with the person form's rules, and a person
+ * gives them. Every other line adds a person. A line with a blank grade takes the sheet's default grade. Every line is checked first with the person form's rules, and a person
  * or a contact repeated within the paste is refused too. The whole is one change: if any line is refused, nothing is
  * imported.
  */
@@ -38,6 +38,7 @@ public class ImportPeopleService {
     /** How many people were added and how many updated. */
     @Transactional
     public Result importPeople(String sheetId, String user, String text) {
+        String defaultGrade = people.defaultGrade(sheetId);
         List<Line> lines = new ArrayList<>();
         String[] rows = text.split("\\r?\\n");
         for (int i = 0; i < rows.length; i++) {
@@ -71,11 +72,12 @@ public class ImportPeopleService {
         for (int i = 0; i < lines.size(); i++) {
             Line line = lines.get(i);
             Person match = matches.get(i);
+            String grade = line.grade() != null ? line.grade() : defaultGrade;
             if (match == null) {
-                people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact());
+                people.add(sheetId, user, line.name(), grade, line.terms(), line.contact());
                 added++;
             } else {
-                people.update(sheetId, user, match.getId(), null, match.getName(), line.grade(), null,
+                people.update(sheetId, user, match.getId(), null, match.getName(), grade, null,
                         line.terms() != null ? line.terms() : match.getTerms(),
                         line.contact().isBlank() ? match.getContact() : line.contact());
                 updated++;
@@ -97,7 +99,7 @@ public class ImportPeopleService {
             throw new ImportPeopleException(number, "the name is too long");
         }
         String grade = fields[1].trim();
-        if (!grade.matches("[ABC]")) {
+        if (!grade.matches("[ABC]?")) {
             throw new ImportPeopleException(number, "the grade is not A, B or C");
         }
         String terms = fields.length > 2 ? fields[2] : "";
@@ -108,6 +110,6 @@ public class ImportPeopleService {
         if (contact.length() > MAX_CONTACT) {
             throw new ImportPeopleException(number, "the contact is too long");
         }
-        return new Line(number, name, grade, terms.isBlank() ? null : Integer.valueOf(terms.trim()), contact);
+        return new Line(number, name, grade.isEmpty() ? null : grade, terms.isBlank() ? null : Integer.valueOf(terms.trim()), contact);
     }
 }

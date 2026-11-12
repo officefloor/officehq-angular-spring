@@ -306,7 +306,7 @@ function csvField(value: string): string {
         }
       </form>
       <form aria-label="Import people" (submit)="importPeople($event)">
-        <label for="import-people">Import people, one per line: name,grade,terms,contact (terms and contact may be left out)</label>
+        <label for="import-people">Import people, one per line: name,grade,terms,contact (terms and contact may be left out; a blank grade takes the default grade)</label>
         <textarea
           id="import-people"
           data-testid="import-people"
