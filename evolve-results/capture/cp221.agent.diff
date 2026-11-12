@@ -1,0 +1,52 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index f8c825f3e..ec83a6c22 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -6,7 +6,8 @@ import { StatusSummary } from '../summary/summary';
+ // counts them, and its due-total and overdue-total as the sheet's totals show them;
+ // and the signed-in user's own due-total and overdue-total, when a person on the sheet has their name; and their crew
+ // total, the due-totals of the crews that person leads added up, when they lead one; and how many REVIEW claims are
+-// assigned to them.
++// assigned to them; and their watched total, the due-totals of the people they watch added up (0.00 when they watch
++// no one).
+ @Component({
+   selector: 'app-header',
+   imports: [FigurePipe],
+@@ -31,6 +32,8 @@ import { StatusSummary } from '../summary/summary';
+         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() | fig }}</dd>
+         <dt>My reviews</dt>
+         <dd data-testid="my-reviews-count">{{ myReviewsCount() | fig }}</dd>
++        <dt>Watched total</dt>
++        <dd data-testid="watched-due-total">{{ watchedDueTotal() | fig }}</dd>
+       </dl>
+     </header>
+   `,
+@@ -44,4 +47,5 @@ export class Header {
+   readonly myOverdueTotal = input.required<string>();
+   readonly myCrewDueTotal = input.required<string>();
+   readonly myReviewsCount = input.required<number>();
++  readonly watchedDueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5454913a3..e280873dc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -202,6 +202,7 @@ function csvField(value: string): string {
+       [myOverdueTotal]="myOverdueTotal()"
+       [myCrewDueTotal]="myCrewDueTotal()"
+       [myReviewsCount]="myReviewsCount()"
++      [watchedDueTotal]="watchedDueTotal()"
+     />
+     <section aria-labelledby="consolidated-heading">
+       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
+@@ -1167,6 +1168,10 @@ export class People {
+     const led = me ? this.crewTotals().filter((c) => c.leadId === me.id) : [];
+     return led.length ? sumDues(led.map((c) => c.dueTotal)) : '';
+   });
++  /** The due-totals of the people the signed-in user watches, as their rows show them, added up; 0.00 for no one. */
++  protected readonly watchedDueTotal = computed(() =>
++    sumDues(this.people().filter((p) => p.watched).map((p) => this.dueTotalOf(p))),
++  );
+   /** How many REVIEW claims on the sheet are assigned to the signed-in user. */
+   protected readonly myReviewsCount = computed(() => {
+     const user = this.session.user() ?? '';
