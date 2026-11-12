@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { GRADES } from '../../core/people';
 import { ROLES, Roles } from '../../core/roles';
-import { Session } from '../../core/session';
+import { PERMISSION_ACTIONS, Session } from '../../core/session';
 
 // The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the proof threshold, the terms, each grade's
 // terms and the late percent) are saved from a from-date (blank for the sheet's today), keeping the values
@@ -12,7 +12,8 @@ import { Session } from '../../core/session';
 // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
 // date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), the
 // period numbering from-date (while the sheet's today is on or after it, a claim opened is numbered within its
-// period; blank for off), and
+// period; blank for off), the permission matrix (for each action, the roles that may take it, comma separated;
+// blank keeps the standing rule; not dated), and
 // the role each user name has on the sheet (clerk unless given another).
 @Component({
   selector: 'app-settings',
@@ -166,6 +167,19 @@ import { Session } from '../../core/session';
           (keydown.backspace)="numberingFromTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-period-numbering-from-current">{{ session.periodNumberingFrom() ?? '' }}</strong></p>
+        @for (a of actions; track a) {
+          <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; blank for the standing rule)</label>
+          <input
+            [id]="'setting-perm-' + a"
+            [attr.data-testid]="'setting-perm-' + a"
+            [value]="perms()[a] ?? ''"
+            (input)="setPerm(a, value($event))"
+            (focus)="focused.set('perm-' + a)"
+            (keydown.delete)="touchPerm(a)"
+            (keydown.backspace)="touchPerm(a)"
+          />
+          <p>In force: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ session.permissions()[a] ?? '' }}</strong></p>
+        }
         <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -227,6 +241,10 @@ export class SettingsPanel {
   /** What is typed for each grade's terms, and the grades typed into since the last save. */
   protected readonly gradeTerms = signal<Record<string, string>>({});
   protected readonly gradeTermsTouched = signal<ReadonlySet<string>>(new Set());
+  protected readonly actions = PERMISSION_ACTIONS;
+  /** What is typed for each action's roles, and the actions typed into since the last save. */
+  protected readonly perms = signal<Record<string, string>>({});
+  protected readonly permsTouched = signal<ReadonlySet<string>>(new Set());
   protected readonly latePct = signal('');
   protected readonly latePctTouched = signal(false);
   /** The from-date typed for each dated setting (blank: the sheet's today). */
@@ -264,6 +282,16 @@ export class SettingsPanel {
     this.error.set(null);
   }
 
+  protected setPerm(action: string, roles: string): void {
+    this.perms.update((p) => ({ ...p, [action]: roles }));
+    this.touchPerm(action);
+  }
+
+  protected touchPerm(action: string): void {
+    this.permsTouched.update((t) => new Set([...t, action]));
+    this.error.set(null);
+  }
+
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
   }
@@ -281,9 +309,10 @@ export class SettingsPanel {
       const untouched = !this.limitTouched() && !this.floorTouched() && !this.capTouched() && !this.proofThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
-        && this.gradeTermsTouched().size === 0;
+        && this.gradeTermsTouched().size === 0 && this.permsTouched().size === 0;
       const pick = untouched ? this.focused() : null;
       if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
+      if (pick?.startsWith('perm-')) this.touchPerm(pick.slice('perm-'.length));
       const guess = untouched && pick === null;
       const floor = this.floorTouched();
       const cap = this.capTouched() || pick === 'cap'
@@ -306,6 +335,7 @@ export class SettingsPanel {
           : null)
         ?? (terms ? await this.session.setTerms(this.terms(), this.fromOf('terms')) : null)
         ?? (await this.saveGradeTerms())
+        ?? (await this.savePerms())
         ?? (latePct ? await this.session.setLatePct(this.latePct(), this.fromOf('late-pct')) : null)
         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null);
@@ -323,6 +353,8 @@ export class SettingsPanel {
         this.termsTouched.set(false);
         this.gradeTerms.set({});
         this.gradeTermsTouched.set(new Set());
+        this.perms.set({});
+        this.permsTouched.set(new Set());
         this.froms.set({});
         this.latePct.set('');
         this.latePctTouched.set(false);
@@ -342,6 +374,16 @@ export class SettingsPanel {
     for (const g of this.grades) {
       if (!this.gradeTermsTouched().has(g)) continue;
       const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '', this.fromOf('terms-' + g));
+      if (err) return err;
+    }
+    return null;
+  }
+
+  /** Save the roles of each action typed into, in matrix order; the first refusal stops the rest. */
+  private async savePerms(): Promise<string | null> {
+    for (const a of this.actions) {
+      if (!this.permsTouched().has(a)) continue;
+      const err = await this.session.setPermission(a, this.perms()[a] ?? '');
       if (err) return err;
     }
     return null;

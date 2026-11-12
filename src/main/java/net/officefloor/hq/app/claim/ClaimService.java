@@ -23,6 +23,7 @@ import net.officefloor.hq.app.person.Statement;
 import net.officefloor.hq.app.person.StatementRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.role.ActionNotAllowedException;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -117,7 +118,8 @@ public class ClaimService {
         return updated;
     }
 
-    /** Move a claim to another status; refused when its current status does not allow it,
+    /** Move a claim to another status; refused when the user's role may not open, settle or void it (the
+     *  sheet's permission matrix), when its current status does not allow it,
      *  or when the user settling it is the one who opened it. A clerk settling a claim whose due is above
      *  the sheet's clerk limit (a due of n/a is within any limit) puts it PENDING instead, for a steward to
      *  approve or reject; its due stays live. Settling fixes the
@@ -127,6 +129,12 @@ public class ClaimService {
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDate());
+        roles.require(sheetId, user, switch (to) {
+            case OPEN -> "open";
+            case SETTLED, PENDING -> "settle";
+            case VOID -> "void";
+            case DRAFT -> throw new IllegalStateException();
+        });
         if (!claim.getStatus().canBecome(to)) {
             throw new ClaimStatusException(claim.getStatus(), to);
         }
@@ -300,14 +308,14 @@ public class ClaimService {
 
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
      *  loses any figure a statement bound it to (live again until its new person's next statement), and is
-     *  listed as its new person's newest claim. Refused unless the user is a steward, and for a settled or
+     *  listed as its new person's newest claim. Refused unless the user's role may reassign, and for a settled or
      *  voided claim, a claim in a closed period, the claim's own person, or a person retired on its date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long toPersonId) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDate());
-        if (!roles.isSteward(sheetId, user)) {
-            throw new ClaimReassignException("Only a steward can reassign a claim.");
+        if (!roles.allows(sheetId, user, "reassign")) {
+            throw new ClaimReassignException("Your role may not reassign a claim.");
         }
         if (!claim.getStatus().canMove()) {
             throw new ClaimReassignException("A " + claim.getStatus() + " claim cannot be reassigned.");
@@ -344,7 +352,8 @@ public class ClaimService {
         for (Claim claim : inListOrder(sheetId, chosen)) {
             try {
                 opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
-            } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException e) {
+            } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException
+                    | ActionNotAllowedException e) {
                 // refused: left as it is
             }
         }
@@ -367,7 +376,7 @@ public class ClaimService {
             try {
                 settled.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
             } catch (ClaimStatusException | ClaimSettlerException | ClaimDeferException | ClaimProofException
-                    | PeriodClosedException
+                    | PeriodClosedException | ActionNotAllowedException
                     | ClaimNotFoundException e) {
                 // refused: left as it is
             }

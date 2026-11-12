@@ -322,6 +322,7 @@ export class Claims {
       return null;
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 409) return refusal(e, action);
+      if (e instanceof HttpErrorResponse && e.status === 403) return `Your role may not ${action} a claim.`;
       return failed(action, e);
     }
   }

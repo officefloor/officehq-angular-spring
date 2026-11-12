@@ -34,7 +34,7 @@ public class SheetController {
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            List<SettingView> settings, String proofThreshold) {
+            List<SettingView> settings, String proofThreshold, Map<String, String> permissions) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -44,7 +44,8 @@ public class SheetController {
                     sheet.getPeriodNumberingFrom(), sheet.getGradeTerms(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     sheet.getSettings().stream().map(SettingView::of).toList(),
-                    sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString());
+                    sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
+                    sheet.getPermissions());
         }
     }
 
@@ -100,6 +101,11 @@ public class SheetController {
 
     /** The sheet's period numbering from-date; a missing one means off. */
     public record PeriodNumberingFromRequest(LocalDate periodNumberingFrom) {
+    }
+
+    /** The roles that may take an action, comma separated (clerk, steward); blank keeps the standing rule. */
+    public record PermissionRequest(
+            @Size(max = 200) @Pattern(regexp = "\\s*((clerk|steward)\\s*(,\\s*(clerk|steward)\\s*)*)?") String roles) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -189,6 +195,15 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PolicyDateRequest request) {
         return SheetView.of(service.setPolicyDate(id.trim(), user.trim(), request.policyDate()));
+    }
+
+    /** Change the roles that may take an action. */
+    @PutMapping("/{id}/settings/permissions/{action}")
+    public SheetView setPermission(@PathVariable @NotBlank @Size(max = 200) String id,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid PermissionRequest request) {
+        return SheetView.of(service.setPermission(id.trim(), user.trim(), action, request.roles()));
     }
 
     /** Change the sheet's period numbering from-date. */

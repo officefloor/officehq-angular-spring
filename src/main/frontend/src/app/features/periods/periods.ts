@@ -4,7 +4,7 @@ import { Period, Periods } from '../../core/periods';
 
 // The sheet's periods: one form adds a period, and the list shows each with its dates and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
-// whether it is closed, with buttons to close it and (a steward only) reopen it.
+// whether it is closed, with buttons to close it and reopen it (by the roles the sheet allows).
 @Component({
   selector: 'app-periods',
   template: `

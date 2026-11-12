@@ -25,7 +25,14 @@ export interface SheetView {
   settings: DatedSetting[];
   /** The due above which a claim needs a proof to be settled or approved, two decimals; null for none. */
   proofThreshold: string | null;
+  /** The permission matrix: the roles typed for an action (comma separated); one not here keeps the
+   *  standing rule. */
+  permissions: Record<string, string>;
 }
+
+/** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
+ *  clerk and steward; reassign and reopen by steward. */
+export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 
 /** A value a dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit, cap or proof-threshold) takes from a date
  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
@@ -82,6 +89,9 @@ export class Session {
   /** The sheet's period numbering from-date (YYYY-MM-DD); null when off. While the sheet's today is on or
    *  after it, a claim opened is numbered within its period. */
   readonly periodNumberingFrom = signal<string | null>(null);
+  /** The permission matrix: the roles typed for each action (comma separated); an action not here keeps the
+   *  standing rule. */
+  readonly permissions = signal<Record<string, string>>({});
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -106,6 +116,7 @@ export class Session {
       this.settings.set(sheet.settings);
       this.policyDate.set(sheet.policyDate);
       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
+      this.permissions.set(sheet.permissions);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -317,6 +328,28 @@ export class Session {
         }),
       );
       if (this.sheetId() === sheet.id) this.policyDate.set(sheet.policyDate);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Set the roles that may take an action, comma separated (blank: the standing rule); an error message
+   *  when refused. */
+  async setPermission(action: string, roles: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const r = roles.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (r && !/^(clerk|steward)(\s*,\s*(clerk|steward))*$/.test(r)) {
+      return 'Enter the roles as a comma separated list of clerk and steward, or leave it blank.';
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/permissions/${encodeURIComponent(action)}`,
+          { roles: r }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.permissions.set(sheet.permissions);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

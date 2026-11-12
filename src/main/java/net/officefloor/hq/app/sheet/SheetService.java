@@ -137,6 +137,18 @@ public class SheetService {
         return sheet;
     }
 
+    /** Set the roles that may take an action (open, settle, void, reassign, close or reopen), comma
+     *  separated; blank keeps the standing rule. Not dated. */
+    @Transactional
+    public Sheet setPermission(String id, String user, String action, String roles) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        String value = roles == null ? "" : roles.trim();
+        sheet.setPermission(action, value);
+        sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
+        return sheet;
+    }
+
     /** Change the sheet's period numbering from-date (none: off). */
     @Transactional
     public Sheet setPeriodNumberingFrom(String id, String user, LocalDate from) {

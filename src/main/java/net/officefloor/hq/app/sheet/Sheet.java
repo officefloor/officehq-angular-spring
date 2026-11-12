@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -15,6 +16,8 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,6 +34,11 @@ public class Sheet {
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    /** The actions the permission matrix covers, and the roles that may take each by the standing rule. */
+    public static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
+            "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
+            "void", List.of("clerk", "steward"), "close", List.of("clerk", "steward"),
+            "reassign", List.of("steward"), "reopen", List.of("steward"));
     private static final BigDecimal START_FLOOR = new BigDecimal("1.00");
     private static final BigDecimal START_LATE_PCT = new BigDecimal("0.00");
     private static final int START_TERMS = 14;
@@ -57,6 +65,14 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<SheetSetting> settings = new ArrayList<>();
+
+    /** The permission matrix: for an action, the roles that may take it, comma separated; an action with none
+     *  keeps the standing rule. Not dated. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_permission", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "action")
+    @Column(name = "roles", nullable = false)
+    private Map<String, String> permissions = new HashMap<>();
 
     /** The policy date: a claim dated before it rounds half up, on or after it half to even; none means
      *  the sheet's today. */
@@ -204,6 +220,28 @@ public class Sheet {
     /** The late percent in force on the sheet's today. */
     public BigDecimal getLatePct() {
         return latePctOn(today);
+    }
+
+    /** The roles typed for each action in the permission matrix; an action not here keeps the standing rule. */
+    public Map<String, String> getPermissions() {
+        return new TreeMap<>(permissions);
+    }
+
+    /** Set the roles that may take an action, comma separated; blank keeps the standing rule. */
+    public void setPermission(String action, String roles) {
+        if (roles == null || roles.isBlank()) {
+            permissions.remove(action);
+        } else {
+            permissions.put(action, roles);
+        }
+    }
+
+    /** Whether a role may take an action: by the permission matrix, else by the standing rule. */
+    public boolean allows(String action, String role) {
+        String typed = permissions.get(action);
+        List<String> allowed = typed == null ? STANDING_PERMISSIONS.getOrDefault(action, List.of())
+                : Arrays.stream(typed.split(",")).map(String::trim).toList();
+        return allowed.contains(role);
     }
 
     public LocalDate getPolicyDate() {

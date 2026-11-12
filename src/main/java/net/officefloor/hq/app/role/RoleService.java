@@ -55,6 +55,21 @@ public class RoleService {
                 .orElse(false);
     }
 
+    /** Whether the user's role on the sheet may take an action, by the sheet's permission matrix (an action
+     *  with no roles set keeps the standing rule). */
+    @Transactional(readOnly = true)
+    public boolean allows(String sheetId, String name, String action) {
+        String role = isSteward(sheetId, name) ? SheetRole.STEWARD : SheetRole.CLERK;
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).allows(action, role);
+    }
+
+    /** Refuse an action the user's role on the sheet may not take. */
+    public void require(String sheetId, String name, String action) {
+        if (!allows(sheetId, name, action)) {
+            throw new ActionNotAllowedException(action);
+        }
+    }
+
     private void requireSheet(String sheetId) {
         if (!sheets.existsById(sheetId)) {
             throw new SheetNotFoundException();

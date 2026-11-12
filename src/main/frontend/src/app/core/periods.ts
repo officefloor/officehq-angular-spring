@@ -97,12 +97,13 @@ export class Periods {
       if (this.session.sheetId() === sid) this.periods.update((ps) => ps.map((p) => (p.id === id ? period : p)));
       return null;
     } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not close a period.';
       if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already closed.';
       return e instanceof HttpErrorResponse ? `Could not close period (${e.status}).` : 'Could not close period.';
     }
   }
 
-  /** Reopen a closed period, making its due-total live again (a steward only); an error message when
+  /** Reopen a closed period, making its due-total live again (a role the sheet allows); an error message when
    *  refused. */
   async reopen(id: number): Promise<string | null> {
     const sid = this.session.sheetId();
@@ -115,7 +116,7 @@ export class Periods {
       if (this.session.sheetId() === sid) this.periods.update((ps) => ps.map((p) => (p.id === id ? period : p)));
       return null;
     } catch (e) {
-      if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reopen a period.';
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not reopen a period.';
       if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is not closed.';
       return e instanceof HttpErrorResponse ? `Could not reopen period (${e.status}).` : 'Could not reopen period.';
     }

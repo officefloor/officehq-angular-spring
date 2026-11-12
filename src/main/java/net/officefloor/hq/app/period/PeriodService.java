@@ -65,12 +65,14 @@ public class PeriodService {
         return period;
     }
 
-    /** Close a period, fixing each person's due-total for it and its own as it is now; refused when it is already closed. */
+    /** Close a period, fixing each person's due-total for it and its own as it is now; refused when the user's role may not
+     *  close it, or it is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
         // Locking the sheet makes the close and any claim change on the sheet go one after the other.
         sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         Period period = periods.findByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
+        roles.require(sheetId, user, "close");
         if (period.isClosed()) {
             throw new PeriodRefusedException("The period is already closed.");
         }
@@ -82,16 +84,14 @@ public class PeriodService {
         return period;
     }
 
-    /** Reopen a closed period, making its due-total live again; by a steward only, and refused when it
-     *  is open. */
+    /** Reopen a closed period, making its due-total live again; by a role the sheet allows (a steward
+     *  by the standing rule), and refused when it is open. */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {
         // Locking the sheet makes the reopen and any claim change on the sheet go one after the other.
         sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         Period period = periods.findByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
-        if (!roles.isSteward(sheetId, user)) {
-            throw new PeriodStewardOnlyException();
-        }
+        roles.require(sheetId, user, "reopen");
         if (!period.isClosed()) {
             throw new PeriodRefusedException("The period is not closed.");
         }
