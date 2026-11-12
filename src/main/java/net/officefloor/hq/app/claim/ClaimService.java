@@ -541,6 +541,8 @@ public class ClaimService {
 
     private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason,
             LongSupplier batch, boolean judgedOnOriginal, DueThen asOf) {
+        // The sheet is locked ahead of the claim, the order sheet-wide changes take them in, so neither waits on the other.
+        periods.requireOpen(sheetId);
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;

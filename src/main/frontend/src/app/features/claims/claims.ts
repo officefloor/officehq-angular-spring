@@ -1791,6 +1791,8 @@ export class Claims implements OnInit {
     }
     const lined = this.claims().find((c) => c.id === this.editing() && c.lines.length > 0);
     if (lined && Number(amount) !== Number(lined.amount)) {
+      // Its amount cannot be typed at all, so the editor closes (saving nothing) and the form is back to adding.
+      this.cancel();
       this.error.set(`This claim has lines: its amount is ${lined.amount}, their quantities times their unit amounts added up.`);
       return;
     }

@@ -416,7 +416,7 @@ function csvField(value: string): string {
               <th scope="col">Carried into {{ per.name }}</th>
             }
             @if (columns.shows('statement-count')) { <th scope="col">Statements</th> }@if (columns.shows('stated-total')) { <th scope="col">Last stated</th> }@if (columns.shows('statement-date')) { <th scope="col">Stated on</th> }
-            @if (columns.shows('retired')) { <th scope="col">Retired</th> }<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statement lines</th>@if (columns.shows('hold')) { <th scope="col">On hold</th> }<th scope="col">Active</th>
+            @if (columns.shows('retired')) { <th scope="col">Retired</th> }<th scope="col">Retired from</th><th scope="col">Past retirements</th><th scope="col">Snapshots</th><th scope="col">Statement lines</th><th scope="col">Timeline</th>@if (columns.shows('hold')) { <th scope="col">On hold</th> }<th scope="col">Active</th>
             @if (columns.shows('overdue-count')) { <th scope="col">Overdue</th> }@if (columns.shows('overdue-total')) { <th scope="col">Overdue total</th> }
             <th scope="col">Due aged 0–30</th><th scope="col">Due aged 31–60</th><th scope="col">Due aged 61+</th>
             @if (columns.shows('patrons')) { <th scope="col">Patrons</th> }@if (columns.shows('backing')) { <th scope="col">Backing</th> }@if (columns.shows('excess')) { <th scope="col">Excess</th> }<th scope="col">Cut total</th><th scope="col">Watched</th>
@@ -489,6 +489,11 @@ function csvField(value: string): string {
               <td>
                 @for (line of p.statementLines; track $index) {
                   <div data-testid="person-statement-line-line">{{ line | fig }}</div>
+                }
+              </td>
+              <td>
+                @for (line of timelineOf(p); track $index) {
+                  <div data-testid="person-timeline-line">{{ line | fig }}</div>
                 }
               </td>
               @if (columns.shows('hold')) {
@@ -1743,6 +1748,31 @@ export class People {
   protected setRetireDate(id: number, date: string): void {
     this.retireDates.update((dates) => ({ ...dates, [id]: date }));
     if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /**
+   * One line per dated thing about the person, by date: on one date its grade changes, then claims, then holds, then
+   * retirements, then unretirements, each kind in the order of its text.
+   */
+  protected timelineOf(person: Person): string[] {
+    const entries: { date: string; rank: number; text: string }[] = [];
+    for (const g of person.grades) {
+      if (g.from !== null) entries.push({ date: g.from, rank: 0, text: `grade ${g.grade}` });
+    }
+    for (const c of this.claimsOf(person.id)) {
+      entries.push({ date: c.date, rank: 1, text: `claim ${c.amount} ${c.status}` });
+    }
+    for (const h of person.holds) {
+      entries.push({ date: h.from, rank: 2, text: h.to === null ? 'hold' : `hold to ${h.to}` });
+    }
+    for (const r of person.retirements) {
+      entries.push({ date: r.from, rank: 3, text: 'retired' });
+      entries.push({ date: r.to, rank: 4, text: 'unretired' });
+    }
+    if (person.retiredFrom !== null) entries.push({ date: person.retiredFrom, rank: 3, text: 'retired' });
+    return entries
+      .sort((a, b) => compareKeys(a.date, b.date) || a.rank - b.rank || compareKeys(a.text, b.text))
+      .map((e) => `${e.date} ${e.text}`);
   }
 
   protected claimsOf(personId: number): Claim[] {
