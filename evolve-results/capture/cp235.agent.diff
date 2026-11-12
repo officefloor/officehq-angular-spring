@@ -1,0 +1,228 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 597e8791b..846cbffd3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -929,6 +929,28 @@ function csvField(value: string): string {
+           Retired <strong data-testid="bulk-retired">{{ bulkRetired() | fig }}</strong>
+         }
+       </p>
++      <p>
++        <label for="bulk-hold-from">Hold selected people from (blank: today)</label>
++        <input
++          id="bulk-hold-from"
++          data-testid="bulk-hold-from"
++          type="date"
++          [value]="bulkHoldFrom()"
++          (input)="bulkHoldFrom.set(value($event)); clearBulkGradeError()"
++        />
++        <label for="bulk-hold-to">To (blank: no end)</label>
++        <input
++          id="bulk-hold-to"
++          data-testid="bulk-hold-to"
++          type="date"
++          [value]="bulkHoldTo()"
++          (input)="bulkHoldTo.set(value($event)); clearBulkGradeError()"
++        />
++        <button type="button" data-testid="bulk-hold" (click)="bulkHold()">Hold selected people</button>
++        @if (bulkHeld() !== null) {
++          Held <strong data-testid="bulk-held">{{ bulkHeld() | fig }}</strong>
++        }
++      </p>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
+@@ -1403,6 +1425,11 @@ export class People {
+   protected readonly bulkRetireFrom = signal('');
+   /** How many people the last bulk retire retired; null while it runs and before the first. */
+   protected readonly bulkRetired = signal<number | null>(null);
++  /** The dates to hold the ticked people from (blank: the sheet's today) and to (blank: no end). */
++  protected readonly bulkHoldFrom = signal('');
++  protected readonly bulkHoldTo = signal('');
++  /** How many people the last bulk hold held; null while it runs and before the first. */
++  protected readonly bulkHeld = signal<number | null>(null);
+   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
+   private reads = 0;
+ 
+@@ -1451,6 +1478,9 @@ export class People {
+         this.bulkGraded.set(null);
+         this.bulkRetireFrom.set('');
+         this.bulkRetired.set(null);
++        this.bulkHoldFrom.set('');
++        this.bulkHoldTo.set('');
++        this.bulkHeld.set(null);
+         this.bulkOpenResult.set(null);
+         this.bulkOpenError.set(null);
+         this.bulkSettleResult.set(null);
+@@ -2134,6 +2164,45 @@ export class People {
+     }
+   }
+ 
++  /**
++   * Hold the ticked people over the typed dates (from blank: the sheet's today; to blank: no end), in list order, each
++   * as the row's hold would; then re-read so the totals show what the store holds.
++   */
++  protected async bulkHold(): Promise<void> {
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.rowError.set(null);
++    this.patronError.set(null);
++    this.bulkHeld.set(null);
++    const ids = this.people()
++      .filter((p) => this.selectedPeople().has(p.id))
++      .map((p) => p.id);
++    const first = ids.length > 0 ? ids[0] : null;
++    const from = this.bulkHoldFrom().trim();
++    const to = this.bulkHoldTo().trim();
++    if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
++      if (first !== null) this.rowError.set({ id: first, message: 'Pick the dates to hold over, or leave them blank.' });
++      return;
++    }
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ held: number }>(
++          `/api/sheets/${encodeURIComponent(sheet)}/people/bulk-hold`,
++          { ids, from: from || null, to: to || null },
++          this.session.headers(),
++        ),
++      );
++      if (this.session.sheet() !== sheet) return;
++      this.selectedPeople.set(new Set());
++      this.bulkHeld.set(result.held);
++      await this.read(sheet);
++    } catch {
++      if (this.session.sheet() === sheet && first !== null) {
++        this.rowError.set({ id: first, message: 'The selected people could not be held.' });
++      }
++    }
++  }
++
+   /** Open the ticked claims together, in list order; each that cannot be opened is left as it is. */
+   protected async bulkOpen(): Promise<void> {
+     const sheet = this.session.sheet();
+diff --git a/src/main/java/net/officefloor/hq/app/person/BulkHoldService.java b/src/main/java/net/officefloor/hq/app/person/BulkHoldService.java
+new file mode 100644
+index 000000000..a653f2467
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/BulkHoldService.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.person;
++
++import java.time.LocalDate;
++import java.util.Collection;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import net.officefloor.hq.app.role.RoleService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Holds a selection of people together over dates, in list order (the order they were added). Each person is held as
++ * the row's hold would hold them, so each records its own PERSON_HELD line. One that cannot be held refuses the whole
++ * change: nothing is saved. A viewer changes nothing: none is held.
++ */
++@Service
++public class BulkHoldService {
++
++    private final PersonRepository people;
++    private final PersonService service;
++    private final RoleService roles;
++
++    public BulkHoldService(PersonRepository people, PersonService service, RoleService roles) {
++        this.people = people;
++        this.service = service;
++        this.roles = roles;
++    }
++
++    /** How many people were held. */
++    public record Result(int held) {
++    }
++
++    /** Hold each selected person from the date (null: the sheet's today) to the date (null: it does not end). */
++    @Transactional
++    public Result hold(String sheetId, String user, Collection<Long> ids, LocalDate from, LocalDate to) {
++        if (roles.isViewer(sheetId, user)) {
++            return new Result(0);
++        }
++        Set<Long> selected = new HashSet<>(ids);
++        List<Person> ordered = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> selected.contains(p.getId()))
++                .toList();
++        if (ordered.size() != selected.size()) {
++            // A selected id not on the sheet.
++            Long missing = selected.stream()
++                    .filter(id -> ordered.stream().noneMatch(p -> p.getId().equals(id)))
++                    .findFirst().orElseThrow();
++            throw new PersonNotFoundException(sheetId, missing);
++        }
++        for (Person person : ordered) {
++            service.hold(sheetId, user, person.getId(), from, to);
++        }
++        return new Result(ordered.size());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index b2ecfb4ab..0995cd77c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -104,6 +104,13 @@ public class PersonController {
+             LocalDate from) {
+     }
+ 
++    /** The people to hold together, and the dates the hold runs from (null: the sheet's today) and to (null: it does not end). */
++    public record BulkHoldRequest(
++            @NotNull @Size(max = 10000) List<@NotNull Long> ids,
++            LocalDate from,
++            LocalDate to) {
++    }
++
+     /** Which way to move a person in the list. */
+     public record MoveRequest(@NotNull @Pattern(regexp = "up|down") String direction) {
+     }
+@@ -158,6 +165,7 @@ public class PersonController {
+     private final WatchService watches;
+     private final BulkGradeService bulkGrade;
+     private final BulkRetireService bulkRetire;
++    private final BulkHoldService bulkHold;
+     private final GradeMergeService gradeMerge;
+     private final MergeService merges;
+     private final TransferService transfers;
+@@ -167,7 +175,8 @@ public class PersonController {
+     public PersonController(PersonService service, StatementService statements, SheetService sheets,
+             WatchService watches, BulkGradeService bulkGrade, BulkRetireService bulkRetire, MergeService merges,
+             TransferService transfers, ImportPeopleService imports, SnapshotCompareService snapshotCompare,
+-            GradeMergeService gradeMerge) {
++            GradeMergeService gradeMerge, BulkHoldService bulkHold) {
++        this.bulkHold = bulkHold;
+         this.gradeMerge = gradeMerge;
+         this.snapshotCompare = snapshotCompare;
+         this.imports = imports;
+@@ -264,6 +273,14 @@ public class PersonController {
+         return bulkRetire.retire(sheetId.trim(), user.trim(), request.ids(), request.from());
+     }
+ 
++    /** Hold the selected people over dates, in list order, each as the row's hold would. */
++    @PostMapping("/bulk-hold")
++    public BulkHoldService.Result bulkHold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid BulkHoldRequest request) {
++        return bulkHold.hold(sheetId.trim(), user.trim(), request.ids(), request.from(), request.to());
++    }
++
+     /**
+      * Take a statement of the person, on the sheet's today or as of an earlier date: record their due-total and bind
+      * their counting claims to their dues.
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerInterceptor.java b/src/main/java/net/officefloor/hq/app/role/ViewerInterceptor.java
+index 6225e5fc0..82e01e685 100644
+--- a/src/main/java/net/officefloor/hq/app/role/ViewerInterceptor.java
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerInterceptor.java
+@@ -20,7 +20,8 @@ public class ViewerInterceptor implements HandlerInterceptor {
+     /** The changing requests a viewer may still make: their handlers decide what a viewer gets. */
+     private static final Set<String> LET_THROUGH = Set.of("/load", "/claims/bulk-open", "/claims/bulk-settle",
+             "/claims/bulk-reassign", "/claims/bulk-redate", "/claims/bulk-void",
+-            "/people/bulk-grade", "/people/bulk-retire", "/plans/generate", "/periods/generate");
++            "/people/bulk-grade", "/people/bulk-retire", "/people/bulk-hold",
++            "/plans/generate", "/periods/generate");
+ 
+     private final RoleService roles;
+ 

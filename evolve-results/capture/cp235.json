@@ -1,0 +1,64 @@
+{
+  "checkpoint": 235,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp235_bulk-hold",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected people can be held together: a from-date, a to-date and a button beside the bulk\nbuttons; each selected person gets the hold in list order exactly as the row's hold does; show how\nmany were held.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected people can be held together: a from-date, a to-date and a button beside the bulk\nbuttons; each selected person gets the hold in list order exactly as the row's hold does; show how\nmany were held.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "accb31155e267eeb7c0b4b41903897e7df944b55",
+  "reset_sha": "",
+  "preagent_sha": "fd9fb2664346a85f717cbbf0d3afe85d2f88c14f",
+  "prev_sha": "fd9fb2664346a85f717cbbf0d3afe85d2f88c14f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6060726000000001,
+    "input_tokens": 30,
+    "output_tokens": 6017,
+    "cache_read_tokens": 568663,
+    "cache_creation_tokens": 46485,
+    "num_turns": 15,
+    "duration_ms": 234284,
+    "duration_api_ms": 60534,
+    "model": "claude-opus-5-5",
+    "session_id": "d9ac5257-8a44-4135-aaa8-815b5c12448b",
+    "stop_reason": "success",
+    "result_text": "You can now hold several people at once, and all 4 tests in `bin/e2e` pass.\n\n**What it does on screen:** under the \"retire selected people\" line there is now a from-date, a to-date and a \"Hold selected people\" button. A blank from-date means the sheet's today; a blank to-date means the hold has no end. Once the hold is done, the screen shows how many people were held.\n\n**How it behaves:**\n- People are held in list order, not the order they were ticked.\n- Each person is held exactly as the row's hold button would hold them, so each gets their own `PERSON_HELD` line in the audit file.\n- If any one person can't be held (for example, the to-date is before the from-date), nothing is saved and an error shows on the first ticked person's row.\n- A viewer can press the button, but nobody is held and the count shows 0. This matches how the other bulk buttons treat viewers.\n\n**What changed:**\n- **Server:** a new `BulkHoldService.java`, copied from the existing bulk retire, and a new `POST /people/bulk-hold` endpoint in `PersonController.java`. I also added the endpoint to the viewer exception list in `ViewerInterceptor.java` so a viewer gets the 0 count.\n- **Front end:** the new fields, button and count in `features/people/people.ts`. Their `data-testid`s are `bulk-hold-from`, `bulk-hold-to`, `bulk-hold` and `bulk-held`.\n\nNo database change was needed, because the existing hold storage already covers this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6060726000000001,
+        "num_turns": 15,
+        "duration_ms": 234284,
+        "duration_api_ms": 60534,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp235.agent.jsonl",
+  "agent_diff_file": "cp235.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
