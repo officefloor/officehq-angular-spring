@@ -1,0 +1,87 @@
+diff --git a/src/main/frontend/src/app/core/rates.ts b/src/main/frontend/src/app/core/rates.ts
+index 981f3d7d6..e6723b244 100644
+--- a/src/main/frontend/src/app/core/rates.ts
++++ b/src/main/frontend/src/app/core/rates.ts
+@@ -42,11 +42,11 @@ export class Rates {
+     return (today ? this.inForce(grade, today)?.rate : undefined) ?? NO_RATE;
+   }
+ 
+-  /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded half up
+-   *  to cents; null when no rate of the grade applies then. */
++  /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded half to
++   *  even to cents; null when no rate of the grade applies then. */
+   dueCents(amountCents: bigint, grade: string, date: string): bigint | null {
+     const rate = this.inForce(grade, date);
+-    return rate === undefined ? null : (amountCents * hundredths(rate.rate) + 5000n) / 10000n;
++    return rate === undefined ? null : halfEven(amountCents * hundredths(rate.rate), 10000n);
+   }
+ 
+   /** An amount written with two decimals times the grade's rate on a date, as `dueCents`, shown
+@@ -106,6 +106,13 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
+   return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
+ }
+ 
++/** A non-negative number divided by another, rounded half to even. */
++function halfEven(n: bigint, d: bigint): bigint {
++  const q = n / d;
++  const twice = (n % d) * 2n;
++  return twice > d || (twice === d && q % 2n === 1n) ? q + 1n : q;
++}
++
+ /** A number written with up to two decimals, in hundredths. */
+ export function hundredths(s: string): bigint {
+   const [whole, frac = ''] = s.split('.');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4cf67263d..97e585698 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,5 +1,5 @@
+ import { Component, computed, inject, signal } from '@angular/core';
+-import { Claims } from '../../core/claims';
++import { Claims, counts } from '../../core/claims';
+ import { GRADES, People, Person } from '../../core/people';
+ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
+ import { Session } from '../../core/session';
+@@ -89,10 +89,23 @@ export class PeopleList {
+     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+ 
+-  /** A person's claimed times their grade's rate in force on the sheet's today, divided by 100,
+-   *  rounded half up; null when the grade has no rate then. */
++  /** The sum of the figures of a person's claims that count: a settled claim's frozen due, else its
++   *  live due at the rate in force on its date (a claim with no rate then adds nothing). Null when
++   *  the grade has no rate on the sheet's today and no settled claim keeps a figure. */
+   private dueCents(p: Person): bigint | null {
+-    return this.rates.dueCents(hundredths(this.claims.claimed(p.id)), p.grade, this.session.today() ?? '');
++    let sum = 0n;
++    let settledFigure = false;
++    for (const c of this.claims.of(p.id).filter(counts)) {
++      if (c.settledDue !== null) {
++        settledFigure = true;
++        sum += hundredths(c.settledDue);
++      } else {
++        sum += this.rates.dueCents(hundredths(c.amount), p.grade, c.date) ?? 0n;
++      }
++    }
++    const today = this.session.today();
++    const rated = today ? this.rates.inForce(p.grade, today) !== undefined : false;
++    return rated || settledFigure ? sum : null;
+   }
+ 
+   protected due(p: Person): string {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 70f32b9d7..c03d0a2a6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -96,9 +96,9 @@ public class ClaimService {
+         return updated;
+     }
+ 
+-    /** An amount times a rate, divided by 100, rounded half up to cents. */
++    /** An amount times a rate, divided by 100, rounded half to even to cents. */
+     private static BigDecimal due(BigDecimal amount, Rate rate) {
+-        return amount.multiply(rate.getRate()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
++        return amount.multiply(rate.getRate()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+     }
+ 
+     /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */
