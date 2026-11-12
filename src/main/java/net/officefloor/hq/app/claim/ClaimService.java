@@ -37,6 +37,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.voidreason.VoidReasonRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 /** Keeps the people's claims on each sheet. A new claim with no date is dated the sheet's entry date while
  *  set, else its today. */
@@ -602,35 +603,48 @@ public class ClaimService {
     }
 
     /** Settle the chosen claims together in list order (people in the order they were added, each person's
-     *  claims newest first), each as a single settle by the user would: one a clerk puts PENDING counts as
-     *  settled, and one that cannot be settled is left as it is and counted as refused, as is one not on
-     *  the sheet. One that settles at least one is the sheet's next batch, each claim it settled taking its
-     *  number. */
+     *  claims newest first), each as a single settle by the user would; one a clerk puts PENDING counts as
+     *  settled. All or nothing: if any one cannot be settled (or is not on the sheet), none is, every one
+     *  counts as refused and nothing is written. Otherwise they are the sheet's next batch, each claim taking
+     *  its number, and BATCH_SETTLED follows the claims' own lines with the frozen figures of those SETTLED
+     *  added up. */
     @Transactional
     public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> claimIds) {
         Set<Long> chosen = new HashSet<>(claimIds);
         if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
             return new BulkSettled(0, chosen.size(), List.of(), null);
         }
+        List<Claim> found = inListOrder(sheetId, chosen);
+        if (found.size() != chosen.size()) {
+            return new BulkSettled(0, chosen.size(), List.of(), null);
+        }
         List<Claim> settled = new ArrayList<>();
-        for (Claim claim : inListOrder(sheetId, chosen)) {
+        for (Claim claim : found) {
             try {
                 settled.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
             } catch (ClaimStatusException | ClaimSettlerException | ClaimDeferException | ClaimProofException
                     | PeriodClosedException | ActionNotAllowedException
                     | ClaimNotFoundException e) {
-                // refused: left as it is
+                // refused: undo every settle made so far, and write none of their lines
+                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                return new BulkSettled(0, chosen.size(), List.of(), null);
             }
         }
         Integer batch = null;
         if (!settled.isEmpty()) {
             batch = sheets.nextSettleBatch(sheetId);
+            BigDecimal total = BigDecimal.ZERO.setScale(2);
             for (Claim claim : settled) {
                 claim.setSettleBatch(batch);
+                if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
+                    total = total.add(claim.getSettledDue());
+                }
             }
             settled = claims.saveAllAndFlush(settled);
+            audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + batch
+                    + " count=" + settled.size() + " total=" + total.toPlainString());
         }
-        return new BulkSettled(settled.size(), chosen.size() - settled.size(), settled, batch);
+        return new BulkSettled(settled.size(), 0, settled, batch);
     }
 
     /** What a bulk reassign did: how many it moved and refused, and the claims it moved, in the order moved. */
