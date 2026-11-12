@@ -32,6 +32,17 @@ export interface Claim {
   /** A correction's (a negative amount): the number of the SETTLED claim of the same person it
    *  corrects; null otherwise. */
   corrects: string | null;
+  /** Its status log: one line per status it has had, oldest first. */
+  statusLog: StatusLine[];
+}
+
+/** A line of a claim's status log: the status it took, who changed it, the sheet's today then
+ *  (YYYY-MM-DD), and the due it had then, two decimals (null when n/a). */
+export interface StatusLine {
+  status: ClaimStatus;
+  by: string;
+  on: string;
+  due: string | null;
 }
 
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT, OPEN or PENDING -> VOID. A clerk settling a

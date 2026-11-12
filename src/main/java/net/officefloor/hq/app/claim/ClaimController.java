@@ -37,10 +37,10 @@ public class ClaimController {
      *  the due fixed when it was settled (none while its due is live)
      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
-     *  otherwise). */
+     *  otherwise), and its status log, oldest first. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, String dueBy) {
+            String statedDue, String corrects, String dueBy, List<StatusLine> statusLog) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -48,7 +48,18 @@ public class ClaimController {
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
-                    claim.getCorrects(), claim.getDueBy().toString());
+                    claim.getCorrects(), claim.getDueBy().toString(),
+                    claim.getStatusLog().stream().map(StatusLine::of).toList());
+        }
+    }
+
+    /** A line of a claim's status log: the status, who changed it, the sheet's today then (YYYY-MM-DD), and
+     *  the due it had then, two decimals (none when n/a). */
+    public record StatusLine(ClaimStatus status, String by, String on, String due) {
+
+        static StatusLine of(StatusChange change) {
+            return new StatusLine(change.getStatus(), change.getBy(), change.getOn().toString(),
+                    change.getDue() == null ? null : change.getDue().toPlainString());
         }
     }
 

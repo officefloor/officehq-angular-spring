@@ -83,6 +83,7 @@ public class ClaimService {
                 .termsFor(person.gradeOn(on));
         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
+        logStatus(claim, person, user);
         claim = claims.saveAndFlush(claim);
         audit("CLAIM_ADDED", claim, person, user);
         rollup.recordChanges(sheetId, user, before);
@@ -151,6 +152,7 @@ public class ClaimService {
         }
         claim.setStatus(to);
         claim.setNumber(number);
+        logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
@@ -186,6 +188,7 @@ public class ClaimService {
         BigDecimal figure = liveDue(claim, person);
         claim.setSettledDue(figure == null ? null : charged(claim, figure));
         claim.setStatus(ClaimStatus.SETTLED);
+        logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
         audit("CLAIM_APPROVED", updated, person, user, updated.getNumber(), dueField(updated));
         rollup.recordChanges(sheetId, user, before);
@@ -212,6 +215,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         claim.setStatus(ClaimStatus.OPEN);
+        logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
         audit("CLAIM_REJECTED", updated, person, user, updated.getNumber(), " reason=" + reason);
         rollup.recordChanges(sheetId, user, before);
@@ -367,6 +371,22 @@ public class ClaimService {
             return claim.getSettledDue();
         }
         return claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
+    }
+
+    /** Log the status a claim has just taken: by the user, on the sheet's today, with its due as the
+     *  screen shows it now. */
+    private void logStatus(Claim claim, Person person, String user) {
+        claim.logStatus(user, sheets.today(claim.getSheetId()), shownDue(claim, person));
+    }
+
+    /** A claim's due as the screen shows it: fixed when settled, else its figure (bound or live) with its
+     *  late charge on top; none when that is n/a. */
+    private BigDecimal shownDue(Claim claim, Person person) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
+        BigDecimal figure = due(claim, person);
+        return figure == null ? null : charged(claim, figure);
     }
 
     /** A claim's figure with its late charge on the sheet's today on top while it is OPEN or PENDING. */

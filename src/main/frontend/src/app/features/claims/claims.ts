@@ -70,6 +70,11 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+          <ol data-testid="claim-log" aria-label="Status log">
+            @for (l of c.statusLog; track $index) {
+              <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? noRate }}</li>
+            }
+          </ol>
           @if (editing() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
           } @else {
@@ -164,6 +169,7 @@ export class PersonClaims {
   /** The reason typed to reject each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
   protected readonly isOpen = isOpen;
+  protected readonly noRate = NO_RATE;
   /** The id of the claim whose status change is under way. */
   protected readonly acting = signal<number | null>(null);
   /** The last refused status change, or edit of a claim that is no longer a DRAFT, shown on its claim

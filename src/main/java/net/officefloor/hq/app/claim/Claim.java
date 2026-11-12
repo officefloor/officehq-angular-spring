@@ -1,15 +1,22 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 /** A claim by a person on a sheet: an amount (two decimals), a date, a note, a status and, once opened,
  *  a number and who opened it. A negative amount is a correction, naming the number of the claim it corrects. */
@@ -72,6 +79,12 @@ public class Claim {
     /** The figure it had when its person's last statement bound it; none when that was n/a, or unbound. */
     @Column(name = "stated_due")
     private BigDecimal statedDue;
+
+    /** Its status log: one line per status it has had, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<StatusChange> statusLog = new ArrayList<>();
 
     protected Claim() {
     }
@@ -203,5 +216,14 @@ public class Claim {
     public void setStated(boolean stated, BigDecimal statedDue) {
         this.stated = stated;
         this.statedDue = stated ? statedDue : null;
+    }
+
+    public List<StatusChange> getStatusLog() {
+        return List.copyOf(statusLog);
+    }
+
+    /** Add a line to its status log, for the status it has now. */
+    public void logStatus(String by, LocalDate on, BigDecimal due) {
+        statusLog.add(new StatusChange(status, by, on, due));
     }
 }
