@@ -1,0 +1,206 @@
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 75116418b..d1f90bdce 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -78,7 +78,7 @@ export class Plans {
+     if (this.session.sheet() === sheet) this.list.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+   }
+ 
+-  /** Change the plan's amount for the claims generated from now on; throws when refused. */
++  /** Change the plan's amount for the claims generated from now on and its DRAFT claims; throws when refused. */
+   async changeAmount(planId: number, amount: string): Promise<void> {
+     const sheet = this.session.sheet();
+     if (!sheet) throw new Error('No sheet loaded.');
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index fc9c8050a..5454913a3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -783,7 +783,7 @@ function csvField(value: string): string {
+                     <p role="alert" data-testid="person-patron-error">{{ e.message | fig }}</p>
+                   }
+                 }
+-                <app-person-plans [personId]="p.id" [personName]="p.name" />
++                <app-person-plans [personId]="p.id" [personName]="p.name" (amountChanged)="planAmountChanged()" />
+               </td>
+               <td
+                 app-claims
+@@ -1982,6 +1982,12 @@ export class People {
+     if (sheet) void this.read(sheet);
+   }
+ 
++  /** Re-read once a plan's amount was changed, so its DRAFT claims show their new amount. */
++  protected planAmountChanged(): void {
++    const sheet = this.session.sheet();
++    if (sheet) void this.read(sheet);
++  }
++
+   /** Re-read once rates were imported, so the screen holds what the store does. */
+   protected ratesImported(): void {
+     const sheet = this.session.sheet();
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index e0b0b4c2b..42dda85e5 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -1,6 +1,6 @@
+ import { HttpErrorResponse } from '@angular/common/http';
+ import { FigurePipe } from '../../core/locale';
+-import { Component, computed, inject, input, signal } from '@angular/core';
++import { Component, computed, inject, input, output, signal } from '@angular/core';
+ import { Plans } from '../../core/plans';
+ 
+ /** An amount with at most two decimals, more than 0.00. */
+@@ -107,6 +107,8 @@ export class PersonPlans {
+ 
+   readonly personId = input.required<number>();
+   readonly personName = input.required<string>();
++  /** A plan's amount was changed, which also changes its DRAFT claims. */
++  readonly amountChanged = output<void>();
+ 
+   protected readonly plans = computed(() => this.store.list().filter((p) => p.personId === this.personId()));
+   protected readonly amount = signal('');
+@@ -154,6 +156,7 @@ export class PersonPlans {
+     try {
+       await this.store.changeAmount(planId, amount);
+       this.newAmounts.update(({ [planId]: _, ...rest }) => rest);
++      this.amountChanged.emit();
+     } catch (e) {
+       const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
+       this.rowErrors.update((errors) => ({ ...errors, [planId]: 'The plan\'s amount could not be changed.' + detail }));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index f957e0d90..4974f28b9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -397,6 +397,14 @@ public class ClaimService {
+                 claim.getTags());
+     }
+ 
++    /** Edit the claim's amount as {@link #editAmount} does when it is a DRAFT; a claim in any other status keeps its own. */
++    @Transactional
++    public Claim editDraftAmount(String sheetId, String user, Long id, BigDecimal amount) {
++        Claim claim = claims.findForUpdate(id, sheetId)
++                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
++        return claim.getStatus() == ClaimStatus.DRAFT ? editAmount(sheetId, user, id, amount) : claim;
++    }
++
+     /**
+      * Open the claim's editor for the user, locking the claim against other users' edits until it is saved or
+      * cancelled, or the sheet's today changes. Refused, taking no lock, for a claim that cannot be edited: not a DRAFT,
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index d459e95e9..41a43b9dc 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -155,7 +155,7 @@ public class PlanController {
+                 service.nextDates(sheetId, plan), on, service.changes(sheetId, plan));
+     }
+ 
+-    /** Change the plan's amount for the claims generated from now on; refused when it is not more than 0.00. */
++    /** Change the plan's amount for the claims generated from now on and its DRAFT claims; refused when not more than 0.00. */
+     @PostMapping("/plans/{planId}/amount")
+     public PlanView changeAmount(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+             @PathVariable Long planId,
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanDate.java b/src/main/java/net/officefloor/hq/app/plan/PlanDate.java
+index 1627470c4..38935368a 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanDate.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanDate.java
+@@ -26,13 +26,18 @@ public class PlanDate {
+     @Column(name = "plan_date", nullable = false)
+     private LocalDate date;
+ 
++    /** The claim made for the date (on the plan's sheet), or null when made before this was kept. */
++    @Column(name = "claim_id")
++    private Long claimId;
++
+     protected PlanDate() {
+     }
+ 
+-    public PlanDate(String sheetId, Long planId, LocalDate date) {
++    public PlanDate(String sheetId, Long planId, LocalDate date, Long claimId) {
+         this.sheetId = sheetId;
+         this.planId = planId;
+         this.date = date;
++        this.claimId = claimId;
+     }
+ 
+     public Long getId() {
+@@ -46,4 +51,8 @@ public class PlanDate {
+     public LocalDate getDate() {
+         return date;
+     }
++
++    public Long getClaimId() {
++        return claimId;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanDateRepository.java b/src/main/java/net/officefloor/hq/app/plan/PlanDateRepository.java
+index b9600f2f1..ea7d58017 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanDateRepository.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanDateRepository.java
+@@ -6,4 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
+ public interface PlanDateRepository extends JpaRepository<PlanDate, Long> {
+ 
+     List<PlanDate> findBySheetId(String sheetId);
++
++    List<PlanDate> findByPlanIdAndSheetIdOrderByIdAsc(Long planId, String sheetId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index b5ac3e6a9..25bc25d3f 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -8,6 +8,7 @@ import java.util.Map;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+@@ -175,11 +176,26 @@ public class PlanService {
+     }
+ 
+     /**
+-     * Change the plan's amount on the sheet's today: the claims generated from then on are of the new amount, those
+-     * already generated keep theirs. An amount not more than 0.00 is refused.
++     * Change the plan's amount on the sheet's today: the claims generated from then on are of the new amount, and those
++     * already generated that are still DRAFT are changed to it, each as the claim form would edit it (one it refuses
++     * keeps its amount); those in any other status keep theirs. An amount not more than 0.00 is refused.
+      */
+-    @Transactional
+     public Plan changeAmount(String sheetId, String user, Long planId, BigDecimal amount) {
++        Plan plan = each.execute(status -> change(sheetId, user, planId, amount));
++        String on = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
++        for (PlanDate made : dates.findByPlanIdAndSheetIdOrderByIdAsc(planId, sheetId)) {
++            if (made.getClaimId() != null) {
++                try {
++                    each.executeWithoutResult(status -> claims.editDraftAmount(on, user, made.getClaimId(), amount));
++                } catch (RuntimeException e) {
++                    // The claim form refuses the edit: the claim keeps its amount.
++                }
++            }
++        }
++        return plan;
++    }
++
++    private Plan change(String sheetId, String user, Long planId, BigDecimal amount) {
+         Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                 .orElseThrow(() -> new PlanNotFoundException(sheetId, planId));
+         Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+@@ -243,8 +259,8 @@ public class PlanService {
+         String on = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
+         try {
+             each.executeWithoutResult(status -> {
+-                claims.add(on, user, personId, plan.getAmount(), date, "", null);
+-                dates.saveAndFlush(new PlanDate(sheetId, plan.getId(), date));
++                Claim claim = claims.add(on, user, personId, plan.getAmount(), date, "", null);
++                dates.saveAndFlush(new PlanDate(sheetId, plan.getId(), date, claim.getId()));
+             });
+             return true;
+         } catch (RuntimeException e) {
+diff --git a/src/main/resources/db/migration/V118__plan_date_claim.sql b/src/main/resources/db/migration/V118__plan_date_claim.sql
+new file mode 100644
+index 000000000..2f52cbf08
+--- /dev/null
++++ b/src/main/resources/db/migration/V118__plan_date_claim.sql
+@@ -0,0 +1,3 @@
++-- The claim a plan date made, so a change of the plan's amount reaches the claims it generated that are still DRAFT.
++-- The claim may be on a descendant sheet; null for plan dates made before this was kept.
++ALTER TABLE plan_date ADD COLUMN claim_id BIGINT;
