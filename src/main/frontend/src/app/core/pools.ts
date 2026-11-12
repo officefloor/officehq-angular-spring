@@ -12,7 +12,8 @@ export interface PoolMemberView {
   name: string;
   share: string;
   retired: boolean;
-  /** Their cut of the pool's pot, two decimals (0.00 when retired); null when the pool is unbalanced or
+  /** Their cut of the pool's pot, two decimals (0.00 when retired or on hold on the sheet's today, their
+   *  share spread over the others with a cut); null when the pool is unbalanced or
    *  has no pot. A pool in another has its cut there as its pot; one in none has the sheet's pot. */
   cut: string | null;
 }

@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -36,8 +37,9 @@ public class PoolController {
     private static final BigDecimal HUNDRED = new BigDecimal("100.00");
 
     /** A member, a person or another pool (poolId set, never retired): a retired person (a retirement date set,
-     *  whatever the date) counts 0.00 toward the total. Its cut of the pool's pot (two decimals); none when the
-     *  pool is unbalanced or has no pot. */
+     *  whatever the date) counts 0.00 toward the total. Its cut of the pool's pot (two decimals; 0.00 for a person
+     *  on hold on the sheet's today, whose share is spread over the others); none when the pool is unbalanced or
+     *  has no pot. */
     public record PoolMemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut) {
     }
 
@@ -46,8 +48,8 @@ public class PoolController {
 
         /** The sheet's pools as views, in their order. A pool that is a member of another has as its pot its cut
          *  in the pool above (none when that is unbalanced or has none); one that is a member of none has the
-         *  sheet's pot. */
-        static List<PoolView> of(List<Pool> pools, Map<Long, Person> people, BigDecimal sheetPot) {
+         *  sheet's pot. A person on hold on the sheet's today gets no cut from any pool. */
+        static List<PoolView> of(List<Pool> pools, Map<Long, Person> people, BigDecimal sheetPot, LocalDate today) {
             Map<Long, Pool> byId = new HashMap<>();
             Map<Long, Pool> parentOf = new HashMap<>();
             for (Pool pool : pools) {
@@ -60,13 +62,13 @@ public class PoolController {
             }
             Map<Long, PoolView> views = new HashMap<>();
             for (Pool pool : pools) {
-                view(pool, byId, parentOf, people, sheetPot, views);
+                view(pool, byId, parentOf, people, sheetPot, today, views);
             }
             return pools.stream().map(p -> views.get(p.getId())).toList();
         }
 
         private static PoolView view(Pool pool, Map<Long, Pool> byId, Map<Long, Pool> parentOf,
-                Map<Long, Person> people, BigDecimal sheetPot, Map<Long, PoolView> views) {
+                Map<Long, Person> people, BigDecimal sheetPot, LocalDate today, Map<Long, PoolView> views) {
             PoolView done = views.get(pool.getId());
             if (done != null) {
                 return done;
@@ -74,30 +76,33 @@ public class PoolController {
             BigDecimal pot = sheetPot;
             Pool parent = parentOf.get(pool.getId());
             if (parent != null) {
-                PoolView above = view(parent, byId, parentOf, people, sheetPot, views);
+                PoolView above = view(parent, byId, parentOf, people, sheetPot, today, views);
                 String cut = above.members().stream().filter(m -> pool.getId().equals(m.poolId())).findFirst()
                         .map(PoolMemberView::cut).orElse(null);
                 pot = cut == null ? null : new BigDecimal(cut);
             }
-            PoolView v = of(pool, byId, people, pot);
+            PoolView v = of(pool, byId, people, pot, today);
             views.put(pool.getId(), v);
             return v;
         }
 
-        private static PoolView of(Pool pool, Map<Long, Pool> pools, Map<Long, Person> people, BigDecimal pot) {
+        private static PoolView of(Pool pool, Map<Long, Pool> pools, Map<Long, Person> people, BigDecimal pot,
+                LocalDate today) {
             List<PoolMember> all = pool.getMembers();
             BigDecimal total = BigDecimal.ZERO.setScale(2);
             boolean[] retired = new boolean[all.size()];
+            boolean[] held = new boolean[all.size()];
             for (int i = 0; i < all.size(); i++) {
                 Long personId = all.get(i).getPersonId();
                 Person p = personId == null ? null : people.get(personId);
                 retired[i] = p != null && p.isRetired();
+                held[i] = p != null && today != null && p.heldOn(today);
                 if (!retired[i]) {
                     total = total.add(all.get(i).getShare());
                 }
             }
             boolean balanced = total.compareTo(HUNDRED) == 0;
-            BigDecimal[] cuts = balanced && pot != null ? cuts(all, retired, pot) : new BigDecimal[all.size()];
+            BigDecimal[] cuts = balanced && pot != null ? cuts(all, retired, held, pot) : new BigDecimal[all.size()];
             List<PoolMemberView> members = new ArrayList<>();
             for (int i = 0; i < all.size(); i++) {
                 PoolMember m = all.get(i);
@@ -116,19 +121,28 @@ public class PoolController {
             return new PoolView(pool.getId(), pool.getName(), members, total.setScale(2).toPlainString(), balanced);
         }
 
-        /** Each member's cut of the pot: the pot times their share divided by 100, rounded half to even to two
-         *  decimals (0.00 for a retired one); the remainder, the pot minus the cuts added up, goes to the member
-         *  with the largest share, the earliest added on a tie, so the cuts total exactly the pot. */
-        private static BigDecimal[] cuts(List<PoolMember> members, boolean[] retired, BigDecimal pot) {
+        /** Each member's cut of the pot: the pot times their share divided by the shares of the members with a
+         *  cut added up, rounded half to even to two decimals (0.00 for a retired one or one on hold); the
+         *  remainder, the pot minus the cuts added up, goes to the member with a cut with the largest share, the
+         *  earliest added on a tie, so the cuts total exactly the pot. When no member has a cut, each is 0.00. */
+        private static BigDecimal[] cuts(List<PoolMember> members, boolean[] retired, boolean[] held,
+                BigDecimal pot) {
             BigDecimal[] cuts = new BigDecimal[members.size()];
+            BigDecimal shares = BigDecimal.ZERO;
+            for (int i = 0; i < members.size(); i++) {
+                if (!retired[i] && !held[i]) {
+                    shares = shares.add(members.get(i).getShare());
+                }
+            }
             BigDecimal sum = BigDecimal.ZERO.setScale(2);
             int largest = -1;
             for (int i = 0; i < members.size(); i++) {
                 BigDecimal share = members.get(i).getShare();
-                cuts[i] = retired[i] ? BigDecimal.ZERO.setScale(2)
-                        : pot.multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+                boolean cut = !retired[i] && !held[i] && shares.signum() > 0;
+                cuts[i] = cut ? pot.multiply(share).divide(shares, 2, RoundingMode.HALF_EVEN)
+                        : BigDecimal.ZERO.setScale(2);
                 sum = sum.add(cuts[i]);
-                if (!retired[i] && (largest < 0 || share.compareTo(members.get(largest).getShare()) > 0)) {
+                if (cut && (largest < 0 || share.compareTo(members.get(largest).getShare()) > 0)) {
                     largest = i;
                 }
             }
@@ -184,7 +198,7 @@ public class PoolController {
     }
 
     private List<PoolView> views(String sheetId) {
-        return PoolView.of(service.list(sheetId), people(sheetId), sheets.pot(sheetId));
+        return PoolView.of(service.list(sheetId), people(sheetId), sheets.pot(sheetId), sheets.today(sheetId));
     }
 
     private PoolView view(String sheetId, Pool pool) {
