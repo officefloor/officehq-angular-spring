@@ -15,6 +15,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -82,5 +83,22 @@ public class RateController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.rate()));
+    }
+
+    /** The rate import box's lines of grade,rate,from,to. */
+    public record ImportRequest(@NotNull @Size(max = 1000000) String text) {
+    }
+
+    /** How many an import set, and the sheet's rates once they were. */
+    public record ImportView(int set, List<RateView> rates) {
+    }
+
+    /** Set the rate each imported line names, in order; one refused line refuses them all. */
+    @PostMapping("/import")
+    public ImportView importRates(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ImportRequest request) {
+        int set = service.importRates(sheetId.trim(), user.trim(), request.text());
+        return new ImportView(set, service.list(sheetId.trim()).stream().map(RateView::of).toList());
     }
 }

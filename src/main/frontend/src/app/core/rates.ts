@@ -114,6 +114,31 @@ export class Rates {
     }
   }
 
+  /** Set the rate each pasted line of grade,rate,from,to names (from and to may be left out or blank),
+   *  in order, as the form would; how many were set, or why the import was refused (then none was). */
+  async importRates(text: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!text.trim()) return 'Paste at least one line of grade,rate,from,to.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ set: number; rates: Rate[] }>(`${this.url(sid)}/import`, { text }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.session.sheetId() === sid) this.rates.set([...done.rates].sort(byGradeAndFrom));
+      return done.set;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 422 && typeof e.error?.message === 'string' && e.error.message) {
+        return e.error.message;
+      }
+      return e instanceof HttpErrorResponse && e.status === 422
+        ? 'A line could not be set; nothing was imported.'
+        : failed('import', e).replace(' rate', ' rates');
+    }
+  }
+
   private url(sid: string): string {
     return `/api/sheets/${encodeURIComponent(sid)}/rates`;
   }
