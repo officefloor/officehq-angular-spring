@@ -15,6 +15,7 @@ import java.util.List;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -85,7 +87,7 @@ public class RateController {
             return date(to);
         }
 
-        private static LocalDate date(String value) {
+        static LocalDate date(String value) {
             if (value == null || value.isBlank()) {
                 return null;
             }
@@ -159,5 +161,18 @@ public class RateController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ImportRequest request) {
         return new ImportResult(imports.importRates(sheetId.trim(), user.trim(), request.text()));
+    }
+
+    /**
+     * Withdraw the newest version of the grade's rate from the from-date (missing or blank: its undated rate); the one
+     * before it applies again, or the rate is gone. Refused for a non-steward.
+     */
+    @DeleteMapping("/{grade}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void withdraw(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
+            @RequestParam(required = false) @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        service.withdraw(sheetId.trim(), user.trim(), grade, RateRequest.date(from));
     }
 }

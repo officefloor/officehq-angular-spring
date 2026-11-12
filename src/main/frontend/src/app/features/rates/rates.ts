@@ -337,7 +337,7 @@ export function trimmedSumDues(dues: string[]): string {
       <table>
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (r of ownRates(); track r.grade + '-' + r.from) {
@@ -347,6 +347,16 @@ export function trimmedSumDues(dues: string[]): string {
               <td data-testid="rate-to">{{ r.to ?? 'no end' | fig }}</td>
               <td data-testid="rate-pct">{{ r.pct | fig }}</td>
               <td data-testid="rate-version">{{ r.version | fig }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="rate-withdraw"
+                  [attr.aria-label]="'Withdraw the newest version of grade ' + r.grade + ' rate from ' + (r.from ?? 'always')"
+                  (click)="withdraw(r)"
+                >
+                  Withdraw
+                </button>
+              </td>
             </tr>
           }
         </tbody>
@@ -366,6 +376,8 @@ export class Rates {
   readonly saved = output<Rate>();
   /** Rates were imported: the screen is to re-read them. */
   readonly imported = output<void>();
+  /** A rate's newest version was withdrawn: the screen is to re-read the rates. */
+  readonly withdrawn = output<void>();
 
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
@@ -466,6 +478,36 @@ export class Rates {
         e instanceof HttpErrorResponse && e.status === 409
           ? 'Another user set this rate at the same moment; try again.'
           : 'The rate could not be set.',
+      );
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /**
+   * Withdraw the rate's newest version: the one before it applies again, or the rate is gone. Only a steward may; a
+   * refusal shows on the rate form.
+   */
+  protected async withdraw(rate: Rate): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    this.submitting = true;
+    try {
+      await firstValueFrom(
+        this.http.delete<void>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${rate.grade}`, {
+          ...this.session.headers(),
+          params: rate.from === null ? {} : { from: rate.from },
+        }),
+      );
+      if (this.session.sheet() === sheet) this.withdrawn.emit();
+    } catch (e) {
+      if (this.session.sheet() !== sheet) return;
+      this.error.set(
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can withdraw a rate.'
+          : 'The rate could not be withdrawn.',
       );
     } finally {
       this.submitting = false;

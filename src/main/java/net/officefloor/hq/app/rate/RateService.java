@@ -5,9 +5,11 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -26,9 +28,11 @@ public class RateService {
     private final SheetRepository sheets;
     private final Audit audit;
     private final RollupService rollup;
+    private final RoleService roles;
 
     public RateService(RateRepository rates, RateLogRepository logs, RateVersionRepository versions,
-            ClaimRepository claims, SheetRepository sheets, Audit audit, RollupService rollup) {
+            ClaimRepository claims, SheetRepository sheets, Audit audit, RollupService rollup, RoleService roles) {
+        this.roles = roles;
         this.claims = claims;
         this.rates = rates;
         this.logs = logs;
@@ -145,5 +149,43 @@ public class RateService {
         rollup.recordChanges(sheetId, user, before);
         rollup.withOlder(List.of(saved));
         return saved;
+    }
+
+    /**
+     * Withdraw the newest version of the grade's rate from the from-date (null: its undated rate): the version before
+     * it, when there is one, is in force again; with none the rate is gone. Its last logged setting goes with it.
+     * Refused unless the user is a steward on the sheet.
+     */
+    @Transactional
+    public void withdraw(String sheetId, String user, String grade, LocalDate fromDate) {
+        if (sheets.lockById(sheetId) == 0) {
+            throw new SheetNotFoundException(sheetId);
+        }
+        if (!roles.isSteward(sheetId, user)) {
+            throw new RateWithdrawForbiddenException(grade, user);
+        }
+        Rate rate = rates.findBySheetIdAndGradeAndFromDate(sheetId, grade, fromDate)
+                .orElseThrow(() -> new RateNotFoundException(grade, fromDate));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        List<RateVersion> older = versions.findByRateIdOrderByVersionAsc(rate.getId());
+        if (older.isEmpty()) {
+            rates.delete(rate);
+        } else {
+            RateVersion previous = older.get(older.size() - 1);
+            versions.delete(previous);
+            rate.setVersion(previous.getVersion());
+            rate.setPct(previous.getPct());
+            rate.setToDate(previous.getToDate());
+            rate.setForwardAfter(previous.getForwardAfter());
+            rates.save(rate);
+        }
+        logs.findBySheetIdAndGradeOrderByIdAsc(sheetId, grade).stream()
+                .filter(l -> Objects.equals(l.getFromDate(), fromDate))
+                .reduce((first, second) -> second)
+                .ifPresent(logs::delete);
+        rates.flush();
+        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user + " grade=" + grade
+                + (fromDate == null ? "" : " from=" + fromDate));
+        rollup.recordChanges(sheetId, user, before);
     }
 }

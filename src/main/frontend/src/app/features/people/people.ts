@@ -248,7 +248,7 @@ function csvField(value: string): string {
         <dd data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' | fig }}</dd>
       </dl>
     </section>
-    <app-rates [grades]="grades()" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
+    <app-rates [grades]="grades()" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" (withdrawn)="ratesImported()" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
