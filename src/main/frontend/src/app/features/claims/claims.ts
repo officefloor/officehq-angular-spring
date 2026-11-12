@@ -290,6 +290,8 @@ export class PersonClaims {
     { action: 'settle', label: 'Settle' },
     { action: 'void', label: 'Void' },
     { action: 'resettle', label: 'Re-settle' },
+    { action: 'delete', label: 'Delete' },
+    { action: 'restore', label: 'Restore' },
   ];
   /** A steward's review of a PENDING claim, offered on every claim (the server refuses it unless
    *  PENDING). */

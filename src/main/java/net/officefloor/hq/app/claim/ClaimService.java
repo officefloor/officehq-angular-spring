@@ -209,7 +209,7 @@ public class ClaimService {
             case OPEN -> "open";
             case SETTLED, PENDING -> "settle";
             case VOID -> "void";
-            case DRAFT -> throw new IllegalStateException();
+            case DRAFT, DELETED -> throw new IllegalStateException();
         });
         if (!claim.getStatus().canBecome(to)) {
             throw new ClaimStatusException(claim.getStatus(), to);
@@ -267,12 +267,60 @@ public class ClaimService {
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT -> throw new IllegalStateException();
+            case DRAFT, DELETED -> throw new IllegalStateException();
         };
         audit(event, updated, person, user, number, to == ClaimStatus.SETTLED ? dueField(updated) : reversed);
         if (to == ClaimStatus.SETTLED) {
             notifyWatchers(updated, person, user);
         }
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
+    /** Delete a DRAFT claim: it becomes DELETED, counting nowhere, and cannot be edited, opened or voided
+     *  until restored. Refused for a claim in any other status, a claim in a closed period, and a claim
+     *  another user's editor is open on. */
+    @Transactional
+    public Claim delete(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimDeleteException("Only a DRAFT claim can be deleted; this one is " + claim.getStatus() + ".");
+        }
+        refuseLocked(claim, user);
+        return moveDeleted(sheetId, user, claim, ClaimStatus.DELETED, "CLAIM_DELETED");
+    }
+
+    /** Restore a DELETED claim to a DRAFT. Refused for a claim that is not DELETED, a claim deleted before the
+     *  sheet's today, and a claim in a closed period. */
+    @Transactional
+    public Claim restore(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.DELETED) {
+            throw new ClaimDeleteException("Only a DELETED claim can be restored; this one is " + claim.getStatus() + ".");
+        }
+        LocalDate deletedOn = claim.getStatusLog().stream()
+                .filter(line -> line.getStatus() == ClaimStatus.DELETED)
+                .map(StatusChange::getOn)
+                .reduce((first, last) -> last)
+                .orElse(null);
+        if (deletedOn == null || !deletedOn.equals(sheets.today(sheetId))) {
+            throw new ClaimDeleteException("A deleted claim can only be restored on the day it was deleted.");
+        }
+        return moveDeleted(sheetId, user, claim, ClaimStatus.DRAFT, "CLAIM_RESTORED");
+    }
+
+    /** Move a claim into or out of DELETED: log the status and write the event naming the claim. */
+    private Claim moveDeleted(String sheetId, String user, Claim claim, ClaimStatus to, String event) {
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        claim.setStatus(to);
+        claim.setLockedBy(null);
+        logStatus(claim, person, user);
+        Claim updated = claims.saveAndFlush(claim);
+        audit(event, updated, person, user);
         rollup.recordChanges(sheetId, user, before);
         return updated;
     }
@@ -312,13 +360,14 @@ public class ClaimService {
         return updated;
     }
 
-    /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim, and a claim in a closed
+    /** Raise a claim's proofs count by one. Refused for a SETTLED, VOID or DELETED claim, and a claim in a closed
      *  period. */
     @Transactional
     public Claim addProof(String sheetId, String user, long claimId) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDueBy());
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ClaimProofException("A " + claim.getStatus() + " claim takes no proof.");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)

@@ -4,19 +4,20 @@ import java.util.Set;
 
 /** A claim's status: DRAFT when added; it is opened, then settled. A clerk settling a due above the clerk
  *  limit puts it PENDING instead, until a steward approves it (SETTLED) or rejects it (back to OPEN). A
- *  DRAFT, OPEN or PENDING claim can be voided, and a SETTLED one by a steward within 7 days of settling. */
+ *  DRAFT, OPEN or PENDING claim can be voided, and a SETTLED one by a steward within 7 days of settling. A
+ *  DRAFT can be deleted (DELETED, counting nowhere), and restored to DRAFT on the sheet's today it was deleted. */
 public enum ClaimStatus {
-    DRAFT, OPEN, PENDING, SETTLED, VOID;
+    DRAFT, OPEN, PENDING, SETTLED, VOID, DELETED;
 
     /** Whether a claim in this status can move to the given one by opening, settling or voiding it;
-     *  approving and rejecting move a PENDING claim on. */
+     *  approving and rejecting move a PENDING claim on, and deleting and restoring a DRAFT. */
     public boolean canBecome(ClaimStatus to) {
         return switch (this) {
             case DRAFT -> Set.of(OPEN, VOID).contains(to);
             case OPEN -> Set.of(SETTLED, VOID).contains(to);
             case PENDING -> to == VOID;
             case SETTLED -> to == VOID;
-            case VOID -> false;
+            case VOID, DELETED -> false;
         };
     }
 

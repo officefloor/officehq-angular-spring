@@ -256,6 +256,22 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.OPEN));
     }
 
+    /** Delete a DRAFT claim. */
+    @PostMapping("/claims/{claimId}/delete")
+    public ClaimView delete(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.delete(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** Restore a DELETED claim to a DRAFT, on the sheet's today it was deleted. */
+    @PostMapping("/claims/{claimId}/restore")
+    public ClaimView restore(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.restore(sheetId.trim(), user.trim(), claimId));
+    }
+
     /** The claims chosen for a bulk action. */
     public record BulkRequest(@NotNull @Size(max = 10000) List<@NotNull Long> claimIds) {
     }
@@ -615,6 +631,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimResettleException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> resettleRefused(ClaimResettleException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A delete or restore that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimDeleteException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> deleteRefused(ClaimDeleteException e) {
         return Map.of("message", e.getMessage());
     }
 
