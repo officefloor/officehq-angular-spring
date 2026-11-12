@@ -1,0 +1,171 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 43d52656a..0942a9d74 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,5 +1,5 @@
+ import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+-import { Claim, ClaimAction, Claims, bound, isOpen } from '../../core/claims';
++import { Claim, ClaimAction, Claims, bound } from '../../core/claims';
+ import { Periods } from '../../core/periods';
+ import { GradeFrom, People, gradeOn } from '../../core/people';
+ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
+@@ -208,24 +208,22 @@ import { VoidReasons } from '../../core/void-reasons';
+           <button type="button" data-testid="claim-reassign" [disabled]="acting() === c.id" (click)="reassign(c)">
+             Reassign<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+           </button>
+-          @if (isOpen(c)) {
+-            <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+-            <input
+-              [id]="'claim-reject-reason-' + c.id"
+-              data-testid="claim-reject-reason"
+-              [value]="rejectReasons()[c.id] ?? ''"
+-              (input)="setRejectReason(c.id, value($event))"
+-            />
+-            @for (a of reviews; track a.action) {
+-              <button
+-                type="button"
+-                [attr.data-testid]="'claim-' + a.action"
+-                [disabled]="acting() === c.id"
+-                (click)="act(c, a.action)"
+-              >
+-                {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+-              </button>
+-            }
++          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
++          <input
++            [id]="'claim-reject-reason-' + c.id"
++            data-testid="claim-reject-reason"
++            [value]="rejectReasons()[c.id] ?? ''"
++            (input)="setRejectReason(c.id, value($event))"
++          />
++          @for (a of reviews; track a.action) {
++            <button
++              type="button"
++              [attr.data-testid]="'claim-' + a.action"
++              [disabled]="acting() === c.id"
++              (click)="act(c, a.action)"
++            >
++              {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
++            </button>
+           }
+           @if (actionError()?.id === c.id) {
+             <p role="alert" data-testid="claim-error">{{ actionError()?.message }}</p>
+@@ -271,7 +269,7 @@ export class PersonClaims {
+     { action: 'void', label: 'Void' },
+     { action: 'resettle', label: 'Re-settle' },
+   ];
+-  /** A steward's review of a PENDING claim, offered on every open claim (the server refuses it unless
++  /** A steward's review of a PENDING claim, offered on every claim (the server refuses it unless
+    *  PENDING). */
+   protected readonly reviews: { action: ClaimAction; label: string }[] = [
+     { action: 'approve', label: 'Approve' },
+@@ -292,7 +290,6 @@ export class PersonClaims {
+   protected readonly voidReasons = inject(VoidReasons);
+   /** The void reason chosen for each claim, by claim id. */
+   protected readonly voidReasonsChosen = signal<Record<number, string>>({});
+-  protected readonly isOpen = isOpen;
+   protected readonly noRate = NO_RATE;
+   /** The id of the claim whose status change is under way. */
+   protected readonly acting = signal<number | null>(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index ad7e53d67..2c384ddec 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -77,6 +77,10 @@ public class Claim {
+     @Column(name = "opened_by")
+     private String openedBy;
+ 
++    /** The user who last edited the claim; none while never edited. */
++    @Column(name = "edited_by")
++    private String editedBy;
++
+     /** Bound by its person's last statement, which counted it: it shows and totals its stated due. */
+     @Column(name = "stated", nullable = false)
+     private boolean stated;
+@@ -271,6 +275,14 @@ public class Claim {
+         this.openedBy = openedBy;
+     }
+ 
++    public String getEditedBy() {
++        return editedBy;
++    }
++
++    public void setEditedBy(String editedBy) {
++        this.editedBy = editedBy;
++    }
++
+     public boolean isStated() {
+         return stated;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 544ea2d20..067789dc3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -145,6 +145,7 @@ public class ClaimService {
+         claim.setRef(ref);
+         claim.setTags(tags);
+         claim.setLockedBy(null);
++        claim.setEditedBy(user);
+         Claim updated = claims.saveAndFlush(claim);
+         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+@@ -223,7 +224,10 @@ public class ClaimService {
+             reversed += " reason=" + voidReason;
+         }
+         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+-            throw new ClaimSettlerException();
++            throw new ClaimSettlerException("The user who opened a claim cannot settle it.");
++        }
++        if (to == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
++            throw new ClaimSettlerException("The user who last edited a claim cannot settle it.");
+         }
+         if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
+             throw new ClaimDeferException("The claim is deferred until " + claim.getDeferredUntil() + ".");
+@@ -273,7 +277,7 @@ public class ClaimService {
+ 
+     /** Approve a PENDING claim: it becomes SETTLED, its due fixed at its live figure now, its late charge on
+      *  the sheet's today frozen in on top (with no figure then, its due stays live). Refused unless the
+-     *  claim is PENDING and the user is a steward other than the one who opened it. */
++     *  claim is PENDING and the user is a steward other than the one who opened it or last edited it. */
+     @Transactional
+     public Claim approve(String sheetId, String user, long claimId) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+@@ -287,6 +291,9 @@ public class ClaimService {
+         if (user.equals(claim.getOpenedBy())) {
+             throw new ClaimApprovalException("The user who opened a claim cannot approve it.");
+         }
++        if (user.equals(claim.getEditedBy())) {
++            throw new ClaimApprovalException("The user who last edited a claim cannot approve it.");
++        }
+         Rollup.Snapshot before = rollup.take(sheetId);
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimSettlerException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimSettlerException.java
+index 737e330b4..0b0355a8a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimSettlerException.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimSettlerException.java
+@@ -3,11 +3,12 @@ package net.officefloor.hq.app.claim;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ 
+-/** The user who opened a claim asked to settle it: a claim needs a second pair of eyes to be settled. */
++/** The user who opened or last edited a claim asked to settle it: a claim needs a second pair of eyes to be
++ *  settled. */
+ @ResponseStatus(HttpStatus.CONFLICT)
+ public class ClaimSettlerException extends RuntimeException {
+ 
+-    public ClaimSettlerException() {
+-        super("The user who opened a claim cannot settle it.");
++    public ClaimSettlerException(String message) {
++        super(message);
+     }
+ }
+diff --git a/src/main/resources/db/migration/V58__claim_edited_by.sql b/src/main/resources/db/migration/V58__claim_edited_by.sql
+new file mode 100644
+index 000000000..a997aab07
+--- /dev/null
++++ b/src/main/resources/db/migration/V58__claim_edited_by.sql
+@@ -0,0 +1,3 @@
++-- Who last edited a claim: the signed-in user who last saved it through the claim form or the row's
++-- amount entry. None while never edited. That user cannot settle or approve it (four eyes).
++ALTER TABLE claim ADD COLUMN edited_by VARCHAR(200);
