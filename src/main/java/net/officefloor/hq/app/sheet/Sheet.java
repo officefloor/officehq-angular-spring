@@ -104,7 +104,7 @@ public class Sheet {
     @Column(name = "entry_date")
     private LocalDate entryDate;
 
-    /** The pot: shared out among the members of each balanced pool by their shares; none means no pot. Not
+    /** The pot: shared out among the members of each balanced pool that is a member of no other pool, by their shares; none means no pot. Not
      *  dated. */
     @Column(name = "pot", precision = 15, scale = 2)
     private BigDecimal pot;

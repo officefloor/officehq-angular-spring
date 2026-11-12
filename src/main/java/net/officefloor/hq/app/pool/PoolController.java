@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -34,20 +35,62 @@ public class PoolController {
 
     private static final BigDecimal HUNDRED = new BigDecimal("100.00");
 
-    /** A member: a retired one (a retirement date set, whatever the date) counts 0.00 toward the total. Its
-     *  cut of the sheet's pot (two decimals); none when the pool is unbalanced or there is no pot. */
-    public record PoolMemberView(long personId, String name, String share, boolean retired, String cut) {
+    /** A member, a person or another pool (poolId set, never retired): a retired person (a retirement date set,
+     *  whatever the date) counts 0.00 toward the total. Its cut of the pool's pot (two decimals); none when the
+     *  pool is unbalanced or has no pot. */
+    public record PoolMemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut) {
     }
 
     /** A pool, with its total share and whether that is exactly 100.00. */
     public record PoolView(long id, String name, List<PoolMemberView> members, String totalShare, boolean balanced) {
 
-        static PoolView of(Pool pool, Map<Long, Person> people, BigDecimal pot) {
+        /** The sheet's pools as views, in their order. A pool that is a member of another has as its pot its cut
+         *  in the pool above (none when that is unbalanced or has none); one that is a member of none has the
+         *  sheet's pot. */
+        static List<PoolView> of(List<Pool> pools, Map<Long, Person> people, BigDecimal sheetPot) {
+            Map<Long, Pool> byId = new HashMap<>();
+            Map<Long, Pool> parentOf = new HashMap<>();
+            for (Pool pool : pools) {
+                byId.put(pool.getId(), pool);
+                for (PoolMember m : pool.getMembers()) {
+                    if (m.getMemberPoolId() != null) {
+                        parentOf.put(m.getMemberPoolId(), pool);
+                    }
+                }
+            }
+            Map<Long, PoolView> views = new HashMap<>();
+            for (Pool pool : pools) {
+                view(pool, byId, parentOf, people, sheetPot, views);
+            }
+            return pools.stream().map(p -> views.get(p.getId())).toList();
+        }
+
+        private static PoolView view(Pool pool, Map<Long, Pool> byId, Map<Long, Pool> parentOf,
+                Map<Long, Person> people, BigDecimal sheetPot, Map<Long, PoolView> views) {
+            PoolView done = views.get(pool.getId());
+            if (done != null) {
+                return done;
+            }
+            BigDecimal pot = sheetPot;
+            Pool parent = parentOf.get(pool.getId());
+            if (parent != null) {
+                PoolView above = view(parent, byId, parentOf, people, sheetPot, views);
+                String cut = above.members().stream().filter(m -> pool.getId().equals(m.poolId())).findFirst()
+                        .map(PoolMemberView::cut).orElse(null);
+                pot = cut == null ? null : new BigDecimal(cut);
+            }
+            PoolView v = of(pool, byId, people, pot);
+            views.put(pool.getId(), v);
+            return v;
+        }
+
+        private static PoolView of(Pool pool, Map<Long, Pool> pools, Map<Long, Person> people, BigDecimal pot) {
             List<PoolMember> all = pool.getMembers();
             BigDecimal total = BigDecimal.ZERO.setScale(2);
             boolean[] retired = new boolean[all.size()];
             for (int i = 0; i < all.size(); i++) {
-                Person p = people.get(all.get(i).getPersonId());
+                Long personId = all.get(i).getPersonId();
+                Person p = personId == null ? null : people.get(personId);
                 retired[i] = p != null && p.isRetired();
                 if (!retired[i]) {
                     total = total.add(all.get(i).getShare());
@@ -58,8 +101,15 @@ public class PoolController {
             List<PoolMemberView> members = new ArrayList<>();
             for (int i = 0; i < all.size(); i++) {
                 PoolMember m = all.get(i);
-                Person p = people.get(m.getPersonId());
-                members.add(new PoolMemberView(m.getPersonId(), p == null ? "" : p.getName(),
+                String name;
+                if (m.getMemberPoolId() != null) {
+                    Pool member = pools.get(m.getMemberPoolId());
+                    name = member == null ? "" : member.getName();
+                } else {
+                    Person p = people.get(m.getPersonId());
+                    name = p == null ? "" : p.getName();
+                }
+                members.add(new PoolMemberView(m.getPersonId(), m.getMemberPoolId(), name,
                         m.getShare().setScale(2).toPlainString(), retired[i],
                         cuts[i] == null ? null : cuts[i].toPlainString()));
             }
@@ -92,7 +142,7 @@ public class PoolController {
     public record PoolRequest(@Size(max = 200) String name) {
     }
 
-    public record PoolMemberRequest(Long personId, BigDecimal share) {
+    public record PoolMemberRequest(Long personId, Long poolId, BigDecimal share) {
     }
 
     private final PoolService service;
@@ -110,10 +160,7 @@ public class PoolController {
     @Transactional(readOnly = true)
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        String sid = sheetId.trim();
-        Map<Long, Person> byId = people(sid);
-        BigDecimal pot = sheets.pot(sid);
-        return service.list(sid).stream().map(p -> PoolView.of(p, byId, pot)).toList();
+        return views(sheetId.trim());
     }
 
     /** Add a pool to the sheet. */
@@ -122,17 +169,26 @@ public class PoolController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PoolRequest request) {
         String sid = sheetId.trim();
-        return PoolView.of(service.add(sid, user.trim(), request.name()), people(sid), sheets.pot(sid));
+        return view(sid, service.add(sid, user.trim(), request.name()));
     }
 
-    /** Add a person to a pool with a share. */
+    /** Add a member to a pool with a share: a person, or another pool. */
     @PostMapping("/{poolId}/members")
     public PoolView addMember(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable long poolId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PoolMemberRequest request) {
         String sid = sheetId.trim();
-        Pool pool = service.addMember(sid, user.trim(), poolId, request.personId(), request.share());
-        return PoolView.of(pool, people(sid), sheets.pot(sid));
+        Pool pool = service.addMember(sid, user.trim(), poolId, request.personId(), request.poolId(),
+                request.share());
+        return view(sid, pool);
+    }
+
+    private List<PoolView> views(String sheetId) {
+        return PoolView.of(service.list(sheetId), people(sheetId), sheets.pot(sheetId));
+    }
+
+    private PoolView view(String sheetId, Pool pool) {
+        return views(sheetId).stream().filter(v -> v.id() == pool.getId()).findFirst().orElseThrow();
     }
 
     private Map<Long, Person> people(String sheetId) {

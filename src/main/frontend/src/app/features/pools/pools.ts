@@ -1,9 +1,10 @@
 import { Component, inject, input, signal } from '@angular/core';
 import { People } from '../../core/people';
-import { PoolView, Pools } from '../../core/pools';
+import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
 
 // One pool's row: its members with their shares, its total share and whether it is balanced (exactly
-// 100.00; a retired member counts 0.00), each member's cut of the sheet's pot while balanced, and a form adding a person with a share.
+// 100.00; a retired member counts 0.00), each member's cut of the pool's pot while balanced (the sheet's pot, or
+// its cut in the pool it is a member of), and a form adding a person or another pool (pool:<name>) with a share.
 @Component({
   selector: 'app-pool-row',
   template: `
@@ -14,8 +15,8 @@ import { PoolView, Pools } from '../../core/pools';
       Balanced: <strong data-testid="pool-balanced">{{ p.balanced ? 'yes' : 'no' }}</strong>
     </p>
     <ul [attr.aria-label]="'Members of ' + p.name">
-      @for (m of p.members; track m.personId) {
-        <li [attr.data-testid]="'pool-member-' + p.name + '-' + m.personId">
+      @for (m of p.members; track memberKey(m)) {
+        <li [attr.data-testid]="'pool-member-' + p.name + '-' + memberKey(m)">
           <span data-testid="pool-member-name">{{ m.name }}</span>
           <span data-testid="pool-share">{{ m.share }}</span>
           <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
@@ -26,15 +27,18 @@ import { PoolView, Pools } from '../../core/pools';
       }
     </ul>
     <form (submit)="add($event)">
-      <label [for]="'pool-member-select-' + p.id">Person</label>
+      <label [for]="'pool-member-select-' + p.id">Member</label>
       <select
         [id]="'pool-member-select-' + p.id"
         data-testid="pool-member-select"
-        (change)="personId.set(selected($event)); error.set(null)"
+        (change)="member.set(selected($event)); error.set(null)"
       >
-        <option value="" [selected]="personId() === null">Choose a person</option>
+        <option value="" [selected]="member() === ''">Choose a person or a pool</option>
         @for (person of people.people(); track person.id) {
-          <option [value]="person.id" [selected]="personId() === person.id">{{ person.name }}</option>
+          <option [value]="'person:' + person.id" [selected]="member() === 'person:' + person.id">{{ person.name }}</option>
+        }
+        @for (other of pools.pools(); track other.id) {
+          <option [value]="'pool:' + other.id" [selected]="member() === 'pool:' + other.id">pool:{{ other.name }}</option>
         }
       </select>
       <label [for]="'pool-member-share-' + p.id">Share %</label>
@@ -55,8 +59,9 @@ import { PoolView, Pools } from '../../core/pools';
 export class PoolRow {
   readonly pool = input.required<PoolView>();
   protected readonly people = inject(People);
-  private readonly pools = inject(Pools);
-  protected readonly personId = signal<number | null>(null);
+  protected readonly pools = inject(Pools);
+  /** The chosen member: person:<id>, pool:<id>, or blank for none. */
+  protected readonly member = signal('');
   protected readonly share = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
@@ -65,9 +70,19 @@ export class PoolRow {
     return (e.target as HTMLInputElement).value;
   }
 
-  protected selected(e: Event): number | null {
-    const v = (e.target as HTMLSelectElement).value;
-    return v === '' ? null : Number(v);
+  protected selected(e: Event): string {
+    return (e.target as HTMLSelectElement).value;
+  }
+
+  /** A person member by their id; a pool member as pool-<name>. */
+  protected memberKey(m: PoolView['members'][number]): string {
+    return m.poolId !== null ? 'pool-' + m.name : String(m.personId);
+  }
+
+  private choice(): PoolMemberChoice | null {
+    const [kind, id] = this.member().split(':');
+    if (!id) return null;
+    return kind === 'pool' ? { poolId: Number(id) } : { personId: Number(id) };
   }
 
   protected async add(e: Event): Promise<void> {
@@ -76,10 +91,10 @@ export class PoolRow {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const err = await this.pools.addMember(this.pool().id, this.personId(), this.share());
+      const err = await this.pools.addMember(this.pool().id, this.choice(), this.share());
       if (err) this.error.set(err);
       else {
-        this.personId.set(null);
+        this.member.set('');
         this.share.set('');
       }
     } finally {

@@ -258,7 +258,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="graceDaysTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-grace-days-current">{{ session.graceDays() ?? '' }}</strong></p>
-        <label for="setting-pot">Pot (shared out among the members of each balanced pool; blank for none)</label>
+        <label for="setting-pot">Pot (shared out among the members of each balanced pool that is in no other pool; blank for none)</label>
         <input
           id="setting-pot"
           data-testid="setting-pot"

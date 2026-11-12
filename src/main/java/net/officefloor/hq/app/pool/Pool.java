@@ -14,8 +14,9 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
-/** A sheet's pool: a name, and its members, each a person with a share percent. */
+/** A sheet's pool: a name, and its members, each a person or another pool with a share percent. */
 @Entity
 @Table(name = "pool")
 public class Pool {
@@ -62,26 +63,34 @@ public class Pool {
     }
 
     public boolean hasMember(long personId) {
-        return members.stream().anyMatch(m -> m.getPersonId() == personId);
+        return members.stream().anyMatch(m -> Objects.equals(m.getPersonId(), personId));
+    }
+
+    public boolean hasMemberPool(long poolId) {
+        return members.stream().anyMatch(m -> Objects.equals(m.getMemberPoolId(), poolId));
     }
 
     public void addMember(long personId, BigDecimal share) {
-        members.add(new PoolMember(personId, share));
+        members.add(new PoolMember(personId, null, share));
+    }
+
+    public void addMemberPool(long poolId, BigDecimal share) {
+        members.add(new PoolMember(null, poolId, share));
     }
 
     /** Drop a person's membership. */
     public void removeMember(long personId) {
-        members.removeIf(m -> m.getPersonId() == personId);
+        members.removeIf(m -> Objects.equals(m.getPersonId(), personId));
     }
 
     /** Move a person's membership to another: their share is added to the other's (at most 100.00) when the
      *  other is already a member. */
     public void moveMember(long fromId, long intoId) {
-        PoolMember moving = members.stream().filter(m -> m.getPersonId() == fromId).findFirst().orElse(null);
+        PoolMember moving = members.stream().filter(m -> Objects.equals(m.getPersonId(), fromId)).findFirst().orElse(null);
         if (moving == null) {
             return;
         }
-        PoolMember kept = members.stream().filter(m -> m.getPersonId() == intoId).findFirst().orElse(null);
+        PoolMember kept = members.stream().filter(m -> Objects.equals(m.getPersonId(), intoId)).findFirst().orElse(null);
         if (kept == null) {
             moving.setPersonId(intoId);
             return;

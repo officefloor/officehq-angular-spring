@@ -40,7 +40,7 @@ export interface SheetView {
   entryDate: string | null;
   /** The number of the sheet's last bulk settle batch; null before the first. */
   lastSettleBatch: number | null;
-  /** The pot shared out among the members of each balanced pool, two decimals; null for no pot. */
+  /** The pot shared out among the members of each balanced pool that is in no other pool, two decimals; null for no pot. */
   pot: string | null;
   /** The parent sheet's id: a grade with no rate in force on a date takes the parent's; null for none. */
   parent: string | null;
@@ -161,7 +161,7 @@ export class Session {
   /** The sheet's entry date (YYYY-MM-DD); null when off. While set, it is the default date of a new claim
    *  in place of the sheet's today. */
   readonly entryDate = signal<string | null>(null);
-  /** The sheet's pot, two decimals; null for no pot. Shared out among the members of each balanced pool by
+  /** The sheet's pot, two decimals; null for no pot. Shared out among the members of each balanced pool in no other pool by
    *  their shares. Not dated. */
   readonly pot = signal<string | null>(null);
   /** The parent sheet's id; null for none. A grade with no rate in force on a date on this sheet takes the

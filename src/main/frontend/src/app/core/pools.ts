@@ -3,18 +3,23 @@ import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
 
-/** A person in a pool with their share percent; a retired one counts 0.00 toward the pool's total. */
+/** A member of a pool with its share percent: a person (personId), or another pool (poolId). A retired
+ *  person counts 0.00 toward the pool's total. */
 export interface PoolMemberView {
-  personId: number;
+  personId: number | null;
+  poolId: number | null;
   name: string;
   share: string;
   retired: boolean;
-  /** Their cut of the sheet's pot, two decimals (0.00 when retired); null when the pool is unbalanced or
-   *  there is no pot. */
+  /** Their cut of the pool's pot, two decimals (0.00 when retired); null when the pool is unbalanced or
+   *  has no pot. A pool in another has its cut there as its pot; one in none has the sheet's pot. */
   cut: string | null;
 }
 
 /** A pool: its members, their total share, and whether that is exactly 100.00. */
+/** A member to add: a person or another pool, by id. */
+export type PoolMemberChoice = { personId: number } | { poolId: number };
+
 export interface PoolView {
   id: number;
   name: string;
@@ -58,14 +63,32 @@ export class Pools {
     return this.post('', { name: n }, 'add pool');
   }
 
-  /** Add a person to a pool with a share; an error message when refused (already in it, or a bad share). */
-  async addMember(poolId: number, personId: number | null, share: string): Promise<string | null> {
+  /** Add a person or another pool to a pool with a share; an error message when refused (already in it, a
+   *  bad share, or a pool that would contain itself, is already in one, or would make a chain too deep). The
+   *  pools are re-read after: a pool in another takes its pot from its cut there. */
+  async addMember(poolId: number, member: PoolMemberChoice | null, share: string): Promise<string | null> {
     const s = share.trim();
-    if (personId === null) return 'Choose a person.';
+    if (member === null) return 'Choose a person or a pool.';
     if (!SHARE.test(s) || Number(s) <= 0 || Number(s) > 100) {
       return 'Enter a share more than 0.00 and at most 100.00, in two decimals.';
     }
-    return this.post(`/${poolId}/members`, { personId, share: s }, 'add pool member');
+    const err = await this.post(`/${poolId}/members`, { ...member, share: s }, 'add pool member');
+    if (!err) await this.reread();
+    return err;
+  }
+
+  /** Re-read the active sheet's pools without clearing the ones shown meanwhile. */
+  private async reread(): Promise<void> {
+    const user = this.session.user();
+    const sid = this.session.sheetId();
+    if (!user || !sid) return;
+    const load = ++this.loads;
+    try {
+      const pools = await firstValueFrom(this.http.get<PoolView[]>(this.url(sid), { headers: { 'X-User': user } }));
+      if (load === this.loads && this.session.sheetId() === sid) this.pools.set(pools);
+    } catch {
+      // the pool just saved is shown already; the rest are re-read on the next load
+    }
   }
 
   private async post(path: string, body: object, what: string): Promise<string | null> {
