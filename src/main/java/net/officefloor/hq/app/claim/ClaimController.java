@@ -8,8 +8,10 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,14 +42,16 @@ public class ClaimController {
      * when it has none); and its tags, sorted and comma separated (null when it has none); and the reason it was voided
      * with (null when none); and its comments, oldest first; and the bulk settle batch that settled it (null when none);
      * and the stamp a forward-only rate is matched against (it sees one whose forwardAfter is below it); and the day it
-     * last went to REVIEW (null when it never did); and whether a steward waived its late charge.
+     * last went to REVIEW (null when it never did); and whether a steward waived its late charge; and how many proofs
+     * it has of each kind, by kind (receipt, photo).
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
             LocalDate roundingDate, long listed, LocalDate dueBy, List<ClaimLogView> log, LocalDate deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
             String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
-            List<ClaimLineView> lines, Long rateStamp, LocalDate reviewOn, boolean waived) {
+            List<ClaimLineView> lines, Long rateStamp, LocalDate reviewOn, boolean waived,
+            Map<String, Integer> proofsByKind) {
 
         /** A claim with no comments or lines yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
@@ -68,7 +72,13 @@ public class ClaimController {
                     claim.getTags(), claim.getVoidReason(),
                     comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
                     lines.stream().map(ClaimLineView::of).toList(), claim.rateStamp(), claim.getReviewOn(),
-                    claim.isWaived());
+                    claim.isWaived(), proofsByKind(claim));
+        }
+
+        private static Map<String, Integer> proofsByKind(Claim claim) {
+            Map<String, Integer> byKind = new LinkedHashMap<>();
+            Sheet.PROOF_KINDS.forEach(kind -> byKind.put(kind, claim.proofsOf(kind)));
+            return byKind;
         }
     }
 
@@ -390,12 +400,21 @@ public class ClaimController {
         return view(service.split(sheetId.trim(), user.trim(), id, request.amountValue()));
     }
 
+    /** A proof's kind: receipt or photo; blank or missing means none chosen (a receipt). */
+    public record ProofRequest(@Pattern(regexp = "\\s*(receipt|photo)?\\s*") String kind) {
+
+        String kindValue() {
+            return kind == null || kind.isBlank() ? null : kind.trim();
+        }
+    }
+
     /** Add a proof to a claim, raising its proofs count by one; refused for a SETTLED or VOID claim. */
     @PostMapping("/claims/{id}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @PathVariable Long id,
-            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return view(service.addProof(sheetId.trim(), user.trim(), id));
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) @Valid ProofRequest request) {
+        return view(service.addProof(sheetId.trim(), user.trim(), id, request == null ? null : request.kindValue()));
     }
 
     /** Remind an OPEN or PENDING claim, at most once per sheet-today. */

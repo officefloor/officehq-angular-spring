@@ -42,6 +42,8 @@ public class Sheet {
     /** The rounding mode: half-up or half-even; none (null) leaves the policy date to decide. */
     public static final String ROUNDING = "rounding";
     public static final List<String> ROUNDING_MODES = List.of("half-up", "half-even");
+    /** The kinds a proof can be: a proof added with none chosen is a receipt. */
+    public static final List<String> PROOF_KINDS = List.of("receipt", "photo");
     /** The prefix of a grade's grace days key (grace-A, grace-B, grace-C). */
     public static final String GRACE = "grace";
 
@@ -119,6 +121,10 @@ public class Sheet {
     @Column(name = "parent")
     private String parent;
 
+    /** The kinds of proof (comma separated) a claim above the proof threshold needs one of each of; null: none. Not dated. */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** Whether a steward archived the sheet: everything stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -154,6 +160,7 @@ public class Sheet {
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
         copy.parent = parent;
+        copy.proofKinds = proofKinds;
         return copy;
     }
 
@@ -420,6 +427,19 @@ public class Sheet {
 
     public void setParent(String parent) {
         this.parent = parent;
+    }
+
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
+    }
+
+    /** The kinds of proof a claim above the proof threshold needs one of each of; empty while none are set. */
+    public List<String> proofKindsNeeded() {
+        return proofKinds == null ? List.of() : Arrays.stream(proofKinds.split(",")).map(String::trim).toList();
     }
 
     public boolean isArchived() {

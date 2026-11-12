@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the sheet's settings: its clerk limit, its floor, its terms and each grade's, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, its rounding mode, each
- * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its fiscal year start month, its pot, its alert threshold, its parent sheet and
+ * dated (kept from a from-date); and its policy date, its period numbering from, its entry date, its grace days, its fiscal year start month, its pot, its alert threshold, its proof kinds, its parent sheet and
  * its permission matrix, not dated.
  */
 @Service
@@ -285,6 +285,21 @@ public class SettingService {
         Sheet saved = sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=alert-threshold value="
                 + (threshold == null ? "" : threshold.toPlainString()));
+        return saved;
+    }
+
+    /**
+     * Set the proof kinds (comma separated, each receipt or photo): while set, a claim above the proof threshold needs
+     * a proof of each kind listed before it can be settled or approved; null means none. Every save is recorded, even
+     * of the same value.
+     */
+    @Transactional
+    public Sheet setProofKinds(String sheetId, String user, String kinds) {
+        Sheet sheet = get(sheetId);
+        sheet.setProofKinds(kinds);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=proof-kinds value="
+                + (kinds == null ? "" : kinds));
         return saved;
     }
 

@@ -95,6 +95,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of the claim's proofs are photos: the rest are receipts. */
+    @Column(name = "photo_proofs", nullable = false)
+    private int photoProofs;
+
     /** The number of the claim this one was split off; null unless it was split off another. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -329,9 +333,17 @@ public class Claim {
         return proofs;
     }
 
-    /** Adds one proof to the claim. */
-    public void addProof() {
+    /** How many of the claim's proofs are of the kind (receipt or photo). */
+    public int proofsOf(String kind) {
+        return "photo".equals(kind) ? photoProofs : proofs - photoProofs;
+    }
+
+    /** Adds one proof of the kind (receipt or photo) to the claim. */
+    public void addProof(String kind) {
         proofs++;
+        if ("photo".equals(kind)) {
+            photoProofs++;
+        }
     }
 
     public String getSplitFrom() {
@@ -439,6 +451,7 @@ public class Claim {
         copy.roundingDate = roundingDate;
         copy.deferredUntil = deferredUntil;
         copy.proofs = proofs;
+        copy.photoProofs = photoProofs;
         copy.splitFrom = splitFrom;
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;

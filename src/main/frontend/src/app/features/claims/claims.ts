@@ -67,7 +67,12 @@ export interface Claim {
   lines: ClaimLine[];
   /** Whether a steward waived its late charge: it then bears none, whatever its overdue state. */
   waived: boolean;
+  /** How many proofs it has of each kind (receipt, photo), by kind. */
+  proofsByKind: Record<string, number>;
 }
+
+/** The kinds a proof can be: one added with none chosen is a receipt. */
+const PROOF_KINDS = ['receipt', 'photo'] as const;
 
 /** A line of a claim: a label, a quantity (a whole number, at least 1) and a unit amount (two decimals). */
 export interface ClaimLine {
@@ -369,7 +374,12 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-tags">{{ tagsShown(c) | fig }}</td>
               <td data-testid="claim-deferred">{{ deferralRunning(c) ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' | fig }}</td>
-              <td data-testid="claim-proofs">{{ c.proofs | fig }}</td>
+              <td>
+                <span data-testid="claim-proofs">{{ c.proofs | fig }}</span>
+                @for (k of proofKinds; track k) {
+                  <span> {{ k }}: <span [attr.data-testid]="'claim-proofs-' + k">{{ c.proofsByKind[k] ?? 0 | fig }}</span></span>
+                }
+              </td>
               <td data-testid="claim-split-from">{{ c.splitFrom ?? '' | fig }}</td>
               <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-reminded">{{ c.remindedOn ?? '' | fig }}</td>
@@ -499,6 +509,17 @@ export function sumAmounts(amounts: string[]): string {
                     {{ a.label }}
                   </button>
                 }
+                <label class="visually-hidden" [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+                <select
+                  [id]="'claim-proof-kind-' + c.id"
+                  data-testid="claim-proof-kind"
+                  (change)="setProofKind(c.id, value($event))"
+                >
+                  <option value="" [selected]="!proofKindsChosen()[c.id]">Kind (none: receipt)</option>
+                  @for (k of proofKinds; track k) {
+                    <option [value]="k" [selected]="proofKindsChosen()[c.id] === k">{{ k }}</option>
+                  }
+                </select>
                 <button
                   type="button"
                   data-testid="claim-proof"
@@ -696,6 +717,10 @@ export class Claims implements OnInit {
   protected readonly chosenVoidReasons = signal<Record<number, string>>({});
   /** The date (yyyy-mm-dd) picked to defer each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The kinds of proof offered. */
+  protected readonly proofKinds = PROOF_KINDS;
+  /** The proof kind chosen for each claim's next proof, by claim id; none chosen: a receipt. */
+  protected readonly proofKindsChosen = signal<Record<number, string>>({});
   /** The new date (yyyy-mm-dd) picked to re-date each OPEN or PENDING claim to, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each OPEN claim, by claim id. */
@@ -914,6 +939,11 @@ export class Claims implements OnInit {
     if (this.actionError()?.id === id) this.actionError.set(null);
   }
 
+  protected setProofKind(id: number, kind: string): void {
+    this.proofKindsChosen.update((all) => ({ ...all, [id]: kind }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
   protected setDeferDate(id: number, date: string): void {
     this.deferDates.update((all) => ({ ...all, [id]: date }));
     if (this.actionError()?.id === id) this.actionError.set(null);
@@ -1020,14 +1050,16 @@ export class Claims implements OnInit {
     }
   }
 
-  /** Add a proof to the claim; the store refuses a SETTLED or VOID claim, and a closed period. */
+  /** Add a proof of the chosen kind to the claim; the store refuses a SETTLED or VOID claim, and a closed period. */
   protected async addProof(claim: Claim): Promise<void> {
     this.actionError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/proof`;
     try {
-      const saved = await firstValueFrom(this.http.post<Claim>(url, null, this.session.headers()));
+      const kind = this.proofKindsChosen()[claim.id] || null;
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { kind }, this.session.headers()));
+      this.proofKindsChosen.update(({ [claim.id]: _, ...rest }) => rest);
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch {
       const closed = this.closedOn(claim.dueBy);
@@ -1337,7 +1369,7 @@ export class Claims implements OnInit {
               : e instanceof HttpErrorResponse && e.status === 422 && action === 'void'
                 ? 'Choose a reason from the void reasons to void this claim.'
               : e instanceof HttpErrorResponse && e.status === 422 && (action === 'settle' || action === 'approve')
-                ? `This claim's due is above the proof threshold: add a proof before it can be ${pastOf[action]}.`
+                ? `This claim's due is above the proof threshold: add a proof, and one of each of the sheet's proof kinds, before it can be ${pastOf[action]}.`
               : e instanceof HttpErrorResponse && e.status === 409 && action === 'open' && claim.status === 'DRAFT' && capped?.cap != null
                 ? `This claim's person already has ${capped.cap} open claims in the period ${capped.name}, its cap: it cannot be opened.`
               : action === 'settle' && this.deferred(claim)

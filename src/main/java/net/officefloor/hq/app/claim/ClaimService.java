@@ -859,11 +859,11 @@ public class ClaimService {
     }
 
     /**
-     * Add a proof to a claim, raising its proofs count by one. Refused for a SETTLED, VOID or DELETED claim, or a closed
-     * period.
+     * Add a proof of the kind (receipt or photo; null: none chosen, a receipt) to a claim, raising its proofs count by
+     * one. Refused for a SETTLED, VOID or DELETED claim, or a closed period.
      */
     @Transactional
-    public Claim addProof(String sheetId, String user, Long id) {
+    public Claim addProof(String sheetId, String user, Long id, String kind) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
@@ -873,10 +873,10 @@ public class ClaimService {
         periods.requireOpen(sheetId, claim.getDueBy());
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
-        claim.addProof();
+        claim.addProof(kind == null ? Sheet.PROOF_KINDS.get(0) : kind);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(record("CLAIM_PROOF_ADDED", user, person, saved) + numberOf(saved.getNumber())
-                + " proofs=" + saved.getProofs());
+                + " proofs=" + saved.getProofs() + (kind == null ? "" : " kind=" + kind));
         return saved;
     }
 
@@ -918,17 +918,21 @@ public class ClaimService {
     /**
      * A claim whose due (as the clerk limit weighs it) is above the proof threshold in force on its date (its person's
      * grade's own then, else the sheet's) cannot be settled or approved while it has no proof; refused then. A due of
-     * n/a is within any threshold.
+     * n/a is within any threshold. While the sheet has proof kinds, such a claim also needs a proof of each kind listed.
      */
     private void requireProof(String sheetId, Person person, Claim claim) {
-        BigDecimal threshold = settings.get(sheetId).proofThresholdFor(person.gradeOn(claim.getDate()), claim.getDate());
-        if (threshold == null || claim.getProofs() > 0) {
+        Sheet sheet = settings.get(sheetId);
+        BigDecimal threshold = sheet.proofThresholdFor(person.gradeOn(claim.getDate()), claim.getDate());
+        List<String> missing = sheet.proofKindsNeeded().stream().filter(k -> claim.proofsOf(k) == 0).toList();
+        if (threshold == null || (claim.getProofs() > 0 && missing.isEmpty())) {
             return;
         }
         BigDecimal due = liveDue(sheetId, person, claim, figureOf(sheetId, person, claim));
         if (due != null && due.compareTo(threshold) > 0) {
             throw new ClaimProofException(claim.getId(), "its due " + due.toPlainString()
-                    + " is above the proof threshold " + threshold.toPlainString() + " and it has no proof");
+                    + " is above the proof threshold " + threshold.toPlainString()
+                    + (claim.getProofs() == 0 ? " and it has no proof"
+                            : " and it has no proof of kind " + String.join(", ", missing)));
         }
     }
 
