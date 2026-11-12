@@ -1,0 +1,184 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 186b87f59..7d6766663 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -556,6 +556,23 @@ export function sumAmounts(amounts: string[]): string {
+                 >
+                   Split
+                 </button>
++                <label class="visually-hidden" [for]="'claim-settle-part-amount-' + c.id">Amount to settle</label>
++                <input
++                  [id]="'claim-settle-part-amount-' + c.id"
++                  data-testid="claim-settle-part-amount"
++                  inputmode="decimal"
++                  placeholder="Amount to settle"
++                  [value]="settlePartAmounts()[c.id] ?? ''"
++                  (input)="setSettlePartAmount(c.id, value($event))"
++                />
++                <button
++                  type="button"
++                  data-testid="claim-settle-part"
++                  [attr.aria-label]="'Part-settle claim of ' + c.amount + ' on ' + c.date"
++                  (click)="settlePart(c)"
++                >
++                  Settle part
++                </button>
+                 <label class="visually-hidden" [for]="'claim-defer-date-' + c.id">Defer until</label>
+                 <input
+                   [id]="'claim-defer-date-' + c.id"
+@@ -736,6 +753,8 @@ export class Claims implements OnInit {
+   protected readonly redates = signal<Record<number, string>>({});
+   /** The amount typed to split off each OPEN claim, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
++  /** The amount typed to part-settle off each OPEN claim, by claim id. */
++  protected readonly settlePartAmounts = signal<Record<number, string>>({});
+   /** The comment typed for each claim, by claim id. */
+   protected readonly commentTexts = signal<Record<number, string>>({});
+   /** The timeline last shown for each claim, by claim id, with the claim as it was shown for. */
+@@ -1316,6 +1335,49 @@ export class Claims implements OnInit {
+     }
+   }
+ 
++  protected setSettlePartAmount(id: number, amount: string): void {
++    this.settlePartAmounts.update((all) => ({ ...all, [id]: amount }));
++    if (this.actionError()?.id === id) this.actionError.set(null);
++  }
++
++  /**
++   * Part-settle an OPEN claim: split the amount typed for it off into a new claim, settled at once by the user (PENDING
++   * when the clerk limit says so). The store refuses the whole action when the split or the settle would be refused;
++   * four eyes and the proof rule are judged on this claim.
++   */
++  protected async settlePart(claim: Claim): Promise<void> {
++    this.actionError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const amount = (this.settlePartAmounts()[claim.id] ?? '').trim();
++    if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
++      this.actionError.set({ id: claim.id, message: 'Type the amount to settle, with at most two decimals.' });
++      return;
++    }
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/settle-part`;
++    try {
++      const added = await firstValueFrom(this.http.post<Claim>(url, { amount }, this.session.headers()));
++      this.setSettlePartAmount(claim.id, '');
++      if (this.session.sheet() === sheet) this.saved.emit(added);
++    } catch (e) {
++      const closed = this.closedOn(claim.dueBy);
++      const message =
++        e instanceof HttpErrorResponse && e.status === 403
++          ? 'Your role may not open and settle a claim, so it may not part-settle one.'
++          : claim.status !== 'OPEN'
++            ? `This claim is ${claim.status}: only an OPEN claim can be part-settled.`
++            : claim.openedBy !== null && claim.openedBy === this.session.user()
++              ? 'You opened this claim: someone else must settle any part of it.'
++              : this.deferred(claim)
++                ? `This claim is deferred until ${claim.deferredUntil}: it cannot be part-settled.`
++                : closed
++                  ? `This claim is due by a date in the closed period ${closed.name}: it cannot be part-settled.`
++                  : `This claim cannot be part-settled: the amount must be more than 0.00 and less than ${claim.amount}, `
++                    + 'and the claim must have the proofs it needs and not be last edited by you.';
++      this.actionError.set({ id: claim.id, message });
++    }
++  }
++
+   protected setReassignTo(id: number, personId: string): void {
+     this.reassignTo.update((all) => ({ ...all, [id]: personId }));
+     if (this.actionError()?.id === id) this.actionError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 127dfdf57..628187ebf 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -408,6 +408,16 @@ public class ClaimController {
+         return view(service.split(sheetId.trim(), user.trim(), id, request.amountValue()));
+     }
+ 
++    /** Part-settle an OPEN claim: split the amount off it and settle the new claim at once: the new claim. */
++    @PostMapping("/claims/{id}/settle-part")
++    @ResponseStatus(HttpStatus.CREATED)
++    public ClaimView settlePart(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid SplitRequest request) {
++        return view(service.settlePart(sheetId.trim(), user.trim(), id, request.amountValue()));
++    }
++
+     /** A proof's kind: receipt or photo; blank or missing means none chosen (a receipt). */
+     public record ProofRequest(@Pattern(regexp = "\\s*(receipt|photo)?\\s*") String kind) {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index dd3037c70..2784579dc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -358,7 +358,7 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason) {
+-        return changeStatus(sheetId, user, id, status, voidReason, null);
++        return changeStatus(sheetId, user, id, status, voidReason, null, false);
+     }
+ 
+     /**
+@@ -367,11 +367,40 @@ public class ClaimService {
+      */
+     @Transactional
+     public Claim settleInBatch(String sheetId, String user, Long id, LongSupplier batch) {
+-        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, batch);
++        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, batch, false);
++    }
++
++    /**
++     * Part-settle an OPEN claim: split the amount off it, as {@link #split(String, String, Long, BigDecimal)}, and
++     * settle the new claim at once, as {@link #changeStatus(String, String, Long, ClaimStatus)} (PENDING instead when
++     * the clerk limit says so). The four-eyes rules and the proof rule are judged on the original claim as it stood
++     * before the split; the new claim's opener (the user) may still settle it. A refused split or settle refuses the
++     * whole action: nothing changes.
++     */
++    @Transactional
++    public Claim settlePart(String sheetId, String user, Long id, BigDecimal amount) {
++        Claim claim = claims.findForUpdate(id, sheetId)
++                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
++        if (!roles.may(sheetId, user, "settle")) {
++            throw new ClaimActionForbiddenException(id, user, "settle");
++        }
++        if (user.equals(claim.getOpenedBy())) {
++            throw new ClaimSettledByOpenerException(id, user, "opened");
++        }
++        if (user.equals(claim.getEditedBy())) {
++            throw new ClaimSettledByOpenerException(id, user, "last edited");
++        }
++        if (claim.getStatus() == ClaimStatus.OPEN) {
++            Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                    .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
++            requireProof(sheetId, person, claim);
++        }
++        Claim part = split(sheetId, user, id, amount);
++        return changeStatus(sheetId, user, part.getId(), ClaimStatus.SETTLED, null, null, true);
+     }
+ 
+     private Claim changeStatus(String sheetId, String user, Long id, ClaimStatus status, String voidReason,
+-            LongSupplier batch) {
++            LongSupplier batch, boolean judgedOnOriginal) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+         boolean voidsSettled = status == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+@@ -398,15 +427,16 @@ public class ClaimService {
+             throw new ClaimDeferException(id, "it is deferred until " + claim.getDeferredUntil());
+         }
+         // Four eyes: whoever opened or last edited a claim cannot also settle it.
+-        if (status == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
++        // A part-settle judges four eyes and proof on the claim it split from, not on the new claim.
++        if (status == ClaimStatus.SETTLED && !judgedOnOriginal && user.equals(claim.getOpenedBy())) {
+             throw new ClaimSettledByOpenerException(id, user, "opened");
+         }
+-        if (status == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
++        if (status == ClaimStatus.SETTLED && !judgedOnOriginal && user.equals(claim.getEditedBy())) {
+             throw new ClaimSettledByOpenerException(id, user, "last edited");
+         }
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+-        if (status == ClaimStatus.SETTLED) {
++        if (status == ClaimStatus.SETTLED && !judgedOnOriginal) {
+             requireProof(sheetId, person, claim);
+         }
+         if (status == ClaimStatus.OPEN) {
