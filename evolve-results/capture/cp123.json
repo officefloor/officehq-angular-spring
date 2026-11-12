@@ -1,0 +1,64 @@
+{
+  "checkpoint": 123,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp123_bulk-retire",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected people can be retired together from a date: a date entry and a button beside the bulk\nbuttons. Each selected person is retired in list order exactly as the row's retire does (with its\nPERSON_RETIRED and rollup lines); show how many were retired.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected people can be retired together from a date: a date entry and a button beside the bulk\nbuttons. Each selected person is retired in list order exactly as the row's retire does (with its\nPERSON_RETIRED and rollup lines); show how many were retired.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6976167618cb07be73320d94b61acec07042044b",
+  "reset_sha": "",
+  "preagent_sha": "eb6f1037aa7b4d0841e0ee36da4079b4f7b42659",
+  "prev_sha": "eb6f1037aa7b4d0841e0ee36da4079b4f7b42659",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6428919999999999,
+    "input_tokens": 32,
+    "output_tokens": 7106,
+    "cache_read_tokens": 639820,
+    "cache_creation_tokens": 46585,
+    "num_turns": 17,
+    "duration_ms": 271809,
+    "duration_api_ms": 67356,
+    "model": "claude-opus-5-5",
+    "session_id": "cd116a0c-6fc4-451f-b14c-ef8cfb51a1b1",
+    "stop_reason": "success",
+    "result_text": "Bulk retire is in, and all 4 acceptance tests pass on `bin/e2e`.\n\n**What you'll see:** next to the \"Grade selected\" controls there's now a \"Retire selected people from\" date box, a \"Retire selected\" button, and \"Retired N\" showing how many were retired. Leave the date blank and it uses the sheet's today. The count clears while a run is in progress. Bulk grade and bulk retire share one error message, and the row checkboxes are cleared after a successful run.\n\n**Server:** a new `PersonService.bulkRetire` takes the selected people in list order, not the order you ticked them. It runs the row's own `retire` on each one, so each person gets the same `PERSON_RETIRED` line followed by its ROLLUP/TOTALS lines. The whole batch is one transaction. The new endpoint is `POST /api/sheets/{id}/people/bulk-retire`, and it reports how many were retired and who.\n\n**Viewers:** a viewer's bulk retire goes through but retires no one, and the count shows 0, as the test expects. This works the same way as bulk grade, so I added the new endpoint to the list of paths `ViewerGuard` skips.\n\n**Archived sheets:** a bulk retire on an archived sheet is refused before anything is done, just as bulk grade is.\n\nI changed `PersonService.java`, `PersonController.java` and `ViewerGuard.java` on the server, and `core/people.ts` and `features/people/people.ts` on the front end.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6428919999999999,
+        "num_turns": 17,
+        "duration_ms": 271809,
+        "duration_api_ms": 67356,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp123.agent.jsonl",
+  "agent_diff_file": "cp123.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
