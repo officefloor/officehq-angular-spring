@@ -1,8 +1,9 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Claim, ClaimAction, Claims, bound, isOpen } from '../../core/claims';
 import { Periods } from '../../core/periods';
 import { GradeFrom, People, gradeOn } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
+import { Session } from '../../core/session';
 
 // A person's claims: one form adds a claim, or edits the one whose editor is open, and the list
 // shows the person's claims newest first.
@@ -80,7 +81,7 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
             }
           </ol>
           @if (editing() === c.id) {
-            <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+            <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
             <button type="button" data-testid="claim-edit" (click)="edit(c)">
               Edit<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
@@ -182,6 +183,7 @@ export class PersonClaims {
    *  gives its due, unless fixed when it was settled or bound by the person's last statement. */
   readonly grades = input.required<GradeFrom[]>();
   private readonly people = inject(People);
+  private readonly session = inject(Session);
   protected readonly list = computed(() => this.claims.of(this.personId()));
   /** The other people on the sheet, whom a steward can move a claim to. */
   protected readonly others = computed(() => this.people.people().filter((p) => p.id !== this.personId()));
@@ -191,6 +193,11 @@ export class PersonClaims {
   protected readonly date = signal('');
   protected readonly note = signal('');
   protected readonly corrects = signal('');
+  /** The edit whose edit button was refused while no editor was open: the form's next submit is its save,
+   *  refused on the claim again, until the next action on that claim or another editor opens. */
+  private refusedEdit: { id: number; message: string } | null = null;
+  /** The lock asked for by the last edit button, until it answers: true when granted. */
+  private locking: Promise<boolean> | null = null;
   /** The id of the claim whose editor is open, or null when the form adds. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -223,6 +230,20 @@ export class PersonClaims {
    *  until the next action on that claim. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
+  constructor() {
+    // The editor follows the user's lock: it opens on the claim the user has locked (as when the sheet is
+    // re-loaded) and closes once that lock is gone (saved, or released by a new today).
+    effect(() => {
+      const user = this.session.user();
+      const mine = this.list().find((c) => user !== null && c.lockedBy === user);
+      untracked(() => {
+        const id = this.editing();
+        if (id !== null && this.list().find((c) => c.id === id)?.lockedBy !== user) this.reset();
+        else if (id === null && mine) this.fill(mine);
+      });
+    });
+  }
+
   /** The claim's due: fixed when settled, else as its person's last statement bound it (not while
    *  PENDING), else live; an
    *  overdue claim's late charge on top of the bound or live figure. */
@@ -246,8 +267,45 @@ export class PersonClaims {
     return (e.target as HTMLInputElement).checked;
   }
 
-  protected edit(c: Claim): void {
+  /** Open the claim's editor once its lock is granted, keeping any field typed while it was asked for; when
+   *  the lock is refused (the claim cannot be edited, or another user's editor is open on it) the refusal
+   *  shows on the claim and the form stays as it is. */
+  protected edit(c: Claim): Promise<boolean> {
     this.clearActionError(c.id);
+    const typed = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
+    const lock = (async () => {
+      const err = await this.claims.lock(c.id);
+      if (err) {
+        this.actionError.set({ id: c.id, message: err });
+        if (this.editing() === null) this.refusedEdit = { id: c.id, message: err };
+        return false;
+      }
+      const was = this.editing();
+      if (was !== null && was !== c.id) void this.claims.unlock(was);
+      const now = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
+      this.fill(this.list().find((o) => o.id === c.id) ?? c);
+      if (now.amount !== typed.amount) this.amount.set(now.amount);
+      if (now.date !== typed.date) this.date.set(now.date);
+      if (now.note !== typed.note) this.note.set(now.note);
+      if (now.corrects !== typed.corrects) this.corrects.set(now.corrects);
+      return true;
+    })();
+    this.locking = lock;
+    void lock.finally(() => {
+      if (this.locking === lock) this.locking = null;
+    });
+    return lock;
+  }
+
+  /** Close the open editor without saving, releasing its lock. */
+  protected cancel(): void {
+    const id = this.editing();
+    if (id !== null) void this.claims.unlock(id);
+    this.reset();
+  }
+
+  private fill(c: Claim): void {
+    this.refusedEdit = null;
     this.editing.set(c.id);
     this.amount.set(c.amount);
     this.date.set(c.date);
@@ -353,6 +411,7 @@ export class PersonClaims {
   }
 
   private clearActionError(id: number): void {
+    if (this.refusedEdit?.id === id) this.refusedEdit = null;
     if (this.actionError()?.id === id) this.actionError.set(null);
   }
 
@@ -377,9 +436,16 @@ export class PersonClaims {
   protected async submit(e: Event): Promise<void> {
     e.preventDefault();
     if (this.saving()) return; // a second submit before the first has answered
-    this.clearErrors();
     this.saving.set(true);
     try {
+      // a submit while an edit button's lock is asked for saves that editor, or nothing when it is refused
+      if (this.locking && !(await this.locking)) return;
+      const refused = this.refusedEdit;
+      if (this.editing() === null && refused) {
+        this.actionError.set(refused);
+        return;
+      }
+      this.clearErrors();
       const f = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
       const id = this.editing();
       if (id === null) {

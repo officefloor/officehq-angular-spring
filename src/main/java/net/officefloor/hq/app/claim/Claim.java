@@ -92,6 +92,10 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /** The user whose editor is open on it, locking it for every other user; none while unlocked. */
+    @Column(name = "locked_by")
+    private String lockedBy;
+
     /** Its status log: one line per status it has had, oldest first. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -259,6 +263,14 @@ public class Claim {
 
     public void setSplitFrom(String splitFrom) {
         this.splitFrom = splitFrom;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
     }
 
     public List<StatusChange> getStatusLog() {

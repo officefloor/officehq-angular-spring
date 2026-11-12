@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.PersonService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,11 +38,12 @@ public class ClaimController {
      *  the due fixed when it was settled (none while its due is live)
      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
-     *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), and its proofs count. */
+     *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
+     *  and the user whose editor is open on it (none while unlocked). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
-            int proofs, String splitFrom) {
+            int proofs, String splitFrom, String lockedBy) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -52,7 +54,7 @@ public class ClaimController {
                     claim.getCorrects(), claim.getDueBy().toString(),
                     claim.getStatusLog().stream().map(StatusLine::of).toList(),
                     claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
-                    claim.getProofs(), claim.getSplitFrom());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
         }
     }
 
@@ -160,6 +162,22 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amount(), request.date(),
                 request.noteOrEmpty(), request.correctsOrNone()));
+    }
+
+    /** Open a DRAFT claim's editor, locking it for every other user. */
+    @PostMapping("/claims/{claimId}/lock")
+    public ClaimView lock(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.lock(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** Close a claim's editor without saving, releasing the user's lock on it. */
+    @DeleteMapping("/claims/{claimId}/lock")
+    public ClaimView unlock(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.unlock(sheetId.trim(), user.trim(), claimId));
     }
 
     /** Open a DRAFT claim. */
@@ -351,6 +369,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimNotDraftException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> notDraft(ClaimNotDraftException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** An edit of a claim another user is editing is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimLockedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> locked(ClaimLockedException e) {
         return Map.of("message", e.getMessage());
     }
 

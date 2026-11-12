@@ -146,8 +146,12 @@ export class Home {
     this.todayError.set(null);
     this.savingToday.set(true);
     try {
-      // A today change may close periods past their grace days, so the periods are re-read.
-      this.todayError.set((await this.session.setToday(this.todayInput())) ?? (await this.periods.load()));
+      // A today change may close periods past their grace days, so the periods are re-read; it also
+      // releases every claim's lock, closing their editors.
+      const was = this.session.today();
+      const err = await this.session.setToday(this.todayInput());
+      if (err === null && this.session.today() !== was) this.claims.unlockAll();
+      this.todayError.set(err ?? (await this.periods.load()));
     } finally {
       this.savingToday.set(false);
     }

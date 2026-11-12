@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.period.PeriodService;
@@ -25,9 +26,11 @@ public class SheetService {
     private final Rollup rollup;
     private final RoleService roles;
     private final Audit audit;
+    private final ClaimRepository claims;
 
     public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences, PeriodRepository periods,
-            PeriodService periodService, Rollup rollup, RoleService roles, Audit audit) {
+            PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims) {
+        this.claims = claims;
         this.sheets = sheets;
         this.sequences = sequences;
         this.periods = periods;
@@ -86,11 +89,14 @@ public class SheetService {
     }
 
     /** Change the sheet's today, closing the periods past their grace days and recording the figures it
-     *  moves. */
+     *  moves; a new today releases every claim's lock (their editors close). */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
         Rollup.Snapshot before = rollup.take(id);
+        if (!today.equals(sheet.getToday())) {
+            claims.unlockAll(id);
+        }
         sheet.setToday(today);
         sheets.saveAndFlush(sheet);
         periodService.closeOverdue(id, user, today, sheet.getGraceDays());

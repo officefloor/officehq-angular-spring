@@ -42,6 +42,9 @@ export interface Claim {
   proofs: number;
   /** The number of the claim it was split from; null when it was not split off another. */
   splitFrom: string | null;
+  /** The user whose editor is open on it, locking it for every other user until they save or cancel it,
+   *  or the sheet's today changes; null while unlocked. */
+  lockedBy: string | null;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -323,6 +326,46 @@ export class Claims {
       }
       return { message: failed('save', e), onClaim: false };
     }
+  }
+
+  /** Open a DRAFT claim's editor, locking it for every other user; an error message when refused (not a
+   *  DRAFT, in a closed period, another user's editor is open on it, or the user's role may not edit). */
+  async lock(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/lock`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return message(e) ?? 'Your role may not edit a claim.';
+      return failed('edit', e);
+    }
+  }
+
+  /** Close a claim's editor without saving, releasing the user's lock on it at once on the screen and then
+   *  on the server. */
+  async unlock(id: number): Promise<void> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return;
+    this.claims.update((cs) => cs.map((c) => (c.id === id && c.lockedBy === user ? { ...c, lockedBy: null } : c)));
+    try {
+      const claim = await firstValueFrom(
+        this.http.delete<Claim>(`${this.url(sid)}/claims/${id}/lock`, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+    } catch {
+      // the lock is gone or was never held: the editor is closed either way
+    }
+  }
+
+  /** The sheet's today changed: the server released every claim's lock, so every editor closes. */
+  unlockAll(): void {
+    this.claims.update((cs) => cs.map((c) => (c.lockedBy === null ? c : { ...c, lockedBy: null })));
   }
 
   /** Open, settle, void, approve, reject or re-settle a claim (a rejection with its reason); an error message

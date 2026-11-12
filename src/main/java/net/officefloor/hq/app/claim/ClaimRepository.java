@@ -5,6 +5,7 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -35,4 +36,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** A person's claims, locked until the transaction ends, so a statement binds them all at one moment. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<Claim> findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(String sheetId, Long personId);
+
+    /** Release every lock on the sheet's claims: their editors close when the sheet's today changes. */
+    @Modifying(flushAutomatically = true)
+    @Query("update Claim c set c.lockedBy = null where c.sheetId = :sheetId and c.lockedBy is not null")
+    int unlockAll(@Param("sheetId") String sheetId);
 }

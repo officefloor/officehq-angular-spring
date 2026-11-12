@@ -103,6 +103,7 @@ public class ClaimService {
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimNotDraftException(claim.getStatus());
         }
+        refuseLocked(claim, user);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
@@ -114,12 +115,39 @@ public class ClaimService {
         claim.setDate(on);
         claim.setNote(note);
         claim.setCorrects(corrects);
+        claim.setLockedBy(null);
         Claim updated = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         audit("CLAIM_EDITED", updated, person, user);
         rollup.recordChanges(sheetId, user, before);
         return updated;
+    }
+
+    /** Open a claim's editor: the claim is locked for every other user until the user saves or cancels it,
+     *  or the sheet's today changes. Refused for a claim that is not a DRAFT, a claim in a closed period, and
+     *  a claim another user has locked; a refused open takes no lock. */
+    @Transactional
+    public Claim lock(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotDraftException(claim.getStatus());
+        }
+        refuseClosed(sheetId, claim.getDate());
+        refuseLocked(claim, user);
+        claim.setLockedBy(user);
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Close a claim's editor (cancel): the user's lock on it is released; another user's stays. */
+    @Transactional
+    public Claim unlock(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (user.equals(claim.getLockedBy())) {
+            claim.setLockedBy(null);
+            claim = claims.saveAndFlush(claim);
+        }
+        return claim;
     }
 
     /** Move a claim to another status; refused when the user's role may not open, settle or void it (the
@@ -543,6 +571,13 @@ public class ClaimService {
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted);
         rollup.recordChanges(sheetId, user, before);
         return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
+    }
+
+    /** Refuse an edit of a claim whose editor another user has open. */
+    private void refuseLocked(Claim claim, String user) {
+        if (claim.getLockedBy() != null && !claim.getLockedBy().equals(user)) {
+            throw new ClaimLockedException(claim.getLockedBy());
+        }
     }
 
     /** Refuse a change to a claim dated inside a closed period. Locks the sheet first, so a period being
