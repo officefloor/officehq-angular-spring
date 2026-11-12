@@ -86,6 +86,7 @@ import { PersonClaims } from '../claims/claims';
         />
         Show retired
       </label>
+      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="person-list">
         <thead>
           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -318,6 +319,20 @@ export class PeopleList {
     return d === null ? NO_RATE : money(d);
   }
 
+  /** Download everyone, retired included, in list order as CSV: name, grade in force today,
+   *  retired-from date or nothing, and the due-total as the list shows it. */
+  protected exportCsv(): void {
+    const lines = [['name', 'grade', 'retired-from', 'due-total']];
+    for (const p of this.people.people()) lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', this.due(p)]);
+    const csv = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'people.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   protected async statement(p: Person): Promise<void> {
     this.clearActionError(p.id);
     this.stating.set(p.id);
@@ -425,4 +440,10 @@ export class PeopleList {
       this.saving.set(false);
     }
   }
+}
+
+/** A CSV field: wrapped in double quotes, with quotes inside doubled, when it holds a comma, a
+ *  quote or a line break. */
+function csvField(v: string): string {
+  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
