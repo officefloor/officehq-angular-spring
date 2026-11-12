@@ -1311,7 +1311,7 @@ export class Settings {
       this.delegateError.set('Type the date the delegation ends.');
       return;
     }
-    if (to < (from || this.session.today() || '')) {
+    if (to < (from || this.session.sheetToday() || '')) {
       this.delegateError.set('The to-date cannot be before the from-date.');
       return;
     }

@@ -10,3 +10,12 @@ export const asOfInterceptor: HttpInterceptorFn = (req, next) => {
   const asOf = inject(Session).asOf();
   return next(asOf === null || req.headers.has('X-As-Of') ? req : req.clone({ setHeaders: { 'X-As-Of': asOf } }));
 };
+
+/**
+ * Sends the screen's preview date with every request, so the sheet's figures are read as if its today were that date;
+ * a change is made under the sheet's real today regardless.
+ */
+export const previewInterceptor: HttpInterceptorFn = (req, next) => {
+  const preview = inject(Session).preview();
+  return next(preview === null || req.headers.has('X-Preview') ? req : req.clone({ setHeaders: { 'X-Preview': preview } }));
+};

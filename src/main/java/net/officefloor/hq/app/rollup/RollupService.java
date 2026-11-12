@@ -30,6 +30,7 @@ import net.officefloor.hq.app.person.PersonAlias;
 import net.officefloor.hq.app.person.PersonAliasRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.pool.PoolCut;
+import net.officefloor.hq.app.preview.PreviewContext;
 import net.officefloor.hq.app.pool.PoolCutService;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateLog;
@@ -110,30 +111,9 @@ public class RollupService {
             }
         }
         List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
-        // The parts of shared claims: each holder's added up, and each claim's taken off its own person's due.
-        Map<Long, List<ClaimShare>> sharesOf = new LinkedHashMap<>();
-        for (ClaimShare share : shares.findBySheetIdOrderByIdAsc(sheetId)) {
-            sharesOf.computeIfAbsent(share.getClaimId(), id -> new ArrayList<>()).add(share);
-        }
-        Map<Long, BigDecimal> heldParts = new LinkedHashMap<>();
-        Map<Long, BigDecimal> givenParts = new LinkedHashMap<>();
-        for (Person person : listed) {
-            for (Claim claim : counted.getOrDefault(person.getId(), List.of())) {
-                List<ClaimShare> claimShares = sharesOf.getOrDefault(claim.getId(), List.of());
-                if (claimShares.isEmpty() || !person.countsClaimed(claim, today) || !person.counts(claim, today)) {
-                    continue;
-                }
-                Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
-                if (claimDue.isEmpty()) {
-                    continue;
-                }
-                for (ClaimShare share : claimShares) {
-                    BigDecimal part = share.partOf(claimDue.get());
-                    heldParts.merge(share.getPersonId(), part, BigDecimal::add);
-                    givenParts.merge(claim.getId(), part, BigDecimal::add);
-                }
-            }
-        }
+        SharedParts parts = sharedParts(sheetId, sheet, sheetRates, listed, counted);
+        Map<Long, BigDecimal> heldParts = parts.held();
+        Map<Long, BigDecimal> givenParts = parts.given();
         // Each person's cut total: their cuts in every pool they are a member of, added up.
         Map<String, BigDecimal> cutTotals = new LinkedHashMap<>();
         for (PoolCut cut : poolCuts.cutsNow(sheetId)) {
@@ -205,6 +185,55 @@ public class RollupService {
         }
         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)),
                 sheetOverdueCount);
+    }
+
+    /**
+     * The parts of the sheet's shared claims under its today: by person, the parts of others' claims they hold; by
+     * claim, the parts of it shared out (taken off its own person's due).
+     */
+    public record SharedParts(Map<Long, BigDecimal> held, Map<Long, BigDecimal> given) {
+    }
+
+    /** The parts of the sheet's shared claims now, as {@link #snapshot(String)} counts them. */
+    public SharedParts sharedParts(String sheetId) {
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        Map<Long, List<Claim>> counted = new LinkedHashMap<>();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            if (claim.getStatus().counts()) {
+                counted.computeIfAbsent(claim.getPersonId(), id -> new ArrayList<>()).add(claim);
+            }
+        }
+        return sharedParts(sheetId, sheet, rateChain(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId), counted);
+    }
+
+    private SharedParts sharedParts(String sheetId, Sheet sheet, List<List<Rate>> sheetRates, List<Person> listed,
+            Map<Long, List<Claim>> counted) {
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        // The parts of shared claims: each holder's added up, and each claim's taken off its own person's due.
+        Map<Long, List<ClaimShare>> sharesOf = new LinkedHashMap<>();
+        for (ClaimShare share : shares.findBySheetIdOrderByIdAsc(sheetId)) {
+            sharesOf.computeIfAbsent(share.getClaimId(), id -> new ArrayList<>()).add(share);
+        }
+        Map<Long, BigDecimal> held = new LinkedHashMap<>();
+        Map<Long, BigDecimal> given = new LinkedHashMap<>();
+        for (Person person : listed) {
+            for (Claim claim : counted.getOrDefault(person.getId(), List.of())) {
+                List<ClaimShare> claimShares = sharesOf.getOrDefault(claim.getId(), List.of());
+                if (claimShares.isEmpty() || !person.countsClaimed(claim, today) || !person.counts(claim, today)) {
+                    continue;
+                }
+                Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
+                if (claimDue.isEmpty()) {
+                    continue;
+                }
+                for (ClaimShare share : claimShares) {
+                    BigDecimal part = share.partOf(claimDue.get());
+                    held.merge(share.getPersonId(), part, BigDecimal::add);
+                    given.merge(claim.getId(), part, BigDecimal::add);
+                }
+            }
+        }
+        return new SharedParts(held, given);
     }
 
     /**
@@ -386,7 +415,8 @@ public class RollupService {
     /**
      * The ids of the sheet's descendants, as {@link #descendants(String)}. While the request shows the sheet as of a
      * date, each is first put back as it stood at the end of that date, with the date as its today, for the request's
-     * transaction alone (which the as-of view rolls back).
+     * transaction alone (which the as-of view rolls back). While it previews the sheet on a date, each is read as if
+     * its today were that date (the preview rolls that back too).
      */
     private List<String> descendantsAsOf(String sheetId) {
         List<String> ids = descendants(sheetId);
@@ -398,6 +428,14 @@ public class RollupService {
             }
             // The sheets read to find them are stale now: read them afresh.
             entities.clear();
+        }
+        LocalDate preview = AsOfContext.current() == null ? PreviewContext.current() : null;
+        if (preview != null && !ids.isEmpty()) {
+            // Previewed on a date: each descendant is read as if its today were that date, for this read alone.
+            for (Sheet sheet : sheets.findAllById(ids)) {
+                sheet.setToday(preview);
+            }
+            entities.flush();
         }
         return ids;
     }

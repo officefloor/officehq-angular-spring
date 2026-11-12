@@ -843,7 +843,7 @@ export class Claims implements OnInit {
     // A new today releases every editor's lock, so the open editor closes.
     let seenToday: string | null | undefined;
     effect(() => {
-      const today = this.session.today();
+      const today = this.session.sheetToday();
       if (seenToday !== undefined && today !== seenToday) untracked(() => this.reset());
       seenToday = today;
     });
@@ -1079,7 +1079,7 @@ export class Claims implements OnInit {
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch {
       const closed = this.closedOn(claim.dueBy);
-      const today = this.session.today();
+      const today = this.session.sheetToday();
       const message =
         claim.status !== 'OPEN'
           ? `This claim is ${claim.status}: only an OPEN claim can be deferred.`
@@ -1762,7 +1762,7 @@ export class Claims implements OnInit {
         this.saved.emit(saved);
       }
     } catch (e) {
-      const dated = date || ((editing === null ? this.session.newClaimDate() : this.session.today()) ?? '');
+      const dated = date || ((editing === null ? this.session.newClaimDate() : this.session.sheetToday()) ?? '');
       const closed = editing === null ? undefined : this.closedOn(this.editedDueBy());
       const retiredFrom = this.retiredBefore(dated);
       const why = closed

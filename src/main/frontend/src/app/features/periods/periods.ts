@@ -364,7 +364,7 @@ export class Periods {
     this.generateError.set(null);
     const sheet = this.session.sheet();
     if (!sheet) return;
-    const today = this.session.today() ?? '';
+    const today = this.session.sheetToday() ?? '';
     const from = this.generateFrom().trim() || today;
     const to = this.generateTo().trim() || today;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
@@ -574,7 +574,7 @@ export class Periods {
       this.error.set('Type a name for the period, without spaces.');
       return;
     }
-    const from = this.from().trim() || (this.session.today() ?? '');
+    const from = this.from().trim() || (this.session.sheetToday() ?? '');
     const to = this.to().trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       this.error.set('Pick a from and a to date for the period.');

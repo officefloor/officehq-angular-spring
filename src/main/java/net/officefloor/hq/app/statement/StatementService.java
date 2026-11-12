@@ -137,6 +137,19 @@ public class StatementService {
             claim.setStated(true, due);
         }
         claims.saveAllAndFlush(theirs);
+        // As on the screen: the parts of their claims shared out leave their due, the parts shared with them join it.
+        RollupService.SharedParts parts = rollup.sharedParts(sheetId);
+        for (Claim claim : theirs) {
+            BigDecimal given = parts.given().get(claim.getId());
+            if (given != null && claim.isStated()) {
+                total = total.subtract(given);
+            }
+        }
+        BigDecimal held = parts.held().get(personId);
+        if (held != null) {
+            total = total.add(held);
+            anyDue = true;
+        }
         // As on the screen: their cut total counts against the cap.
         String member = PoolCut.person(personId);
         BigDecimal cutTotal = poolCuts.cutsNow(sheetId).stream().filter(c -> c.member().equals(member))

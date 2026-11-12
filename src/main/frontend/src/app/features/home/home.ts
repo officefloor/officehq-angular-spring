@@ -54,7 +54,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
       </form>
       @if (session.sheet(); as sheet) {
         <p>Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></p>
-        <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+        <p>Today <strong data-testid="sheet-today">{{ session.sheetToday() }}</strong></p>
         <form (submit)="saveToday($event)">
           <label for="sheet-today-input">Change today</label>
           <input
@@ -82,6 +82,22 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
           }
         </form>
         <p>As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
+        <form (submit)="setPreview($event)">
+          <label for="preview-date">Preview as if today were</label>
+          <input
+            id="preview-date"
+            type="date"
+            data-testid="preview-date"
+            [value]="previewInput()"
+            (input)="previewInput.set(value($event)); previewError.set(null)"
+          />
+          <button type="submit" data-testid="preview-set">Set preview</button>
+          <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
+          @if (previewError(); as error) {
+            <p role="alert" data-testid="preview-error">{{ error }}</p>
+          }
+        </form>
+        <p>Preview <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></p>
         <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
         <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
         <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
@@ -141,6 +157,8 @@ export class Home {
   protected readonly todayInput = signal('');
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal<string | null>(null);
+  protected readonly previewInput = signal('');
+  protected readonly previewError = signal<string | null>(null);
   protected readonly cloneTo = signal('');
   /** The id the active sheet was last cloned to from this screen; cleared while a clone is asked for. */
   protected readonly clonedTo = signal<string | null>(null);
@@ -248,6 +266,30 @@ export class Home {
       await this.session.setAsOf(null);
     } catch {
       this.asOfError.set('The sheet could not be shown as it stands.');
+    }
+  }
+
+  protected async setPreview(event: Event): Promise<void> {
+    event.preventDefault();
+    const date = this.previewInput().trim();
+    this.previewError.set(null);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.previewError.set('Pick a date to preview the sheet on.');
+      return;
+    }
+    try {
+      await this.session.setPreview(date);
+    } catch {
+      this.previewError.set(`The sheet could not be previewed on ${date}.`);
+    }
+  }
+
+  protected async clearPreview(): Promise<void> {
+    this.previewError.set(null);
+    try {
+      await this.session.setPreview(null);
+    } catch {
+      this.previewError.set('The sheet could not be shown under its today.');
     }
   }
 

@@ -29,8 +29,14 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheet = signal<string | null>(null);
-  /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default uses it. */
-  readonly today = signal<string | null>(null);
+  /** The active sheet's real today (yyyy-mm-dd): every change and its default dates use it. */
+  readonly sheetToday = signal<string | null>(null);
+  /** The date this screen previews the sheet on (yyyy-mm-dd): every figure is shown as if the sheet's today were it,
+   *  over the sheet's current records, while changes still use its real today; null shows the sheet under its today.
+   *  It belongs to this screen and is kept when another sheet is loaded. */
+  readonly preview = signal<string | null>(null);
+  /** The today every figure on the screen is shown under: the preview date while it is set, else the sheet's today. */
+  readonly today = computed(() => this.preview() ?? this.sheetToday());
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** Whether the signed-in user is a viewer of the active sheet, as of its last load: they may change nothing. */
@@ -84,7 +90,7 @@ export class Session {
    *  at or above it is HIGH; blank means none; null until the settings are read. */
   readonly scoreHigh = signal<string | null>(null);
   /** The default date of a new claim: the entry date while it is set, else the sheet's today. */
-  readonly newClaimDate = computed(() => this.entryDate() || this.today());
+  readonly newClaimDate = computed(() => this.entryDate() || this.sheetToday());
   /** The active sheet's cap (two decimals) in force on its today: a person's due-total is at most it; null when there
    *  is none or until the settings are read. */
   readonly cap = computed(() => this.settingOn('cap', this.today()));
@@ -97,8 +103,9 @@ export class Session {
   signIn(name: string): void {
     this.user.set(name);
     this.asOf.set(null);
+    this.preview.set(null);
     this.sheet.set(null);
-    this.today.set(null);
+    this.sheetToday.set(null);
   }
 
   /**
@@ -177,6 +184,20 @@ export class Session {
     }
   }
 
+  /** Preview the active sheet on the date (null: under its today), re-reading all of it. */
+  async setPreview(date: string | null): Promise<void> {
+    const id = this.sheet();
+    if (!id) throw new Error('No sheet loaded.');
+    const was = this.preview();
+    this.preview.set(date);
+    try {
+      await this.loadSheet(id);
+    } catch (e) {
+      this.preview.set(was);
+      throw e;
+    }
+  }
+
   /** Change the active sheet's today. */
   async setToday(today: string): Promise<void> {
     const id = this.sheet();
@@ -218,7 +239,7 @@ export class Session {
 
   private show(view: SheetView): void {
     this.sheet.set(view.id);
-    this.today.set(view.today);
+    this.sheetToday.set(view.today);
     this.archived.set(view.archived);
     this.viewer.set(view.viewer);
     this.steward.set(view.steward);
