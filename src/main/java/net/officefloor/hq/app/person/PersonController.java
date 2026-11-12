@@ -50,7 +50,7 @@ public class PersonController {
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
-            List<String> snapshotLines) {
+            List<String> snapshotLines, List<String> statementLines) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
                 boolean watched, List<String> aliases, Set<String> keysInTree, List<String> snapshotLines) {
@@ -63,7 +63,7 @@ public class PersonController {
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     watched, aliases, PersonService.clashing(person, aliases, keysInTree), person.getOriginSheet(),
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
-                    snapshotLines);
+                    snapshotLines, statements.lines());
         }
     }
 
