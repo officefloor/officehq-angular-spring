@@ -1,0 +1,64 @@
+{
+  "checkpoint": 29,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp29_reopen-period",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again: the claims in it show and total their current\nfigures, bound ones at their bound figure. Reopening writes PERIOD_REOPENED period=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA closed period can be reopened, by a steward only (anyone else is refused with an error on the\nperiod). Reopening makes its due-total live again: the claims in it show and total their current\nfigures, bound ones at their bound figure. Reopening writes PERIOD_REOPENED period=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "09fcd255d34efac8d57915b0ded5e403a207bdff",
+  "reset_sha": "",
+  "preagent_sha": "89f7f96a196210dcfbf54772df7936aba1c5a7c8",
+  "prev_sha": "89f7f96a196210dcfbf54772df7936aba1c5a7c8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.48417799999999994,
+    "input_tokens": 22,
+    "output_tokens": 5457,
+    "cache_read_tokens": 343070,
+    "cache_creation_tokens": 38292,
+    "num_turns": 12,
+    "duration_ms": 168926,
+    "duration_api_ms": 49416,
+    "model": "claude-opus-5-5",
+    "session_id": "0c77872e-8213-4d51-8c31-3b4afe973168",
+    "stop_reason": "success",
+    "result_text": "A steward can now reopen a closed period. I ran `bin/e2e` and all 4 acceptance tests pass.\n\n**How it behaves**\n- Each period row has a new **Reopen** button (`data-testid=\"period-reopen\"`).\n- If someone who isn't a steward presses it, the period row shows an error (`period-error`) saying \"Only a steward can reopen a period.\" Nothing is changed and nothing is written to the audit file.\n- Pressing it on a period that is already open is refused the same way, with \"The period is not closed.\"\n- When a steward reopens a period, it is marked open again and its fixed due-total is cleared. The period's total then goes back to adding up the claims' current figures, with bound claims counted at their bound figure. The audit file gets `PERIOD_REOPENED sheet=<id> by=<user> period=<name>`.\n\n**Server**\n- `Period.java`: new `reopen()`.\n- `PeriodService.reopen(...)`: locks the sheet like close does, checks the user is a steward, then checks the period is closed.\n- `PeriodController.java`: new endpoint `POST /api/sheets/{sheetId}/periods/{periodId}/reopen`.\n- `PeriodStewardOnlyException.java` (new): returns 403 Forbidden for a non-steward. Reopening an open period reuses `PeriodRefusedException`, which returns 409 Conflict.\n- No database migration was needed, because the existing `closed` and `closed_total` columns cover it.\n\n**Front end**\n- `core/periods.ts`: new `reopen(id)`, which turns the 403 and 409 responses into the two messages above.\n- `features/periods/periods.ts`: the new button. Close and reopen now share one handler, so the error from the last action on a period is cleared each time.\n\nThe Reopen button shows on every period, open or closed, and to everyone, including non-stewards. Using it when it doesn't apply shows the error rather than hiding the button.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.48417799999999994,
+        "num_turns": 12,
+        "duration_ms": 168926,
+        "duration_api_ms": 49416,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp29.agent.jsonl",
+  "agent_diff_file": "cp29.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

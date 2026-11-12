@@ -1,0 +1,201 @@
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index f14ec940e..4b281390c 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -10,7 +10,7 @@ export interface Period {
+   /** The first and last day of the period (YYYY-MM-DD), both inclusive. */
+   from: string;
+   to: string;
+-  /** Closed: its due-total is fixed and its claims can no longer change. */
++  /** Closed: its due-total is fixed and its claims can no longer change, until a steward reopens it. */
+   closed: boolean;
+   /** The due-total fixed when it was closed, two decimals; null while open. */
+   closedTotal: string | null;
+@@ -99,6 +99,25 @@ export class Periods {
+     }
+   }
+ 
++  /** Reopen a closed period, making its due-total live again (a steward only); an error message when
++   *  refused. */
++  async reopen(id: number): Promise<string | null> {
++    const sid = this.session.sheetId();
++    const user = this.session.user();
++    if (!user || !sid) return 'Load a sheet first.';
++    try {
++      const period = await firstValueFrom(
++        this.http.post<Period>(`${this.url(sid)}/${id}/reopen`, null, { headers: { 'X-User': user } }),
++      );
++      if (this.session.sheetId() === sid) this.periods.update((ps) => ps.map((p) => (p.id === id ? period : p)));
++      return null;
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reopen a period.';
++      if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is not closed.';
++      return e instanceof HttpErrorResponse ? `Could not reopen period (${e.status}).` : 'Could not reopen period.';
++    }
++  }
++
+   private url(sid: string): string {
+     return `/api/sheets/${encodeURIComponent(sid)}/periods`;
+   }
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 90b27e8ac..c6db39d07 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -6,7 +6,7 @@ import { Rates, hundredths, money } from '../../core/rates';
+ 
+ // The sheet's periods: one form adds a period, and the list shows each with its dates and its
+ // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
+-// whether it is closed, with a button to close it.
++// whether it is closed, with buttons to close it and (a steward only) reopen it.
+ @Component({
+   selector: 'app-periods',
+   template: `
+@@ -57,6 +57,9 @@ import { Rates, hundredths, money } from '../../core/rates';
+                 <button type="button" data-testid="period-close" [disabled]="acting() === p.id" (click)="close(p)">
+                   Close<span class="visually-hidden"> period {{ p.name }}</span>
+                 </button>
++                <button type="button" data-testid="period-reopen" [disabled]="acting() === p.id" (click)="reopen(p)">
++                  Reopen<span class="visually-hidden"> period {{ p.name }}</span>
++                </button>
+                 @if (actionError()?.id === p.id) {
+                   <p role="alert" data-testid="period-error">{{ actionError()?.message }}</p>
+                 }
+@@ -104,12 +107,20 @@ export class PeriodsPanel {
+     return new Map([...sums].map(([id, sum]) => [id, money(sum)]));
+   });
+ 
+-  protected async close(p: Period): Promise<void> {
++  protected close(p: Period): Promise<void> {
++    return this.act(p, () => this.periods.close(p.id));
++  }
++
++  protected reopen(p: Period): Promise<void> {
++    return this.act(p, () => this.periods.reopen(p.id));
++  }
++
++  private async act(p: Period, action: () => Promise<string | null>): Promise<void> {
+     if (this.acting() !== null) return;
+     this.actionError.set(null);
+     this.acting.set(p.id);
+     try {
+-      const err = await this.periods.close(p.id);
++      const err = await action();
+       if (err) this.actionError.set({ id: p.id, message: err });
+     } finally {
+       this.acting.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 5bfba13bf..525cc5be9 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -11,7 +11,7 @@ import java.time.LocalDate;
+ 
+ /** A named period on the sheet, from one date to another, both inclusive. A claim belongs to the
+  *  period whose dates contain its date, or to none. A closed period keeps the due-total it had when
+- *  closed, and its claims can no longer change. */
++ *  closed, and its claims can no longer change, until a steward reopens it. */
+ @Entity
+ @Table(name = "period")
+ public class Period {
+@@ -83,6 +83,12 @@ public class Period {
+         this.closedTotal = total;
+     }
+ 
++    /** Reopen the period: its due-total is live again. */
++    public void reopen() {
++        this.closed = false;
++        this.closedTotal = null;
++    }
++
+     /** Whether a date falls in this period. */
+     public boolean contains(LocalDate date) {
+         return !date.isBefore(fromDate) && !date.isAfter(toDate);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 1cc493739..a02018dda 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -66,4 +66,13 @@ public class PeriodController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+         return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
+     }
++
++    /** Reopen a closed period, making its due-total live again; by a steward only, and refused when it
++     *  is open. */
++    @PostMapping("/{periodId}/reopen")
++    public PeriodView reopen(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @PathVariable long periodId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
++        return PeriodView.of(service.reopen(sheetId.trim(), user.trim(), periodId));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 17b5eb8a4..9b57f31b3 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+@@ -18,12 +19,15 @@ public class PeriodService {
+     private final PeriodRepository periods;
+     private final SheetRepository sheets;
+     private final Rollup rollup;
++    private final RoleService roles;
+     private final Audit audit;
+ 
+-    public PeriodService(PeriodRepository periods, SheetRepository sheets, Rollup rollup, Audit audit) {
++    public PeriodService(PeriodRepository periods, SheetRepository sheets, Rollup rollup, RoleService roles,
++            Audit audit) {
+         this.periods = periods;
+         this.sheets = sheets;
+         this.rollup = rollup;
++        this.roles = roles;
+         this.audit = audit;
+     }
+ 
+@@ -77,4 +81,23 @@ public class PeriodService {
+                 + " period=" + period.getName() + " total=" + total.toPlainString());
+         return period;
+     }
++
++    /** Reopen a closed period, making its due-total live again; by a steward only, and refused when it
++     *  is open. */
++    @Transactional
++    public Period reopen(String sheetId, String user, long periodId) {
++        // Locking the sheet makes the reopen and any claim change on the sheet go one after the other.
++        sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
++        Period period = periods.findByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
++        if (!roles.isSteward(sheetId, user)) {
++            throw new PeriodStewardOnlyException();
++        }
++        if (!period.isClosed()) {
++            throw new PeriodRefusedException("The period is not closed.");
++        }
++        period.reopen();
++        periods.saveAndFlush(period);
++        audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + period.getName());
++        return period;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodStewardOnlyException.java b/src/main/java/net/officefloor/hq/app/period/PeriodStewardOnlyException.java
+new file mode 100644
+index 000000000..7983ea681
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodStewardOnlyException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.period;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** Someone other than a steward asked to reopen a closed period. */
++@ResponseStatus(HttpStatus.FORBIDDEN)
++public class PeriodStewardOnlyException extends RuntimeException {
++
++    public PeriodStewardOnlyException() {
++        super("Only a steward can reopen a period.");
++    }
++}
