@@ -90,6 +90,7 @@ interface DescendantFigures {
   gradeDueTotals: Record<string, string>;
   statusCounts: Record<string, number>;
   members: TreeMember[];
+  overdueCount: number;
 }
 
 /** A person of a sheet as that sheet shows them: due-total, overdue-total, and name and aliases as names are compared. */
@@ -141,6 +142,7 @@ const NO_DESCENDANTS: DescendantFigures = {
   gradeDueTotals: {},
   statusCounts: {},
   members: [],
+  overdueCount: 0,
 };
 
 /** What decides which of a person's open claims leave the live totals: their retirement date (a hold does not). */
@@ -1178,16 +1180,17 @@ export class People {
     return this.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssignee === user).length;
   });
   /**
-   * The steward's dashboard over the sheet: how many claims are PENDING, how many in REVIEW, and how many that count
-   * are overdue; none for a user who is not a steward (as of the as-of date, the role they had then).
+   * The steward's dashboard over the sheet and its descendants: how many claims are PENDING, how many in REVIEW, and
+   * how many that count are overdue; none for a user who is not a steward (as of the as-of date, the role they had then).
    */
   protected readonly dashboard = computed(() => {
     if (!this.session.steward()) return null;
     const claims = this.claims();
+    const descendants = this.descendantFigures();
     return {
-      pending: claims.filter((c) => c.status === 'PENDING').length,
-      review: claims.filter((c) => c.status === 'REVIEW').length,
-      overdue: this.overdueCount(),
+      pending: claims.filter((c) => c.status === 'PENDING').length + (descendants.statusCounts['PENDING'] ?? 0),
+      review: claims.filter((c) => c.status === 'REVIEW').length + (descendants.statusCounts['REVIEW'] ?? 0),
+      overdue: this.overdueCount() + descendants.overdueCount,
     };
   });
   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */

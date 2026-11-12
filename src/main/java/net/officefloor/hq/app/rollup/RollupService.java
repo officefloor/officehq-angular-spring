@@ -55,8 +55,12 @@ public class RollupService {
     public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade, String score) {
     }
 
-    /** Everyone's figures, by person id in the order they were added, and the sheet's totals. */
-    public record Snapshot(Map<Long, Figures> people, String claimedTotal, String dueTotal, String overdueTotal) {
+    /**
+     * Everyone's figures, by person id in the order they were added, and the sheet's totals; and how many of everyone's
+     * counted claims are overdue.
+     */
+    public record Snapshot(Map<Long, Figures> people, String claimedTotal, String dueTotal, String overdueTotal,
+            int overdueCount) {
     }
 
     private final PersonRepository people;
@@ -130,6 +134,7 @@ public class RollupService {
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
+        int sheetOverdueCount = 0;
         for (Person person : listed) {
             List<Claim> theirs = counted.getOrDefault(person.getId(), List.of()).stream()
                     .filter(claim -> person.countsClaimed(claim, today))
@@ -179,6 +184,7 @@ public class RollupService {
             }
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
+            sheetOverdueCount += overdueCount;
             if (anyDue && sheet != null) {
                 due = sheet.capped(due);
             }
@@ -188,15 +194,17 @@ public class RollupService {
             figures.put(person.getId(), new Figures(person.getName(), shown(claimed), anyDue ? shown(due) : "n/a",
                     shown(overdue), today == null ? null : person.gradeOn(today), scoreOf(settled, overdueCount)));
         }
-        return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
+        return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)),
+                sheetOverdueCount);
     }
 
     /**
      * Figures added up over sheets: the number of people, the due-totals and the overdue-totals (two decimals); per
-     * grade, the due-totals of the people on it not retired (two decimals); and per status, how many claims have it.
+     * grade, the due-totals of the people on it not retired (two decimals); per status, how many claims have it; and how
+     * many counted claims are overdue.
      */
     public record Consolidated(int people, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts, List<Member> members) {
+            Map<String, Integer> statusCounts, List<Member> members, int overdueCount) {
     }
 
     /**
@@ -222,9 +230,11 @@ public class RollupService {
         Map<String, BigDecimal> gradeDues = new TreeMap<>();
         Map<String, Integer> statuses = new TreeMap<>();
         List<Member> members = new ArrayList<>();
+        int overdueCount = 0;
         for (String id : sheetIds) {
             Snapshot figures = snapshot(id);
             count += figures.people().size();
+            overdueCount += figures.overdueCount();
             Map<Long, List<String>> namesOf = new LinkedHashMap<>();
             for (PersonAlias alias : aliases.findBySheetId(id)) {
                 namesOf.computeIfAbsent(alias.getPersonId(), p -> new ArrayList<>()).add(alias.getAliasKey());
@@ -247,7 +257,7 @@ public class RollupService {
                 statuses.merge(claim.getStatus().name(), 1, Integer::sum);
             }
         }
-        return new Consolidated(count, shown(due), shown(overdue), shownAll(gradeDues), statuses, members);
+        return new Consolidated(count, shown(due), shown(overdue), shownAll(gradeDues), statuses, members, overdueCount);
     }
 
     /**
@@ -271,7 +281,7 @@ public class RollupService {
                 .map(BigDecimal::new).toList();
         List<BigDecimal> overdues = members.stream().map(Member::overdueTotal).map(BigDecimal::new).toList();
         return new Consolidated(distinctPeople(members), shown(trimmedSum(dues)), shown(trimmedSum(overdues)),
-                shownAll(gradeDues), statuses, members);
+                shownAll(gradeDues), statuses, members, own.overdueCount() + descendants.overdueCount());
     }
 
     /**
@@ -632,7 +642,7 @@ public class RollupService {
         }
         audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total=" + now.claimedTotal()
                 + " due-total=" + now.dueTotal() + " overdue-total=" + now.overdueTotal());
-        recordAlerts(sheetId, user, new Snapshot(Map.of(), null, null, null), now);
+        recordAlerts(sheetId, user, new Snapshot(Map.of(), null, null, null, 0), now);
     }
 
     /**
