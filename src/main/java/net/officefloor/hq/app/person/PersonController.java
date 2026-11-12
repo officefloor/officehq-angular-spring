@@ -115,6 +115,16 @@ public class PersonController {
     public record BulkGradeView(int graded, List<PersonView> people) {
     }
 
+    /** The people to retire together, and the date they are retired from (none: the sheet's today). */
+    public record BulkRetireRequest(
+            @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> personIds,
+            LocalDate from) {
+    }
+
+    /** How many a bulk retire retired, and the people it retired. */
+    public record BulkRetireView(int retired, List<PersonView> people) {
+    }
+
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {
     }
@@ -228,6 +238,21 @@ public class PersonController {
             List<Person> graded = service.bulkGrade(sheetId.trim(), user.trim(), request.personIds(), request.grade(),
                     request.from());
             return new BulkGradeView(graded.size(), graded.stream().map(p -> view(p, user.trim())).toList());
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // one of them was saved by someone else at the same moment
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone else changed one of them; try again.");
+        }
+    }
+
+    /** Retire the chosen people from a date together, in list order. */
+    @PostMapping("/bulk-retire")
+    public BulkRetireView bulkRetire(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkRetireRequest request) {
+        try {
+            List<Person> retired = service.bulkRetire(sheetId.trim(), user.trim(), request.personIds(),
+                    request.from());
+            return new BulkRetireView(retired.size(), retired.stream().map(p -> view(p, user.trim())).toList());
         } catch (ObjectOptimisticLockingFailureException e) {
             // one of them was saved by someone else at the same moment
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone else changed one of them; try again.");

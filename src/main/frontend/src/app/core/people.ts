@@ -113,7 +113,7 @@ export class People {
   readonly people = signal<Person[]>([]);
   /** Whether the list shows retired people; belongs to the screen, so loading a sheet leaves it. */
   readonly showRetired = signal(false);
-  /** The ids of the people chosen for a bulk grade. */
+  /** The ids of the people chosen for a bulk grade or retire. */
   readonly selected = signal<ReadonlySet<number>>(new Set());
   private loads = 0;
 
@@ -205,7 +205,7 @@ export class People {
     }
   }
 
-  /** Choose a person for a bulk grade, or leave them out. */
+  /** Choose a person for a bulk grade or retire, or leave them out. */
   select(id: number, on: boolean): void {
     this.selected.update((s) => {
       const next = new Set(s);
@@ -245,6 +245,38 @@ export class People {
         return e.error.message;
       }
       return e instanceof HttpErrorResponse ? `Could not grade people (${e.status}).` : 'Could not grade people.';
+    }
+  }
+
+  /** Retire the chosen people from a date (blank takes the sheet's today) together, the server retiring
+   *  them in list order as each row's retire would; how many were retired, or an error message. */
+  async bulkRetire(from: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const personIds = [...this.selected()];
+    if (personIds.length === 0) return 'Select the people to retire.';
+    const d = from.trim();
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'Enter the retire-from date as YYYY-MM-DD.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ retired: number; people: Person[] }>(
+          `${this.url(sid)}/bulk-retire`,
+          { personIds, from: d || null },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        const byId = new Map(done.people.map((p) => [p.id, p]));
+        this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
+        this.selected.set(new Set());
+      }
+      return done.retired;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string') {
+        return e.error.message;
+      }
+      return e instanceof HttpErrorResponse ? `Could not retire people (${e.status}).` : 'Could not retire people.';
     }
   }
 

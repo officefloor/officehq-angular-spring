@@ -139,7 +139,7 @@ import { PersonClaims } from '../claims/claims';
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
-      <section aria-label="Grade selected people">
+      <section aria-label="Grade or retire selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select
           id="bulk-grade"
@@ -164,6 +164,20 @@ import { PersonClaims } from '../claims/claims';
         </button>
         @if (bulkGraded() !== null) {
           <p>Changed <span data-testid="bulk-graded">{{ bulkGraded() }}</span></p>
+        }
+        <label for="bulk-retire-date">Retire selected people from</label>
+        <input
+          id="bulk-retire-date"
+          data-testid="bulk-retire-date"
+          placeholder="YYYY-MM-DD"
+          [value]="bulkRetireFrom()"
+          (input)="bulkRetireFrom.set(value($event)); bulkError.set(null)"
+        />
+        <button type="button" data-testid="bulk-retire" [disabled]="bulkRunning()" (click)="applyBulkRetire()">
+          Retire selected
+        </button>
+        @if (bulkRetired() !== null) {
+          <p>Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span></p>
         }
         @if (bulkError(); as err) {
           <p role="alert" data-testid="person-error">{{ err }}</p>
@@ -519,6 +533,27 @@ export class PeopleList {
       const done = await this.people.bulkGrade(this.bulkGrade(), this.bulkFrom());
       if (typeof done === 'string') this.bulkError.set(done);
       else this.bulkGraded.set(done);
+    } finally {
+      this.bulkRunning.set(false);
+    }
+  }
+
+  /** The date the bulk retire retires the selected people from; blank takes the sheet's today. */
+  protected readonly bulkRetireFrom = signal('');
+  /** How many the last bulk retire retired; gone while the next runs. */
+  protected readonly bulkRetired = signal<number | null>(null);
+
+  protected async applyBulkRetire(): Promise<void> {
+    if (this.bulkRunning()) return;
+    this.bulkRetired.set(null);
+    this.bulkError.set(null);
+    const err = this.actionError();
+    if (err && this.people.selected().has(err.id)) this.actionError.set(null);
+    this.bulkRunning.set(true);
+    try {
+      const done = await this.people.bulkRetire(this.bulkRetireFrom());
+      if (typeof done === 'string') this.bulkError.set(done);
+      else this.bulkRetired.set(done);
     } finally {
       this.bulkRunning.set(false);
     }
