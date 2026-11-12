@@ -52,8 +52,8 @@ public class ImportRatesService {
             throw new ImportRatesException(number, "expected grade,rate,from,to");
         }
         String grade = fields[0].trim();
-        if (!grade.matches("[ABC]")) {
-            throw new ImportRatesException(number, "the grade is not A, B or C");
+        if (!grade.matches("[A-Z]{1,3}")) {
+            throw new ImportRatesException(number, "the grade is not one to three capital letters");
         }
         String pct = fields[1].trim();
         if (!pct.matches("\\d{1,5}(\\.\\d{1,2})?")) {

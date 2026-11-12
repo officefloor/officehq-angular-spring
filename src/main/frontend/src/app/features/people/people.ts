@@ -236,7 +236,7 @@ function csvField(value: string): string {
         <dd data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' | fig }}</dd>
       </dl>
     </section>
-    <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
+    <app-rates [grades]="grades()" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
     <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -255,7 +255,7 @@ function csvField(value: string): string {
           [value]="grade()"
           (change)="grade.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g | fig }}</option>
           }
         </select>
@@ -540,7 +540,7 @@ function csvField(value: string): string {
                   data-testid="person-inline-grade"
                   (change)="setInlineGrade(p.id, value($event))"
                 >
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === inlineGradeOf(p)">{{ g | fig }}</option>
                   }
                 </select>
@@ -898,7 +898,7 @@ function csvField(value: string): string {
           [value]="bulkGradeValue()"
           (change)="bulkGradeValue.set(value($event)); clearBulkGradeError()"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === bulkGradeValue()">{{ g | fig }}</option>
           }
         </select>
@@ -993,7 +993,7 @@ export class People {
   protected readonly columnList = COLUMNS;
   protected readonly columnsError = signal<string | null>(null);
 
-  protected readonly grades = ['A', 'B', 'C'];
+  protected readonly grades = this.session.grades;
   protected readonly people = signal<Person[]>([]);
   /** The people listed: the retired ones only while "show retired" is on, and for a restricted user only the people
    *  they may see. Totals still count everyone. */
@@ -1257,7 +1257,7 @@ export class People {
   );
   /** Per grade: the people not retired on it today, as the list shows their grade, and their due-totals added up. */
   protected readonly gradeSummary = computed<GradeSummary[]>(() =>
-    this.grades.map((grade) => {
+    this.grades().map((grade) => {
       const on = this.people().filter((p) => !p.retired && this.gradeOf(p) === grade);
       return {
         grade,

@@ -71,7 +71,7 @@ public class PersonController {
 
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String terms,
             LocalDate termsFrom,
@@ -88,14 +88,14 @@ public class PersonController {
     /** The people to give a grade together, the grade, and the date it applies from (null: the sheet's today). */
     public record BulkGradeRequest(
             @NotNull @Size(max = 10000) List<@NotNull Long> ids,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate from) {
     }
 
     /** The grade to merge and the grade its people are given from the sheet's today. */
     public record GradeMergeRequest(
-            @NotNull @Pattern(regexp = "[ABC]") String from,
-            @NotNull @Pattern(regexp = "[ABC]") String into) {
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String from,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String into) {
     }
 
     /** The people to retire together, and the date they are retired from (null: the sheet's today). */

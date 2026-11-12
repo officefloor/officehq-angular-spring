@@ -25,14 +25,15 @@ public class SheetController {
      * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, the
      * number of its last bulk settle batch (null while there has been none), and whether the user is a steward of it
      * (in their own right or by a delegation covering its today), and, for a restricted user, the ids of the people
-     * the people list shows them (null: everyone).
+     * the people list shows them (null: everyone); and the sheet's grades (A, B, C, then those added in that order).
      */
     public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch,
-            boolean steward, List<Long> visiblePeople) {
+            boolean steward, List<Long> visiblePeople, List<String> grades) {
 
         static SheetView of(Sheet sheet, boolean viewer, boolean steward, List<Long> visiblePeople) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer,
-                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), steward, visiblePeople);
+                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), steward, visiblePeople,
+                    sheet.grades());
         }
     }
 

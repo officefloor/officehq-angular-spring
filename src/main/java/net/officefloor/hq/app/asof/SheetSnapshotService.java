@@ -121,14 +121,14 @@ public class SheetSnapshotService {
     /**
      * The sheet's own row as it was kept, or as a sheet just started has it when nothing was kept by then. Its parent
      * sheet and the sheet it was cloned from are links between sheets, not part of how the sheet stood: they stay as
-     * they are now.
+     * they are now. So do the grades added to it: a grade, once added, is one of the sheet's grades on every date.
      */
     private void restoreSheet(Table table, Map<String, Object> row, String sheetId, LocalDate asOf) {
         List<String> sets = new ArrayList<>();
         List<Object> args = new ArrayList<>();
         for (String column : table.columns()) {
             if (column.equals("ID") || column.equals("CREATED_BY") || column.equals("TODAY") || column.equals("PARENT")
-                    || column.equals("SOURCE")) {
+                    || column.equals("SOURCE") || column.equals("ADDED_GRADES")) {
                 continue;
             }
             if (row == null) {

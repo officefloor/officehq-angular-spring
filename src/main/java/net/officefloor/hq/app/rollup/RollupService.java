@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import net.officefloor.hq.app.setting.SettingService;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -333,7 +332,7 @@ public class RollupService {
         }
         Map<String, String> ours = figuresOf(List.of(sheetId)).gradeDueTotals();
         Map<String, String> theirs = figuresOf(List.of(otherId)).gradeDueTotals();
-        return SettingService.GRADES.stream()
+        return sheets.findById(sheetId).map(Sheet::grades).orElse(Sheet.STANDING_GRADES).stream()
                 .map(grade -> grade + " " + ours.getOrDefault(grade, "0.00") + " " + theirs.getOrDefault(grade, "0.00"))
                 .toList();
     }

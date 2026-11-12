@@ -99,8 +99,8 @@ public class ImportPeopleService {
             throw new ImportPeopleException(number, "the name is too long");
         }
         String grade = fields[1].trim();
-        if (!grade.matches("[ABC]?")) {
-            throw new ImportPeopleException(number, "the grade is not A, B or C");
+        if (!grade.matches("([A-Z]{1,3})?")) {
+            throw new ImportPeopleException(number, "the grade is not one to three capital letters");
         }
         String terms = fields.length > 2 ? fields[2] : "";
         if (!terms.matches("\\s*(\\d{1,5})?\\s*")) {

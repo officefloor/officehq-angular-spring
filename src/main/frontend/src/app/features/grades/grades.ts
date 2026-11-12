@@ -2,22 +2,32 @@ import { HttpClient } from '@angular/common/http';
 import { FigurePipe } from '../../core/locale';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Session } from '../../core/session';
+import { STANDING_GRADES, Session } from '../../core/session';
 
-/** The part of the sheet's settings this screen reads: the grades retired on it. */
+/** The part of the sheet's settings this screen reads: the grades retired on it, and the sheet's grades. */
 interface GradesView {
   retiredGrades: string[] | null;
+  grades: string[] | null;
 }
 
-const GRADES = ['A', 'B', 'C'];
-
-// The sheet's grades: a retired grade cannot be chosen for a new person or in an edit.
+// The sheet's grades: A, B, C and those added to it; a retired grade cannot be chosen for a new person or in an edit.
 @Component({
   selector: 'app-grades',
   imports: [FigurePipe],
   template: `
     <section aria-labelledby="grades-heading">
       <h2 id="grades-heading">Grades</h2>
+      <form (submit)="add($event)" aria-labelledby="grade-add-heading">
+        <h3 id="grade-add-heading">Add a grade</h3>
+        <label for="grade-add-code">Grade code (one to three capital letters)</label>
+        <input
+          id="grade-add-code"
+          data-testid="grade-add-code"
+          [value]="code()"
+          (input)="code.set(value($event)); error.set(null)"
+        />
+        <button type="submit" data-testid="grade-add">Add grade</button>
+      </form>
       <form (submit)="retire($event)" aria-labelledby="grades-heading">
         <label for="grade-retire-select">Grade to retire</label>
         <select
@@ -26,7 +36,7 @@ const GRADES = ['A', 'B', 'C'];
           [value]="grade()"
           (change)="grade.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g | fig }}</option>
           }
         </select>
@@ -44,7 +54,7 @@ const GRADES = ['A', 'B', 'C'];
           [value]="mergeFrom()"
           (change)="mergeFrom.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === mergeFrom()">{{ g | fig }}</option>
           }
         </select>
@@ -55,7 +65,7 @@ const GRADES = ['A', 'B', 'C'];
           [value]="mergeInto()"
           (change)="mergeInto.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === mergeInto()">{{ g | fig }}</option>
           }
         </select>
@@ -69,7 +79,7 @@ const GRADES = ['A', 'B', 'C'];
           <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr [attr.data-testid]="'grade-row-' + g">
               <td>{{ g | fig }}</td>
               <td data-testid="grade-retired">{{ (retired().includes(g) ? 'yes' : 'no') | fig }}</td>
@@ -84,12 +94,14 @@ export class Grades {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly retired = signal<string[]>([]);
-  protected readonly grade = signal(GRADES[0]);
+  protected readonly grade = signal(STANDING_GRADES[0]);
+  /** The code typed for a grade to add. */
+  protected readonly code = signal('');
   protected readonly error = signal<string | null>(null);
-  protected readonly mergeFrom = signal(GRADES[0]);
-  protected readonly mergeInto = signal(GRADES[1]);
+  protected readonly mergeFrom = signal(STANDING_GRADES[0]);
+  protected readonly mergeInto = signal(STANDING_GRADES[1]);
   /** How many people the last merge regraded; null before one, while one runs, and after a sheet load. */
   protected readonly merged = signal<number | null>(null);
   /** The count of a merge done, shown once the sheet load it asked for has come in. */
@@ -97,6 +109,8 @@ export class Grades {
   private merging = false;
   /** Whether a retire is waiting for its answer: a second one meanwhile is ignored. */
   private retiring = false;
+  /** Whether an add is waiting for its answer: a second one meanwhile is ignored. */
+  private adding = false;
   private reads = 0;
 
   constructor() {
@@ -114,7 +128,43 @@ export class Grades {
   }
 
   protected value(event: Event): string {
-    return (event.target as HTMLSelectElement).value;
+    return (event.target as HTMLSelectElement | HTMLInputElement).value;
+  }
+
+  /** Add a grade: a code of one to three capital letters not yet one of the sheet's grades. */
+  protected async add(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.adding) return;
+    this.error.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const grade = this.code().trim();
+    if (!/^[A-Z]{1,3}$/.test(grade)) {
+      this.error.set('A grade is a code of one to three capital letters.');
+      return;
+    }
+    if (this.grades().includes(grade)) {
+      this.error.set(`The grade ${grade} is already a grade.`);
+      return;
+    }
+    this.adding = true;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<GradesView>(
+          `/api/sheets/${encodeURIComponent(sheet)}/settings/grades`,
+          { grade },
+          this.session.headers(),
+        ),
+      );
+      if (this.session.sheet() === sheet) {
+        this.session.grades.set(saved.grades ?? STANDING_GRADES);
+        this.code.set('');
+      }
+    } catch {
+      if (this.session.sheet() === sheet) this.error.set(`The grade ${grade} could not be added: it may already be a grade.`);
+    } finally {
+      this.adding = false;
+    }
   }
 
   protected async retire(event: Event): Promise<void> {

@@ -23,9 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SettingService {
 
-    /** The grades that may have their own terms. */
-    public static final List<String> GRADES = List.of("A", "B", "C");
-
     private final SheetRepository sheets;
     private final Audit audit;
     private final RollupService rollup;
@@ -56,6 +53,7 @@ public class SettingService {
      */
     @Transactional
     public Sheet setGradeClerkLimit(String sheetId, String user, String grade, BigDecimal limit, LocalDate from) {
+        refuseUnknown(sheetId, grade);
         return record(sheetId, user, Sheet.gradeClerkLimitKey(grade), limit == null ? null : limit.toPlainString(),
                 from, false);
     }
@@ -82,7 +80,7 @@ public class SettingService {
     /** The grades with their own terms in force on the sheet's today, in grade order; a grade not in it uses the sheet's terms. */
     public Map<String, Integer> gradeTerms(Sheet sheet) {
         Map<String, Integer> terms = new LinkedHashMap<>();
-        for (String grade : GRADES) {
+        for (String grade : sheet.grades()) {
             sheet.gradeTermsOn(grade, sheet.getToday()).ifPresent(t -> terms.put(grade, t));
         }
         return terms;
@@ -99,6 +97,7 @@ public class SettingService {
      */
     @Transactional
     public Sheet setGradeTerms(String sheetId, String user, String grade, int terms, LocalDate from) {
+        refuseUnknown(sheetId, grade);
         return record(sheetId, user, Sheet.gradeTermsKey(grade), String.valueOf(terms), from, false);
     }
 
@@ -109,6 +108,7 @@ public class SettingService {
      */
     @Transactional
     public Sheet setGradeGrace(String sheetId, String user, String grade, Integer days, LocalDate from) {
+        refuseUnknown(sheetId, grade);
         return record(sheetId, user, Sheet.gradeGraceKey(grade), days == null ? null : days.toString(), from, true);
     }
 
@@ -149,6 +149,7 @@ public class SettingService {
     @Transactional
     public Sheet setGradeProofThreshold(String sheetId, String user, String grade, BigDecimal threshold,
             LocalDate from) {
+        refuseUnknown(sheetId, grade);
         return record(sheetId, user, Sheet.gradeProofThresholdKey(grade),
                 threshold == null ? null : threshold.toPlainString(), from, false);
     }
@@ -361,11 +362,14 @@ public class SettingService {
     }
 
     /**
-     * Set the default grade (A, B or C), which the quick-add bar gives a new person and an imported line with a blank
+     * Set the default grade (one of the sheet's grades), which the quick-add bar gives a new person and an imported line with a blank
      * grade takes; null means A. It changes no one already on the sheet. Every save is recorded, even of the same value.
      */
     @Transactional
     public Sheet setDefaultGrade(String sheetId, String user, String grade) {
+        if (grade != null) {
+            refuseUnknown(sheetId, grade);
+        }
         Sheet sheet = get(sheetId);
         sheet.setDefaultGrade(grade);
         Sheet saved = sheets.saveAndFlush(sheet);
@@ -375,14 +379,40 @@ public class SettingService {
     }
 
     /**
-     * Retire the grade (A, B or C): it cannot be chosen for a new person or in an edit from then on, and the default
+     * Add a grade to the sheet: a code of one to three capital letters that is not yet one of its grades. It is
+     * offered wherever a grade is chosen from then on. Refused for any other code.
+     */
+    @Transactional
+    public Sheet addGrade(String sheetId, String user, String grade) {
+        Sheet sheet = get(sheetId);
+        if (!grade.matches("[A-Z]{1,3}")) {
+            throw new GradeAddException(sheetId, grade, "a grade is one to three capital letters");
+        }
+        if (sheet.hasGrade(grade)) {
+            throw new GradeAddException(sheetId, grade, "already a grade");
+        }
+        sheet.addGrade(grade);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("GRADE_ADDED sheet=" + sheetId + " by=" + user + " grade=" + grade);
+        return saved;
+    }
+
+    /** Refuse a grade that is not one of the sheet's. */
+    private void refuseUnknown(String sheetId, String grade) {
+        if (!get(sheetId).hasGrade(grade)) {
+            throw new GradeAddException(sheetId, grade, "not a grade of the sheet");
+        }
+    }
+
+    /**
+     * Retire the grade (one of the sheet's): it cannot be chosen for a new person or in an edit from then on, and the default
      * grade falls back to A while it is retired; people already on it keep it. Refused for a grade that is not one of
      * the sheet's or is already retired.
      */
     @Transactional
     public Sheet retireGrade(String sheetId, String user, String grade) {
         Sheet sheet = get(sheetId);
-        if (!GRADES.contains(grade)) {
+        if (!sheet.hasGrade(grade)) {
             throw new GradeRetireException(sheetId, grade, "not a grade");
         }
         if (sheet.isGradeRetired(grade)) {

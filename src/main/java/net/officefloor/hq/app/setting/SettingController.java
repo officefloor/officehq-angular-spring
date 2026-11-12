@@ -36,13 +36,13 @@ public class SettingController {
      * yyyy-mm-dd, null when blank (the sheet's today); the period numbering from as yyyy-mm-dd, null when blank (off);
      * the entry date as yyyy-mm-dd, null when blank (off); the cap with two decimals, null when there is none; the grace days in whole days, null when blank (off); the fiscal year start month (1 to 12); the proof threshold with two decimals, null when there is none; the note threshold with two decimals, null when there is none; the review threshold with two decimals, null when there is none; the pot with two decimals, null when there is none; the alert threshold with two decimals, null when off; the parent sheet's id, null when there is none; the proof kinds, comma separated, null when there are none; the escalation gap in whole days, null when blank (off); the default grade, null when blank (A); the review SLA in whole days, null when blank (none); the most OPEN or PENDING claims a person may have, null when blank (none); the mid and high score thresholds, whole numbers, null when blank; whether the score log is on;
      * the permission matrix, by action (open, settle, void, reassign, close, reopen), the roles entered for it comma
-     * separated, null when blank (the standing rule). The grades retired, last.
+     * separated, null when blank (the standing rule). The grades retired; the sheet's grades (A, B, C, then those added), last.
      * Then every value recorded of each dated setting, by key (clerk-limit, clerk-limit-A, clerk-limit-B, clerk-limit-C, floor, terms, terms-A, terms-B, terms-C,
      * grace-A, grace-B, grace-C, late-pct, cap, proof-threshold, proof-threshold-A, proof-threshold-B, proof-threshold-C, note-threshold, review-threshold, rounding), from-date first to last.
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
-            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, String proofKinds, Integer escalateAfter, String defaultGrade, Integer reviewSla, Integer maxOpen, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Map<String, String> permissions, Map<String, List<DatedValue>> dated, List<String> retiredGrades) {
+            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, String proofKinds, Integer escalateAfter, String defaultGrade, Integer reviewSla, Integer maxOpen, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Map<String, String> permissions, Map<String, List<DatedValue>> dated, List<String> retiredGrades, List<String> grades) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
@@ -55,7 +55,7 @@ public class SettingController {
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
                     sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), sheet.getFiscalStartMonth(), shown(sheet.proofThresholdOn(today)),
                     shown(sheet.noteThresholdOn(today)), shown(sheet.reviewThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), sheet.getProofKinds(), sheet.getEscalateAfter(), sheet.getDefaultGrade(), sheet.getReviewSla(), sheet.getMaxOpen(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), permissions,
-                    dated, sheet.retiredGrades());
+                    dated, sheet.retiredGrades(), sheet.grades());
         }
 
         private static String shown(BigDecimal value) {
@@ -273,12 +273,16 @@ public class SettingController {
         }
     }
 
-    /** A default grade, A, B or C; blank or missing means A. */
-    public record DefaultGradeRequest(@Pattern(regexp = "\\s*[ABC]?\\s*") String defaultGrade) {
+    /** A default grade, one of the sheet's grades; blank or missing means A. */
+    public record DefaultGradeRequest(@Pattern(regexp = "\\s*([A-Z]{1,3})?\\s*") String defaultGrade) {
 
         String defaultGradeValue() {
             return defaultGrade == null || defaultGrade.isBlank() ? null : defaultGrade.trim();
         }
+    }
+
+    /** A grade to add: its code, trimmed. */
+    public record AddGradeRequest(@NotNull @Size(max = 100) String grade) {
     }
 
     /** A parent sheet's id; blank or missing means none. */
@@ -318,7 +322,7 @@ public class SettingController {
 
     @PutMapping("/clerk-limit/{grade}")
     public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid SettingsRequest request) {
         return view(service.setGradeClerkLimit(sheetId.trim(), user.trim(), grade, request.clerkLimitValue(),
@@ -341,7 +345,7 @@ public class SettingController {
 
     @PutMapping("/terms/{grade}")
     public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid TermsRequest request) {
         return view(service.setGradeTerms(sheetId.trim(), user.trim(), grade, request.termsValue(), request.from()));
@@ -349,7 +353,7 @@ public class SettingController {
 
     @PutMapping("/grace/{grade}")
     public SettingsView setGradeGrace(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GradeGraceRequest request) {
         return view(service.setGradeGrace(sheetId.trim(), user.trim(), grade, request.graceValue(), request.from()));
@@ -467,6 +471,14 @@ public class SettingController {
         return view(service.setDefaultGrade(sheetId.trim(), user.trim(), request.defaultGradeValue()));
     }
 
+    /** Add a grade: a code of one to three capital letters not yet a grade of the sheet. */
+    @PostMapping("/grades")
+    public SettingsView addGrade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid AddGradeRequest request) {
+        return view(service.addGrade(sheetId.trim(), user.trim(), request.grade().trim()));
+    }
+
     /** Retire a grade: it cannot be chosen for anyone from then on. */
     @PostMapping("/grades/{grade}/retire")
     public SettingsView retireGrade(@PathVariable @NotBlank @Size(max = 100) String sheetId,
@@ -499,7 +511,7 @@ public class SettingController {
 
     @PutMapping("/proof-threshold/{grade}")
     public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ProofThresholdRequest request) {
         return view(service.setGradeProofThreshold(sheetId.trim(), user.trim(), grade, request.proofThresholdValue(),

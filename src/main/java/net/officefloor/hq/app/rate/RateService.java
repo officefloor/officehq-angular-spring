@@ -112,8 +112,8 @@ public class RateService {
      */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal pct) {
-        if (!sheets.existsById(sheetId)) {
-            throw new SheetNotFoundException(sheetId);
+        if (!sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId)).hasGrade(grade)) {
+            throw new RateGradeException(sheetId, grade);
         }
         if (fromDate != null && toDate != null && toDate.isBefore(fromDate)) {
             throw new RateDatesException(fromDate, toDate);

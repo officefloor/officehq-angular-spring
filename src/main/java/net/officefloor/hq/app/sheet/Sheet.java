@@ -156,6 +156,10 @@ public class Sheet {
     @Column(name = "retired_grades")
     private String retiredGrades;
 
+    /** The grades added to the sheet beyond A, B and C (comma separated), in the order they were added; null: none. Not dated. */
+    @Column(name = "added_grades")
+    private String addedGrades;
+
     /** Whether a steward archived the sheet: everything stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -199,6 +203,7 @@ public class Sheet {
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
         copy.retiredGrades = retiredGrades;
+        copy.addedGrades = addedGrades;
         return copy;
     }
 
@@ -536,6 +541,27 @@ public class Sheet {
     /** The grade a person added without one takes: the default grade while it is not retired, else A. */
     public String defaultGradeOrA() {
         return defaultGrade == null || isGradeRetired(defaultGrade) ? "A" : defaultGrade;
+    }
+
+    /** The grades every sheet has, before any added to it. */
+    public static final List<String> STANDING_GRADES = List.of("A", "B", "C");
+
+    /** The sheet's grades: A, B and C, then those added to it in the order they were added. */
+    public List<String> grades() {
+        List<String> grades = new ArrayList<>(STANDING_GRADES);
+        if (addedGrades != null) {
+            grades.addAll(Arrays.asList(addedGrades.split(",")));
+        }
+        return grades;
+    }
+
+    public boolean hasGrade(String grade) {
+        return grades().contains(grade);
+    }
+
+    /** Add the grade to the sheet's grades. */
+    public void addGrade(String grade) {
+        addedGrades = addedGrades == null ? grade : addedGrades + "," + grade;
     }
 
     /** The grades retired on the sheet, in the order they were retired. */

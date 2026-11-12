@@ -138,7 +138,7 @@ public class RateController {
      */
     @GetMapping("/preview")
     public RollupService.RatePreview preview(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @RequestParam @Pattern(regexp = "[ABC]") String grade,
+            @RequestParam @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestParam @Pattern(regexp = "\\s*\\d{1,5}(\\.\\d{1,2})?\\s*") String pct,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
         return service.preview(sheetId.trim(), grade, new BigDecimal(pct.trim()).setScale(2, RoundingMode.UNNECESSARY));
@@ -146,7 +146,7 @@ public class RateController {
 
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 100) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.fromValue(),

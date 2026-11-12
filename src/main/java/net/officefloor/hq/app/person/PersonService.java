@@ -63,10 +63,10 @@ public class PersonService {
         return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId)).defaultGradeOrA();
     }
 
-    /** Refuse a retired grade chosen for a person. */
+    /** Refuse a grade chosen for a person that is not one of the sheet's, or is retired. */
     private void refuseRetired(String sheetId, String grade) {
         Sheet sheet = sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId));
-        if (sheet.isGradeRetired(grade)) {
+        if (!sheet.hasGrade(grade) || sheet.isGradeRetired(grade)) {
             throw new GradeRetiredException(sheetId, grade);
         }
     }

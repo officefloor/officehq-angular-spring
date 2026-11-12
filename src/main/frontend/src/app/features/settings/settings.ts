@@ -76,7 +76,6 @@ interface RoleView {
 }
 
 const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
-const GRADES = ['A', 'B', 'C'];
 /** The actions the permission matrix decides. */
 const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
 /** Roles typed for an action: clerk and/or steward, comma separated; blank keeps the standing rule. */
@@ -109,7 +108,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="froms()['clerk-limit'] ?? ''"
           (input)="setFrom('clerk-limit', value($event))"
         />
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (blank: the sheet's clerk limit)</label>
           <input
             [id]="'setting-clerk-limit-' + g"
@@ -161,7 +160,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="froms()['terms'] ?? ''"
           (input)="setFrom('terms', value($event))"
         />
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (blank: the sheet's terms)</label>
           <input
             [id]="'setting-terms-' + g"
@@ -179,7 +178,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
             (input)="setFrom('terms-' + g, value($event))"
           />
         }
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} (days past its due-by before a claim is overdue; blank: none)</label>
           <input
             [id]="'setting-grace-' + g"
@@ -338,7 +337,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'proofKinds'"
           (input)="proofKinds.set(value($event)); proofKindsEdited = true; settingsError.set(null)"
         />
-        <label for="setting-default-grade">Default grade (A, B or C: given by quick add and an import line with a blank grade; blank: A)</label>
+        <label for="setting-default-grade">Default grade (one of the sheet's grades: given by quick add and an import line with a blank grade; blank: A)</label>
         <input
           id="setting-default-grade"
           data-testid="setting-default-grade"
@@ -388,7 +387,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="froms()['proof-threshold'] ?? ''"
           (input)="setFrom('proof-threshold', value($event))"
         />
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (blank: the sheet's proof threshold)</label>
           <input
             [id]="'setting-proof-threshold-' + g"
@@ -475,15 +474,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
       </form>
       <p>Clerk limit in force: <strong data-testid="setting-clerk-limit-current">{{ session.settingOn('clerk-limit', session.today()) ?? '' | fig }}</strong></p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>Clerk limit for grade {{ g }} in force: <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ session.settingOn('clerk-limit-' + g, session.today()) ?? '' | fig }}</strong></p>
       }
       <p>Floor in force: <strong data-testid="setting-floor-current">{{ session.floor() ?? '' | fig }}</strong></p>
       <p>Terms in force: <strong data-testid="setting-terms-current">{{ session.terms() ?? '' | fig }}</strong></p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>Terms for grade {{ g }} in force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.settingOn('terms-' + g, session.today()) ?? '' | fig }}</strong></p>
       }
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>Grace days for grade {{ g }} in force: <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ session.settingOn('grace-' + g, session.today()) ?? '' | fig }}</strong></p>
       }
       <p>Late percent in force: <strong data-testid="setting-late-pct-current">{{ session.latePct() ?? '' | fig }}</strong></p>
@@ -508,7 +507,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <p>Who may {{ a }}: <strong [attr.data-testid]="'setting-perm-' + a + '-current'">{{ permsCurrent()[a] ?? '' | fig }}</strong></p>
       }
       <p>Proof threshold in force: <strong data-testid="setting-proof-threshold-current">{{ session.settingOn('proof-threshold', session.today()) ?? '' | fig }}</strong></p>
-      @for (g of grades; track g) {
+      @for (g of grades(); track g) {
         <p>Proof threshold for grade {{ g }} in force: <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ session.settingOn('proof-threshold-' + g, session.today()) ?? '' | fig }}</strong></p>
       }
       <p>Note threshold in force: <strong data-testid="setting-note-threshold-current">{{ session.settingOn('note-threshold', session.today()) ?? '' | fig }}</strong></p>
@@ -600,7 +599,7 @@ export class Settings {
   protected readonly session = inject(Session);
 
   protected readonly roles = ROLES;
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly actions = ACTIONS;
   /** Each action's roles as typed. */
   protected readonly perms = signal<Record<string, string>>({});
@@ -833,12 +832,12 @@ export class Settings {
       }
     }
     const saveLimit = this.clerkLimitEdited || (nothingTyped && !this.lastFocused);
-    const saveGradeClerkLimit = GRADES.filter((g) => this.gradeClerkLimitEdited.has(g));
+    const saveGradeClerkLimit = this.grades().filter((g) => this.gradeClerkLimitEdited.has(g));
     const saveFloor = this.floorEdited;
     const saveTerms = this.termsEdited;
-    const saveGradeTerms = GRADES.filter((g) => this.gradeTermsEdited.has(g));
-    const saveGradeGrace = GRADES.filter((g) => this.gradeGraceEdited.has(g));
-    const saveGradeProofThreshold = GRADES.filter((g) => this.gradeProofThresholdEdited.has(g));
+    const saveGradeTerms = this.grades().filter((g) => this.gradeTermsEdited.has(g));
+    const saveGradeGrace = this.grades().filter((g) => this.gradeGraceEdited.has(g));
+    const saveGradeProofThreshold = this.grades().filter((g) => this.gradeProofThresholdEdited.has(g));
     const saveLatePct = this.latePctEdited;
     const savePolicyDate = this.policyDateEdited;
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
@@ -1365,13 +1364,13 @@ export class Settings {
     for (const [g, t] of Object.entries(settings.gradeTerms)) gradeTerms[g] = String(t);
     this.gradeTerms.set(gradeTerms);
     const gradeGrace: Record<string, string> = {};
-    for (const g of GRADES) gradeGrace[g] = this.session.settingOn('grace-' + g, this.session.today()) ?? '';
+    for (const g of this.grades()) gradeGrace[g] = this.session.settingOn('grace-' + g, this.session.today()) ?? '';
     this.gradeGrace.set(gradeGrace);
     const gradeClerkLimit: Record<string, string> = {};
-    for (const g of GRADES) gradeClerkLimit[g] = this.session.settingOn('clerk-limit-' + g, this.session.today()) ?? '';
+    for (const g of this.grades()) gradeClerkLimit[g] = this.session.settingOn('clerk-limit-' + g, this.session.today()) ?? '';
     this.gradeClerkLimit.set(gradeClerkLimit);
     const gradeProofThreshold: Record<string, string> = {};
-    for (const g of GRADES) gradeProofThreshold[g] = this.session.settingOn('proof-threshold-' + g, this.session.today()) ?? '';
+    for (const g of this.grades()) gradeProofThreshold[g] = this.session.settingOn('proof-threshold-' + g, this.session.today()) ?? '';
     this.gradeProofThreshold.set(gradeProofThreshold);
     this.latePct.set(settings.latePct);
     this.froms.set({});

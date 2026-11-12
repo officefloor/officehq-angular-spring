@@ -19,7 +19,11 @@ interface SheetView {
   lastSettleBatch: number | null;
   steward: boolean;
   visiblePeople: number[] | null;
+  grades: string[];
 }
+
+/** The grades every sheet has, before any added to it. */
+export const STANDING_GRADES = ['A', 'B', 'C'];
 
 // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
 // every request in the X-User header.
@@ -47,6 +51,8 @@ export class Session {
   /** For a restricted user, the ids of the people the people list shows them (their crews' people and themselves), as
    *  of the sheet's last load; null for any other user, who sees everyone. */
   readonly visiblePeople = signal<number[] | null>(null);
+  /** The active sheet's grades: A, B and C, then those added to it in the order they were added. */
+  readonly grades = signal<string[]>(STANDING_GRADES);
   /** The number of the active sheet's last bulk settle batch; null while there has been none. */
   readonly lastSettleBatch = signal<number | null>(null);
   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
@@ -245,5 +251,6 @@ export class Session {
     this.steward.set(view.steward);
     this.visiblePeople.set(view.visiblePeople);
     this.lastSettleBatch.set(view.lastSettleBatch);
+    this.grades.set(view.grades ?? STANDING_GRADES);
   }
 }
