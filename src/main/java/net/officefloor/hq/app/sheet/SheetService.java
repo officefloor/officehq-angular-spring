@@ -218,12 +218,29 @@ public class SheetService {
         if (!sheet.numbersByPeriod()) {
             return sheet.nextClaimNumber();
         }
-        String prefix = periods.findBySheetIdOrderByFromDateAsc(id).stream()
-                .filter(p -> p.contains(date)).findFirst().map(Period::getName).orElse("X");
+        String prefix = periodPrefix(id, date);
         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(id, prefix)
                 .orElseGet(() -> new ClaimSequence(id, prefix));
         String number = sequence.nextClaimNumber();
         sequences.save(sequence);
         return number;
+    }
+
+    /** The number a claim keeps when re-dated from one date to another: while the sheet numbers by period
+     *  and the new date is in another period (or no period, X) than the old, the next in the new period's
+     *  sequence (the old number is never given again); otherwise the number it has. */
+    @Transactional
+    public String redatedClaimNumber(String id, String number, LocalDate from, LocalDate to) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        if (number == null || !sheet.numbersByPeriod() || periodPrefix(id, from).equals(periodPrefix(id, to))) {
+            return number;
+        }
+        return nextClaimNumber(id, to);
+    }
+
+    /** The prefix of the numbering sequence of a date: the name of the period containing it, else X. */
+    private String periodPrefix(String id, LocalDate date) {
+        return periods.findBySheetIdOrderByFromDateAsc(id).stream()
+                .filter(p -> p.contains(date)).findFirst().map(Period::getName).orElse("X");
     }
 }

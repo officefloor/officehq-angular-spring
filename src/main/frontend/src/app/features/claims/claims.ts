@@ -110,6 +110,17 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
           <button type="button" data-testid="claim-defer" [disabled]="acting() === c.id" (click)="defer(c)">
             Defer<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
           </button>
+          <label [for]="'claim-date-new-' + c.id">New date</label>
+          <input
+            [id]="'claim-date-new-' + c.id"
+            data-testid="claim-date-new"
+            placeholder="YYYY-MM-DD"
+            [value]="redates()[c.id] ?? ''"
+            (input)="setRedate(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-redate" [disabled]="acting() === c.id" (click)="redate(c)">
+            Re-date<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -198,6 +209,8 @@ export class PersonClaims {
   ];
   /** The date typed to defer each claim to, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The new date typed to re-date each claim to, by claim id. */
+  protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The reason typed to reject each claim, by claim id. */
@@ -296,6 +309,22 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.defer(c.id, this.deferDates()[c.id] ?? '');
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setRedate(id: number, date: string): void {
+    this.clearActionError(id);
+    this.redates.update((d) => ({ ...d, [id]: date }));
+  }
+
+  protected async redate(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.redate(c.id, this.redates()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

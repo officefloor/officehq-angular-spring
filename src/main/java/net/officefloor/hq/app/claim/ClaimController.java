@@ -259,6 +259,19 @@ public class ClaimController {
         return ClaimView.of(service.defer(sheetId.trim(), user.trim(), claimId, request.until()));
     }
 
+    /** The date a claim is re-dated to; a missing date is the sheet's today. */
+    public record RedateRequest(LocalDate date) {
+    }
+
+    /** Re-date an OPEN or PENDING claim: a steward moves it to another date. */
+    @PostMapping("/claims/{claimId}/redate")
+    public ClaimView redate(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid RedateRequest request) {
+        return ClaimView.of(service.redate(sheetId.trim(), user.trim(), claimId, request.date()));
+    }
+
     /** The amount split off a claim. */
     public record SplitRequest(@NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount) {
     }
@@ -390,6 +403,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimSplitException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> splitRefused(ClaimSplitException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A re-date that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimRedateException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> redateRefused(ClaimRedateException e) {
         return Map.of("message", e.getMessage());
     }
 

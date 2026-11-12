@@ -324,6 +324,36 @@ public class ClaimService {
         return updated;
     }
 
+    /** Re-date an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement bound
+     *  it to stays bound; its period follows the new date, and while the sheet numbers by period a move
+     *  into another period gives it the next number of that period's sequence. A missing date is the
+     *  sheet's today. Refused unless the user is a steward, and for a claim in any other status, a claim
+     *  in a closed period or a new date inside one, and a date after its person's retirement. */
+    @Transactional
+    public Claim redate(String sheetId, String user, long claimId, LocalDate date) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, claim.getDate());
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ClaimRedateException("Only a steward can re-date a claim.");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ClaimRedateException("Only an OPEN or PENDING claim can be re-dated.");
+        }
+        refuseClosed(sheetId, on);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        refuseRetired(person, on);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        LocalDate old = claim.getDate();
+        claim.setNumber(sheets.redatedClaimNumber(sheetId, claim.getNumber(), old, on));
+        claim.setDate(on);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("CLAIM_REDATED", updated, person, user, updated.getNumber(), " old=" + old + " new=" + on);
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
      *  loses any figure a statement bound it to (live again until its new person's next statement), and is
      *  listed as its new person's newest claim. Refused unless the user's role may reassign, and for a settled or

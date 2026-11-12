@@ -380,6 +380,28 @@ export class Claims {
     }
   }
 
+  /** Re-date an OPEN or PENDING claim (a steward's action); a blank date is the sheet's today. Its due-by
+   *  and any bound figure stay; its number may follow the new date's period. An error message when refused. */
+  async redate(id: number, date: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (date.trim() !== '' && !isDate(date.trim())) return 'Enter the new date as YYYY-MM-DD.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(
+          `${this.url(sid)}/claims/${id}/redate`,
+          { date: date.trim() === '' ? null : date.trim() },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('re-date', e);
+    }
+  }
+
   /** Split an amount (above 0.00, below the claim's) off an OPEN claim: the claim keeps the rest, unbound
    *  from any statement, and a new OPEN claim of the same person with the amount split off is listed
    *  newest; an error message when refused. */
