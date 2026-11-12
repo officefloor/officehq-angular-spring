@@ -1,0 +1,64 @@
+{
+  "checkpoint": 51,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp51_proofs",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim has a proofs count, raised by one with a button on the claim (not on a SETTLED or VOID\nclaim, nor on one a closed period would refuse an edit of; CLAIM_PROOF_ADDED naming the claim, ending proofs=<count>). The sheet gains a proof\nthreshold (settings, dated like the floor; SETTING_CHANGED key=proof-threshold value=<amount>;\nblank means none). A claim whose due is above the threshold in force on the claim's date cannot be\nsettled or approved while its proofs count is 0: the action is refused with an error on the claim,\nbefore the clerk limit is considered (so it never goes to PENDING). Show the proofs count.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim has a proofs count, raised by one with a button on the claim (not on a SETTLED or VOID\nclaim, nor on one a closed period would refuse an edit of; CLAIM_PROOF_ADDED naming the claim, ending proofs=<count>). The sheet gains a proof\nthreshold (settings, dated like the floor; SETTING_CHANGED key=proof-threshold value=<amount>;\nblank means none). A claim whose due is above the threshold in force on the claim's date cannot be\nsettled or approved while its proofs count is 0: the action is refused with an error on the claim,\nbefore the clerk limit is considered (so it never goes to PENDING). Show the proofs count.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7099549855060a1116fa214a57a0bf6dc4d720f0",
+  "reset_sha": "",
+  "preagent_sha": "9d9e94a7f0992a7dcc2079d0caa584da867d9fc0",
+  "prev_sha": "9d9e94a7f0992a7dcc2079d0caa584da867d9fc0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3358987999999998,
+    "input_tokens": 38,
+    "output_tokens": 12311,
+    "cache_read_tokens": 1288114,
+    "cache_creation_tokens": 103988,
+    "num_turns": 21,
+    "duration_ms": 432178,
+    "duration_api_ms": 109120,
+    "model": "claude-opus-5-5",
+    "session_id": "f4980d5b-10f9-4fdf-bca6-760567cea135",
+    "stop_reason": "success",
+    "result_text": "I've added proofs and the proof threshold, and all 4 Playwright tests in `bin/e2e` now pass.\n\n**What it does now**\n- Each claim has a proofs count, shown on the claim (`claim-proofs`), and an **Add proof** button (`claim-proof`) that raises it by one.\n- Adding a proof is refused, with the error on the claim, if the claim is SETTLED or VOID or dated in a closed period. When it succeeds it writes `CLAIM_PROOF_ADDED \u2026 proofs=<n>` to the audit file.\n- Settings have a new proof threshold. It is dated like the floor, and a blank value means no threshold. Saving it records `SETTING_CHANGED key=proof-threshold value=<amount>`.\n- When a claim's due is above the threshold in force on the claim's date and it has no proofs, settling or approving it is refused with an error on the claim. This check runs before the clerk limit, so the claim never goes to PENDING. A claim with no due figure (n/a), or a date with no threshold, is not checked.\n- A bulk settle skips such claims and counts them as refused, the same way it handles other claims it can't settle.\n\n**Where the changes are**\n- **Stored data:** a new migration, `V38__claim_proofs.sql`, adds a `proofs` column to claims, starting at 0.\n- **Server:** a new `POST \u2026/claims/{id}/proof` endpoint, a new `PUT \u2026/settings/proof-threshold` endpoint, and a new error type for refused proofs and unproved settles. The threshold check is in `ClaimService`, in both settle and approve.\n- **Front end:** the button and count on each claim, and the threshold field with its from-date and \"in force\" value on the settings screen.\n\n**One fix outside the request:** scenario 3 failed on the \"deferred until\" field. The screen only showed that date while a claim was still deferred, but the test expects it to keep showing the recorded date afterwards. It now always shows the date once a claim has been deferred, and stays blank for claims that never were. This changes how an existing field displays, so you may want to check that's what you intend.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3358987999999998,
+        "num_turns": 21,
+        "duration_ms": 432178,
+        "duration_api_ms": 109120,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp51.agent.jsonl",
+  "agent_diff_file": "cp51.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
