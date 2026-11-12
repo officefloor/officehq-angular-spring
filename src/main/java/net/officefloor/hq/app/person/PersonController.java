@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -154,10 +155,12 @@ public class PersonController {
     private final MergeService merges;
     private final TransferService transfers;
     private final ImportPeopleService imports;
+    private final SnapshotCompareService snapshotCompare;
 
     public PersonController(PersonService service, StatementService statements, SheetService sheets,
             WatchService watches, BulkGradeService bulkGrade, BulkRetireService bulkRetire, MergeService merges,
-            TransferService transfers, ImportPeopleService imports) {
+            TransferService transfers, ImportPeopleService imports, SnapshotCompareService snapshotCompare) {
+        this.snapshotCompare = snapshotCompare;
         this.imports = imports;
         this.transfers = transfers;
         this.service = service;
@@ -187,6 +190,14 @@ public class PersonController {
                         aliases.getOrDefault(p.getId(), List.of()), keysInTree,
                         snapshotLines.getOrDefault(p.getId(), List.of())))
                 .toList();
+    }
+
+    /** Two snapshot dates compared, one line per person in list order (a blank to-date: the due-totals now). */
+    @GetMapping("/snapshot-compare")
+    public List<String> snapshotCompare(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to) {
+        return snapshotCompare.compare(sheetId.trim(), from, to);
     }
 
     @PostMapping
