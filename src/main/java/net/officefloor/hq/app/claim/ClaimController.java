@@ -53,14 +53,15 @@ public class ClaimController {
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
             String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
             List<ClaimLineView> lines, Long rateStamp, LocalDate reviewOn, boolean waived,
-            Map<String, Integer> proofsByKind, boolean held) {
+            Map<String, Integer> proofsByKind, boolean held, List<ClaimShareView> shares) {
 
-        /** A claim with no comments or lines yet. */
+        /** A claim with no comments, lines or shares yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
-            return of(claim, log, List.of(), List.of());
+            return of(claim, log, List.of(), List.of(), List.of());
         }
 
-        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
+        static ClaimView of(Claim claim, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines,
+                List<ClaimShare> shares) {
             return new ClaimView(claim.getId(), claim.getPersonId(),
                     claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -74,7 +75,8 @@ public class ClaimController {
                     claim.getTags(), claim.getVoidReason(),
                     comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
                     lines.stream().map(ClaimLineView::of).toList(), claim.rateStamp(), claim.getReviewOn(),
-                    claim.isWaived(), proofsByKind(claim), claim.isHeld());
+                    claim.isWaived(), proofsByKind(claim), claim.isHeld(),
+                    shares.stream().map(ClaimShareView::of).toList());
         }
 
         private static Map<String, Integer> proofsByKind(Claim claim) {
@@ -90,6 +92,15 @@ public class ClaimController {
         static ClaimLineView of(ClaimLine line) {
             return new ClaimLineView(line.getLabel(), line.getQty(),
                     line.getUnit().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
+        }
+    }
+
+    /** A person a claim is shared with, and the share of its due they hold with two decimals. */
+    public record ClaimShareView(Long personId, String share) {
+
+        static ClaimShareView of(ClaimShare share) {
+            return new ClaimShareView(share.getPersonId(),
+                    share.getShare().setScale(2, RoundingMode.UNNECESSARY).toPlainString());
         }
     }
 
@@ -193,10 +204,12 @@ public class ClaimController {
         Map<Long, List<ClaimLog>> logs = service.logs(sheetId.trim());
         Map<Long, List<ClaimComment>> comments = service.comments(sheetId.trim());
         Map<Long, List<ClaimLine>> lines = service.lines(sheetId.trim());
+        Map<Long, List<ClaimShare>> shares = service.shares(sheetId.trim());
         return service.list(sheetId.trim()).stream()
                 .map(claim -> ClaimView.of(claim, logs.getOrDefault(claim.getId(), List.of()),
                         comments.getOrDefault(claim.getId(), List.of()),
-                        lines.getOrDefault(claim.getId(), List.of())))
+                        lines.getOrDefault(claim.getId(), List.of()),
+                        shares.getOrDefault(claim.getId(), List.of())))
                 .toList();
     }
 
@@ -521,6 +534,27 @@ public class ClaimController {
         return view(service.restore(sheetId.trim(), user.trim(), id));
     }
 
+    /** The person a claim is shared with, and their share: a percent with up to two decimals. */
+    public record ShareRequest(@NotNull Long personId,
+            @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
+
+        BigDecimal shareValue() {
+            return new BigDecimal(share.trim()).setScale(2, RoundingMode.UNNECESSARY);
+        }
+    }
+
+    /**
+     * Share a claim with another person: refused for its own person, a person already holding a share, shares totalling
+     * more than 100.00, and a SETTLED, VOID or DELETED claim.
+     */
+    @PostMapping("/claims/{id}/shares")
+    public ClaimView share(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ShareRequest request) {
+        return view(service.share(sheetId.trim(), user.trim(), id, request.personId(), request.shareValue()));
+    }
+
     /** The text of a comment on a claim: not blank. */
     public record CommentRequest(@NotNull @Size(max = 1000) String text) {
     }
@@ -567,6 +601,7 @@ public class ClaimController {
 
     /** The claim as shown, with its status log, comments and lines. */
     ClaimView view(Claim claim) {
-        return ClaimView.of(claim, service.logOf(claim), service.commentsOf(claim), service.linesOf(claim));
+        return ClaimView.of(claim, service.logOf(claim), service.commentsOf(claim), service.linesOf(claim),
+                service.sharesOf(claim));
     }
 }

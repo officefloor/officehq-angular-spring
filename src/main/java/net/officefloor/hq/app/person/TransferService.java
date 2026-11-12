@@ -10,6 +10,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimCommentRepository;
 import net.officefloor.hq.app.claim.ClaimLineRepository;
+import net.officefloor.hq.app.claim.ClaimShareRepository;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -56,6 +57,7 @@ public class TransferService {
     private final ClaimLogRepository logs;
     private final ClaimCommentRepository comments;
     private final ClaimLineRepository lines;
+    private final ClaimShareRepository shares;
     private final ClaimService claimService;
     private final SheetTagRepository tags;
     private final StatementRepository statements;
@@ -71,7 +73,9 @@ public class TransferService {
             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
             ClaimCommentRepository comments, ClaimService claimService, SheetTagRepository tags,
             StatementRepository statements, PoolRepository pools, RoleService roles, SheetService sheets,
-            RollupService rollup, Audit audit, PersonService personService, ClaimLineRepository lines, CrewRepository crews) {
+            RollupService rollup, Audit audit, PersonService personService, ClaimLineRepository lines, CrewRepository crews,
+            ClaimShareRepository shares) {
+        this.shares = shares;
         this.crews = crews;
         this.lines = lines;
         this.people = people;
@@ -204,6 +208,13 @@ public class TransferService {
             comments.moveTo(claimIds, to);
             lines.moveTo(claimIds, to);
         }
+
+        // Shares of their claims, and the shares they hold, stay on this sheet's people: they are dropped.
+        if (!claimIds.isEmpty()) {
+            shares.deleteAll(shares.findByClaimIdInOrderByIdAsc(claimIds));
+        }
+        shares.deleteAll(shares.findByPersonIdOrderByIdAsc(from.getId()));
+        shares.flush();
 
         // The statements follow the person; patron links, pool and crew memberships and watches are dropped.
         statements.follow(from, saved);

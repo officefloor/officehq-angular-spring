@@ -1738,28 +1738,76 @@ export class People {
     return excessOver(this.uncappedDueTotalOf(person), this.session.cap());
   }
 
-  /** The sum of the person's dues as {@link dueTotalOf} has it, before the cap. */
+  /**
+   * The sum of the person's dues as {@link dueTotalOf} has it, before the cap: each of their claims' less the parts
+   * its holders have, and the parts they hold of the claims shared with them (which make it a figure, not n/a).
+   */
   private uncappedDueTotalOf(person: Person): string {
     const counted = this.claimsOf(person.id).filter((c) => live(c, person, this.session.today()));
     const dues = counted.map((c) => claimDue(c, this.rates(), person.grades, this.session));
+    const held = this.heldParts().get(person.id) ?? [];
     const today = this.session.today();
     // A due under a grade the person had on an earlier date counts too.
     const anyDated = today !== null && counted.some((c, i) => dues[i] !== 'n/a' && c.date <= today);
-    if (this.rateOf(this.gradeOf(person)) === undefined && !counted.some(dueFixed) && !anyDated) return 'n/a';
-    return sumDues(dues);
+    if (this.rateOf(this.gradeOf(person)) === undefined && !counted.some(dueFixed) && !anyDated && held.length === 0) {
+      return 'n/a';
+    }
+    return sumDues([...counted.map((c, i) => this.ownPartOf(c, dues[i])), ...held.map((h) => h.part)]);
+  }
+
+  /**
+   * The parts of the shared claims each person holds, by holder id: for each claim that counts in its own person's live
+   * totals and has a due, the due times the holder's share divided by 100, rounded half to even.
+   */
+  private readonly heldParts = computed(() => {
+    const today = this.session.today();
+    const by = new Map<number, { claim: Claim; part: string }[]>();
+    for (const owner of this.people()) {
+      for (const c of this.claimsOf(owner.id)) {
+        if ((c.shares ?? []).length === 0 || !live(c, owner, today)) continue;
+        const due = claimDue(c, this.rates(), owner.grades, this.session);
+        if (due === 'n/a') continue;
+        for (const h of c.shares) {
+          const list = by.get(h.personId) ?? [];
+          list.push({ claim: c, part: sumShared([{ figure: due, share: h.share }]) });
+          by.set(h.personId, list);
+        }
+      }
+    }
+    return by;
+  });
+
+  /** The claim's due less the parts its holders have: what its own person's totals count of it. */
+  private ownPartOf(claim: Claim, due: string): string {
+    if (due === 'n/a' || (claim.shares ?? []).length === 0) return due;
+    return changeFrom(due, sumDues(claim.shares.map((h) => sumShared([{ figure: due, share: h.share }]))));
   }
 
   /**
    * The dues of the person's SETTLED claims that count in the live totals, at their frozen figures, skipping the n/a
-   * ones: with {@link openTotalOf} it adds up to the due-total before the cap.
+   * ones, each less its holders' parts, and the parts they hold of SETTLED claims: with {@link openTotalOf} it adds up
+   * to the due-total before the cap.
    */
   protected settledTotalOf(person: Person): string {
-    return this.liveDuesOf(person, (c) => c.status === 'SETTLED');
+    return this.liveSharedDuesOf(person, (c) => c.status === 'SETTLED');
   }
 
-  /** The dues of the person's OPEN and PENDING claims that count in the live totals, skipping the n/a ones. */
+  /**
+   * The dues of the person's OPEN and PENDING claims that count in the live totals, skipping the n/a ones, each less
+   * its holders' parts, and the parts they hold of OPEN and PENDING claims.
+   */
   protected openTotalOf(person: Person): string {
-    return this.liveDuesOf(person, isOpen);
+    return this.liveSharedDuesOf(person, isOpen);
+  }
+
+  /** As {@link liveDuesOf}, each claim less its holders' parts, with the parts the person holds of claims passing the test. */
+  private liveSharedDuesOf(person: Person, test: (c: Claim) => boolean): string {
+    const today = this.session.today();
+    const own = this.claimsOf(person.id)
+      .filter((c) => test(c) && live(c, person, today))
+      .map((c) => this.ownPartOf(c, claimDue(c, this.rates(), person.grades, this.session)));
+    const held = (this.heldParts().get(person.id) ?? []).filter((h) => test(h.claim)).map((h) => h.part);
+    return sumDues([...own, ...held]);
   }
 
   /** The sum of the dues of the person's claims that count in the live totals and pass the test. */

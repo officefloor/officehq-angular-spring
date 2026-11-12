@@ -21,6 +21,8 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShare;
+import net.officefloor.hq.app.claim.ClaimShareRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
@@ -68,10 +70,13 @@ public class RollupService {
     private final Audit audit;
     private final SheetSnapshotService snapshots;
     private final EntityManager entities;
+    private final ClaimShareRepository shares;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository logs,
             RateRepository rates, RateLogRepository rateLogs, RateVersionRepository rateVersions, SheetRepository sheets,
-            PersonAliasRepository aliases, Audit audit, SheetSnapshotService snapshots, EntityManager entities) {
+            PersonAliasRepository aliases, Audit audit, SheetSnapshotService snapshots, EntityManager entities,
+            ClaimShareRepository shares) {
+        this.shares = shares;
         this.people = people;
         this.claims = claims;
         this.logs = logs;
@@ -96,11 +101,36 @@ public class RollupService {
                 counted.computeIfAbsent(claim.getPersonId(), id -> new ArrayList<>()).add(claim);
             }
         }
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        // The parts of shared claims: each holder's added up, and each claim's taken off its own person's due.
+        Map<Long, List<ClaimShare>> sharesOf = new LinkedHashMap<>();
+        for (ClaimShare share : shares.findBySheetIdOrderByIdAsc(sheetId)) {
+            sharesOf.computeIfAbsent(share.getClaimId(), id -> new ArrayList<>()).add(share);
+        }
+        Map<Long, BigDecimal> heldParts = new LinkedHashMap<>();
+        Map<Long, BigDecimal> givenParts = new LinkedHashMap<>();
+        for (Person person : listed) {
+            for (Claim claim : counted.getOrDefault(person.getId(), List.of())) {
+                List<ClaimShare> claimShares = sharesOf.getOrDefault(claim.getId(), List.of());
+                if (claimShares.isEmpty() || !person.countsClaimed(claim, today) || !person.counts(claim, today)) {
+                    continue;
+                }
+                Optional<BigDecimal> claimDue = dueOf(sheet, sheetRates, person, claim);
+                if (claimDue.isEmpty()) {
+                    continue;
+                }
+                for (ClaimShare share : claimShares) {
+                    BigDecimal part = share.partOf(claimDue.get());
+                    heldParts.merge(share.getPersonId(), part, BigDecimal::add);
+                    givenParts.merge(claim.getId(), part, BigDecimal::add);
+                }
+            }
+        }
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = zero();
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+        for (Person person : listed) {
             List<Claim> theirs = counted.getOrDefault(person.getId(), List.of()).stream()
                     .filter(claim -> person.countsClaimed(claim, today))
                     .toList();
@@ -127,7 +157,7 @@ public class RollupService {
                     overdueCount++;
                 }
                 if (claimDue.isPresent()) {
-                    due = due.add(claimDue.get());
+                    due = due.add(claimDue.get()).subtract(givenParts.getOrDefault(claim.getId(), zero()));
                     // A correction leaves the score's settled figure alone.
                     if (claim.getStatus() == ClaimStatus.SETTLED && claim.getCorrects() == null) {
                         settled = settled.add(claimDue.get());
@@ -140,6 +170,12 @@ public class RollupService {
                         anyDue = true;
                     }
                 }
+            }
+            // The parts of claims shared with them count in their due.
+            BigDecimal held = heldParts.get(person.getId());
+            if (held != null) {
+                due = due.add(held);
+                anyDue = true;
             }
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);

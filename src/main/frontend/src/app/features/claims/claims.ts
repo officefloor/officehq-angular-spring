@@ -71,6 +71,14 @@ export interface Claim {
   proofsByKind: Record<string, number>;
   /** Whether the claim is held: an OPEN or PENDING one then leaves the live totals unless a statement binds it. */
   held: boolean;
+  /** The people the claim is shared with, in the order they were added. */
+  shares: ClaimShare[];
+}
+
+/** A person a claim is shared with, and their share of its due: a percent with two decimals, e.g. "33.33". */
+export interface ClaimShare {
+  personId: number;
+  share: string;
 }
 
 /** The kinds a proof can be: one added with none chosen is a receipt. */
@@ -343,7 +351,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Waived</th><th scope="col">Held</th>
-            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Timeline</th><th scope="col">Comments</th><th scope="col">Lines</th>
+            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Timeline</th><th scope="col">Comments</th><th scope="col">Lines</th><th scope="col">Shares</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -387,6 +395,37 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-split-from">{{ c.splitFrom ?? '' | fig }}</td>
               <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-reminded">{{ c.remindedOn ?? '' | fig }}</td>
+              <td>
+                <span data-testid="claim-shares">{{ sharesShown(c) | fig }}</span>
+                <label class="visually-hidden" [for]="'claim-share-select-' + c.id">Share with</label>
+                <select
+                  [id]="'claim-share-select-' + c.id"
+                  data-testid="claim-share-select"
+                  (change)="setShareEntry(c.id, 'personId', value($event))"
+                >
+                  <option value="" [selected]="!shareEntries()[c.id]?.personId">Share with…</option>
+                  @for (o of people(); track o.id) {
+                    <option [value]="o.id" [selected]="shareEntries()[c.id]?.personId === '' + o.id">{{ o.name | fig }}</option>
+                  }
+                </select>
+                <label class="visually-hidden" [for]="'claim-share-pct-' + c.id">Share percent</label>
+                <input
+                  [id]="'claim-share-pct-' + c.id"
+                  data-testid="claim-share-pct"
+                  inputmode="decimal"
+                  placeholder="Share %"
+                  [value]="shareEntries()[c.id]?.share ?? ''"
+                  (input)="setShareEntry(c.id, 'share', value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-share-add"
+                  [attr.aria-label]="'Share claim of ' + c.amount + ' on ' + c.date"
+                  (click)="share(c)"
+                >
+                  Share
+                </button>
+              </td>
               <td data-testid="claim-review-late">{{ reviewLate(c) ? 'yes' : 'no' | fig }}</td>
               <td>
                 <ol class="claim-log">
@@ -774,6 +813,8 @@ export class Claims implements OnInit {
   protected readonly timelines = signal<Record<number, { of: Claim; lines: string[] }>>({});
   /** The new line typed for each DRAFT claim, by claim id. */
   protected readonly lineEntries = signal<Record<number, LineEntry>>({});
+  /** The person picked (their id as text) and the share typed to share each claim with, by claim id. */
+  protected readonly shareEntries = signal<Record<number, { personId: string; share: string }>>({});
   /** The new amount typed for each DRAFT claim in its row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
 
@@ -1114,6 +1155,61 @@ export class Claims implements OnInit {
           : claim.held
             ? 'This claim could not be released.'
             : 'This claim could not be held.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  /** The claim's holders as <name> <share>, comma and space separated; blank when it is not shared. */
+  protected sharesShown(claim: Claim): string {
+    return (claim.shares ?? [])
+      .map((h) => `${this.people().find((p) => p.id === h.personId)?.name ?? ''} ${h.share}`)
+      .join(', ');
+  }
+
+  protected setShareEntry(id: number, field: 'personId' | 'share', text: string): void {
+    this.shareEntries.update((all) => ({ ...all, [id]: { ...(all[id] ?? { personId: '', share: '' }), [field]: text } }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /**
+   * Share the claim with the person picked, at the share typed (a percent, more than 0.00, two decimals); the store
+   * refuses the claim's own person, a person already holding a share, shares totalling more than 100.00, and a
+   * SETTLED, VOID or DELETED claim.
+   */
+  protected async share(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const entry = this.shareEntries()[claim.id] ?? { personId: '', share: '' };
+    const share = entry.share.trim();
+    if (entry.personId === '') {
+      this.actionError.set({ id: claim.id, message: 'Pick the person to share this claim with.' });
+      return;
+    }
+    if (!/^\d{1,3}(\.\d{1,2})?$/.test(share) || !/[1-9]/.test(share)) {
+      this.actionError.set({ id: claim.id, message: 'A share is a percent more than 0.00, with up to two decimals.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/shares`;
+    try {
+      const saved = await firstValueFrom(
+        this.http.post<Claim>(url, { personId: Number(entry.personId), share }, this.session.headers()),
+      );
+      this.shareEntries.update((all) => ({ ...all, [claim.id]: { ...entry, share: '' } }));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch {
+      const holder = Number(entry.personId);
+      const total = (claim.shares ?? []).reduce((t, h) => t + Math.round(Number(h.share) * 100), 0) + Math.round(Number(share) * 100);
+      const message =
+        claim.status === 'SETTLED' || claim.status === 'VOID' || claim.status === 'DELETED'
+          ? `This claim is ${claim.status}: it cannot be shared.`
+          : holder === claim.personId
+            ? 'A claim cannot be shared with its own person.'
+            : (claim.shares ?? []).some((h) => h.personId === holder)
+              ? 'That person already holds a share of this claim.'
+              : total > 10000
+                ? 'The shares of this claim cannot total more than 100.00.'
+                : 'This claim could not be shared.';
       this.actionError.set({ id: claim.id, message });
     }
   }

@@ -64,11 +64,14 @@ public class ClaimService {
     private final VoidReasonService voidReasons;
     private final ClaimCommentRepository comments;
     private final ClaimLineRepository lines;
+    private final ClaimShareRepository shares;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit, RollupService rollup, PeriodService periods, RoleService roles, SettingService settings,
             ClaimLogRepository logs, WatchService watches, HolidayService holidays, SheetTagRepository tags,
-            VoidReasonService voidReasons, ClaimCommentRepository comments, ClaimLineRepository lines) {
+            VoidReasonService voidReasons, ClaimCommentRepository comments, ClaimLineRepository lines,
+            ClaimShareRepository shares) {
+        this.shares = shares;
         this.lines = lines;
         this.comments = comments;
         this.voidReasons = voidReasons;
@@ -183,6 +186,59 @@ public class ClaimService {
     /** The claim's lines, oldest first. */
     public List<ClaimLine> linesOf(Claim claim) {
         return lines.findByClaimIdOrderByIdAsc(claim.getId());
+    }
+
+    /** The shares of the sheet's claims by claim id, each oldest first. */
+    public Map<Long, List<ClaimShare>> shares(String sheetId) {
+        return shares.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(ClaimShare::getClaimId, Collectors.toList()));
+    }
+
+    /** The claim's shares, oldest first. */
+    public List<ClaimShare> sharesOf(Claim claim) {
+        return shares.findByClaimIdOrderByIdAsc(claim.getId());
+    }
+
+    /**
+     * Share a claim with another person on the sheet: they hold the share (a percent, more than 0.00) of its due.
+     * Refused for the claim's own person, a person already holding a share of it, shares that would total more than
+     * 100.00, and a SETTLED, VOID or DELETED claim.
+     */
+    @Transactional
+    public Claim share(String sheetId, String user, Long id, Long personId, BigDecimal share) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ClaimShareException(id, "it is " + claim.getStatus() + ", it cannot be shared");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        Person holder = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
+        if (holder.getId().equals(claim.getPersonId())) {
+            throw new ClaimShareException(id, "it cannot be shared with its own person");
+        }
+        if (share.signum() <= 0) {
+            throw new ClaimShareException(id, "a share must be more than 0.00");
+        }
+        BigDecimal total = share;
+        for (ClaimShare held : shares.findByClaimIdOrderByIdAsc(id)) {
+            if (held.getPersonId().equals(personId)) {
+                throw new ClaimShareException(id, holder.getName() + " already holds a share of it");
+            }
+            total = total.add(held.getShare());
+        }
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ClaimShareException(id, "its shares would total more than 100.00");
+        }
+        String shown = share.setScale(2, RoundingMode.UNNECESSARY).toPlainString();
+        shares.saveAndFlush(new ClaimShare(sheetId, id, personId, share));
+        audit.recordOnCommit(record("CLAIM_SHARED", user, person, claim) + " with=" + holder.getName()
+                + " share=" + shown);
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
     }
 
     /**

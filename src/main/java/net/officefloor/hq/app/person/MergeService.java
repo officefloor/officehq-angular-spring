@@ -2,12 +2,16 @@ package net.officefloor.hq.app.person;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShare;
+import net.officefloor.hq.app.claim.ClaimShareRepository;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.crew.Crew;
@@ -48,11 +52,14 @@ public class MergeService {
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
+    private final ClaimShareRepository shares;
 
     public MergeService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PersonWatchRepository watches, ClaimRepository claims, StatementRepository statements,
             PoolRepository pools, PeriodRepository periods, RoleService roles, SheetService sheets,
-            RollupService rollup, Audit audit, CrewRepository crews) {
+            RollupService rollup, Audit audit, CrewRepository crews,
+            ClaimShareRepository shares) {
+        this.shares = shares;
         this.crews = crews;
         this.people = people;
         this.aliases = aliases;
@@ -95,6 +102,31 @@ public class MergeService {
             claim.setListed(sheets.nextListed(sheetId));
         }
         claims.saveAll(theirs);
+
+        // The shares they hold become the other's, added to any the other holds of the same claim; a share of a claim
+        // that is now the other's own is dropped.
+        List<Long> intoClaims = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, into.getId()).stream()
+                .map(Claim::getId).toList();
+        Map<Long, ClaimShare> intoHolds = new HashMap<>();
+        for (ClaimShare share : shares.findByPersonIdOrderByIdAsc(into.getId())) {
+            if (intoClaims.contains(share.getClaimId())) {
+                shares.delete(share);
+            } else {
+                intoHolds.put(share.getClaimId(), share);
+            }
+        }
+        for (ClaimShare share : shares.findByPersonIdOrderByIdAsc(from.getId())) {
+            ClaimShare held = intoHolds.get(share.getClaimId());
+            if (intoClaims.contains(share.getClaimId())) {
+                shares.delete(share);
+            } else if (held != null) {
+                held.setShare(held.getShare().add(share.getShare()));
+                shares.delete(share);
+            } else {
+                share.setPersonId(into.getId());
+            }
+        }
+        shares.flush();
 
         // The name and aliases become the other's aliases; the name is free once the person is removed.
         List<PersonAlias> theirAliases = aliases.findByPersonId(from.getId());
