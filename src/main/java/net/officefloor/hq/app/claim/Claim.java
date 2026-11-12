@@ -49,10 +49,14 @@ public class Claim {
 
     /** The day it is due by: fixed when it is added, from the terms of its person's grade in force on its
      *  date then, counted as that many business days after its date (skipping weekends and the sheet's
-     *  holidays listed then); it does not follow later changes to the terms,
-     *  the holidays or its date. */
+     *  holidays listed then); it does not follow later changes to the terms or its date. Adding a holiday
+     *  works it out again, with the same terms, while the claim is not SETTLED or VOID. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms its due-by was fixed with: that many business days after its date. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
 
     @Column(name = "note", nullable = false)
     private String note;
@@ -207,6 +211,18 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
     }
 
     public String getRef() {

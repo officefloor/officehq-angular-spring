@@ -104,6 +104,7 @@ public class ClaimService {
         refuseRefUsed(sheetId, ref, null);
         Rollup.Snapshot before = rollup.take(sheetId);
         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, dueBy, note, corrects);
+        claim.setTerms(terms);
         claim.setRef(ref);
         claim.setTags(tags);
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
@@ -553,6 +554,7 @@ public class ClaimService {
         Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(),
                 holidays.businessDaysAfter(sheetId, claim.getDate(), terms),
                 claim.getNote(), null);
+        split.setTerms(terms);
         split.setListOrder(claims.maxListOrder(sheetId) + 1);
         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
         split.setStatus(ClaimStatus.OPEN);
