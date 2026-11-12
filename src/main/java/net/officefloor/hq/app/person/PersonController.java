@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -30,14 +31,15 @@ public class PersonController {
     /** A person as the screen shows it, with how many statements were taken of them and the last one's
      *  due-total (n/a when it was) and date; none of either before their first statement. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statedTotal, String statementDate) {
+            String statedTotal, String statementDate, boolean retired, String retiredFrom) {
 
         public static PersonView of(Person person, List<Statement> statements) {
             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.size(),
                     last == null ? null : last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(),
-                    last == null ? null : last.getTakenOn().toString());
+                    last == null ? null : last.getTakenOn().toString(),
+                    person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString());
         }
     }
 
@@ -51,6 +53,10 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @NotNull Long version) {
+    }
+
+    /** The date a person is retired from; none takes the sheet's today. */
+    public record RetireRequest(LocalDate from) {
     }
 
     private final PersonService service;
@@ -90,6 +96,16 @@ public class PersonController {
             // saved by someone else between the version check and the write
             throw new PersonVersionConflictException(service.current(sheetId.trim(), personId));
         }
+    }
+
+    /** Retire a person from a date. */
+    @PostMapping("/{personId}/retire")
+    public PersonView retire(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody RetireRequest request) {
+        Person retired = service.retire(sheetId.trim(), user.trim(), personId, request.from());
+        return PersonView.of(retired, service.statementsOf(retired.getId()));
     }
 
     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */

@@ -18,6 +18,10 @@ export interface Person {
   statedTotal: string | null;
   /** The sheet's today when the last statement was taken; null before their first. */
   statementDate: string | null;
+  /** Whether a retirement date is set: then they count as retired at once, whatever the date. */
+  retired: boolean;
+  /** The date they are retired from (YYYY-MM-DD); null while not retired. */
+  retiredFrom: string | null;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -45,6 +49,8 @@ export class People {
   private readonly session = inject(Session);
 
   readonly people = signal<Person[]>([]);
+  /** Whether the list shows retired people; belongs to the screen, so loading a sheet leaves it. */
+  readonly showRetired = signal(false);
   private loads = 0;
 
   /** Re-read the active sheet's people from the server; an error message when that failed. */
@@ -125,6 +131,24 @@ export class People {
       return stated;
     } catch (e) {
       return failed('take statement of', e);
+    }
+  }
+
+  /** Retire a person from a date (blank takes the sheet's today); an error message when refused. */
+  async retire(id: number, from: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'Enter a date as YYYY-MM-DD.';
+    try {
+      const person = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/retire`, { from: d || null }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+      return null;
+    } catch (e) {
+      return failed('retire', e);
     }
   }
 

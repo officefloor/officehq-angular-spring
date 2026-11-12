@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.PersonService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -160,6 +161,13 @@ public class ClaimController {
     @ExceptionHandler(PeriodClosedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> periodClosed(PeriodClosedException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A claim dated after its person's retirement is refused with the reason, for the screen to show. */
+    @ExceptionHandler(PersonRetiredException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> retired(PersonRetiredException e) {
         return Map.of("message", e.getMessage());
     }
 

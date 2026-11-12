@@ -65,12 +65,21 @@ import { PersonClaims } from '../claims/claims';
       </form>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claims.total() }}</strong></p>
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <label>
+        <input
+          type="checkbox"
+          data-testid="show-retired"
+          [checked]="people.showRetired()"
+          (change)="people.showRetired.set(checked($event))"
+        />
+        Show retired
+      </label>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
-          @for (p of people.people(); track p.id) {
+          @for (p of shown(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -80,6 +89,10 @@ import { PersonClaims } from '../claims/claims';
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+              </td>
+              <td>
+                <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
               <td><app-person-claims [personId]="p.id" [grade]="p.grade" /></td>
               <td>
@@ -93,6 +106,22 @@ import { PersonClaims } from '../claims/claims';
                   (click)="statement(p)"
                 >
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+                <label [for]="'person-retire-date-' + p.id">Retire from<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-retire-date-' + p.id"
+                  data-testid="person-retire-date"
+                  placeholder="YYYY-MM-DD"
+                  [value]="retireDates()[p.id] ?? ''"
+                  (input)="setRetireDate(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-retire"
+                  [disabled]="retiring() === p.id"
+                  (click)="retire(p)"
+                >
+                  Retire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 @if (actionError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ actionError()?.message }}</p>
@@ -111,6 +140,14 @@ export class PeopleList {
   private readonly rates = inject(Rates);
   private readonly session = inject(Session);
   protected readonly grades = GRADES;
+  /** The people the list shows: everyone, or only those not retired unless show retired is on. */
+  protected readonly shown = computed(() =>
+    this.people.showRetired() ? this.people.people() : this.people.people().filter((p) => !p.retired),
+  );
+  /** The retire-from date typed on each person's row. */
+  protected readonly retireDates = signal<Record<number, string>>({});
+  /** The id of the person being retired. */
+  protected readonly retiring = signal<number | null>(null);
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = computed(() =>
     money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
@@ -131,6 +168,10 @@ export class PeopleList {
   protected readonly stating = signal<number | null>(null);
   /** The last refused action on a person, shown on their row until the next action on it. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
+
+  protected checked(e: Event): boolean {
+    return (e.target as HTMLInputElement).checked;
+  }
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
@@ -171,6 +212,22 @@ export class PeopleList {
       else this.claims.replaceOf(p.id, stated.claims);
     } finally {
       this.stating.set(null);
+    }
+  }
+
+  protected setRetireDate(id: number, date: string): void {
+    this.clearActionError(id);
+    this.retireDates.update((ds) => ({ ...ds, [id]: date }));
+  }
+
+  protected async retire(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.retiring.set(p.id);
+    try {
+      const err = await this.people.retire(p.id, this.retireDates()[p.id] ?? '');
+      if (err) this.actionError.set({ id: p.id, message: err });
+    } finally {
+      this.retiring.set(null);
     }
   }
 

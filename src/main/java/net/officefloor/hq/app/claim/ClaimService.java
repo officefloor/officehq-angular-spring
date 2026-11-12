@@ -11,6 +11,7 @@ import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.Statement;
 import net.officefloor.hq.app.person.StatementRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -61,6 +62,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
+        refuseRetired(person, on);
         Rollup.Snapshot before = rollup.take(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note));
         audit("CLAIM_ADDED", claim, person, user);
@@ -78,6 +80,8 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
+        refuseRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new), on);
         Rollup.Snapshot before = rollup.take(sheetId);
         claim.setAmount(amount.setScale(2));
         claim.setDate(on);
@@ -175,6 +179,13 @@ public class ClaimService {
         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException();
+        }
+    }
+
+    /** Refuse a claim dated after its person's retirement date. */
+    private static void refuseRetired(Person person, LocalDate date) {
+        if (person.retiredOn(date)) {
+            throw new PersonRetiredException();
         }
     }
 
