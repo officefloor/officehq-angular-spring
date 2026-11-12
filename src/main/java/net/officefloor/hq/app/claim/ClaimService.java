@@ -540,7 +540,7 @@ public class ClaimService {
     /** Take a person's statement: record their due-total now (late charges included) and how many claims
      *  count, and bind each claim that counts to its rate figure now, under its late charge and floor (the charge is
      *  never bound: it keeps following the sheet's today, and the floor is applied on top; a PENDING claim is bound only once it is back to
-     *  OPEN); a claim that does not count, is OPEN or PENDING and dated within one of its person's holds, or is
+     *  OPEN); a claim that does not count, is OPEN or PENDING and dated within one of its person's holds (or its person's retirement date is reached), or is
      *  deferred past the sheet's today, is left unbound. */
     @Transactional
     public Stated statement(String sheetId, String user, long personId) {
@@ -552,7 +552,7 @@ public class ClaimService {
         boolean figure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts() || (claim.getStatus().isOpen() && person.heldOn(claim.getDate()))
+            if (!claim.getStatus().counts() || (claim.getStatus().isOpen() && (person.heldOn(claim.getDate()) || person.retiredBy(today)))
                     || claim.deferredOn(today)) {
                 claim.setStated(false, null);
                 continue;

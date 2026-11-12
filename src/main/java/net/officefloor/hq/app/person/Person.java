@@ -136,6 +136,11 @@ public class Person {
         return retiredFrom != null && date.isAfter(retiredFrom);
     }
 
+    /** Whether their retirement date is reached on a day (the sheet's today): it is on or before it. */
+    public boolean retiredBy(LocalDate today) {
+        return retiredFrom != null && today != null && !today.isBefore(retiredFrom);
+    }
+
     /** Whether they have any hold at all. */
     public boolean isHeld() {
         return !holds.isEmpty();

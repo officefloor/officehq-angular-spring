@@ -146,7 +146,7 @@ public class Rollup {
         for (Claim claim : sheetClaims) {
             Person person = byId.get(claim.getPersonId());
             if (person == null || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)
-                    || !countsAt(claim, to) || heldOut(claim, person) || claim.deferredOn(today)) {
+                    || !countsAt(claim, to) || heldOut(claim, person, today) || claim.deferredOn(today)) {
                 continue;
             }
             BigDecimal due;
@@ -192,7 +192,7 @@ public class Rollup {
     /** Whether a claim counts in the live totals: its status counts, it is not left out by a hold, and it
      *  is not deferred past the sheet's today. */
     private static boolean countsLive(Claim claim, Person person, LocalDate today) {
-        return claim.getStatus().counts() && !heldOut(claim, person) && !claim.deferredOn(today);
+        return claim.getStatus().counts() && !heldOut(claim, person, today) && !claim.deferredOn(today);
     }
 
     /** Whether a claim counted by the status it had at the end of a day, as its status log records it:
@@ -218,10 +218,12 @@ public class Rollup {
                 && claim.getDueBy().isBefore(today);
     }
 
-    /** Whether a hold leaves a claim out of the live totals: it is OPEN or PENDING, bound by no statement,
-     *  and dated within one of its person's holds. */
-    public static boolean heldOut(Claim claim, Person person) {
-        return person != null && claim.getStatus().isOpen() && !claim.isBound() && person.heldOn(claim.getDate());
+    /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by
+     *  no statement, and dated within one of its person's holds or its person's retirement date is reached on
+     *  the sheet's today. */
+    public static boolean heldOut(Claim claim, Person person, LocalDate today) {
+        return person != null && claim.getStatus().isOpen() && !claim.isBound()
+                && (person.heldOn(claim.getDate()) || person.retiredBy(today));
     }
 
     /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on

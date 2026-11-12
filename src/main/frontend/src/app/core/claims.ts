@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { People, Person, heldOn } from './people';
+import { People, Person, heldOn, retiredBy } from './people';
 import { hundredths, rounded } from './rates';
 import { Session, addDays, daysBetween, isDate } from './session';
 
@@ -121,22 +121,32 @@ export class Claims {
   private loads = 0;
 
   /** The claims that count in the live totals: those that count, less the OPEN and PENDING claims bound
-   *  by no statement and dated within one of their person's holds, and the deferred claims. */
+   *  by no statement and dated within one of their person's holds or whose person's retirement date is
+   *  reached, and the deferred claims. */
   readonly live = computed(() => {
-    const holds = new Map(this.people.people().map((p) => [p.id, p.holds]));
-    return this.claims().filter(
-      (c) => counts(c) && !(isOpen(c) && !bound(c) && heldOn(holds.get(c.personId) ?? [], c.date)) && !this.deferred(c),
-    );
+    const leftOut = this.leftOut();
+    return this.claims().filter((c) => counts(c) && !leftOut(c) && !this.deferred(c));
   });
 
   /** The claims a period's figures may count, whatever their status: all but the OPEN and PENDING claims
    *  bound by no statement and dated within one of their person's holds, and the deferred claims, as the
    *  live totals leave those out. */
   readonly periodCandidates = computed(() => {
-    const holds = new Map(this.people.people().map((p) => [p.id, p.holds]));
-    return this.claims().filter(
-      (c) => !(isOpen(c) && !bound(c) && heldOn(holds.get(c.personId) ?? [], c.date)) && !this.deferred(c),
-    );
+    const leftOut = this.leftOut();
+    return this.claims().filter((c) => !leftOut(c) && !this.deferred(c));
+  });
+
+  /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound
+   *  by no statement, and dated within one of its person's holds or its person's retirement date is
+   *  reached on the sheet's today. */
+  private readonly leftOut = computed(() => {
+    const today = this.session.today();
+    const byId = new Map(this.people.people().map((p) => [p.id, p]));
+    return (c: Claim): boolean => {
+      const p = byId.get(c.personId);
+      return isOpen(c) && !bound(c) && p !== undefined
+        && (heldOn(p.holds, c.date) || retiredBy(p, today));
+    };
   });
 
   /** Each person's claimed, in cents, by person id. */

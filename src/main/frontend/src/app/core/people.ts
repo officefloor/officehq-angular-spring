@@ -33,6 +33,11 @@ export function heldOn(holds: Hold[], date: string): boolean {
   return holds.some((h) => (h.from === null || h.from <= date) && (h.to === null || date <= h.to));
 }
 
+/** Whether a person's retirement date is reached on a day (the sheet's today): it is on or before it. */
+export function retiredBy(p: { retiredFrom: string | null }, today: string | null): boolean {
+  return p.retiredFrom !== null && today !== null && p.retiredFrom <= today;
+}
+
 export interface Person {
   id: number;
   name: string;

@@ -179,10 +179,12 @@ public class PersonService {
     public Person retire(String sheetId, String user, long personId, LocalDate from) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = from != null ? from : today(sheetId);
+        Rollup.Snapshot before = rollup.take(sheetId);
         person.setRetiredFrom(on);
         Person retired = saved(person);
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + retired.getName()
                 + " from=" + on);
+        rollup.recordChanges(sheetId, user, before);
         return retired;
     }
 
