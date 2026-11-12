@@ -33,7 +33,7 @@ export interface Claim {
   roundingDate: string;
   /** Its place in its person's list: a claim with a later place is listed first (newest added, or last reassigned). */
   listed: number;
-  /** The day (yyyy-mm-dd) the claim is due by, fixed when it was added from the terms of its person's grade on its date. */
+  /** The day (yyyy-mm-dd) the claim is due by, fixed when it was added from its person's terms in force on the sheet's today then. */
   dueBy: string;
   /** Its status log, oldest first: one line per status it has had. */
   log: ClaimLogLine[];
