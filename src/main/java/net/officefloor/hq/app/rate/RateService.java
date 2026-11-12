@@ -40,7 +40,8 @@ public class RateService {
 
     /**
      * The sheet's rates, then each parent sheet's up to {@link RollupService#PARENT_LEVELS} levels up (nearest first),
-     * each in grade order then by from-date.
+     * then, when the sheet was cloned, those of the sheet it was cloned from and so on up its parents and source; each
+     * in grade order then by from-date.
      */
     public List<List<Rate>> chain(String sheetId) {
         return rollup.rateChain(sheetId);

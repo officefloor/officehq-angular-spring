@@ -506,29 +506,46 @@ public class RollupService {
 
     /**
      * The sheet's rates, then its parent's, its parent's parent's and so on up to {@link #PARENT_LEVELS} levels up, in
-     * grade order then by from-date: the rates a grade's rate on a date is looked for in, nearest first. While the
-     * request shows the sheet as of a date, the parents' rates are as they stood then.
+     * grade order then by from-date; then, when the sheet was cloned, likewise those of the sheet it was cloned from and
+     * its parents, then of that sheet's source and so on: the rates a grade's rate on a date is looked for in, nearest
+     * first, each sheet once. While the request shows the sheet as of a date, the other sheets' rates are as they stood
+     * then.
      */
     public List<List<Rate>> rateChain(String sheetId) {
         return rateChain(sheetId, AsOfContext.current());
     }
 
     /**
-     * As {@link #rateChain(String)}, with the parents' rates as they stood at the end of {@code asOf} (null: as they
-     * are now).
+     * As {@link #rateChain(String)}, with the other sheets' rates as they stood at the end of {@code asOf} (null: as
+     * they are now).
      */
     public List<List<Rate>> rateChain(String sheetId, LocalDate asOf) {
         List<List<Rate>> chain = new ArrayList<>();
         chain.add(withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId)));
         List<String> seen = new ArrayList<>(List.of(sheetId));
-        String parent = sheets.findById(sheetId).map(Sheet::getParent).orElse(null);
-        while (parent != null && chain.size() <= PARENT_LEVELS && !seen.contains(parent)) {
-            seen.add(parent);
-            chain.add(asOf == null ? withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(parent))
-                    : ratesAsOf(parent, asOf));
-            parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
+        Sheet at = sheets.findById(sheetId).orElse(null);
+        while (at != null) {
+            String parent = at.getParent();
+            for (int levels = 0; parent != null && levels < PARENT_LEVELS && !seen.contains(parent); levels++) {
+                seen.add(parent);
+                chain.add(ratesOf(parent, asOf));
+                parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
+            }
+            String source = at.getSource();
+            if (source == null || seen.contains(source)) {
+                break;
+            }
+            seen.add(source);
+            chain.add(ratesOf(source, asOf));
+            at = sheets.findById(source).orElse(null);
         }
         return chain;
+    }
+
+    /** Another sheet's rates in the chain, as they stood at the end of {@code asOf} (null: as they are now). */
+    private List<Rate> ratesOf(String sheetId, LocalDate asOf) {
+        return asOf == null ? withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId))
+                : ratesAsOf(sheetId, asOf);
     }
 
     /**
@@ -566,8 +583,8 @@ public class RollupService {
     }
 
     /**
-     * The grade's rate in force on the date: the sheet's own, else the first in force of its parents' (nearest
-     * first); empty when none is.
+     * The grade's rate in force on the date: the sheet's own, else the first in force further along its rate chain
+     * (its parents', then its source's; nearest first); empty when none is.
      */
     public static Optional<Rate> rateOn(List<List<Rate>> chain, String grade, LocalDate date) {
         return rateOn(chain, grade, date, null);

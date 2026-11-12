@@ -34,7 +34,7 @@ public class RateController {
 
     /**
      * A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none);
-     * how many versions it has had (the one shown being the newest, in force); and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on;
+     * how many versions it has had (the one shown being the newest, in force); and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on, the sheet it was cloned from's (and that one's parents' and source's) further along;
      * and, when it is forward-only, the highest claim id there was when it was saved (null otherwise), with its older
      * versions, newest first, that a claim added before then falls back on.
      */
@@ -116,7 +116,8 @@ public class RateController {
     /**
      * The sheet's rates in grade order, then by from-date (the undated one first); a grade with no rate is left out.
      * Then, likewise, the rates of its parent sheet, of that sheet's parent and so on up to three levels up, each
-     * with its level.
+     * with its level; then, when the sheet was cloned, those of the sheet it was cloned from, its parents and its own
+     * source and so on.
      */
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,

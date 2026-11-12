@@ -121,6 +121,13 @@ public class Sheet {
     @Column(name = "parent")
     private String parent;
 
+    /**
+     * The id of the sheet this one was cloned from, whose rates a grade with none in force here nor on the parents falls
+     * back on; null: not cloned. Not dated.
+     */
+    @Column(name = "source")
+    private String source;
+
     /** The kinds of proof (comma separated) a claim above the proof threshold needs one of each of; null: none. Not dated. */
     @Column(name = "proof_kinds")
     private String proofKinds;
@@ -144,7 +151,7 @@ public class Sheet {
 
     /**
      * A copy of the sheet under another id: its today, dated settings, permission matrix and other settings; not
-     * archived, with no settle batch yet.
+     * archived, with no settle batch yet; cloned from this sheet.
      */
     public Sheet copyTo(String id, String createdBy) {
         Sheet copy = new Sheet(id, createdBy, today);
@@ -160,6 +167,7 @@ public class Sheet {
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
         copy.parent = parent;
+        copy.source = this.id;
         copy.proofKinds = proofKinds;
         return copy;
     }
@@ -427,6 +435,10 @@ public class Sheet {
 
     public void setParent(String parent) {
         this.parent = parent;
+    }
+
+    public String getSource() {
+        return source;
     }
 
     public String getProofKinds() {
