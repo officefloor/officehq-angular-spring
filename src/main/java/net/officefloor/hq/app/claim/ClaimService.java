@@ -145,6 +145,7 @@ public class ClaimService {
         claim.setRef(ref);
         claim.setTags(tags);
         claim.setLockedBy(null);
+        claim.setEditedBy(user);
         Claim updated = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
@@ -223,7 +224,10 @@ public class ClaimService {
             reversed += " reason=" + voidReason;
         }
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
-            throw new ClaimSettlerException();
+            throw new ClaimSettlerException("The user who opened a claim cannot settle it.");
+        }
+        if (to == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+            throw new ClaimSettlerException("The user who last edited a claim cannot settle it.");
         }
         if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
             throw new ClaimDeferException("The claim is deferred until " + claim.getDeferredUntil() + ".");
@@ -273,7 +277,7 @@ public class ClaimService {
 
     /** Approve a PENDING claim: it becomes SETTLED, its due fixed at its live figure now, its late charge on
      *  the sheet's today frozen in on top (with no figure then, its due stays live). Refused unless the
-     *  claim is PENDING and the user is a steward other than the one who opened it. */
+     *  claim is PENDING and the user is a steward other than the one who opened it or last edited it. */
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -286,6 +290,9 @@ public class ClaimService {
         }
         if (user.equals(claim.getOpenedBy())) {
             throw new ClaimApprovalException("The user who opened a claim cannot approve it.");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ClaimApprovalException("The user who last edited a claim cannot approve it.");
         }
         Rollup.Snapshot before = rollup.take(sheetId);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)

@@ -1,5 +1,5 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
-import { Claim, ClaimAction, Claims, bound, isOpen } from '../../core/claims';
+import { Claim, ClaimAction, Claims, bound } from '../../core/claims';
 import { Periods } from '../../core/periods';
 import { GradeFrom, People, gradeOn } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
@@ -208,24 +208,22 @@ import { VoidReasons } from '../../core/void-reasons';
           <button type="button" data-testid="claim-reassign" [disabled]="acting() === c.id" (click)="reassign(c)">
             Reassign<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
           </button>
-          @if (isOpen(c)) {
-            <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
-            <input
-              [id]="'claim-reject-reason-' + c.id"
-              data-testid="claim-reject-reason"
-              [value]="rejectReasons()[c.id] ?? ''"
-              (input)="setRejectReason(c.id, value($event))"
-            />
-            @for (a of reviews; track a.action) {
-              <button
-                type="button"
-                [attr.data-testid]="'claim-' + a.action"
-                [disabled]="acting() === c.id"
-                (click)="act(c, a.action)"
-              >
-                {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
-              </button>
-            }
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input
+            [id]="'claim-reject-reason-' + c.id"
+            data-testid="claim-reject-reason"
+            [value]="rejectReasons()[c.id] ?? ''"
+            (input)="setRejectReason(c.id, value($event))"
+          />
+          @for (a of reviews; track a.action) {
+            <button
+              type="button"
+              [attr.data-testid]="'claim-' + a.action"
+              [disabled]="acting() === c.id"
+              (click)="act(c, a.action)"
+            >
+              {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+            </button>
           }
           @if (actionError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ actionError()?.message }}</p>
@@ -271,7 +269,7 @@ export class PersonClaims {
     { action: 'void', label: 'Void' },
     { action: 'resettle', label: 'Re-settle' },
   ];
-  /** A steward's review of a PENDING claim, offered on every open claim (the server refuses it unless
+  /** A steward's review of a PENDING claim, offered on every claim (the server refuses it unless
    *  PENDING). */
   protected readonly reviews: { action: ClaimAction; label: string }[] = [
     { action: 'approve', label: 'Approve' },
@@ -292,7 +290,6 @@ export class PersonClaims {
   protected readonly voidReasons = inject(VoidReasons);
   /** The void reason chosen for each claim, by claim id. */
   protected readonly voidReasonsChosen = signal<Record<number, string>>({});
-  protected readonly isOpen = isOpen;
   protected readonly noRate = NO_RATE;
   /** The id of the claim whose status change is under way. */
   protected readonly acting = signal<number | null>(null);

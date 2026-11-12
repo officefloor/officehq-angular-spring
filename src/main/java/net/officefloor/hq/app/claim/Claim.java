@@ -77,6 +77,10 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** The user who last edited the claim; none while never edited. */
+    @Column(name = "edited_by")
+    private String editedBy;
+
     /** Bound by its person's last statement, which counted it: it shows and totals its stated due. */
     @Column(name = "stated", nullable = false)
     private boolean stated;
@@ -269,6 +273,14 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public String getEditedBy() {
+        return editedBy;
+    }
+
+    public void setEditedBy(String editedBy) {
+        this.editedBy = editedBy;
     }
 
     public boolean isStated() {
