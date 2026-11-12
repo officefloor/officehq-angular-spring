@@ -1,0 +1,828 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+new file mode 100644
+index 000000000..8dab52d88
+--- /dev/null
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -0,0 +1,240 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { FigurePipe } from '../../core/locale';
++import { Session } from '../../core/session';
++import { sumDues } from '../rates/rates';
++
++/** A crew on the sheet: its lead and its members besides the lead, in the order they were added. */
++interface CrewView {
++  id: number;
++  name: string;
++  leadId: number;
++  memberIds: number[];
++}
++
++/** What a crew needs to know of a person: their name. */
++export interface CrewPerson {
++  id: number;
++  name: string;
++}
++
++// The sheet's crews: each with its lead, its members and its due-total, the lead's and the members' due-totals added
++// up, n/a skipped.
++@Component({
++  selector: 'app-crews',
++  imports: [FigurePipe],
++  template: `
++    <section aria-labelledby="crews-heading">
++      <h2 id="crews-heading">Crews</h2>
++      <form (submit)="add($event)" aria-labelledby="crews-heading">
++        <label for="crew-form-name">Crew name</label>
++        <input
++          id="crew-form-name"
++          data-testid="crew-form-name"
++          [value]="name()"
++          (input)="name.set(value($event)); error.set(null)"
++        />
++        <label for="crew-form-lead">Lead</label>
++        <select id="crew-form-lead" data-testid="crew-form-lead" (change)="lead.set(value($event)); error.set(null)">
++          <option value="" [selected]="!lead()">Choose a lead</option>
++          @for (o of people(); track o.id) {
++            <option [value]="o.id" [selected]="lead() === '' + o.id">{{ o.name }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="crew-form-submit">Add crew</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="crew-form-error">{{ message | fig }}</p>
++        }
++      </form>
++      @for (c of shown(); track c.id) {
++        <div [attr.data-testid]="'crew-row-' + c.name">
++          <h3>{{ c.name | fig }}</h3>
++          <p>Lead <strong data-testid="crew-lead">{{ c.lead | fig }}</strong></p>
++          <p>Due total <strong data-testid="crew-due-total">{{ c.dueTotal | fig }}</strong></p>
++          <ul [attr.aria-label]="'Members of ' + c.name">
++            @for (m of c.members; track m.id) {
++              <li data-testid="crew-member-line">{{ m.name | fig }}</li>
++            }
++          </ul>
++          <form (submit)="addMember($event, c.id)" [attr.aria-label]="'Add a member to ' + c.name">
++            <label [for]="'crew-member-select-' + c.id">Member</label>
++            <select
++              [id]="'crew-member-select-' + c.id"
++              data-testid="crew-member-select"
++              (change)="setChoice(c.id, value($event))"
++            >
++              <option value="" [selected]="!choiceOf(c.id)">Choose a person</option>
++              @for (o of people(); track o.id) {
++                <option [value]="o.id" [selected]="choiceOf(c.id) === '' + o.id">{{ o.name }}</option>
++              }
++            </select>
++            <button type="submit" data-testid="crew-member-add">Add member</button>
++            @if (memberErrors()[c.id]; as message) {
++              <p role="alert" data-testid="crew-error">{{ message | fig }}</p>
++            }
++          </form>
++        </div>
++      }
++    </section>
++  `,
++})
++export class Crews {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** The people on the sheet, in the order they were added. */
++  readonly people = input<CrewPerson[]>([]);
++  /** Each person's due-total as shown on their row (two decimals, or n/a), by person id. */
++  readonly dueTotals = input<Map<number, string>>(new Map());
++
++  protected readonly crews = signal<CrewView[]>([]);
++  protected readonly name = signal('');
++  /** The lead chosen on the form: a person id, or blank. */
++  protected readonly lead = signal('');
++  protected readonly error = signal<string | null>(null);
++  /** The person chosen on each crew's row, by crew id. */
++  protected readonly choices = signal<Record<number, string>>({});
++  /** The error shown on each crew's row, by crew id. */
++  protected readonly memberErrors = signal<Record<number, string>>({});
++
++  /** Each crew with its lead's name, its members' names and its due-total. */
++  protected readonly shown = computed(() => {
++    const byId = new Map(this.people().map((p) => [p.id, p]));
++    const dues = this.dueTotals();
++    return this.crews().map((crew) => ({
++      id: crew.id,
++      name: crew.name,
++      lead: byId.get(crew.leadId)?.name ?? '',
++      members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
++      dueTotal: sumDues([crew.leadId, ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a')),
++    }));
++  });
++
++  private adding = false;
++  private reads = 0;
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheet();
++      this.session.loaded();
++      untracked(() => {
++        this.crews.set([]);
++        this.choices.set({});
++        this.memberErrors.set({});
++        if (sheet) void this.read(sheet);
++      });
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement | HTMLSelectElement).value;
++  }
++
++  protected choiceOf(crewId: number): string {
++    return this.choices()[crewId] ?? '';
++  }
++
++  protected setChoice(crewId: number, value: string): void {
++    this.choices.update((all) => ({ ...all, [crewId]: value }));
++    this.clearMemberError(crewId);
++  }
++
++  private clearMemberError(crewId: number): void {
++    this.memberErrors.update((all) => {
++      const { [crewId]: _, ...rest } = all;
++      return rest;
++    });
++  }
++
++  private memberError(crewId: number, message: string): void {
++    this.memberErrors.update((all) => ({ ...all, [crewId]: message }));
++  }
++
++  private base(sheet: string): string {
++    return `/api/sheets/${encodeURIComponent(sheet)}/crews`;
++  }
++
++  protected async add(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.adding) return;
++    this.error.set(null);
++    const name = this.name().trim();
++    if (name === '') {
++      this.error.set('Type a crew name.');
++      return;
++    }
++    if (this.crews().some((c) => c.name === name)) {
++      this.error.set(`${name} is already a crew.`);
++      return;
++    }
++    if (this.lead() === '') {
++      this.error.set('Choose a lead.');
++      return;
++    }
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.adding = true;
++    try {
++      const saved = await firstValueFrom(
++        this.http.post<CrewView>(this.base(sheet), { name, leadId: Number(this.lead()) }, this.session.headers()),
++      );
++      if (this.session.sheet() === sheet) this.crews.update((list) => [...list, saved]);
++      this.name.set('');
++      this.lead.set('');
++    } catch {
++      this.error.set(`The crew could not be added: ${name} may already be one.`);
++    } finally {
++      this.adding = false;
++    }
++  }
++
++  protected async addMember(event: Event, crewId: number): Promise<void> {
++    event.preventDefault();
++    if (this.adding) return;
++    this.clearMemberError(crewId);
++    const crew = this.crews().find((c) => c.id === crewId);
++    const choice = this.choiceOf(crewId);
++    if (!crew) return;
++    if (choice === '') {
++      this.memberError(crewId, 'Choose a person to add.');
++      return;
++    }
++    const personId = Number(choice);
++    if (crew.leadId === personId) {
++      this.memberError(crewId, 'That person leads the crew.');
++      return;
++    }
++    if (crew.memberIds.includes(personId)) {
++      this.memberError(crewId, 'That person is already in the crew.');
++      return;
++    }
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    this.adding = true;
++    try {
++      const saved = await firstValueFrom(
++        this.http.post<CrewView>(`${this.base(sheet)}/${crewId}/members`, { personId }, this.session.headers()),
++      );
++      if (this.session.sheet() === sheet) this.crews.update((list) => list.map((c) => (c.id === saved.id ? saved : c)));
++      this.choices.update((all) => ({ ...all, [crewId]: '' }));
++    } catch {
++      this.memberError(crewId, 'The member could not be added.');
++    } finally {
++      this.adding = false;
++    }
++  }
++
++  private async read(sheet: string): Promise<void> {
++    const read = ++this.reads;
++    const load = this.session.loaded();
++    const list = await firstValueFrom(this.http.get<CrewView[]>(this.base(sheet), this.session.headers())).catch(
++      () => null,
++    );
++    // A later read wins over a slower earlier one.
++    if (list && read === this.reads && this.session.sheet() === sheet) {
++      this.crews.set(list);
++      this.session.shown('crews', load);
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6121e1c62..ae5b78dbe 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,6 +9,7 @@ import { Rate, Rates, capped, changeFrom, excessOver, rateOn, sumDues, sumShared
+ import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { Header } from '../header/header';
++import { Crews } from '../crews/crews';
+ import { Pools } from '../pools/pools';
+ import { PersonPlans } from '../plans/plans';
+ import { Plans } from '../../core/plans';
+@@ -139,7 +140,7 @@ function csvField(value: string): string {
+ // person's editor is opened, saves that person.
+ @Component({
+   selector: 'app-people',
+-  imports: [ClassicSummary, Claims, Header, Periods, PersonPlans, Pools, Rates, Summary, FigurePipe],
++  imports: [ClassicSummary, Claims, Crews, Header, Periods, PersonPlans, Pools, Rates, Summary, FigurePipe],
+   template: `
+     <app-header
+       [peopleCount]="people().length"
+@@ -807,6 +808,7 @@ function csvField(value: string): string {
+     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
+     <app-pools [people]="people()" />
++    <app-crews [people]="people()" [dueTotals]="personDueTotals()" />
+   `,
+ })
+ export class People {
+@@ -937,6 +939,9 @@ export class People {
+       ),
+   );
+   /** Everyone's due-total added up, skipping the n/a ones and, with three or more, the highest and lowest. */
++  /** Each person's due-total as shown on their row, by person id. */
++  protected readonly personDueTotals = computed(() => new Map(this.people().map((p) => [p.id, this.dueTotalOf(p)])));
++
+   protected readonly dueTotal = computed(() => trimmedSumDues(this.people().map((p) => this.dueTotalOf(p))));
+   /** Everyone's settled-total added up, not trimmed. */
+   protected readonly settledTotal = computed(() => sumDues(this.people().map((p) => this.settledTotalOf(p))));
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crew.java b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+new file mode 100644
+index 000000000..0bdbae9dd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+@@ -0,0 +1,79 @@
++package net.officefloor.hq.app.crew;
++
++import jakarta.persistence.CascadeType;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.FetchType;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.OneToMany;
++import jakarta.persistence.OrderBy;
++import jakarta.persistence.Table;
++import java.util.ArrayList;
++import java.util.List;
++
++/** A crew on a sheet: a lead and the members added to it. */
++@Entity
++@Table(name = "crew")
++public class Crew {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "name", nullable = false)
++    private String name;
++
++    @Column(name = "lead_person_id", nullable = false)
++    private Long leadId;
++
++    /** The crew's members besides its lead, in the order they were added. */
++    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
++    @JoinColumn(name = "crew_id", nullable = false)
++    @OrderBy("id")
++    private List<CrewMember> members = new ArrayList<>();
++
++    protected Crew() {
++    }
++
++    public Crew(String sheetId, String name, Long leadId) {
++        this.sheetId = sheetId;
++        this.name = name;
++        this.leadId = leadId;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public Long getLeadId() {
++        return leadId;
++    }
++
++    /** Make another person the lead (a merge). */
++    public void setLeadId(Long leadId) {
++        this.leadId = leadId;
++    }
++
++    public List<CrewMember> getMembers() {
++        return members;
++    }
++
++    /** Whether the person is the lead or one of the members. */
++    public boolean includes(Long personId) {
++        return personId.equals(leadId) || members.stream().anyMatch(m -> personId.equals(m.getPersonId()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewController.java b/src/main/java/net/officefloor/hq/app/crew/CrewController.java
+new file mode 100644
+index 000000000..5a00ffe57
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewController.java
+@@ -0,0 +1,71 @@
++package net.officefloor.hq.app.crew;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The crews of a sheet and their members. The signed-in user's name travels in the {@code X-User} header. */
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/crews")
++@Validated
++public class CrewController {
++
++    /** A crew as shown: its lead's id and its members' ids in the order they were added. */
++    public record CrewView(Long id, String name, Long leadId, List<Long> memberIds) {
++
++        static CrewView of(Crew c) {
++            return new CrewView(c.getId(), c.getName(), c.getLeadId(),
++                    c.getMembers().stream().map(CrewMember::getPersonId).toList());
++        }
++    }
++
++    /** The crew's name (surrounding spaces are removed, and it must not then be blank) and its lead. */
++    public record CrewRequest(@NotNull @NotBlank @Size(max = 255) String name, @NotNull Long leadId) {
++    }
++
++    /** A person to add to the crew. */
++    public record CrewMemberRequest(@NotNull Long personId) {
++    }
++
++    private final CrewService service;
++
++    public CrewController(CrewService service) {
++        this.service = service;
++    }
++
++    /** The sheet's crews, in the order they were added. */
++    @GetMapping
++    public List<CrewView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return service.list(sheetId.trim()).stream().map(CrewView::of).toList();
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public CrewView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid CrewRequest request) {
++        return CrewView.of(service.add(sheetId.trim(), user.trim(), request.name().trim(), request.leadId()));
++    }
++
++    @PostMapping("/{crewId}/members")
++    @ResponseStatus(HttpStatus.CREATED)
++    public CrewView addMember(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @PathVariable Long crewId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
++            @RequestBody @Valid CrewMemberRequest request) {
++        return CrewView.of(service.addMember(sheetId.trim(), user.trim(), crewId, request.personId()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewMember.java b/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
+new file mode 100644
+index 000000000..858031929
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
+@@ -0,0 +1,41 @@
++package net.officefloor.hq.app.crew;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A member of a crew besides its lead. */
++@Entity
++@Table(name = "crew_member")
++public class CrewMember {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    protected CrewMember() {
++    }
++
++    public CrewMember(Long personId) {
++        this.personId = personId;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    /** Make the membership another person's (a merge). */
++    public void setPersonId(Long personId) {
++        this.personId = personId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewRefusedException.java b/src/main/java/net/officefloor/hq/app/crew/CrewRefusedException.java
+new file mode 100644
+index 000000000..40785affe
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewRefusedException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.crew;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A crew, or a member of one, that may not be added. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class CrewRefusedException extends RuntimeException {
++
++    public CrewRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewRepository.java b/src/main/java/net/officefloor/hq/app/crew/CrewRepository.java
+new file mode 100644
+index 000000000..acc084cfc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewRepository.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.crew;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface CrewRepository extends JpaRepository<Crew, Long> {
++
++    List<Crew> findBySheetIdOrderByIdAsc(String sheetId);
++
++    Optional<Crew> findByIdAndSheetId(Long id, String sheetId);
++
++    boolean existsBySheetIdAndName(String sheetId, String name);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+new file mode 100644
+index 000000000..8b72935e7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -0,0 +1,83 @@
++package net.officefloor.hq.app.crew;
++
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonNotFoundException;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Keeps the crews of a sheet, each name at most once, each with a lead from the sheet's people, and their members: a
++ * person is in a crew at most once, and never as both its lead and a member. A person may be in several crews.
++ */
++@Service
++public class CrewService {
++
++    private final CrewRepository crews;
++    private final PersonRepository people;
++    private final SheetRepository sheets;
++    private final Audit audit;
++
++    public CrewService(CrewRepository crews, PersonRepository people, SheetRepository sheets, Audit audit) {
++        this.crews = crews;
++        this.people = people;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<Crew> list(String sheetId) {
++        return crews.findBySheetIdOrderByIdAsc(sheetId);
++    }
++
++    /** Add a crew by its name (already trimmed, not blank) with its lead; refused when the sheet has one by that name. */
++    @Transactional
++    public Crew add(String sheetId, String user, String name, Long leadId) {
++        if (!sheets.existsById(sheetId)) {
++            throw new SheetNotFoundException(sheetId);
++        }
++        Person lead = people.findByIdAndSheetId(leadId, sheetId)
++                .orElseThrow(() -> new PersonNotFoundException(sheetId, leadId));
++        if (crews.existsBySheetIdAndName(sheetId, name)) {
++            throw new CrewRefusedException(name + " is already a crew on sheet " + sheetId);
++        }
++        Crew saved;
++        try {
++            saved = crews.saveAndFlush(new Crew(sheetId, name, leadId));
++        } catch (DataIntegrityViolationException e) {
++            throw new CrewRefusedException(name + " is already a crew on sheet " + sheetId);
++        }
++        audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
++                + " lead=" + lead.getName());
++        return saved;
++    }
++
++    /** Add the person to the crew; refused when they are its lead or already a member. */
++    @Transactional
++    public Crew addMember(String sheetId, String user, Long crewId, Long personId) {
++        Crew crew = crews.findByIdAndSheetId(crewId, sheetId)
++                .orElseThrow(() -> new CrewRefusedException("No crew " + crewId + " on sheet " + sheetId));
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
++        if (personId.equals(crew.getLeadId())) {
++            throw new CrewRefusedException(person.getName() + " leads crew " + crew.getName());
++        }
++        if (crew.includes(personId)) {
++            throw new CrewRefusedException(person.getName() + " is already in crew " + crew.getName());
++        }
++        crew.getMembers().add(new CrewMember(personId));
++        try {
++            crews.saveAndFlush(crew);
++        } catch (DataIntegrityViolationException e) {
++            throw new CrewRefusedException(person.getName() + " is already in crew " + crew.getName());
++        }
++        audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
++                + " name=" + person.getName());
++        return crew;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/MergeService.java b/src/main/java/net/officefloor/hq/app/person/MergeService.java
+index d478453a7..3b3a7ac6b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/MergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/MergeService.java
+@@ -10,6 +10,8 @@ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodRepository;
++import net.officefloor.hq.app.crew.Crew;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.pool.Pool;
+ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.pool.PoolRepository;
+@@ -40,6 +42,7 @@ public class MergeService {
+     private final ClaimRepository claims;
+     private final StatementRepository statements;
+     private final PoolRepository pools;
++    private final CrewRepository crews;
+     private final PeriodRepository periods;
+     private final RoleService roles;
+     private final SheetService sheets;
+@@ -49,7 +52,8 @@ public class MergeService {
+     public MergeService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
+             PersonWatchRepository watches, ClaimRepository claims, StatementRepository statements,
+             PoolRepository pools, PeriodRepository periods, RoleService roles, SheetService sheets,
+-            RollupService rollup, Audit audit) {
++            RollupService rollup, Audit audit, CrewRepository crews) {
++        this.crews = crews;
+         this.people = people;
+         this.aliases = aliases;
+         this.patrons = patrons;
+@@ -147,6 +151,30 @@ public class MergeService {
+             pools.saveAndFlush(pool);
+         }
+ 
++        // Crews follow: a crew the person leads is led by the other, and a membership moves, dropped where the other
++        // already leads or is in the crew.
++        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
++            boolean changed = false;
++            if (from.getId().equals(crew.getLeadId())) {
++                crew.setLeadId(into.getId());
++                crew.getMembers().removeIf(m -> into.getId().equals(m.getPersonId()));
++                changed = true;
++            }
++            var membership = crew.getMembers().stream()
++                    .filter(m -> from.getId().equals(m.getPersonId())).findFirst().orElse(null);
++            if (membership != null) {
++                if (crew.includes(into.getId())) {
++                    crew.getMembers().remove(membership);
++                } else {
++                    membership.setPersonId(into.getId());
++                }
++                changed = true;
++            }
++            if (changed) {
++                crews.saveAndFlush(crew);
++            }
++        }
++
+         // A closed period's fixed figures follow the claims.
+         for (Period period : periods.findBySheetIdOrderByFromDateAscIdAsc(sheetId)) {
+             if (period.getPersonTotals().containsKey(from.getId())
+diff --git a/src/main/java/net/officefloor/hq/app/person/TransferService.java b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+index cb90897df..6d87260dc 100644
+--- a/src/main/java/net/officefloor/hq/app/person/TransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+@@ -17,6 +17,8 @@ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.SheetTag;
+ import net.officefloor.hq.app.claim.SheetTagRepository;
++import net.officefloor.hq.app.crew.Crew;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.pool.Pool;
+ import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.role.Role;
+@@ -40,7 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
+  * their claims are listed after that person's, their name and aliases join that person's aliases, and their grades,
+  * terms and contact are dropped (two such people, or a retired one, refuse the transfer). Otherwise a name or alias
+  * used elsewhere in the other sheet's tree, or a contact the other sheet has already, refuses the transfer. The person
+- * leaves this sheet entirely: their holds, patron links, pool memberships and watches are dropped.
++ * leaves this sheet entirely: their holds, patron links, pool and crew memberships and watches are dropped.
+  */
+ @Service
+ public class TransferService {
+@@ -57,6 +59,7 @@ public class TransferService {
+     private final SheetTagRepository tags;
+     private final StatementRepository statements;
+     private final PoolRepository pools;
++    private final CrewRepository crews;
+     private final RoleService roles;
+     private final SheetService sheets;
+     private final RollupService rollup;
+@@ -67,7 +70,8 @@ public class TransferService {
+             PersonWatchRepository watches, ClaimRepository claims, ClaimLogRepository logs,
+             ClaimCommentRepository comments, ClaimService claimService, SheetTagRepository tags,
+             StatementRepository statements, PoolRepository pools, RoleService roles, SheetService sheets,
+-            RollupService rollup, Audit audit, PersonService personService, ClaimLineRepository lines) {
++            RollupService rollup, Audit audit, PersonService personService, ClaimLineRepository lines, CrewRepository crews) {
++        this.crews = crews;
+         this.lines = lines;
+         this.people = people;
+         this.aliases = aliases;
+@@ -198,7 +202,7 @@ public class TransferService {
+             lines.moveTo(claimIds, to);
+         }
+ 
+-        // The statements follow the person; patron links, pool memberships and watches are dropped.
++        // The statements follow the person; patron links, pool and crew memberships and watches are dropped.
+         statements.follow(from, saved);
+         patrons.deleteAll(patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .filter(p -> p.getPersonId().equals(from.getId()) || p.getPatronId().equals(from.getId()))
+@@ -208,6 +212,15 @@ public class TransferService {
+                 pools.saveAndFlush(pool);
+             }
+         }
++        // Crew memberships are dropped, and so is a crew the person leads.
++        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
++            if (from.getId().equals(crew.getLeadId())) {
++                crews.delete(crew);
++                crews.flush();
++            } else if (crew.getMembers().removeIf(m -> from.getId().equals(m.getPersonId()))) {
++                crews.saveAndFlush(crew);
++            }
++        }
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+         people.delete(from);
+         people.flush();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index af2f14e99..52eff5de5 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -29,6 +29,9 @@ import net.officefloor.hq.app.person.PersonAliasRepository;
+ import net.officefloor.hq.app.person.PersonPatron;
+ import net.officefloor.hq.app.person.PersonPatronRepository;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.crew.Crew;
++import net.officefloor.hq.app.crew.CrewMember;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.pool.Pool;
+ import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.pool.PoolRepository;
+@@ -49,7 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /**
+  * Clones a sheet to another id never used (a steward only). The clone gets the sheet's today, settings, roles, rates,
+- * holidays, void reasons, templates, people (grades, terms, contacts, aliases, holds, retirements, patrons), pools,
++ * holidays, void reasons, templates, people (grades, terms, contacts, aliases, holds, retirements, patrons), pools, crews,
+  * periods (all open) and claims with their status, frozen figures, dates, notes and logs. Each claim that had a number
+  * takes the next number of the clone, in the order the originals were opened (by the sheet's today when each was
+  * opened, then by the order they were added to the clone: person by person as listed, each person's claims in the
+@@ -73,6 +76,7 @@ public class SheetCloneService {
+     private final PersonAliasRepository aliases;
+     private final PersonPatronRepository patrons;
+     private final PoolRepository pools;
++    private final CrewRepository crews;
+     private final PeriodRepository periods;
+     private final ClaimRepository claims;
+     private final ClaimLogRepository logs;
+@@ -86,7 +90,8 @@ public class SheetCloneService {
+             VoidReasonRepository voidReasons, ClaimTemplateRepository templates, SheetTagRepository tags,
+             PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
+             PoolRepository pools, PeriodRepository periods, ClaimRepository claims, ClaimLogRepository logs,
+-            ClaimService claimService, RollupService rollup, Audit audit) {
++            ClaimService claimService, RollupService rollup, Audit audit, CrewRepository crews) {
++        this.crews = crews;
+         this.sheets = sheets;
+         this.entities = entities;
+         this.roleService = roleService;
+@@ -195,6 +200,15 @@ public class SheetCloneService {
+             pools.saveAndFlush(copy);
+         }
+ 
++        // The crews, with their leads and members.
++        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
++            Crew copy = new Crew(to, crew.getName(), personIds.get(crew.getLeadId()));
++            for (CrewMember member : crew.getMembers()) {
++                copy.getMembers().add(new CrewMember(personIds.get(member.getPersonId())));
++            }
++            crews.saveAndFlush(copy);
++        }
++
+         // The claims, person by person as listed, each person's in the order they were added, listed as they were.
+         Map<Long, List<ClaimLog>> logOf = new HashMap<>();
+         logs.findBySheetIdOrderByIdAsc(sheetId)
+diff --git a/src/main/resources/db/migration/V92__crew.sql b/src/main/resources/db/migration/V92__crew.sql
+new file mode 100644
+index 000000000..6092ebe5b
+--- /dev/null
++++ b/src/main/resources/db/migration/V92__crew.sql
+@@ -0,0 +1,16 @@
++-- The crews of a sheet, each name at most once (kept trimmed), each with a lead chosen from the sheet's people.
++CREATE TABLE crew (
++    id             BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id       VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    name           VARCHAR(255) NOT NULL,
++    lead_person_id BIGINT       NOT NULL REFERENCES person (id)
++);
++CREATE UNIQUE INDEX crew_sheet_name ON crew (sheet_id, name);
++
++-- The members of a crew besides its lead, each person at most once.
++CREATE TABLE crew_member (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    crew_id   BIGINT NOT NULL REFERENCES crew (id),
++    person_id BIGINT NOT NULL REFERENCES person (id)
++);
++CREATE UNIQUE INDEX crew_member_crew_person ON crew_member (crew_id, person_id);
