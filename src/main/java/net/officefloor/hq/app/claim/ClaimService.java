@@ -85,15 +85,16 @@ public class ClaimService {
             String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
-        refuseClosed(sheetId, on);
+        int terms = person.getTerms() != null ? person.getTerms()
+                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
+        LocalDate dueBy = on.plusDays(terms);
+        refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
         refuseCorrection(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.take(sheetId);
-        int terms = person.getTerms() != null ? person.getTerms()
-                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
-        Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
+        Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, dueBy, note, corrects);
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
-        claim.setLateEntry(periods.softClosedOn(sheetId, on));
+        claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         logStatus(claim, person, user);
         claim = claims.saveAndFlush(claim);
         audit("CLAIM_ADDED", claim, person, user);
@@ -114,8 +115,7 @@ public class ClaimService {
         }
         refuseLocked(claim, user);
         LocalDate on = date != null ? date : sheets.today(sheetId);
-        refuseClosed(sheetId, claim.getDate());
-        refuseClosed(sheetId, on);
+        refuseClosed(sheetId, claim.getDueBy());
         refuseRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new), on);
         refuseCorrection(sheetId, claim.getPersonId(), amount, corrects);
@@ -142,7 +142,7 @@ public class ClaimService {
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimNotDraftException(claim.getStatus());
         }
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         refuseLocked(claim, user);
         claim.setLockedBy(user);
         return claims.saveAndFlush(claim);
@@ -169,7 +169,7 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         roles.require(sheetId, user, switch (to) {
             case OPEN -> "open";
             case SETTLED, PENDING -> "settle";
@@ -198,7 +198,7 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.take(sheetId);
         String number = claim.getNumber();
         if (to == ClaimStatus.OPEN) {
-            number = sheets.nextClaimNumber(sheetId, claim.getDate());
+            number = sheets.nextClaimNumber(sheetId, claim.getDueBy());
             claim.setOpenedBy(user);
         }
         if (to == ClaimStatus.SETTLED) {
@@ -236,7 +236,7 @@ public class ClaimService {
     @Transactional
     public Claim approve(String sheetId, String user, long claimId) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() != ClaimStatus.PENDING) {
             throw new ClaimStatusException(claim.getStatus(), ClaimStatus.SETTLED);
         }
@@ -267,7 +267,7 @@ public class ClaimService {
     @Transactional
     public Claim addProof(String sheetId, String user, long claimId) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
             throw new ClaimProofException("A " + claim.getStatus() + " claim takes no proof.");
         }
@@ -285,7 +285,7 @@ public class ClaimService {
     @Transactional
     public Claim resettle(String sheetId, String user, long claimId) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         if (!roles.isSteward(sheetId, user)) {
             throw new ClaimResettleException("Only a steward can re-settle a claim.");
         }
@@ -320,7 +320,7 @@ public class ClaimService {
     @Transactional
     public Claim reject(String sheetId, String user, long claimId, String reason) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() != ClaimStatus.PENDING) {
             throw new ClaimStatusException(claim.getStatus(), ClaimStatus.OPEN);
         }
@@ -347,7 +347,7 @@ public class ClaimService {
     @Transactional
     public Claim defer(String sheetId, String user, long claimId, LocalDate until) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() != ClaimStatus.OPEN) {
             throw new ClaimDeferException("Only an OPEN claim can be deferred.");
         }
@@ -364,30 +364,27 @@ public class ClaimService {
         return updated;
     }
 
-    /** Re-date an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement bound
-     *  it to stays bound; its period follows the new date, and while the sheet numbers by period a move
-     *  into another period gives it the next number of that period's sequence. A missing date is the
-     *  sheet's today. Refused unless the user is a steward, and for a claim in any other status, a claim
-     *  in a closed period or a new date inside one, and a date after its person's retirement. */
+    /** Re-date an OPEN or PENDING claim. Its due-by stays as it was fixed, and with it its period and
+     *  number, and a figure a statement bound it to stays bound. A missing date is the sheet's today.
+     *  Refused unless the user is a steward, and for a claim in any other status, a claim in a closed
+     *  period, and a date after its person's retirement. */
     @Transactional
     public Claim redate(String sheetId, String user, long claimId, LocalDate date) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         LocalDate on = date != null ? date : sheets.today(sheetId);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         if (!roles.isSteward(sheetId, user)) {
             throw new ClaimRedateException("Only a steward can re-date a claim.");
         }
         if (!claim.getStatus().isOpen()) {
             throw new ClaimRedateException("Only an OPEN or PENDING claim can be re-dated.");
         }
-        refuseClosed(sheetId, on);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         refuseRetired(person, on);
         Rollup.Snapshot before = rollup.take(sheetId);
         LocalDate old = claim.getDate();
-        claim.setNumber(sheets.redatedClaimNumber(sheetId, claim.getNumber(), old, on));
-        claim.setDate(on);
+                claim.setDate(on);
         Claim updated = claims.saveAndFlush(claim);
         audit("CLAIM_REDATED", updated, person, user, updated.getNumber(), " old=" + old + " new=" + on);
         rollup.recordChanges(sheetId, user, before);
@@ -401,7 +398,7 @@ public class ClaimService {
     @Transactional
     public Claim reassign(String sheetId, String user, long claimId, long toPersonId) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         if (!roles.allows(sheetId, user, "reassign")) {
             throw new ClaimReassignException("Your role may not reassign a claim.");
         }
@@ -439,7 +436,7 @@ public class ClaimService {
     @Transactional
     public Split split(String sheetId, String user, long claimId, BigDecimal amount) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
-        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, claim.getDueBy());
         roles.require(sheetId, user, "open");
         if (claim.getStatus() != ClaimStatus.OPEN) {
             throw new ClaimSplitException("Only an OPEN claim can be split.");
@@ -464,8 +461,9 @@ public class ClaimService {
         Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(), claim.getDate().plusDays(terms),
                 claim.getNote(), null);
         split.setListOrder(claims.maxListOrder(sheetId) + 1);
+        split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
         split.setStatus(ClaimStatus.OPEN);
-        split.setNumber(sheets.nextClaimNumber(sheetId, claim.getDate()));
+        split.setNumber(sheets.nextClaimNumber(sheetId, split.getDueBy()));
         split.setOpenedBy(user);
         split.setSplitFrom(claim.getNumber());
         logStatus(split, person, user);
@@ -680,7 +678,8 @@ public class ClaimService {
         }
     }
 
-    /** Refuse a change to a claim dated inside a closed period. Locks the sheet first, so a period being
+    /** Refuse a change to a claim due by a day inside a closed period (it belongs to the period containing
+     *  its due-by). Locks the sheet first, so a period being
      *  closed at the same moment is seen. */
     private void refuseClosed(String sheetId, LocalDate date) {
         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);

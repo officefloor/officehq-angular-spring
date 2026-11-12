@@ -149,7 +149,7 @@ export class Figures {
   }
 
   /** Each period's live due-total for each person, in cents, by period id then person id: the figures
-   *  of the person's claims whose date falls in it and that counted by the status they had at the end of
+   *  of the person's claims whose due-by falls in it and that counted by the status they had at the end of
    *  the period's last day, as their status log records it (one added after then does not count), and
    *  that are not left out now by a hold or a deferral — each its due as shown now: a settled claim's
    *  frozen due, else as its person's last statement bound it, else its live due, an overdue claim's
@@ -158,7 +158,7 @@ export class Figures {
     const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
     const sums = new Map<number, Map<number, bigint>>();
     for (const c of this.claims.periodCandidates()) {
-      const period = this.periods.of(c.date);
+      const period = this.periods.of(c.dueBy);
       if (!period || !countsAt(statusAt(c, period.to))) continue;
       let due: bigint | null;
       if (c.settledDue !== null) due = hundredths(c.settledDue);

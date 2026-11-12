@@ -126,7 +126,7 @@ public class Rollup {
         return sum.subtract(max).subtract(min);
     }
 
-    /** Each person's due-total of their claims dated from one date to another, both inclusive, by person
+    /** Each person's due-total of their claims due by a day from one date to another, both inclusive, by person
      *  id, every person on the sheet in the order they were added, as the screen shows a person's for a
      *  period: a claim counts by the status it had at the end of the last day, as its status log records
      *  it (one added after then does not), unless a hold or a deferral leaves it out now; each counts its
@@ -145,7 +145,7 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)
+            if (person == null || claim.getDueBy().isBefore(from) || claim.getDueBy().isAfter(to)
                     || !countsAt(claim, to) || heldOut(claim, person, today) || claim.deferredOn(today)) {
                 continue;
             }

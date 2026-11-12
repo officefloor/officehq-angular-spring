@@ -38,7 +38,8 @@ export class Periods {
   readonly periods = signal<Period[]>([]);
   private loads = 0;
 
-  /** The period whose dates contain a date (YYYY-MM-DD), or undefined when none does. */
+  /** The period whose dates contain a date (YYYY-MM-DD), or undefined when none does; a claim belongs to
+   *  the one containing its due-by. */
   of(date: string): Period | undefined {
     return this.periods().find((p) => p.from <= date && date <= p.to);
   }

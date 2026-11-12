@@ -247,7 +247,7 @@ public class SheetService {
         return sheet;
     }
 
-    /** The next number for a claim dated on a date: while the sheet numbers by period, the next in the
+    /** The next number for a claim due by a date: while the sheet numbers by period, the next in the
      *  sequence of the period containing the date (<period name>-1, -2, ...), or of no period (X-1, ...);
      *  otherwise the sheet-wide one (1, 2, ...). None is ever given twice. */
     @Transactional
@@ -262,18 +262,6 @@ public class SheetService {
         String number = sequence.nextClaimNumber();
         sequences.save(sequence);
         return number;
-    }
-
-    /** The number a claim keeps when re-dated from one date to another: while the sheet numbers by period
-     *  and the new date is in another period (or no period, X) than the old, the next in the new period's
-     *  sequence (the old number is never given again); otherwise the number it has. */
-    @Transactional
-    public String redatedClaimNumber(String id, String number, LocalDate from, LocalDate to) {
-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
-        if (number == null || !sheet.numbersByPeriod() || periodPrefix(id, from).equals(periodPrefix(id, to))) {
-            return number;
-        }
-        return nextClaimNumber(id, to);
     }
 
     /** The prefix of the numbering sequence of a date: the name of the period containing it, else X. */
