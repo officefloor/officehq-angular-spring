@@ -3,6 +3,7 @@ import { Claim, Claims } from '../../core/claims';
 import { Figures } from '../../core/figures';
 import { GRADES, People, Person } from '../../core/people';
 import { Periods } from '../../core/periods';
+import { Pools } from '../../core/pools';
 import { NO_RATE, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
 
@@ -348,6 +349,26 @@ import { PersonClaims } from '../claims/claims';
                 >
                   Hold<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'person-merge-into-' + p.id">Merge into<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <select
+                  [id]="'person-merge-into-' + p.id"
+                  data-testid="person-merge-into"
+                  [value]="mergeChoices()[p.id] ?? ''"
+                  (change)="setMergeChoice(p.id, value($event))"
+                >
+                  <option value="" [selected]="!mergeChoices()[p.id]">Choose…</option>
+                  @for (o of people.people(); track o.id) {
+                    <option [value]="'' + o.id" [selected]="'' + o.id === mergeChoices()[p.id]">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-merge"
+                  [disabled]="merging() === p.id"
+                  (click)="merge(p)"
+                >
+                  Merge<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
                 @if (actionError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ actionError()?.message }}</p>
                 }
@@ -365,6 +386,7 @@ export class PeopleList {
   protected readonly figures = inject(Figures);
   protected readonly money = money;
   protected readonly periods = inject(Periods);
+  private readonly pools = inject(Pools);
   protected readonly grades = GRADES;
   /** The people the list shows: everyone, or only those not retired unless show retired is on. */
   protected readonly shown = computed(() =>
@@ -380,6 +402,10 @@ export class PeopleList {
   protected readonly holdDates = signal<Record<number, { from: string; to: string }>>({});
   /** The id of the person being put on hold. */
   protected readonly holding = signal<number | null>(null);
+  /** The person chosen on each person's row to merge them into (a person id), blank while none is. */
+  protected readonly mergeChoices = signal<Record<number, string>>({});
+  /** The id of the person being merged into another. */
+  protected readonly merging = signal<number | null>(null);
   /** The id of the person whose watch is being toggled. */
   protected readonly watching = signal<number | null>(null);
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
@@ -626,6 +652,34 @@ export class PeopleList {
       else this.holdDates.update((ds) => ({ ...ds, [p.id]: { from: '', to: '' } }));
     } finally {
       this.holding.set(null);
+    }
+  }
+
+  protected setMergeChoice(id: number, choice: string): void {
+    this.clearActionError(id);
+    this.mergeChoices.update((cs) => ({ ...cs, [id]: choice }));
+  }
+
+  /** Merge a person into the one chosen on their row; once merged, everything on the sheet is re-read, as
+   *  their claims, patrons, pools and figures now belong to the other. */
+  protected async merge(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    const choice = this.mergeChoices()[p.id] ?? '';
+    if (!choice) {
+      this.actionError.set({ id: p.id, message: 'Choose a person to merge into.' });
+      return;
+    }
+    this.merging.set(p.id);
+    try {
+      const err = await this.people.merge(p.id, Number(choice));
+      if (err) {
+        this.actionError.set({ id: p.id, message: err });
+        return;
+      }
+      this.mergeChoices.update((cs) => ({ ...cs, [p.id]: '' }));
+      await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.periods.load()]);
+    } finally {
+      this.merging.set(null);
     }
   }
 

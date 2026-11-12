@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -8,6 +10,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.pool.Pool;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -31,9 +39,16 @@ public class PersonService {
     private final RoleService roles;
     private final Rollup rollup;
     private final Audit audit;
+    private final ClaimRepository claims;
+    private final PoolRepository pools;
+    private final PeriodRepository periods;
 
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
-            PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles) {
+            PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles,
+            ClaimRepository claims, PoolRepository pools, PeriodRepository periods) {
+        this.claims = claims;
+        this.pools = pools;
+        this.periods = periods;
         this.roles = roles;
         this.watches = watches;
         this.patrons = patrons;
@@ -233,6 +248,84 @@ public class PersonService {
         audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user + " name=" + aliased.getName()
                 + " alias=" + trimmed);
         return aliased;
+    }
+
+    /** A steward merges a person into another: the merged person's claims move to the other (numbers and
+     *  dates kept, listed after the other's in the order they were added, each losing any figure a statement
+     *  bound); their name and aliases become the other's aliases; their patrons are added to the other's (not
+     *  themselves, no repeats), anyone naming them as patron names the other instead (no repeats), and their
+     *  pool memberships move to the other (shares added, at most 100.00, where the other is already a member)
+     *  as do their figures for closed periods. Their statements, holds, watchers and contact are dropped, and
+     *  they leave the sheet. Refused for anyone but a steward, for the same person, and when either is
+     *  retired. */
+    @Transactional
+    public Person merge(String sheetId, String user, long personId, long intoId) {
+        Person from = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        Person into = people.findByIdAndSheetId(intoId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new MergeRefusedException("Only a steward may merge people.");
+        }
+        if (from.getId().equals(into.getId())) {
+            throw new MergeRefusedException("A person cannot be merged into themselves.");
+        }
+        if (from.isRetired() || into.isRetired()) {
+            throw new MergeRefusedException("A retired person cannot be merged.");
+        }
+        Rollup.Snapshot before = rollup.take(sheetId);
+        List<Claim> moving = new ArrayList<>(
+                claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, from.getId()));
+        moving.sort(Comparator.comparing(Claim::getId));
+        long order = claims.maxListOrder(sheetId);
+        for (Claim claim : moving) {
+            claim.setPersonId(into.getId());
+            claim.setStated(false, null);
+            claim.setListOrder(++order);
+        }
+        claims.saveAll(moving);
+
+        List<Long> intoPatrons = new ArrayList<>(patronsOf(into.getId()));
+        for (Patron patron : patrons.findByPersonId(from.getId())) {
+            if (!patron.getPatronId().equals(into.getId()) && !intoPatrons.contains(patron.getPatronId())) {
+                patrons.save(new Patron(sheetId, into.getId(), patron.getPatronId()));
+                intoPatrons.add(patron.getPatronId());
+            }
+            patrons.delete(patron);
+        }
+        for (Patron patron : patrons.findBySheetId(sheetId)) {
+            if (!patron.getPatronId().equals(from.getId())) {
+                continue;
+            }
+            if (!patron.getPersonId().equals(into.getId())
+                    && !patrons.existsByPersonIdAndPatronId(patron.getPersonId(), into.getId())) {
+                patrons.save(new Patron(sheetId, patron.getPersonId(), into.getId()));
+            }
+            patrons.delete(patron);
+        }
+
+        for (Pool pool : pools.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (pool.hasMember(from.getId())) {
+                pool.moveMember(from.getId(), into.getId());
+            }
+        }
+        for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
+            period.moveClosedTotal(from.getId(), into.getId());
+        }
+        watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+        statements.deleteAll(statements.findByPersonIdOrderByIdAsc(from.getId()));
+        // everything naming them goes before they do
+        people.flush();
+
+        List<String> names = new ArrayList<>();
+        names.add(from.getName());
+        names.addAll(from.getAliases());
+        people.delete(from);
+        people.flush();
+        names.forEach(into::addAlias);
+        Person merged = people.saveAndFlush(into);
+        audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + from.getName()
+                + " into=" + merged.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return merged;
     }
 
     /** Retire a person from a date, the sheet's today when none is given. */

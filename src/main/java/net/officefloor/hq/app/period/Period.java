@@ -127,6 +127,14 @@ public class Period {
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
+    /** Count one person's fixed due-total for the period as another's, added to theirs. */
+    public void moveClosedTotal(long fromId, long intoId) {
+        BigDecimal moving = closedPersonTotals.remove(fromId);
+        if (moving != null) {
+            closedPersonTotals.merge(intoId, moving, BigDecimal::add);
+        }
+    }
+
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;

@@ -237,6 +237,26 @@ public class PersonController {
         return view(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()), user.trim());
     }
 
+    /** The person to merge another into. */
+    public record MergeRequest(@NotNull Long intoId) {
+    }
+
+    /** Merge a person into another: they leave the sheet; answers the person merged into. */
+    @PostMapping("/{personId}/merge")
+    public PersonView merge(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid MergeRequest request) {
+        return view(service.merge(sheetId.trim(), user.trim(), personId, request.intoId()), user.trim());
+    }
+
+    /** A merge that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(MergeRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> mergeRefused(MergeRefusedException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     /** Give a person an alias. */
     @PostMapping("/{personId}/aliases")
     public PersonView addAlias(@PathVariable @NotBlank @Size(max = 200) String sheetId,

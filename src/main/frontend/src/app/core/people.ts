@@ -347,6 +347,21 @@ export class People {
     }
   }
 
+  /** Merge a person into another; an error message when refused. */
+  async merge(id: number, intoId: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/merge`, { intoId }, { headers: { 'X-User': user } }),
+      );
+      return null;
+    } catch (e) {
+      return failed('merge', e);
+    }
+  }
+
   /** Start (on) or stop watching a person as the signed-in user; an error message when refused. */
   async watch(id: number, on: boolean): Promise<string | null> {
     const sid = this.session.sheetId();

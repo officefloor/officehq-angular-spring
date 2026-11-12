@@ -42,4 +42,12 @@ public class PoolMember {
     public BigDecimal getShare() {
         return share;
     }
+
+    void setPersonId(long personId) {
+        this.personId = personId;
+    }
+
+    void setShare(BigDecimal share) {
+        this.share = share;
+    }
 }

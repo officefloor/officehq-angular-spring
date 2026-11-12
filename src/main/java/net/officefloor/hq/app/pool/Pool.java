@@ -68,4 +68,20 @@ public class Pool {
     public void addMember(long personId, BigDecimal share) {
         members.add(new PoolMember(personId, share));
     }
+
+    /** Move a person's membership to another: their share is added to the other's (at most 100.00) when the
+     *  other is already a member. */
+    public void moveMember(long fromId, long intoId) {
+        PoolMember moving = members.stream().filter(m -> m.getPersonId() == fromId).findFirst().orElse(null);
+        if (moving == null) {
+            return;
+        }
+        PoolMember kept = members.stream().filter(m -> m.getPersonId() == intoId).findFirst().orElse(null);
+        if (kept == null) {
+            moving.setPersonId(intoId);
+            return;
+        }
+        members.remove(moving);
+        kept.setShare(kept.getShare().add(moving.getShare()).min(new BigDecimal("100.00")));
+    }
 }
