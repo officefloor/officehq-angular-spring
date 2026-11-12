@@ -66,6 +66,13 @@ public class Period {
     @Column(name = "carried", precision = 14, scale = 2)
     private Map<Long, BigDecimal> personCarried = new HashMap<>();
 
+    /** Each person's opening balance for the period, by person id: added to their carried figure for it. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "opening", precision = 14, scale = 2)
+    private Map<Long, BigDecimal> personOpenings = new HashMap<>();
+
     protected Period() {
     }
 
@@ -125,6 +132,15 @@ public class Period {
         return Map.copyOf(personCarried);
     }
 
+    public Map<Long, BigDecimal> getPersonOpenings() {
+        return Map.copyOf(personOpenings);
+    }
+
+    /** Add the amount to the person's opening balance for the period; a closed period's fixed figures stay as fixed. */
+    public void addOpening(Long personId, BigDecimal amount) {
+        personOpenings.merge(personId, amount, BigDecimal::add);
+    }
+
     /** Close the period, fixing each person's due-total and carried figure for it and its own due-total, their sum. */
     public void close(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
         this.closed = true;
@@ -146,7 +162,7 @@ public class Period {
         this.closedTotal = totals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** Fold one person's fixed due-total into another's, keeping the period's own (a merge of the two). */
+    /** Fold one person's fixed due-total, carried figure and opening balance into another's, keeping the period's own (a merge of the two). */
     public void mergePersonTotal(Long fromId, Long intoId) {
         BigDecimal from = personTotals.remove(fromId);
         if (from != null) {
@@ -155,6 +171,10 @@ public class Period {
         BigDecimal carried = personCarried.remove(fromId);
         if (carried != null) {
             personCarried.merge(intoId, carried, BigDecimal::add);
+        }
+        BigDecimal opening = personOpenings.remove(fromId);
+        if (opening != null) {
+            personOpenings.merge(intoId, opening, BigDecimal::add);
         }
     }
 

@@ -347,7 +347,7 @@ public class RollupService {
      * Each person's carried figure for the period, by person id for every person on the sheet, as the screen shows it
      * while the period is open: the dues as shown now of their claims due by a date in one of the periods that ends
      * before it starts that were OPEN or PENDING at the end of its to-date by their status log and count then, skipping
-     * those with no due; 0.00 with none.
+     * those with no due, plus their opening balance for it; 0.00 with none.
      */
     public Map<Long, BigDecimal> carriedInto(String sheetId, List<Period> periods, Period period) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);
@@ -378,6 +378,7 @@ public class RollupService {
             }
             dueOf(sheet, sheetRates, person, claim).ifPresent(due -> totals.merge(person.getId(), due, BigDecimal::add));
         }
+        period.getPersonOpenings().forEach((id, opening) -> totals.computeIfPresent(id, (k, total) -> total.add(opening)));
         totals.replaceAll((id, total) -> total.setScale(2, RoundingMode.HALF_EVEN));
         return totals;
     }

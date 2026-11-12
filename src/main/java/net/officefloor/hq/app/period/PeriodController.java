@@ -33,21 +33,25 @@ public class PeriodController {
      * A period as shown, its dates as yyyy-mm-dd; once closed, the due-total fixed then (null while open) and each
      * person's due-total for it fixed then, by person id (empty while open), and each person's carried figure fixed
      * then, likewise; the fiscal year (FYyyyy) its from-date
-     * falls in.
+     * falls in; and each person's opening balance for it, by person id, added to their carried figure.
      */
     public record PeriodView(Long id, String name, String from, String to, boolean closed, boolean softClosed,
             String closedTotal,
-            Map<Long, String> personTotals, String fy, Integer cap, Map<Long, String> personCarried) {
+            Map<Long, String> personTotals, String fy, Integer cap, Map<Long, String> personCarried,
+            Map<Long, String> personOpenings) {
 
         static PeriodView of(Period period, Function<LocalDate, String> fiscalYears) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((person, total) -> personTotals.put(person, total.toPlainString()));
             Map<Long, String> personCarried = new TreeMap<>();
             period.getPersonCarried().forEach((person, carried) -> personCarried.put(person, carried.toPlainString()));
+            Map<Long, String> personOpenings = new TreeMap<>();
+            period.getPersonOpenings().forEach((person, opening) -> personOpenings.put(person, opening.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFromDate().toString(),
                     period.getToDate().toString(), period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(), personTotals,
-                    fiscalYears.apply(period.getFromDate()), period.getCap(), personCarried);
+                    fiscalYears.apply(period.getFromDate()), period.getCap(), personCarried,
+                    personOpenings);
         }
     }
 
@@ -74,9 +78,11 @@ public class PeriodController {
     }
 
     private final PeriodService service;
+    private final OpeningImportService openings;
 
-    public PeriodController(PeriodService service) {
+    public PeriodController(PeriodService service, OpeningImportService openings) {
         this.service = service;
+        this.openings = openings;
     }
 
     /** The sheet's periods in date order. */
@@ -130,6 +136,22 @@ public class PeriodController {
 
     private PeriodView view(String sheetId, Period period) {
         return PeriodView.of(period, service.fiscalYears(sheetId));
+    }
+
+    /** Pasted lines of opening balances, one name,period,amount per line. */
+    public record OpeningImportRequest(@NotNull @Size(max = 1000000) String text) {
+    }
+
+    /** How many lines of opening balances were added. */
+    public record OpeningImportResult(int count) {
+    }
+
+    /** Add an opening balance per pasted line; refused as a whole when any line is. */
+    @PostMapping("/openings")
+    public OpeningImportResult importOpenings(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid OpeningImportRequest request) {
+        return new OpeningImportResult(openings.importOpenings(sheetId.trim(), user.trim(), request.text()));
     }
 
     /** Close a period, fixing its due-total; refused when it is already closed. */

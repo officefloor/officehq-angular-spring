@@ -165,7 +165,7 @@ function csvField(value: string): string {
       </dl>
     </section>
     <app-rates [grades]="grades" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
@@ -1457,11 +1457,14 @@ export class People {
 
   /**
    * The person's carried figure for the period: once it is closed or soft-closed, the figure fixed then (0.00 for a
-   * person added since); while it is open, the dues of their counting claims of earlier periods still open at its end.
+   * person added since); while it is open, the dues of their counting claims of earlier periods still open at its end,
+   * plus their opening balance for it.
    */
   protected carriedOf(person: Person, period: Period): string {
     if (period.closed || period.softClosed) return period.personCarried?.[person.id] ?? '0.00';
-    return this.personPeriodCarried().get(person.id)?.get(period.name) ?? '0.00';
+    const carried = this.personPeriodCarried().get(person.id)?.get(period.name) ?? '0.00';
+    const opening = period.personOpenings?.[person.id];
+    return opening === undefined ? carried : sumDues([carried, opening]);
   }
 
   /** The person's cuts across every pool they are a member of, added up; a pool that shows no cuts adds nothing. */
@@ -1633,6 +1636,12 @@ export class People {
       ),
     );
     void this.read(sheet);
+  }
+
+  /** Re-read once opening balances were imported, so the screen holds what the store does. */
+  protected openingsImported(): void {
+    const sheet = this.session.sheet();
+    if (sheet) void this.read(sheet);
   }
 
   /** Re-read once rates were imported, so the screen holds what the store does. */
