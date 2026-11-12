@@ -1,0 +1,64 @@
+{
+  "checkpoint": 38,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp38_terms-per-grade",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Terms can be set per grade (settings, SETTING_CHANGED key=terms-<grade> value=<days>); a grade\nwithout its own terms uses the sheet's terms. A claim's due-by is now fixed when the claim is\ncreated, from the terms of its person's grade in force on the claim's date; it does not change\nwhen the terms or the claim's date change later.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTerms can be set per grade (settings, SETTING_CHANGED key=terms-<grade> value=<days>); a grade\nwithout its own terms uses the sheet's terms. A claim's due-by is now fixed when the claim is\ncreated, from the terms of its person's grade in force on the claim's date; it does not change\nwhen the terms or the claim's date change later.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "712d5385a8c9937440eca8b2bea906c69df71a35",
+  "reset_sha": "",
+  "preagent_sha": "e9c8bb7f622cd5eadc4018422ef85c4d343778c3",
+  "prev_sha": "e9c8bb7f622cd5eadc4018422ef85c4d343778c3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1491426,
+    "input_tokens": 42,
+    "output_tokens": 12710,
+    "cache_read_tokens": 1288713,
+    "cache_creation_tokens": 79629,
+    "num_turns": 23,
+    "duration_ms": 295824,
+    "duration_api_ms": 118519,
+    "model": "claude-opus-5-5",
+    "session_id": "a9a879f6-a45b-4c87-90f4-bfe4b970394a",
+    "stop_reason": "success",
+    "result_text": "I've added terms per grade and made a claim's due-by fixed when the claim is created. All 4 tests in the acceptance spec pass under `bin/e2e`.\n\n**Terms per grade**\n- Settings now has a terms box for each grade A, B and C (`setting-terms-<grade>`), with the value in force shown next to it (`setting-terms-<grade>-current`). Leaving a grade's box blank removes its own terms, so that grade goes back to using the sheet's terms.\n- Saving one writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=terms-<grade> value=<days>` to the audit file.\n- They're stored in a new table, added by migration `V30__grade_terms_claim_due_by.sql`.\n\n**Fixed due-by**\n- Claims now have a stored `due_by` date. When a claim is added, it's set to the claim's date plus the terms of the person's grade on that date, or the sheet's terms if that grade has none of its own.\n- Editing the claim's date, changing either kind of terms, or changing the person's grade later leaves it as it was.\n- Overdue checks and late charges now use this stored date, both on the server (`Sheet.lateCharge`, `Rollup.charged`) and on screen (`claims.ts`).\n- Claims that already exist get their date plus their sheet's current terms when the migration runs.\n\n**One behaviour change:** changing the sheet's terms used to write ROLLUP/TOTALS lines when it moved existing claims' late charges. Since terms now only affect claims added afterwards, it no longer recomputes or writes those lines. The test's expected audit lines agree.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1491426,
+        "num_turns": 23,
+        "duration_ms": 295824,
+        "duration_api_ms": 118519,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp38.agent.jsonl",
+  "agent_diff_file": "cp38.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
