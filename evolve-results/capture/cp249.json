@@ -1,0 +1,64 @@
+{
+  "checkpoint": 249,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp249_policy-viewer",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the policy versions: one line per version, oldest first, as <version> <from or start>\n<key>=<value> <count of claims whose policy version it is>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "abdc2c32f64b80bd443e612bcf80596a22dbd6f1",
+  "reset_sha": "",
+  "preagent_sha": "8690f430c3dfbaa1aedfd3502ad7767d158d7cc3",
+  "prev_sha": "8690f430c3dfbaa1aedfd3502ad7767d158d7cc3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8031619999999999,
+    "input_tokens": 46,
+    "output_tokens": 10333,
+    "cache_read_tokens": 915670,
+    "cache_creation_tokens": 51648,
+    "num_turns": 23,
+    "duration_ms": 318741,
+    "duration_api_ms": 100265,
+    "model": "claude-opus-5-5",
+    "session_id": "ba2385b3-3214-4877-8a15-d641995b064d",
+    "stop_reason": "success",
+    "result_text": "The screen now has a policy versions list, and all 4 Playwright tests pass with `bin/e2e`.\n\nPressing **Show policy versions** (`policy-show`) lists one `policy-line` per version, oldest first, as `<version> <from or start> <key>=<value> <count>`, for example `3 2026-02-01 rounding=half-up 1`.\n\n- **Stored data:** policy versions didn't record the value they set, so I added a value column. The new migration `V125__policy_version_value.sql` fills it in for existing versions from the dated setting with the same key and from-date. If that setting was later changed on the same date, the old version picks up the newer value. New versions store their value when saved, and cloning a sheet copies it.\n- **Server:** a new endpoint, `GET /api/sheets/{id}/settings/policy`, returns each version with its claim count. A claim counts towards the version in force on its date, which is the same rule the existing per-claim policy column uses. Voided claims are included, as the third scenario expects.\n- **Front end:** a new small component, `features/policy/policy-versions.ts`, placed on the home screen. It asks the server each time the button is pressed, so the counts are current. If the request fails it shows a `policy-error` message.\n\nA version with no from-date shows `start`, and a setting with no value (such as no clerk limit) shows as `key=` with nothing after it. Nothing is written to the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8031619999999999,
+        "num_turns": 23,
+        "duration_ms": 318741,
+        "duration_api_ms": 100265,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp249.agent.jsonl",
+  "agent_diff_file": "cp249.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
