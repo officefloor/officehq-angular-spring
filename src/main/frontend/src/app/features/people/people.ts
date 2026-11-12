@@ -237,7 +237,7 @@ function csvField(value: string): string {
       </dl>
     </section>
     <app-rates [grades]="grades()" [rates]="rates()" (saved)="rateSaved($event)" (imported)="ratesImported()" />
-    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
+    <app-periods [periods]="periods()" [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" (saved)="periodSaved($event)" (openingsImported)="openingsImported()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
@@ -1146,6 +1146,16 @@ export class People {
     return new Map(
       [...carried].map(([id, theirs]) => [id, new Map([...theirs].map(([name, list]) => [name, sumDues(list)]))]),
     );
+  });
+  /** Each period's claim count by name: the claims due by a date in it, leaving out VOID and DELETED ones. */
+  protected readonly periodClaimCounts = computed(() => {
+    const counts = new Map<string, number>();
+    for (const c of this.claims()) {
+      const period = periodOn(this.periods(), c.dueBy);
+      if (!period || c.status === 'VOID' || c.status === 'DELETED') continue;
+      counts.set(period.name, (counts.get(period.name) ?? 0) + 1);
+    }
+    return counts;
   });
   /** Each period's due-total by name: the sum of everyone's due-total for it. */
   protected readonly periodDueTotals = computed(

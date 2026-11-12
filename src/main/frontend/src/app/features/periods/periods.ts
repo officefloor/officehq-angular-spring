@@ -166,7 +166,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
       </form>
       <table>
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
@@ -180,6 +180,7 @@ export function periodOn(periods: Period[], date: string): Period | undefined {
               <td data-testid="period-fy">{{ p.fy | fig }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' | fig }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="period-claims-count">{{ claimCounts().get(p.name) ?? 0 | fig }}</td>
               <td>
                 <button
                   type="button"
@@ -242,6 +243,8 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total by its name: the due of the counting claims dated in it. */
   readonly dueTotals = input.required<Map<string, string>>();
+  /** Each period's claim count by its name: the claims due by a date in it, VOID and DELETED ones left out. */
+  readonly claimCounts = input.required<Map<string, number>>();
   /** A period was added, generated, closed or reopened. */
   readonly saved = output<Period>();
   /** Opening balances were imported: the screen is to re-read the periods. */
