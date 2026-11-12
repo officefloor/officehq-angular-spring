@@ -96,9 +96,9 @@ public class ClaimService {
         return updated;
     }
 
-    /** An amount times a rate, divided by 100, rounded half up to cents. */
+    /** An amount times a rate, divided by 100, rounded half to even to cents. */
     private static BigDecimal due(BigDecimal amount, Rate rate) {
-        return amount.multiply(rate.getRate()).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
+        return amount.multiply(rate.getRate()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */

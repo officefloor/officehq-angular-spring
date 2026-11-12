@@ -42,11 +42,11 @@ export class Rates {
     return (today ? this.inForce(grade, today)?.rate : undefined) ?? NO_RATE;
   }
 
-  /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded half up
-   *  to cents; null when no rate of the grade applies then. */
+  /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded half to
+   *  even to cents; null when no rate of the grade applies then. */
   dueCents(amountCents: bigint, grade: string, date: string): bigint | null {
     const rate = this.inForce(grade, date);
-    return rate === undefined ? null : (amountCents * hundredths(rate.rate) + 5000n) / 10000n;
+    return rate === undefined ? null : halfEven(amountCents * hundredths(rate.rate), 10000n);
   }
 
   /** An amount written with two decimals times the grade's rate on a date, as `dueCents`, shown
@@ -104,6 +104,13 @@ export class Rates {
 /** By grade, then from-date, the one with none first. */
 function byGradeAndFrom(a: Rate, b: Rate): number {
   return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
+}
+
+/** A non-negative number divided by another, rounded half to even. */
+function halfEven(n: bigint, d: bigint): bigint {
+  const q = n / d;
+  const twice = (n % d) * 2n;
+  return twice > d || (twice === d && q % 2n === 1n) ? q + 1n : q;
 }
 
 /** A number written with up to two decimals, in hundredths. */

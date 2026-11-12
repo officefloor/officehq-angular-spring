@@ -1,5 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { Claims } from '../../core/claims';
+import { Claims, counts } from '../../core/claims';
 import { GRADES, People, Person } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -89,10 +89,23 @@ export class PeopleList {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
   }
 
-  /** A person's claimed times their grade's rate in force on the sheet's today, divided by 100,
-   *  rounded half up; null when the grade has no rate then. */
+  /** The sum of the figures of a person's claims that count: a settled claim's frozen due, else its
+   *  live due at the rate in force on its date (a claim with no rate then adds nothing). Null when
+   *  the grade has no rate on the sheet's today and no settled claim keeps a figure. */
   private dueCents(p: Person): bigint | null {
-    return this.rates.dueCents(hundredths(this.claims.claimed(p.id)), p.grade, this.session.today() ?? '');
+    let sum = 0n;
+    let settledFigure = false;
+    for (const c of this.claims.of(p.id).filter(counts)) {
+      if (c.settledDue !== null) {
+        settledFigure = true;
+        sum += hundredths(c.settledDue);
+      } else {
+        sum += this.rates.dueCents(hundredths(c.amount), p.grade, c.date) ?? 0n;
+      }
+    }
+    const today = this.session.today();
+    const rated = today ? this.rates.inForce(p.grade, today) !== undefined : false;
+    return rated || settledFigure ? sum : null;
   }
 
   protected due(p: Person): string {
