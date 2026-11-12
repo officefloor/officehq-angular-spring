@@ -17,6 +17,9 @@ import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.template.ClaimTemplate;
+import net.officefloor.hq.app.template.ClaimTemplateService;
+import net.officefloor.hq.app.template.TemplateRefusedException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -143,10 +146,12 @@ public class ClaimController {
     private final PasteService paste;
     private final PersonService people;
     private final AsOf asOf;
+    private final ClaimTemplateService templates;
 
     public ClaimController(ClaimService service, QuickAddService quickAdd, PasteService paste, PersonService people,
-            AsOf asOf) {
+            AsOf asOf, ClaimTemplateService templates) {
         this.asOf = asOf;
+        this.templates = templates;
         this.service = service;
         this.quickAdd = quickAdd;
         this.paste = paste;
@@ -178,6 +183,22 @@ public class ClaimController {
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.date(),
                 request.noteOrEmpty(), request.correctsOrNone(), request.refOrNone(), request.tagList()));
+    }
+
+    /** The claim template a claim is made from, by name. */
+    public record TemplateClaimRequest(@Size(max = 200) String template) {
+    }
+
+    /** Add a DRAFT claim for a person with the template's amount and note as they are now, dated as a claim
+     *  added with no date, by every rule of adding a claim. */
+    @PostMapping("/people/{personId}/template-claims")
+    public ClaimView addFromTemplate(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid TemplateClaimRequest request) {
+        ClaimTemplate template = templates.find(sheetId.trim(), request.template());
+        return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, template.getAmount(), null,
+                template.getNote(), null, null, List.of()));
     }
 
     /** Add a DRAFT claim dated the sheet's today for the person with the name, adding them first when
@@ -492,6 +513,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimPasteException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> pasteRefused(ClaimPasteException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A claim from a template the sheet has none by is refused with the reason, for the form to show. */
+    @ExceptionHandler(TemplateRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> templateRefused(TemplateRefusedException e) {
         return Map.of("message", e.getMessage());
     }
 

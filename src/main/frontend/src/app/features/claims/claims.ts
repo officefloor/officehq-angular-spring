@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ClaimTemplates } from '../../core/claim-templates';
 import { Claim, ClaimAction, Claims, bound } from '../../core/claims';
 import { Periods } from '../../core/periods';
 import { GradeFrom, People, gradeOn } from '../../core/people';
@@ -64,6 +65,20 @@ import { VoidReasons } from '../../core/void-reasons';
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
       }
     </form>
+    <label [for]="fid('template')">Claim template</label>
+    <select
+      [id]="fid('template')"
+      data-testid="claim-template-select"
+      (change)="template.set(value($event)); clearErrors()"
+    >
+      <option value="" [selected]="!template()">Choose a template</option>
+      @for (t of templates.templates(); track t.id) {
+        <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
+      }
+    </select>
+    <button type="button" data-testid="claim-template-add" [disabled]="saving()" (click)="addFromTemplate()">
+      Add claim from template
+    </button>
     <ul data-testid="claim-list">
       @for (c of list(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
@@ -255,6 +270,9 @@ export class PersonClaims {
   protected readonly corrects = signal('');
   protected readonly ref = signal('');
   protected readonly tags = signal('');
+  protected readonly templates = inject(ClaimTemplates);
+  /** The template the person's next claim from a template is made from: none chosen yet. */
+  protected readonly template = signal('');
   /** The edit whose edit button was refused while no editor was open: the form's next submit is its save,
    *  refused on the claim again, until the next action on that claim or another editor opens. */
   private refusedEdit: { id: number; message: string } | null = null;
@@ -567,6 +585,19 @@ export class PersonClaims {
     this.ref.set('');
     this.tags.set('');
     this.error.set(null);
+  }
+
+  /** Add a DRAFT claim from the chosen template; a refusal shows on the form. */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.saving()) return; // a second press before the first has answered
+    this.saving.set(true);
+    try {
+      this.clearErrors();
+      const err = await this.claims.addFromTemplate(this.personId(), this.template());
+      if (err) this.error.set(err);
+    } finally {
+      this.saving.set(false);
+    }
   }
 
   protected async submit(e: Event): Promise<void> {

@@ -314,6 +314,25 @@ export class Claims {
     }
   }
 
+  /** Add a DRAFT claim for a person with the named template's amount and note as they are now, dated as a
+   *  claim added with no date; an error message when refused. */
+  async addFromTemplate(personId: number, template: string): Promise<string | null> {
+    if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
+    if (!template) return 'Choose a claim template.';
+    const sid = this.session.sheetId()!;
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/people/${personId}/template-claims`, { template }, {
+          headers: { 'X-User': this.session.user()! },
+        }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => [claim, ...cs]);
+      return null;
+    } catch (e) {
+      return failed('add', e);
+    }
+  }
+
   /** Quick-add a DRAFT claim dated the sheet's today, with an empty note, for the person with the
    *  name, the server adding them with grade A first when the sheet has no one by it; an error
    *  message when refused. */
