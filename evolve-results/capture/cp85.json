@@ -1,0 +1,64 @@
+{
+  "checkpoint": 85,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp85_grace-per-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Grace days can be set per grade (settings, SETTING_CHANGED key=grace-<grade> value=<days>, dated\nlike the floor; blank means none). A claim whose person's grade in force on the claim's date has a\ngrace in force on that date is overdue only when its due-by plus the grace days is before the\nsheet's today, and the late charge's 30-day boundaries are counted from the due-by plus the grace.\nThe due-by shown on the claim is unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nGrace days can be set per grade (settings, SETTING_CHANGED key=grace-<grade> value=<days>, dated\nlike the floor; blank means none). A claim whose person's grade in force on the claim's date has a\ngrace in force on that date is overdue only when its due-by plus the grace days is before the\nsheet's today, and the late charge's 30-day boundaries are counted from the due-by plus the grace.\nThe due-by shown on the claim is unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2bb954662f0322f88ecb9fa060b392f5935c862a",
+  "reset_sha": "",
+  "preagent_sha": "0de1284b834ef39bd435ed11a4f060a57ad53679",
+  "prev_sha": "0de1284b834ef39bd435ed11a4f060a57ad53679",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4831210000000001,
+    "input_tokens": 54,
+    "output_tokens": 15059,
+    "cache_read_tokens": 1933465,
+    "cache_creation_tokens": 99379,
+    "num_turns": 28,
+    "duration_ms": 339310,
+    "duration_api_ms": 145721,
+    "model": "claude-opus-5-5",
+    "session_id": "809e21a9-febb-4af3-8359-c5ae5f2bf340",
+    "stop_reason": "success",
+    "result_text": "Grace days can now be set per grade, and all 4 Playwright tests pass when run with `bin/e2e`.\n\n**What it does**\n- **Setting:** grace days are saved per grade as a dated setting, the same way per-grade terms already are. They are stored in the existing settings table under the key `grace-<grade>`, so no schema change was needed. Saving writes `SETTING_CHANGED ... key=grace-<grade> value=<days>`, with ` from=<date>` added when a from-date is given. A blank value means the grade has no grace. Because grace changes figures, a save is followed by the usual `ROLLUP`/`TOTALS` records when totals move.\n- **Overdue and late charge:** the grace that applies is the one in force on the claim's date, for the person's grade on that date. A claim is overdue only when its due-by plus that grace is before the sheet's today, and the late charge's 30-day boundaries count from that same date. The due-by shown on the claim doesn't change.\n- **Server:** the new endpoint is `PUT /api/sheets/{id}/settings/grace/{grade}`. The new rule is used everywhere the server works out overdue or a late charge: the rollup totals, period totals, settle, approve, re-settle, and statements (including dated statements).\n- **Screen:** the overdue flag and late charge on the claim list use the same rule. The settings panel has new fields for each grade: `setting-grace-<grade>`, `-from` and `-current`. These are separate from the existing sheet-wide `grace-days` setting, which still controls closing periods.\n\nThe main logic is in `Sheet.java` (`gradeGraceOn`, `lateFrom`), `Rollup.java` and `ClaimService.java` on the server, and `core/session.ts`, `core/claims.ts` and `features/settings/settings.ts` on the front end. I also created a `.run/` folder to hold the test log, because `/tmp` isn't writable here.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4831210000000001,
+        "num_turns": 28,
+        "duration_ms": 339310,
+        "duration_api_ms": 145721,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp85.agent.jsonl",
+  "agent_diff_file": "cp85.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
