@@ -64,6 +64,20 @@ export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
 }
 
+/** Whether a claim in this status counts toward the totals; no status (not yet added) does not. */
+export function countsAt(status: ClaimStatus | null): boolean {
+  return status === 'OPEN' || status === 'PENDING' || status === 'SETTLED';
+}
+
+/** The status a claim had at the end of a day (YYYY-MM-DD), as its status log records it: its latest line
+ *  dated on or before it; null when it was added after it. A claim with no log has its status now. */
+export function statusAt(c: Claim, day: string): ClaimStatus | null {
+  if (c.statusLog.length === 0) return c.status;
+  let status: ClaimStatus | null = null;
+  for (const l of c.statusLog) if (l.on <= day) status = l.status;
+  return status;
+}
+
 /** Whether a claim is still open (OPEN or PENDING): it goes overdue, and a hold over its date takes it
  *  out of the live totals unless a statement binds it. */
 export function isOpen(c: Claim): boolean {
@@ -105,6 +119,16 @@ export class Claims {
     const holds = new Map(this.people.people().map((p) => [p.id, p.holds]));
     return this.claims().filter(
       (c) => counts(c) && !(isOpen(c) && !bound(c) && heldOn(holds.get(c.personId) ?? [], c.date)) && !this.deferred(c),
+    );
+  });
+
+  /** The claims a period's figures may count, whatever their status: all but the OPEN and PENDING claims
+   *  bound by no statement and dated within one of their person's holds, and the deferred claims, as the
+   *  live totals leave those out. */
+  readonly periodCandidates = computed(() => {
+    const holds = new Map(this.people.people().map((p) => [p.id, p.holds]));
+    return this.claims().filter(
+      (c) => !(isOpen(c) && !bound(c) && heldOn(holds.get(c.personId) ?? [], c.date)) && !this.deferred(c),
     );
   });
 

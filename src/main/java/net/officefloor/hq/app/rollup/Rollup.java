@@ -12,6 +12,8 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.claim.StatusChange;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -112,11 +114,12 @@ public class Rollup {
         return new Snapshot(figures, claimedTotal, dueTotal, overdueTotal);
     }
 
-    /** Each person's due-total of their claims that count dated from one date to another, both
-     *  inclusive, by person id, every person on the sheet in the order they were added, as the screen
-     *  shows a person's for a period: each claim's settled due, else the figure its statement bound,
-     *  else its live due, at least the floor, an overdue claim's late charge on top (a claim with no
-     *  figure adds nothing). */
+    /** Each person's due-total of their claims dated from one date to another, both inclusive, by person
+     *  id, every person on the sheet in the order they were added, as the screen shows a person's for a
+     *  period: a claim counts by the status it had at the end of the last day, as its status log records
+     *  it (one added after then does not), unless a hold or a deferral leaves it out now; each counts its
+     *  due as shown now: its settled due, else the figure its statement bound, else its live due, at
+     *  least the floor, an overdue claim's late charge on top (a claim with no figure adds nothing). */
     public Map<Long, BigDecimal> dueBetweenByPerson(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
@@ -130,8 +133,8 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !countsLive(claim, person, today) || claim.getDate().isBefore(from)
-                    || claim.getDate().isAfter(to)) {
+            if (person == null || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)
+                    || !countsAt(claim, to) || heldOut(claim, person) || claim.deferredOn(today)) {
                 continue;
             }
             BigDecimal due;
@@ -179,6 +182,23 @@ public class Rollup {
      *  is not deferred past the sheet's today. */
     private static boolean countsLive(Claim claim, Person person, LocalDate today) {
         return claim.getStatus().counts() && !heldOut(claim, person) && !claim.deferredOn(today);
+    }
+
+    /** Whether a claim counted by the status it had at the end of a day, as its status log records it:
+     *  its latest line dated on or before it; not when it was added after it. A claim with no log counts
+     *  by its status now. */
+    private static boolean countsAt(Claim claim, LocalDate day) {
+        List<StatusChange> log = claim.getStatusLog();
+        if (log.isEmpty()) {
+            return claim.getStatus().counts();
+        }
+        ClaimStatus status = null;
+        for (StatusChange change : log) {
+            if (!change.getOn().isAfter(day)) {
+                status = change.getStatus();
+            }
+        }
+        return status != null && status.counts();
     }
 
     /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */
