@@ -1,5 +1,6 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Claim, Claims } from '../../core/claims';
+import { Rates } from '../../core/rates';
 
 // A person's claims: one form adds a claim, or edits the one whose editor is open, and the list
 // shows the person's claims newest first.
@@ -43,6 +44,7 @@ import { Claim, Claims } from '../../core/claims';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span>Due <span data-testid="claim-due">{{ rates.due(c.amount, grade()) }}</span></span>
           @if (editing() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
           } @else {
@@ -57,7 +59,10 @@ import { Claim, Claims } from '../../core/claims';
 })
 export class PersonClaims {
   private readonly claims = inject(Claims);
+  protected readonly rates = inject(Rates);
   readonly personId = input.required<number>();
+  /** The person's grade, whose rate gives each claim's due. */
+  readonly grade = input.required<string>();
   protected readonly list = computed(() => this.claims.of(this.personId()));
   protected readonly amount = signal('');
   protected readonly date = signal('');

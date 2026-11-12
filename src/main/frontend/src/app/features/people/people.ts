@@ -1,6 +1,7 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { Claims } from '../../core/claims';
 import { GRADES, People, Person } from '../../core/people';
+import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
 
 // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
@@ -41,9 +42,10 @@ import { PersonClaims } from '../claims/claims';
         }
       </form>
       <p>Claimed total: <strong data-testid="rollup-claimed-total">{{ claims.total() }}</strong></p>
+      <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people.people(); track p.id) {
@@ -51,7 +53,8 @@ import { PersonClaims } from '../claims/claims';
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
-              <td><app-person-claims [personId]="p.id" /></td>
+              <td data-testid="person-due-total">{{ due(p) }}</td>
+              <td><app-person-claims [personId]="p.id" [grade]="p.grade" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
@@ -67,7 +70,12 @@ import { PersonClaims } from '../claims/claims';
 export class PeopleList {
   protected readonly people = inject(People);
   protected readonly claims = inject(Claims);
+  private readonly rates = inject(Rates);
   protected readonly grades = GRADES;
+  /** Everyone's due-total added up, skipping those whose grade has no rate. */
+  protected readonly dueTotal = computed(() =>
+    money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
+  );
   protected readonly name = signal('');
   protected readonly grade = signal<string>('A');
   /** The id of the person whose editor is open, or null when the form adds. */
@@ -77,6 +85,17 @@ export class PeopleList {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  /** A person's claimed times their grade's rate, divided by 100, rounded half up; null when the
+   *  grade has no rate. */
+  private dueCents(p: Person): bigint | null {
+    return this.rates.dueCents(hundredths(this.claims.claimed(p.id)), p.grade);
+  }
+
+  protected due(p: Person): string {
+    const d = this.dueCents(p);
+    return d === null ? NO_RATE : money(d);
   }
 
   protected edit(p: Person): void {
