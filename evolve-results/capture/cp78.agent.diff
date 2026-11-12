@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 6f3defa2d..9fd5b018a 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -91,6 +91,24 @@ export class Figures {
+     return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+   }
+ 
++  /** The due of a person's OPEN and PENDING claims that count live, split by the claim's age on the
++   *  sheet's today (the days from its date): 0 to 30 (a claim dated after today too), 31 to 60, and 61
++   *  or more. All 0 with no today. */
++  agedCents(p: Person): { upTo30: bigint; upTo60: bigint; over60: bigint } {
++    const aged = { upTo30: 0n, upTo60: 0n, over60: 0n };
++    const today = this.session.today();
++    if (!today) return aged;
++    const from30 = addDays(today, -30);
++    const from60 = addDays(today, -60);
++    for (const c of this.claims.live().filter((c) => c.personId === p.id && isOpen(c))) {
++      const due = this.figureCents(c, p);
++      if (c.date >= from30) aged.upTo30 += due;
++      else if (c.date >= from60) aged.upTo60 += due;
++      else aged.over60 += due;
++    }
++    return aged;
++  }
++
+   /** A claim's figure: its settled due, else the figure its person's last statement bound it to (not
+    *  while PENDING), else its live due at the rate in force on its date, an overdue claim's late charge on top, at
+    *  least the floor;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 99f283901..0f509ae51 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -128,7 +128,7 @@ import { PersonClaims } from '../claims/claims';
+       </section>
+       <table data-testid="person-list">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+@@ -157,6 +157,10 @@ import { PersonClaims } from '../claims/claims';
+               <td data-testid="person-excess">{{ excess(p) }}</td>
+               <td data-testid="person-overdue-count">{{ overdue(p).length }}</td>
+               <td data-testid="person-overdue-total">{{ overdueDue(p) }}</td>
++              @let aged = figures.agedCents(p);
++              <td data-testid="person-aged-0-30">{{ money(aged.upTo30) }}</td>
++              <td data-testid="person-aged-31-60">{{ money(aged.upTo60) }}</td>
++              <td data-testid="person-aged-61">{{ money(aged.over60) }}</td>
+               <td>
+                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
+                 <span>Last <span data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</span></span>
+@@ -297,6 +301,7 @@ export class PeopleList {
+   protected readonly people = inject(People);
+   protected readonly claims = inject(Claims);
+   protected readonly figures = inject(Figures);
++  protected readonly money = money;
+   protected readonly periods = inject(Periods);
+   protected readonly grades = GRADES;
+   /** The people the list shows: everyone, or only those not retired unless show retired is on. */
