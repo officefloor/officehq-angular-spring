@@ -1,0 +1,91 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index c75a2ea54..8d066dd8b 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -1,9 +1,9 @@
+ import { Injectable, computed, inject } from '@angular/core';
+-import { Claim, Claims, bound, countsAt, statusAt } from './claims';
++import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
+ import { People, Person, gradeOn } from './people';
+ import { Period, Periods } from './periods';
+ import { Rates, hundredths, money } from './rates';
+-import { Session } from './session';
++import { Session, addDays } from './session';
+ 
+ /** The statuses claims are counted by, in the order the screen shows them. */
+ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+@@ -103,6 +103,15 @@ export class Figures {
+     return f === null ? 0n : this.claims.chargedCents(c, f);
+   }
+ 
++  /** Whether a person is active: they have an OPEN or PENDING claim that counts live dated within the
++   *  30 days up to and including the sheet's today. */
++  active(p: Person): boolean {
++    const today = this.session.today();
++    if (!today) return false;
++    const from = addDays(today, -29);
++    return this.claims.live().some((c) => c.personId === p.id && isOpen(c) && c.date >= from && c.date <= today);
++  }
++
+   /** The grade in force on the sheet's today, the one the list shows. */
+   gradeToday(p: Person): string {
+     const today = this.session.today();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 026ea6768..9637cd57a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -98,13 +98,14 @@ import { PersonClaims } from '../claims/claims';
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <table data-testid="person-list">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shown(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
++              <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
+               <td data-testid="person-due-total">{{ due(p) }}</td>
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 7bac3bc4d..545be4dc5 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -5,7 +5,8 @@ import { Periods } from '../../core/periods';
+ import { money } from '../../core/rates';
+ 
+ // The sheet at a glance, from the same figures the lists show: per grade, the people on it today
+-// (retired people left out) and their due-totals added up (one that is n/a adds nothing); per period,
++// (retired people left out), their due-totals added up (one that is n/a adds nothing) and how many
++// of them are active; per period,
+ // its due-total; per status, the claims in it.
+ @Component({
+   selector: 'app-summary',
+@@ -15,7 +16,7 @@ import { money } from '../../core/rates';
+       <table data-testid="summary-grades">
+         <caption>By grade</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due total</th><th scope="col">Active</th></tr>
+         </thead>
+         <tbody>
+           @for (g of byGrade(); track g.grade) {
+@@ -23,6 +24,7 @@ import { money } from '../../core/rates';
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -71,6 +73,7 @@ export class SummaryPanel {
+         grade,
+         count: on.length,
+         dueTotal: money(on.reduce((sum, p) => sum + (this.figures.dueCents(p) ?? 0n), 0n)),
++        active: on.filter((p) => this.figures.active(p)).length,
+       };
+     });
+   });
