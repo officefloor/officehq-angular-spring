@@ -1,0 +1,143 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 582e54b66..9bda0fcb4 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -46,11 +46,12 @@ export interface StatusLine {
+ }
+ 
+ /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT, OPEN or PENDING -> VOID. A clerk settling a
+- *  due above the clerk limit makes it PENDING: a steward approves it (SETTLED) or rejects it (OPEN). */
++ *  due above the clerk limit makes it PENDING: a steward approves it (SETTLED) or rejects it (OPEN). A
++ *  steward can re-settle a SETTLED claim at its figure today. */
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+ /** A status change a claim's buttons ask for. */
+-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject';
++export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle';
+ 
+ /** Whether a claim in this status counts toward claimed, due-total and every total. */
+ export function counts(c: Claim): boolean {
+@@ -243,7 +244,7 @@ export class Claims {
+     }
+   }
+ 
+-  /** Open, settle, void, approve or reject a claim (a rejection with its reason); an error message
++  /** Open, settle, void, approve, reject or re-settle a claim (a rejection with its reason); an error message
+    *  when refused. */
+   async act(id: number, action: ClaimAction, reason = ''): Promise<string | null> {
+     const sid = this.session.sheetId();
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 96558480d..297e8e2b0 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -159,6 +159,7 @@ export class PersonClaims {
+     { action: 'open', label: 'Open' },
+     { action: 'settle', label: 'Settle' },
+     { action: 'void', label: 'Void' },
++    { action: 'resettle', label: 'Re-settle' },
+   ];
+   /** A steward's review of a PENDING claim, offered on every open claim (the server refuses it unless
+    *  PENDING). */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index ebaff0e92..ff4e74f8e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -194,6 +194,14 @@ public class ClaimController {
+         return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
+     }
+ 
++    /** Re-settle a SETTLED claim at its figure today: a steward freezes it again. */
++    @PostMapping("/claims/{claimId}/resettle")
++    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
++        return ClaimView.of(service.resettle(sheetId.trim(), user.trim(), claimId));
++    }
++
+     /** Why a PENDING claim is rejected. */
+     public record RejectRequest(@Size(max = 1000) String reason) {
+     }
+@@ -293,4 +301,11 @@ public class ClaimController {
+     public Map<String, String> approvalRefused(ClaimApprovalException e) {
+         return Map.of("message", e.getMessage());
+     }
++
++    /** A re-settle that is not allowed is refused with the reason, for the screen to show. */
++    @ExceptionHandler(ClaimResettleException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> resettleRefused(ClaimResettleException e) {
++        return Map.of("message", e.getMessage());
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimResettleException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimResettleException.java
+new file mode 100644
+index 000000000..36b51eccc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimResettleException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A re-settle that is not allowed: by anyone but a steward, or of a claim that is not SETTLED. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimResettleException extends RuntimeException {
++
++    public ClaimResettleException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index f67dbd5e5..851e0de16 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -195,6 +195,36 @@ public class ClaimService {
+         return updated;
+     }
+ 
++    /** Re-settle a SETTLED claim: freeze it again at the figure it would have today as an OPEN claim bound by
++     *  no statement (today's rates, grades and floor, the late charge on the sheet's today on top). Refused
++     *  unless the claim is SETTLED and the user is a steward, and for a claim in a closed period. */
++    @Transactional
++    public Claim resettle(String sheetId, String user, long claimId) {
++        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        refuseClosed(sheetId, claim.getDate());
++        if (!roles.isSteward(sheetId, user)) {
++            throw new ClaimResettleException("Only a steward can re-settle a claim.");
++        }
++        if (claim.getStatus() != ClaimStatus.SETTLED) {
++            throw new ClaimResettleException("Only a SETTLED claim can be re-settled.");
++        }
++        Rollup.Snapshot before = rollup.take(sheetId);
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(PersonNotFoundException::new);
++        BigDecimal old = claim.getSettledDue();
++        BigDecimal figure = liveDue(claim, person);
++        BigDecimal due = figure == null || claim.isCorrection() ? figure
++                : figure.add(sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
++                        .lateCharge(figure, claim.getDueBy(), claim.getDate()));
++        claim.setSettledDue(due);
++        logStatus(claim, person, user);
++        Claim updated = claims.saveAndFlush(claim);
++        audit("CLAIM_RESETTLED", updated, person, user, updated.getNumber(),
++                " old=" + show(old) + " new=" + show(due));
++        rollup.recordChanges(sheetId, user, before);
++        return updated;
++    }
++
+     /** Reject a PENDING claim with a reason: it goes back to OPEN, bound again by its person's last
+      *  statement if that statement included it. Refused unless the claim is PENDING, the user is a
+      *  steward and a reason is given. */
+@@ -455,6 +485,11 @@ public class ClaimService {
+         return " due=" + (claim.getSettledDue() == null ? "n/a" : claim.getSettledDue().toPlainString());
+     }
+ 
++    /** A due as an audit line shows it: n/a when there is none. */
++    private static String show(BigDecimal due) {
++        return due == null ? "n/a" : due.toPlainString();
++    }
++
+     /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */
+     private void audit(String event, Claim claim, Person person, String user) {
+         audit(event, claim, person, user, claim.getNumber(), "");
