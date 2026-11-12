@@ -71,6 +71,10 @@ public class Claim {
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
+    /** Whether a steward set the due-by directly: it then stays as set, a holiday added later does not move it. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
+
     /** The stamp a forward-only rate is matched against; null for the claim's own id (a clone's copy keeps the original's). */
     @Column(name = "rate_stamp")
     private Long rateStamp;
@@ -232,6 +236,14 @@ public class Claim {
 
     public void setDueBy(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    public boolean isDueBySet() {
+        return dueBySet;
+    }
+
+    public void setDueBySet(boolean dueBySet) {
+        this.dueBySet = dueBySet;
     }
 
     public int getTerms() {
@@ -483,6 +495,7 @@ public class Claim {
         copy.editedBy = editedBy;
         copy.corrects = corrects;
         copy.dueBy = dueBy;
+        copy.dueBySet = dueBySet;
         copy.terms = terms;
         copy.roundingDate = roundingDate;
         copy.deferredUntil = deferredUntil;

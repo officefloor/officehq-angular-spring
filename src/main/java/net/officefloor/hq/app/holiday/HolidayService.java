@@ -65,12 +65,15 @@ public class HolidayService {
         return saved;
     }
 
-    /** Work out again the due-by of every claim not SETTLED or VOID that is due by the new holiday or later. */
+    /**
+     * Work out again the due-by of every claim not SETTLED or VOID that is due by the new holiday or later; a due-by a
+     * steward set directly stays as set.
+     */
     private void redate(String sheetId, LocalDate holiday) {
         Set<LocalDate> dates = list(sheetId).stream().map(Holiday::getDate).collect(Collectors.toSet());
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
-                    || claim.getDueBy().isBefore(holiday)) {
+                    || claim.isDueBySet() || claim.getDueBy().isBefore(holiday)) {
                 continue;
             }
             LocalDate dueBy = businessDaysAfter(dates, claim.getDate(), claim.getTerms());

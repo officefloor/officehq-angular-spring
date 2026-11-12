@@ -677,6 +677,22 @@ export function sumAmounts(amounts: string[]): string {
                 >
                   Re-date
                 </button>
+                <label class="visually-hidden" [for]="'claim-due-by-new-' + c.id">New due-by</label>
+                <input
+                  [id]="'claim-due-by-new-' + c.id"
+                  type="date"
+                  data-testid="claim-due-by-new"
+                  [value]="dueBys()[c.id] ?? ''"
+                  (input)="setDueByDraft(c.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="claim-set-due-by"
+                  [attr.aria-label]="'Set due-by of claim of ' + c.amount + ' on ' + c.date"
+                  (click)="setDueBy(c)"
+                >
+                  Set due-by
+                </button>
                 <label class="visually-hidden" [for]="'claim-review-user-' + c.id">Assign review to user</label>
                 <input
                   [id]="'claim-review-user-' + c.id"
@@ -825,6 +841,7 @@ export class Claims implements OnInit {
   protected readonly proofKindsChosen = signal<Record<number, string>>({});
   /** The new date (yyyy-mm-dd) picked to re-date each OPEN or PENDING claim to, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
+  protected readonly dueBys = signal<Record<number, string>>({});
   /** The user typed to assign each claim's review to, by claim id. */
   protected readonly reviewUsers = signal<Record<number, string>>({});
   /** The amount typed to split off each OPEN claim, by claim id. */
@@ -1096,6 +1113,43 @@ export class Claims implements OnInit {
             : today !== null && until <= today
               ? `A claim can only be deferred to a date after today (${today}).`
               : 'This claim could not be deferred.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  protected setDueByDraft(id: number, date: string): void {
+    this.dueBys.update((all) => ({ ...all, [id]: date }));
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /**
+   * Set the due-by of a DRAFT, OPEN or PENDING claim to the date picked for it; the store refuses any other status, a
+   * claim in a closed period or a new due-by in one, and a user who is not a steward.
+   */
+  protected async setDueBy(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const dueBy = (this.dueBys()[claim.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueBy)) {
+      this.actionError.set({ id: claim.id, message: 'Pick the new due-by for this claim.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/due-by`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { dueBy }, this.session.headers()));
+      this.setDueByDraft(claim.id, '');
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch (e) {
+      const closed = this.closedOn(claim.dueBy) ?? this.closedOn(dueBy);
+      const message =
+        e instanceof HttpErrorResponse && e.status === 403
+          ? 'Only a steward can set a claim\'s due-by.'
+          : claim.status !== 'DRAFT' && claim.status !== 'OPEN' && claim.status !== 'PENDING'
+            ? `This claim is ${claim.status}: only a DRAFT, OPEN or PENDING claim can have its due-by set.`
+            : closed
+              ? `The closed period ${closed.name} covers this due-by: it cannot be set.`
+              : 'This claim\'s due-by could not be set.';
       this.actionError.set({ id: claim.id, message });
     }
   }

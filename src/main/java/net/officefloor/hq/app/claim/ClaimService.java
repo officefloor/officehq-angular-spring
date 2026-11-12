@@ -1034,6 +1034,37 @@ public class ClaimService {
     }
 
     /**
+     * A steward sets the due-by of a DRAFT, OPEN or PENDING claim directly: it stays as set (a holiday added later does
+     * not move it), and its overdue state, late charge, grace and period follow it. Refused for any other status, a
+     * claim due by a date in a closed period or a new due-by in one, or a user not a steward.
+     */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, Long id, LocalDate dueBy) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ClaimDueBySetForbiddenException(id, user);
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ClaimDueBySetException(id, "it is " + claim.getStatus()
+                    + ", only a DRAFT, OPEN or PENDING claim can have its due-by set");
+        }
+        LocalDate old = claim.getDueBy();
+        periods.requireOpen(sheetId, old);
+        periods.requireOpen(sheetId, dueBy);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setDueBy(dueBy);
+        claim.setDueBySet(true);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record("CLAIM_DUE_BY_SET", user, person, saved) + numberOf(saved.getNumber())
+                + " old=" + old + " new=" + dueBy);
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * Split an amount (more than 0.00 and less than its own) off an OPEN claim not deferred. The claim keeps the rest
      * and loses any figure a statement bound it to; a new OPEN claim of the same person with the amount split off, the
      * same date and note, no number (it takes one when settled), opened by the user, due by its date plus the terms in force on the sheet's today,

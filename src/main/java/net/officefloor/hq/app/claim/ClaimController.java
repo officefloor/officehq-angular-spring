@@ -464,6 +464,19 @@ public class ClaimController {
         return view(service.redate(sheetId.trim(), user.trim(), id, request.date()));
     }
 
+    /** The due-by a steward sets a claim to. */
+    public record DueByRequest(@NotNull LocalDate dueBy) {
+    }
+
+    /** Set the due-by of a DRAFT, OPEN or PENDING claim directly: a steward only. */
+    @PostMapping("/claims/{id}/due-by")
+    public ClaimView setDueBy(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid DueByRequest request) {
+        return view(service.setDueBy(sheetId.trim(), user.trim(), id, request.dueBy()));
+    }
+
     /** The amount split off a claim: more than 0.00 and less than the claim's amount. */
     public record SplitRequest(@NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount) {
 
