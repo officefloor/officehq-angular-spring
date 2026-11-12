@@ -1,5 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { Claims, counts } from '../../core/claims';
+import { Claims } from '../../core/claims';
 import { GRADES, People, Person } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
 import { Session } from '../../core/session';
@@ -76,7 +76,7 @@ import { PersonClaims } from '../claims/claims';
       </label>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -94,6 +94,7 @@ import { PersonClaims } from '../claims/claims';
                 <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
+              <td><span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span></td>
               <td><app-person-claims [personId]="p.id" [grade]="p.grade" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
@@ -123,6 +124,14 @@ import { PersonClaims } from '../claims/claims';
                 >
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-hold-toggle"
+                  [disabled]="holding() === p.id"
+                  (click)="toggleHold(p)"
+                >
+                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
                 @if (actionError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ actionError()?.message }}</p>
                 }
@@ -148,6 +157,8 @@ export class PeopleList {
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The id of the person being retired. */
   protected readonly retiring = signal<number | null>(null);
+  /** The id of the person being put on or taken off hold. */
+  protected readonly holding = signal<number | null>(null);
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = computed(() =>
     money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
@@ -177,14 +188,14 @@ export class PeopleList {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
   }
 
-  /** The sum of the figures of a person's claims that count: a settled claim's frozen due, else the
+  /** The sum of the figures of a person's claims that count live (not OPEN while they are on hold): a settled claim's frozen due, else the
    *  figure their last statement bound it to, else its live due at the rate in force on its date (a
    *  claim with no figure adds nothing). Null when the grade has no rate on the sheet's today and no
    *  settled or bound claim keeps a figure. */
   private dueCents(p: Person): bigint | null {
     let sum = 0n;
     let keptFigure = false;
-    for (const c of this.claims.of(p.id).filter(counts)) {
+    for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
       const kept = c.settledDue ?? (c.stated ? c.statedDue : null);
       if (kept !== null) {
         keptFigure = true;
@@ -228,6 +239,17 @@ export class PeopleList {
       if (err) this.actionError.set({ id: p.id, message: err });
     } finally {
       this.retiring.set(null);
+    }
+  }
+
+  protected async toggleHold(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.holding.set(p.id);
+    try {
+      const err = await this.people.toggleHold(p.id);
+      if (err) this.actionError.set({ id: p.id, message: err });
+    } finally {
+      this.holding.set(null);
     }
   }
 

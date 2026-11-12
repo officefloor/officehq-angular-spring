@@ -4,14 +4,17 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -67,7 +70,7 @@ public class Rollup {
             BigDecimal due = ZERO;
             boolean keptFigure = false;
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !claim.getStatus().counts()) {
+                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person.isHeld())) {
                     continue;
                 }
                 claimed = claimed.add(claim.getAmount());
@@ -101,10 +104,16 @@ public class Rollup {
     public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         Map<Long, String> grades = new LinkedHashMap<>();
-        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> grades.put(p.getId(), p.getGrade()));
+        Set<Long> held = new HashSet<>();
+        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
+            grades.put(p.getId(), p.getGrade());
+            if (p.isHeld()) {
+                held.add(p.getId());
+            }
+        });
         BigDecimal total = ZERO;
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            if (!claim.getStatus().counts() || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            if (!countsLive(claim, held.contains(claim.getPersonId())) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
             BigDecimal due;
@@ -143,6 +152,12 @@ public class Rollup {
             audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + after.claimedTotal().toPlainString()
                     + " due-total=" + after.dueTotal().toPlainString());
         }
+    }
+
+    /** Whether a claim counts in the live totals: its status counts, and it is not OPEN while its
+     *  person is on hold. */
+    private static boolean countsLive(Claim claim, boolean held) {
+        return claim.getStatus().counts() && !(held && claim.getStatus() == ClaimStatus.OPEN);
     }
 
     private static boolean sameDue(BigDecimal a, BigDecimal b) {

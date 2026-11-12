@@ -22,6 +22,8 @@ export interface Person {
   retired: boolean;
   /** The date they are retired from (YYYY-MM-DD); null while not retired. */
   retiredFrom: string | null;
+  /** On hold: their OPEN claims count in no live total; their SETTLED ones still do. */
+  held: boolean;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -149,6 +151,22 @@ export class People {
       return null;
     } catch (e) {
       return failed('retire', e);
+    }
+  }
+
+  /** Put a person on hold, or take them off it; an error message when refused. */
+  async toggleHold(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const person = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/hold`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+      return null;
+    } catch (e) {
+      return failed('hold', e);
     }
   }
 

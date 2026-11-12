@@ -1,5 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { Claims, counts } from '../../core/claims';
+import { Claims } from '../../core/claims';
 import { People } from '../../core/people';
 import { Period, Periods } from '../../core/periods';
 import { Rates, hundredths, money } from '../../core/rates';
@@ -82,13 +82,13 @@ export class PeriodsPanel {
   protected readonly acting = signal<number | null>(null);
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
-  /** Each period's due-total, by period id: the figures of the claims that count whose date falls
+  /** Each period's due-total, by period id: the figures of the claims that count live whose date falls
    *  in it — a settled claim's frozen due, else as its person's last statement bound it, else its
    *  live due (a claim with no figure adds nothing). */
   protected readonly dueTotals = computed(() => {
     const grades = new Map(this.people.people().map((p) => [p.id, p.grade]));
     const sums = new Map<number, bigint>();
-    for (const c of this.claims.claims().filter(counts)) {
+    for (const c of this.claims.live()) {
       const period = this.periods.of(c.date);
       if (!period) continue;
       let due: bigint | null;

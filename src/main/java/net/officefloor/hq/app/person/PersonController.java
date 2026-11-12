@@ -31,7 +31,8 @@ public class PersonController {
     /** A person as the screen shows it, with how many statements were taken of them and the last one's
      *  due-total (n/a when it was) and date; none of either before their first statement. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statedTotal, String statementDate, boolean retired, String retiredFrom) {
+            String statedTotal, String statementDate, boolean retired, String retiredFrom,
+            boolean held) {
 
         public static PersonView of(Person person, List<Statement> statements) {
             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
@@ -39,7 +40,8 @@ public class PersonController {
                     statements.size(),
                     last == null ? null : last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(),
                     last == null ? null : last.getTakenOn().toString(),
-                    person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString());
+                    person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
+                    person.isHeld());
         }
     }
 
@@ -106,6 +108,15 @@ public class PersonController {
             @RequestBody RetireRequest request) {
         Person retired = service.retire(sheetId.trim(), user.trim(), personId, request.from());
         return PersonView.of(retired, service.statementsOf(retired.getId()));
+    }
+
+    /** Put a person on hold, or take them off it. */
+    @PostMapping("/{personId}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        Person toggled = service.toggleHold(sheetId.trim(), user.trim(), personId);
+        return PersonView.of(toggled, service.statementsOf(toggled.getId()));
     }
 
     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */

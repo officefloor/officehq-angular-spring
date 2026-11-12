@@ -55,15 +55,22 @@ export class Claims {
   readonly claims = signal<Claim[]>([]);
   private loads = 0;
 
+  /** The claims that count in the live totals: those that count, less the OPEN claims of a person
+   *  on hold. */
+  readonly live = computed(() => {
+    const held = new Set(this.people.people().filter((p) => p.held).map((p) => p.id));
+    return this.claims().filter((c) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId)));
+  });
+
   /** Each person's claimed, in cents, by person id. */
   readonly claimedCents = computed(() => {
     const out = new Map<number, number>();
-    for (const c of this.claims().filter(counts)) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
+    for (const c of this.live()) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
     return out;
   });
 
   /** Everyone's claimed added up, with two decimals. */
-  readonly total = computed(() => money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)));
+  readonly total = computed(() => money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)));
 
   /** A person's claims, newest first. */
   of(personId: number): Claim[] {
