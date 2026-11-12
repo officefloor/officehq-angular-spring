@@ -133,6 +133,9 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ClaimSettlerException();
         }
+        if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
+            throw new ClaimDeferException("The claim is deferred until " + claim.getDeferredUntil() + ".");
+        }
         Rollup.Snapshot before = rollup.take(sheetId);
         String number = claim.getNumber();
         if (to == ClaimStatus.OPEN) {
@@ -252,6 +255,29 @@ public class ClaimService {
         return updated;
     }
 
+    /** Defer an OPEN claim to a date after the sheet's today: until the sheet's today reaches it, the claim
+     *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. Refused for
+     *  a claim that is not OPEN, a date not after the sheet's today, and a claim in a closed period. */
+    @Transactional
+    public Claim defer(String sheetId, String user, long claimId, LocalDate until) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ClaimDeferException("Only an OPEN claim can be deferred.");
+        }
+        if (until == null || !until.isAfter(sheets.today(sheetId))) {
+            throw new ClaimDeferException("Defer the claim to a date after the sheet's today.");
+        }
+        Rollup.Snapshot before = rollup.take(sheetId);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setDeferredUntil(until);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("CLAIM_DEFERRED", updated, person, user, updated.getNumber(), " until=" + until);
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its number and date,
      *  loses any figure a statement bound it to (live again until its new person's next statement), and is
      *  listed as its new person's newest claim. Refused unless the user is a steward, and for a settled or
@@ -320,7 +346,7 @@ public class ClaimService {
         for (Claim claim : inListOrder(sheetId, chosen)) {
             try {
                 settled.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
-            } catch (ClaimStatusException | ClaimSettlerException | PeriodClosedException
+            } catch (ClaimStatusException | ClaimSettlerException | ClaimDeferException | PeriodClosedException
                     | ClaimNotFoundException e) {
                 // refused: left as it is
             }
@@ -348,8 +374,8 @@ public class ClaimService {
     /** Take a person's statement: record their due-total now (late charges included) and how many claims
      *  count, and bind each claim that counts to the figure it has now, under its late charge (the charge is
      *  never bound: it keeps following the sheet's today; a PENDING claim is bound only once it is back to
-     *  OPEN); a claim that does not count, or is OPEN or PENDING and dated within one of its person's holds, is
-     *  left unbound. */
+     *  OPEN); a claim that does not count, is OPEN or PENDING and dated within one of its person's holds, or is
+     *  deferred past the sheet's today, is left unbound. */
     @Transactional
     public Stated statement(String sheetId, String user, long personId) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
@@ -360,7 +386,8 @@ public class ClaimService {
         boolean figure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts() || (claim.getStatus().isOpen() && person.heldOn(claim.getDate()))) {
+            if (!claim.getStatus().counts() || (claim.getStatus().isOpen() && person.heldOn(claim.getDate()))
+                    || claim.deferredOn(today)) {
                 claim.setStated(false, null);
                 continue;
             }

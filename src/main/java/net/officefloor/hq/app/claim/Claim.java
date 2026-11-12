@@ -80,6 +80,10 @@ public class Claim {
     @Column(name = "stated_due")
     private BigDecimal statedDue;
 
+    /** The date an OPEN claim is deferred until; none when never deferred. */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     /** Its status log: one line per status it has had, oldest first. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -216,6 +220,20 @@ public class Claim {
     public void setStated(boolean stated, BigDecimal statedDue) {
         this.stated = stated;
         this.statedDue = stated ? statedDue : null;
+    }
+
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    public void setDeferredUntil(LocalDate deferredUntil) {
+        this.deferredUntil = deferredUntil;
+    }
+
+    /** Deferred on a day: OPEN, with a deferred-until date after it. From that date on it is an OPEN claim
+     *  like any other. */
+    public boolean deferredOn(LocalDate today) {
+        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     public List<StatusChange> getStatusLog() {

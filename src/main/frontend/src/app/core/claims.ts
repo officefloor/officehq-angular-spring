@@ -34,6 +34,9 @@ export interface Claim {
   corrects: string | null;
   /** Its status log: one line per status it has had, oldest first. */
   statusLog: StatusLine[];
+  /** The date it was deferred until (YYYY-MM-DD); null when never deferred. It is deferred only while
+   *  OPEN and the sheet's today is before it (see `Claims.deferred`). */
+  deferredUntil: string | null;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -94,10 +97,12 @@ export class Claims {
   private loads = 0;
 
   /** The claims that count in the live totals: those that count, less the OPEN and PENDING claims bound
-   *  by no statement and dated within one of their person's holds. */
+   *  by no statement and dated within one of their person's holds, and the deferred claims. */
   readonly live = computed(() => {
     const holds = new Map(this.people.people().map((p) => [p.id, p.holds]));
-    return this.claims().filter((c) => counts(c) && !(isOpen(c) && !bound(c) && heldOn(holds.get(c.personId) ?? [], c.date)));
+    return this.claims().filter(
+      (c) => counts(c) && !(isOpen(c) && !bound(c) && heldOn(holds.get(c.personId) ?? [], c.date)) && !this.deferred(c),
+    );
   });
 
   /** Each person's claimed, in cents, by person id. */
@@ -115,10 +120,17 @@ export class Claims {
     return c.dueBy;
   }
 
-  /** Whether a claim is overdue: OPEN or PENDING, with its due-by before the sheet's today. */
+  /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */
   overdue(c: Claim): boolean {
     const today = this.session.today();
-    return isOpen(c) && today !== null && this.dueBy(c) < today;
+    return isOpen(c) && !this.deferred(c) && today !== null && this.dueBy(c) < today;
+  }
+
+  /** Whether a claim is deferred: OPEN, with a deferred-until date after the sheet's today. Until then it
+   *  counts in no total, is not overdue and cannot be settled. */
+  deferred(c: Claim): boolean {
+    const today = this.session.today();
+    return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, the sheet's late
@@ -284,6 +296,23 @@ export class Claims {
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 409) return refusal(e, action);
       return failed(action, e);
+    }
+  }
+
+  /** Defer an OPEN claim to a date after the sheet's today; an error message when refused. */
+  async defer(id: number, until: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!isDate(until.trim())) return 'Enter the date to defer to as YYYY-MM-DD.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/defer`, { until: until.trim() }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('defer', e);
     }
   }
 

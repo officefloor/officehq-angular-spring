@@ -72,7 +72,7 @@ public class Rollup {
             BigDecimal overdue = ZERO;
             boolean keptFigure = false;
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person)) {
+                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) {
                     continue;
                 }
                 claimed = claimed.add(claim.getAmount());
@@ -119,6 +119,7 @@ public class Rollup {
      *  figure adds nothing). */
     public Map<Long, BigDecimal> dueBetweenByPerson(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
+        LocalDate today = sheet.map(Sheet::getToday).orElse(null);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         Map<Long, Person> byId = new LinkedHashMap<>();
         Map<Long, BigDecimal> totals = new LinkedHashMap<>();
@@ -129,7 +130,7 @@ public class Rollup {
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !countsLive(claim, person) || claim.getDate().isBefore(from)
+            if (person == null || !countsLive(claim, person, today) || claim.getDate().isBefore(from)
                     || claim.getDate().isAfter(to)) {
                 continue;
             }
@@ -174,14 +175,15 @@ public class Rollup {
         }
     }
 
-    /** Whether a claim counts in the live totals: its status counts, and it is not left out by a hold. */
-    private static boolean countsLive(Claim claim, Person person) {
-        return claim.getStatus().counts() && !heldOut(claim, person);
+    /** Whether a claim counts in the live totals: its status counts, it is not left out by a hold, and it
+     *  is not deferred past the sheet's today. */
+    private static boolean countsLive(Claim claim, Person person, LocalDate today) {
+        return claim.getStatus().counts() && !heldOut(claim, person) && !claim.deferredOn(today);
     }
 
-    /** Whether a claim is overdue: OPEN or PENDING, with its due-by before the sheet's today. */
+    /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by before the sheet's today. */
     private static boolean overdue(Claim claim, LocalDate today) {
-        return claim.getStatus().isOpen() && today != null && claim.getDueBy() != null
+        return claim.getStatus().isOpen() && !claim.deferredOn(today) && today != null && claim.getDueBy() != null
                 && claim.getDueBy().isBefore(today);
     }
 

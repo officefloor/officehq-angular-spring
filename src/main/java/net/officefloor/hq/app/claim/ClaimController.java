@@ -37,10 +37,10 @@ public class ClaimController {
      *  the due fixed when it was settled (none while its due is live)
      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
-     *  otherwise), and its status log, oldest first. */
+     *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, String dueBy, List<StatusLine> statusLog) {
+            String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -49,7 +49,8 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getDueBy().toString(),
-                    claim.getStatusLog().stream().map(StatusLine::of).toList());
+                    claim.getStatusLog().stream().map(StatusLine::of).toList(),
+                    claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString());
         }
     }
 
@@ -235,6 +236,19 @@ public class ClaimController {
                 request.reason() == null ? "" : request.reason().trim()));
     }
 
+    /** The date a claim is deferred until. */
+    public record DeferRequest(LocalDate until) {
+    }
+
+    /** Defer an OPEN claim to a date after the sheet's today. */
+    @PostMapping("/claims/{claimId}/defer")
+    public ClaimView defer(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid DeferRequest request) {
+        return ClaimView.of(service.defer(sheetId.trim(), user.trim(), claimId, request.until()));
+    }
+
     /** The person a claim is moved to. */
     public record ReassignRequest(@NotNull Long personId) {
     }
@@ -325,6 +339,14 @@ public class ClaimController {
     @ExceptionHandler(ClaimApprovalException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> approvalRefused(ClaimApprovalException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A deferral that is not allowed, or a settle of a deferred claim, is refused with the reason, for the
+     *  screen to show. */
+    @ExceptionHandler(ClaimDeferException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> deferRefused(ClaimDeferException e) {
         return Map.of("message", e.getMessage());
     }
 

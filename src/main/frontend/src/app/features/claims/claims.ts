@@ -70,6 +70,8 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+          <span>Deferred <span data-testid="claim-deferred">{{ claims.deferred(c) ? 'yes' : 'no' }}</span></span>
+          <span>Deferred until <span data-testid="claim-deferred-until">{{ claims.deferred(c) ? c.deferredUntil : '' }}</span></span>
           <ol data-testid="claim-log" aria-label="Status log">
             @for (l of c.statusLog; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? noRate }}</li>
@@ -92,6 +94,17 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
             </button>
           }
+          <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+          <input
+            [id]="'claim-defer-date-' + c.id"
+            data-testid="claim-defer-date"
+            placeholder="YYYY-MM-DD"
+            [value]="deferDates()[c.id] ?? ''"
+            (input)="setDeferDate(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-defer" [disabled]="acting() === c.id" (click)="defer(c)">
+            Defer<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -167,6 +180,8 @@ export class PersonClaims {
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
   ];
+  /** The date typed to defer each claim to, by claim id. */
+  protected readonly deferDates = signal<Record<number, string>>({});
   /** The reason typed to reject each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
   protected readonly isOpen = isOpen;
@@ -236,6 +251,22 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.reassign(c.id, this.reassignTo()[c.id] ?? null);
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setDeferDate(id: number, date: string): void {
+    this.clearActionError(id);
+    this.deferDates.update((d) => ({ ...d, [id]: date }));
+  }
+
+  protected async defer(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.defer(c.id, this.deferDates()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);
