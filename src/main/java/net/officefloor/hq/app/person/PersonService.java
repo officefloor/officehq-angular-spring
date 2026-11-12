@@ -306,6 +306,24 @@ public class PersonService {
         return saved;
     }
 
+    /**
+     * Names the user who may approve or reject the person's PENDING claims as a steward may, replacing any they had.
+     * Refused for a blank user.
+     */
+    @Transactional
+    public Person setApprover(String sheetId, String user, Long id, String approver) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
+        if (approver == null || approver.isBlank()) {
+            throw new ApproverRefusedException("An approver of " + person.getName() + " needs a user name");
+        }
+        person.setApprover(approver.trim());
+        Person saved = save(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " user=" + approver.trim());
+        return saved;
+    }
+
     /** The ids of each person's patrons, by person id, in the order they were named. */
     public Map<Long, List<Long>> patronIds(String sheetId) {
         Map<Long, List<Long>> byPerson = new HashMap<>();

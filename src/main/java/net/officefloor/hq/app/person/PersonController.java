@@ -50,7 +50,7 @@ public class PersonController {
             String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
             List<Long> patronIds, List<String> patronShares, List<GradeView> grades, List<HoldView> holds, boolean watched,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
-            List<String> snapshotLines, List<String> statementLines, String flag) {
+            List<String> snapshotLines, List<String> statementLines, String flag, String approver) {
 
         static PersonView of(Person person, LocalDate today, StatementSummary statements, List<Long> patronIds,
                 boolean watched, List<String> aliases, Set<String> keysInTree, List<String> snapshotLines) {
@@ -64,7 +64,7 @@ public class PersonController {
                     person.getHolds().stream().map(h -> new HoldView(h.getFromDate(), h.getToDate())).toList(),
                     watched, aliases, PersonService.clashing(person, aliases, keysInTree), person.getOriginSheet(),
                     person.getRetirements().stream().map(r -> new RetirementView(r.getFromDate(), r.getToDate())).toList(),
-                    snapshotLines, statements.lines(), person.flagOn(today));
+                    snapshotLines, statements.lines(), person.flagOn(today), person.getApprover());
         }
     }
 
@@ -131,6 +131,10 @@ public class PersonController {
 
     /** The reason to flag the person for, and the last day (inclusive) the flag is in force. */
     public record FlagRequest(@Size(max = 200) String reason, LocalDate until) {
+    }
+
+    /** The user to name as the person's approver. */
+    public record ApproverRequest(@Size(max = 100) String user) {
     }
 
     /** Whether the signed-in user is to watch the person. */
@@ -296,6 +300,15 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid FlagRequest request) {
         return view(service.flag(sheetId.trim(), user.trim(), id, request.reason(), request.until()), user.trim());
+    }
+
+    /** Name the user who may approve or reject the person's PENDING claims. */
+    @PostMapping("/{id}/approver")
+    public PersonView setApprover(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ApproverRequest request) {
+        return view(service.setApprover(sheetId.trim(), user.trim(), id, request.user()), user.trim());
     }
 
     /** Name another person on the sheet as the person's patron. */

@@ -91,6 +91,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject the person's PENDING claims as a steward may; null when none. */
+    @Column(name = "approver")
+    private String approver;
+
     /** The sheet the person was transferred from; null when they were not transferred here. */
     @Column(name = "origin_sheet")
     private String originSheet;
@@ -329,6 +333,16 @@ public class Person {
         this.flagUntil = until;
     }
 
+    /** The user who may approve or reject the person's PENDING claims; null when none. */
+    public String getApprover() {
+        return approver;
+    }
+
+    /** Name the user who may approve or reject the person's PENDING claims, replacing any they had. */
+    public void setApprover(String approver) {
+        this.approver = approver;
+    }
+
     /** The reason of the person's flag while it is in force on the date (on or before its until-date); else null. */
     public String flagOn(LocalDate date) {
         return flagReason != null && flagUntil != null && date != null && !date.isAfter(flagUntil) ? flagReason : null;
@@ -420,6 +434,7 @@ public class Person {
         copy.originSheet = originSheet;
         copy.flagReason = flagReason;
         copy.flagUntil = flagUntil;
+        copy.approver = approver;
         copy.position = position;
         holds.forEach(h -> copy.holds.add(new PersonHold(h.getFromDate(), h.getToDate(), h.getMadeOn())));
         retirements.forEach(r -> copy.retirements.add(new PersonRetirement(r.getFromDate(), r.getToDate())));

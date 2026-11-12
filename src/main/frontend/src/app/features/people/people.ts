@@ -69,6 +69,8 @@ interface Person {
   /** The reason of the person's flag while the sheet's today is on or before its until-date; null otherwise. While
    *  it is in force only a steward may open a claim of theirs. */
   flag: string | null;
+  /** The user who may approve or reject the person's PENDING claims as a steward may; null when none. */
+  approver: string | null;
 }
 
 /** A hold of a person from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
@@ -643,6 +645,23 @@ function csvField(value: string): string {
                 >
                   Flag
                 </button>
+                <span data-testid="person-approver">{{ p.approver ?? '' }}</span>
+                <label [for]="'person-approver-input-' + p.id" class="visually-hidden">Approver of {{ p.name }}</label>
+                <input
+                  [id]="'person-approver-input-' + p.id"
+                  data-testid="person-approver-input"
+                  placeholder="Approver"
+                  [value]="approvers()[p.id] ?? ''"
+                  (input)="setApproverInput(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-approver-save"
+                  [attr.aria-label]="'Set the approver of ' + p.name"
+                  (click)="saveApprover(p)"
+                >
+                  Set approver
+                </button>
                 <ul class="holds">
                   @for (h of p.holds; track $index) {
                     <li data-testid="person-hold-line">Held {{ h.from }} to {{ h.to ?? 'open' }}</li>
@@ -973,6 +992,8 @@ export class People {
   protected readonly flagReasons = signal<Record<number, string>>({});
   /** The until-date typed for each person's next flag, by person id. */
   protected readonly flagUntils = signal<Record<number, string>>({});
+  /** The user typed as each person's next approver, by person id. */
+  protected readonly approvers = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   private readonly claimsByPerson = computed(() => {
@@ -1334,6 +1355,7 @@ export class People {
         this.holdTos.set({});
         this.flagReasons.set({});
         this.flagUntils.set({});
+        this.approvers.set({});
         this.patronChoices.set({});
         this.patronError.set(null);
         this.selectedClaims.set(new Set());
@@ -1416,6 +1438,11 @@ export class People {
 
   protected setFlagUntil(id: number, date: string): void {
     this.flagUntils.update((dates) => ({ ...dates, [id]: date }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setApproverInput(id: number, user: string): void {
+    this.approvers.update((users) => ({ ...users, [id]: user }));
     if (this.rowError()?.id === id) this.rowError.set(null);
   }
 
@@ -2260,6 +2287,30 @@ export class People {
       }
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be flagged.` });
+    }
+  }
+
+  /** Name the user who may approve or reject the person's PENDING claims; a blank user is refused. */
+  protected async saveApprover(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const user = (this.approvers()[person.id] ?? '').trim();
+    if (!user) {
+      this.rowError.set({ id: person.id, message: 'Give the user name of the approver.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/approver`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { user }, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+        this.approvers.update((users) => ({ ...users, [person.id]: '' }));
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `The approver of ${person.name} could not be set.` });
     }
   }
 

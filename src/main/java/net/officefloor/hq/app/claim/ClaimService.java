@@ -1144,7 +1144,13 @@ public class ClaimService {
         }
     }
 
-    /** The PENDING claim a steward decides; refused for any other status, a closed period, or a user not a steward. */
+    /** Whether the user is the approver named on the claim's person. */
+    private boolean isApproverOf(String sheetId, String user, Claim claim) {
+        return people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .map(p -> user.equals(p.getApprover())).orElse(false);
+    }
+
+    /** The PENDING claim a steward or the person's approver decides; refused for any other status, a closed period, or any other user. */
     private Claim pendingForDecision(String sheetId, String user, Long id, ClaimStatus to) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
@@ -1152,8 +1158,9 @@ public class ClaimService {
             throw new ClaimStatusException(id, claim.getStatus(), to);
         }
         periods.requireOpen(sheetId, claim.getDueBy());
-        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ClaimApprovalForbiddenException(id, user, "only a steward approves or rejects a pending claim");
+        if (roles.roleOf(sheetId, user) != Role.STEWARD && !isApproverOf(sheetId, user, claim)) {
+            throw new ClaimApprovalForbiddenException(id, user,
+                    "only a steward or the person's approver approves or rejects a pending claim");
         }
         return claim;
     }
