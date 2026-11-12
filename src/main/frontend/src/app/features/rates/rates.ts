@@ -157,6 +157,20 @@ export function sumShared(figures: { figure: string; share: string }[]): string 
   return decimalOf(signed < 0n ? -cents : cents);
 }
 
+/**
+ * A score: the settled figure divided by 100, less 5 for each overdue claim, rounded half to even to a whole number,
+ * with a minus sign when negative; an n/a figure counts as nothing.
+ */
+export function scoreOf(settled: string, overdue: number): string {
+  // cents of the figure are ten-thousandths of a score point.
+  const signed = (settled === 'n/a' ? 0n : hundredths(settled)) - BigInt(overdue) * 50000n;
+  const size = signed < 0n ? -signed : signed;
+  const rest = size % 10000n;
+  let whole = size / 10000n;
+  if (rest > 5000n || (rest === 5000n && whole % 2n === 1n)) whole += 1n;
+  return (signed < 0n && whole !== 0n ? '-' : '') + whole.toString();
+}
+
 /** As {@link sumDues}, but leaving out the single highest and lowest figure when there are three or more. */
 export function trimmedSumDues(dues: string[]): string {
   const figures = dues.filter((d) => d !== 'n/a').map(hundredths);

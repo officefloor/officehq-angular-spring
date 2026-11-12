@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, Claims, PersonGrade, bound, byListed, claimDue, counts, deferred, dueFixed, gradeOn, isOpen, overdue, plusDays, statusOn, sumAmounts, tagsOf } from '../claims/claims';
 import { Period, Periods, periodOn } from '../periods/periods';
-import { Rate, Rates, capped, changeFrom, excessOver, rateOn, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
+import { Rate, Rates, capped, changeFrom, excessOver, rateOn, scoreOf, sumDues, sumShared, trimmedSumDues } from '../rates/rates';
 import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
@@ -406,7 +406,7 @@ function csvField(value: string): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
-            <th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shows('terms')) { <th scope="col">Terms</th> }@if (columns.shows('contact')) { <th scope="col">Contact</th> }<th scope="col">Tags</th>@if (columns.shows('aliases')) { <th scope="col">Aliases</th> }<th scope="col">From sheet</th><th scope="col">Clashing</th>@if (columns.shows('claimed')) { <th scope="col">Claimed</th> }@if (columns.shows('due-total')) { <th scope="col">Due</th> }<th scope="col">Settled</th><th scope="col">Open</th>
+            <th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shows('terms')) { <th scope="col">Terms</th> }@if (columns.shows('contact')) { <th scope="col">Contact</th> }<th scope="col">Tags</th>@if (columns.shows('aliases')) { <th scope="col">Aliases</th> }<th scope="col">From sheet</th><th scope="col">Clashing</th>@if (columns.shows('claimed')) { <th scope="col">Claimed</th> }@if (columns.shows('due-total')) { <th scope="col">Due</th> }<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Score</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
               <th scope="col">Carried into {{ per.name }}</th>
@@ -453,6 +453,7 @@ function csvField(value: string): string {
               }
               <td data-testid="person-settled-total">{{ settledTotalOf(p) | fig }}</td>
               <td data-testid="person-open-total">{{ openTotalOf(p) | fig }}</td>
+              <td data-testid="person-score">{{ personScoreOf(p) }}</td>
               @for (per of periods(); track per.id) {
                 <td [attr.data-testid]="'person-period-' + per.name + '-due-total'">{{ periodDueTotalOf(p, per) | fig }}</td>
                 <td [attr.data-testid]="'person-period-' + per.name + '-carried'">{{ carriedOf(p, per) | fig }}</td>
@@ -1790,6 +1791,11 @@ export class People {
     );
   }
 
+  /** The person's score: their settled figures divided by 100, less 5 for each of their overdue claims that counts. */
+  protected personScoreOf(person: Person): string {
+    return scoreOf(this.settledTotalOf(person), this.overdueOf(person).length);
+  }
+
   /** The sum of the dues of the person's overdue claims, skipping the n/a ones. */
   protected overdueTotalOf(person: Person): string {
     return sumDues(this.overdueOf(person).map((c) => claimDue(c, this.rates(), person.grades, this.session)));
@@ -2534,6 +2540,8 @@ export class People {
       if (this.session.sheet() === sheet) {
         this.quickName.set('');
         this.quickAmount.set('');
+        // A restricted user sees the person they just quick-added until the sheet is next loaded.
+        this.session.visiblePeople.update((ids) => (ids === null || ids.includes(added.personId) ? ids : [...ids, added.personId]));
         // Re-reads the sheet, which also brings in a person the quick-add created.
         this.claimSaved(added);
       }
