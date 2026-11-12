@@ -1,0 +1,102 @@
+{
+  "checkpoint": 104,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp104_reassign-renumbers",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    37,
+    38,
+    43,
+    47,
+    52,
+    53,
+    54,
+    56,
+    59,
+    74,
+    81,
+    90,
+    93,
+    95,
+    99,
+    100,
+    102
+  ],
+  "replaced_tests": [
+    "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 1",
+    "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 3",
+    "cp102_aliases.spec.ts::aliases scenario 3",
+    "cp37_reassign-claim.spec.ts::reassign claim",
+    "cp38_terms-per-grade.spec.ts::terms per grade scenario 2",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp47_person-period-figures.spec.ts::person period figures scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp53_permission-matrix.spec.ts::permission matrix",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 3",
+    "cp54_viewer-role.spec.ts::viewer role scenario 3",
+    "cp56_late-per-boundary.spec.ts::late per boundary scenario 3",
+    "cp59_period-templates.spec.ts::period templates scenario 2",
+    "cp74_as-of-view.spec.ts::as of view scenario 3",
+    "cp81_remind.spec.ts::remind scenario 1",
+    "cp90_void-reasons.spec.ts::void reasons scenario 3",
+    "cp93_bulk-reassign.spec.ts::bulk reassign",
+    "cp95_rate-preview.spec.ts::rate preview scenario 1",
+    "cp99_person-contact.spec.ts::person contact scenario 1"
+  ],
+  "request": {
+    "spec": "A claim that is moved to another person now receives the next number in the sequence it would be\nnumbered in (the sheet's, or its period's when per-period numbering is on), and its old number is\nnever used again; a draft, having no number, gets none. CLAIM_REASSIGNED carries the new number.\nMoving claims together follows the same rule, in list order.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim that is moved to another person now receives the next number in the sequence it would be\nnumbered in (the sheet's, or its period's when per-period numbering is on), and its old number is\nnever used again; a draft, having no number, gets none. CLAIM_REASSIGNED carries the new number.\nMoving claims together follows the same rule, in list order.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1bcb21811f51644c79eca8aa8d6f24441bc5cdc9",
+  "reset_sha": "",
+  "preagent_sha": "62edf540f4998341feefeecd586f65d343db1ac9",
+  "prev_sha": "62edf540f4998341feefeecd586f65d343db1ac9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3846312,
+    "input_tokens": 20,
+    "output_tokens": 2895,
+    "cache_read_tokens": 292216,
+    "cache_creation_tokens": 33526,
+    "num_turns": 10,
+    "duration_ms": 207939,
+    "duration_api_ms": 31825,
+    "model": "claude-opus-5-5",
+    "session_id": "edadffef-fd0e-48f9-a83d-17711440fe2e",
+    "stop_reason": "success",
+    "result_text": "A claim moved to another person now gets a new number, and `bin/e2e` passes all 4 tests.\n\nThe change is a few lines in `move()` in `ClaimService.java` (around line 513). If the moved claim has a number, it takes the next one from the sequence it belongs to, the same way opening a claim picks its number: the sheet's sequence, or the period's when per-period numbering is on. The sequence only counts forward, so the old number is never given out again. A draft has no number, so it stays without one, and its `CLAIM_REASSIGNED` line has no `number=` field. For numbered claims, that line now shows the new number. I also updated the method's doc comment, which said a moved claim keeps its number.\n\nBulk reassign already goes through the same `move()` one claim at a time in list order, so moving claims together renumbers them in list order without any further change. Nothing was needed in the front end or the stored data.\n\nOne open point: when you move claims together, a claim that already belongs to the target person isn't refused. It goes through the same move, so it also gets a new number. The request doesn't say what should happen here and the tests don't cover it. If it should keep its number, that's a one-line check.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3846312,
+        "num_turns": 10,
+        "duration_ms": 207939,
+        "duration_api_ms": 31825,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp104.agent.jsonl",
+  "agent_diff_file": "cp104.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
