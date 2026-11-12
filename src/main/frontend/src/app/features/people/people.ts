@@ -422,7 +422,7 @@ function csvField(value: string): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
-            <th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shows('terms')) { <th scope="col">Terms</th> }@if (columns.shows('contact')) { <th scope="col">Contact</th> }<th scope="col">Tags</th>@if (columns.shows('aliases')) { <th scope="col">Aliases</th> }<th scope="col">From sheet</th><th scope="col">Clashing</th>@if (columns.shows('claimed')) { <th scope="col">Claimed</th> }@if (columns.shows('due-total')) { <th scope="col">Due</th> }<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Score</th><th scope="col">Band</th>
+            <th scope="col">Name</th><th scope="col">Grade</th>@if (columns.shows('terms')) { <th scope="col">Terms</th> }@if (columns.shows('contact')) { <th scope="col">Contact</th> }<th scope="col">Tags</th>@if (columns.shows('aliases')) { <th scope="col">Aliases</th> }<th scope="col">From sheet</th><th scope="col">Clashing</th>@if (columns.shows('claimed')) { <th scope="col">Claimed</th> }@if (columns.shows('due-total')) { <th scope="col">Due</th> }<th scope="col">Settled</th><th scope="col">Open</th><th scope="col">Open claims</th><th scope="col">Settled claims</th><th scope="col">Score</th><th scope="col">Band</th>
             @for (per of periods(); track per.id) {
               <th scope="col">Due in {{ per.name }}</th>
               <th scope="col">Carried into {{ per.name }}</th>
@@ -469,6 +469,8 @@ function csvField(value: string): string {
               }
               <td data-testid="person-settled-total">{{ settledTotalOf(p) | fig }}</td>
               <td data-testid="person-open-total">{{ openTotalOf(p) | fig }}</td>
+              <td data-testid="person-claims-OPEN-count">{{ claimCountOf(p, 'OPEN') | fig }}</td>
+              <td data-testid="person-claims-SETTLED-count">{{ claimCountOf(p, 'SETTLED') | fig }}</td>
               <td data-testid="person-score">{{ personScoreOf(p) }}</td>
               <td data-testid="person-band">{{ personBandOf(p) }}</td>
               @for (per of periods(); track per.id) {
@@ -1958,6 +1960,11 @@ export class People {
    */
   protected openTotalOf(person: Person): string {
     return this.liveSharedDuesOf(person, isOpen);
+  }
+
+  /** How many of the person's claims have the status, as the summary counts them. */
+  protected claimCountOf(person: Person, status: string): number {
+    return this.claimsOf(person.id).filter((c) => c.status === status).length;
   }
 
   /** As {@link liveDuesOf}, each claim less its holders' parts, with the parts the person holds of claims passing the test. */
