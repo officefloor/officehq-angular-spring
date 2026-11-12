@@ -1,0 +1,64 @@
+{
+  "checkpoint": 74,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp74_as-of-view",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An as-of date can be set on the screen (an entry, a set button and a clear button; show the as-of\ndate, or nothing). While it is set, every cell on the screen for the signed-in user (every figure,\nflag, list and line: in every row, every total, the header, the periods, the rates, the summary, and\nany panel added later unless its request says otherwise) is shown as it stood at the end of the last\nday on or before that date: every change made while the sheet's today was on or before the as-of\ndate counts, every later change does not, and the as-of date stands in for the sheet's today in\nevery figure (overdue, late charges, holds, deferrals, retirements, the grade and rate in force).\nThe audit file is unaffected, and every change, a statement as of a date included, is refused with\nits usual error while the as-of date is set. The as-of date belongs to the signed-in user's screen;\nother users are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn as-of date can be set on the screen (an entry, a set button and a clear button; show the as-of\ndate, or nothing). While it is set, every cell on the screen for the signed-in user (every figure,\nflag, list and line: in every row, every total, the header, the periods, the rates, the summary, and\nany panel added later unless its request says otherwise) is shown as it stood at the end of the last\nday on or before that date: every change made while the sheet's today was on or before the as-of\ndate counts, every later change does not, and the as-of date stands in for the sheet's today in\nevery figure (overdue, late charges, holds, deferrals, retirements, the grade and rate in force).\nThe audit file is unaffected, and every change, a statement as of a date included, is refused with\nits usual error while the as-of date is set. The as-of date belongs to the signed-in user's screen;\nother users are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8d943a616d84dea965962b669fd3d04ef501b7ee",
+  "reset_sha": "",
+  "preagent_sha": "132edf23aaf0e7cbd88e06b7029ab1160754647a",
+  "prev_sha": "132edf23aaf0e7cbd88e06b7029ab1160754647a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.1219599999999996,
+    "input_tokens": 64,
+    "output_tokens": 24747,
+    "cache_read_tokens": 2882500,
+    "cache_creation_tokens": 131283,
+    "num_turns": 35,
+    "duration_ms": 464464,
+    "duration_api_ms": 234569,
+    "model": "claude-opus-5-5",
+    "session_id": "98920994-4b75-47fb-8928-b9746f027892",
+    "stop_reason": "success",
+    "result_text": "I've added the as-of view, and `bin/e2e` passes all 4 acceptance tests on the first run.\n\n**How it works**\n- **Screen:** the session bar now has an `asof-date` entry, an `asof-set` button and an `asof-clear` button. `sheet-asof` shows the date, or nothing when none is set. An `asof-error` element appears if the date isn't YYYY-MM-DD. The date is kept only on this user's screen (`Session.asOf`) and survives loading another sheet. Setting or clearing it re-reads the whole sheet.\n- **Requests:** while the date is set, a new HTTP interceptor (`core/as-of.ts`) adds an `X-As-Of` header to every `/api/` request. Other users never send it, so they're unaffected.\n- **Reads:** all the read endpoints (sheet load, people, claims, rates, periods, roles, delegations) check for that header. When it's there, they answer from the existing `History` version store (`history/AsOf.java`): each row is as the last change made while the sheet's today was on or before that date left it, and the sheet's today is set to the as-of date. The screen already works out all its figures from the sheet's today and the rows, so overdue, late charges, holds, deferrals, retirements, grade and rate all move to the as-of date without further changes.\n- **History coverage:** `History` only kept versions of sheets, people, claims and rates. I added periods, statements, patrons, watches, roles and delegations. Permission changes now record a sheet version too, which they didn't before.\n- **Changes refused:** a new `AsOfGuard` refuses every change sent while the header is set with a 409 before it reaches its handler. That covers bulk actions and a statement as of a date, so nothing is written to the store or the audit file. Loading a sheet still works.\n\n**Things to know**\n- Two kinds of change only start counting from now on: anything in the newly tracked tables, and permission changes. On a sheet that already has data, those changes made before this release won't show in an as-of view.\n- Bulk actions behave differently from the archived-sheet rule. There, a bulk action goes through with nothing done; here it is refused outright with its error.\n- \"As it stood\" is worked out row by row. Each row takes its latest counting version. So if the sheet's today was moved backwards, a counting change saved after a non-counting one can include that change's effects.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.1219599999999996,
+        "num_turns": 35,
+        "duration_ms": 464464,
+        "duration_api_ms": 234569,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp74.agent.jsonl",
+  "agent_diff_file": "cp74.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

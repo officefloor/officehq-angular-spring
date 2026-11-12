@@ -1,0 +1,853 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index f904378d2..31a41de04 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -1,9 +1,10 @@
+ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
+-import { provideHttpClient } from '@angular/common/http';
++import { provideHttpClient, withInterceptors } from '@angular/common/http';
+ import { provideRouter } from '@angular/router';
+ import { routes } from './app.routes';
++import { asOfInterceptor } from './core/as-of';
+ 
+-// The app's wiring: the router and the HTTP client.
++// The app's wiring: the router and the HTTP client, which sends the as-of date with every request.
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient()],
++  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient(withInterceptors([asOfInterceptor]))],
+ };
+diff --git a/src/main/frontend/src/app/core/as-of.ts b/src/main/frontend/src/app/core/as-of.ts
+new file mode 100644
+index 000000000..be033ef90
+--- /dev/null
++++ b/src/main/frontend/src/app/core/as-of.ts
+@@ -0,0 +1,10 @@
++import { HttpInterceptorFn } from '@angular/common/http';
++import { inject } from '@angular/core';
++import { Session } from './session';
++
++/** While the signed-in user views the sheet as of a date, every request carries it in the X-As-Of header:
++ *  the server answers what it reads as it stood at the end of that date, and refuses every change. */
++export const asOfInterceptor: HttpInterceptorFn = (req, next) => {
++  const asOf = inject(Session).asOf();
++  return asOf === null || !req.url.startsWith('/api/') ? next(req) : next(req.clone({ setHeaders: { 'X-As-Of': asOf } }));
++};
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index ea3b8a4ee..60fd1e5f7 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -102,6 +102,10 @@ export class Session {
+   readonly graceDays = signal<number | null>(null);
+   /** Whether the sheet is archived: everything stays visible and every change is refused. */
+   readonly archived = signal(false);
++  /** The date (YYYY-MM-DD) this user's screen shows the sheet as of, while set: every figure as it stood at
++   *  the end of that date, the date standing in for the sheet's today, and every change refused; null when
++   *  the screen shows the sheet as it is. Kept for this screen only, across sheet loads. */
++  readonly asOf = signal<string | null>(null);
+ 
+   signIn(name: string): boolean {
+     const n = name.trim();
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 134210846..af8cb7f8d 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -4,7 +4,7 @@ import { People } from '../../core/people';
+ import { Periods } from '../../core/periods';
+ import { Rates } from '../../core/rates';
+ import { Roles } from '../../core/roles';
+-import { Session } from '../../core/session';
++import { Session, isDate } from '../../core/session';
+ import { BulkOpen } from '../claims/bulk-open';
+ import { BulkSettle } from '../claims/bulk-settle';
+ import { PasteClaims } from '../claims/paste-claims';
+@@ -58,6 +58,22 @@ import { SummaryPanel } from '../summary/summary';
+           @if (todayError(); as err) {
+             <p role="alert" data-testid="sheet-error">{{ err }}</p>
+           }
++          <p>As of: <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong></p>
++          <form (submit)="setAsOf($event)">
++            <label for="asof-date">Show the sheet as of</label>
++            <input
++              id="asof-date"
++              data-testid="asof-date"
++              placeholder="YYYY-MM-DD"
++              [value]="asOfInput()"
++              (input)="asOfInput.set(value($event)); asOfError.set(null)"
++            />
++            <button type="submit" data-testid="asof-set" [disabled]="loading()">Set as of</button>
++            <button type="button" data-testid="asof-clear" [disabled]="loading()" (click)="clearAsOf()">Clear as of</button>
++          </form>
++          @if (asOfError(); as err) {
++            <p role="alert" data-testid="asof-error">{{ err }}</p>
++          }
+         }
+       </section>
+       @if (session.sheetId()) {
+@@ -103,6 +119,8 @@ export class Home {
+   protected readonly todayError = signal<string | null>(null);
+   protected readonly savingToday = signal(false);
+   protected readonly archiving = signal(false);
++  protected readonly asOfInput = signal('');
++  protected readonly asOfError = signal<string | null>(null);
+ 
+   protected value(e: Event): string {
+     return (e.target as HTMLInputElement).value;
+@@ -119,11 +137,47 @@ export class Home {
+     this.todayError.set(null);
+     this.loading.set(true);
+     try {
+-      this.sheetError.set(
+-        (await this.session.loadSheet(this.sheetInput())) ??
+-          (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load()])).find((err) => err !== null) ??
+-          null,
+-      );
++      this.sheetError.set(await this.loadSheet(this.sheetInput()));
++    } finally {
++      this.loading.set(false);
++    }
++  }
++
++  /** Load a sheet and everything on it, as of the screen's as-of date while one is set. */
++  private async loadSheet(id: string): Promise<string | null> {
++    return (
++      (await this.session.loadSheet(id)) ??
++      (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load()])).find((err) => err !== null) ??
++      null
++    );
++  }
++
++  /** Show the sheet as of a date on this screen only: everything is re-read as it stood at the end of it. */
++  protected async setAsOf(e: Event): Promise<void> {
++    e.preventDefault();
++    const d = this.asOfInput().trim();
++    this.asOfError.set(null);
++    if (!isDate(d)) {
++      this.asOfError.set('Enter an as-of date as YYYY-MM-DD.');
++      return;
++    }
++    await this.showAsOf(d);
++  }
++
++  /** Show the sheet as it is again. */
++  protected async clearAsOf(): Promise<void> {
++    this.asOfError.set(null);
++    await this.showAsOf(null);
++  }
++
++  private async showAsOf(date: string | null): Promise<void> {
++    const sid = this.session.sheetId();
++    if (sid === null || this.loading()) return;
++    this.todayError.set(null);
++    this.loading.set(true);
++    try {
++      this.session.asOf.set(date);
++      this.asOfError.set(await this.loadSheet(sid));
+     } finally {
+       this.loading.set(false);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 3ab75d5e1..5b20ea2e8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -10,10 +10,12 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
++import net.officefloor.hq.app.history.AsOf;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+ import net.officefloor.hq.app.person.PersonController.PersonView;
+ import net.officefloor.hq.app.person.PersonRetiredException;
+ import net.officefloor.hq.app.person.PersonService;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.DeleteMapping;
+@@ -110,19 +112,25 @@ public class ClaimController {
+     private final QuickAddService quickAdd;
+     private final PasteService paste;
+     private final PersonService people;
++    private final AsOf asOf;
+ 
+-    public ClaimController(ClaimService service, QuickAddService quickAdd, PasteService paste, PersonService people) {
++    public ClaimController(ClaimService service, QuickAddService quickAdd, PasteService paste, PersonService people,
++            AsOf asOf) {
++        this.asOf = asOf;
+         this.service = service;
+         this.quickAdd = quickAdd;
+         this.paste = paste;
+         this.people = people;
+     }
+ 
+-    /** The sheet's claims, newest first. */
++    /** The sheet's claims, newest first; as they stood at the end of a date when the screen views the sheet as
++     *  of one. */
+     @GetMapping("/claims")
+     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return (asOf == null ? service.list(sheetId.trim()) : this.asOf.claims(sheetId.trim(), asOf)).stream()
++                .map(ClaimView::of).toList();
+     }
+ 
+     /** Add a claim for a person. */
+diff --git a/src/main/java/net/officefloor/hq/app/history/AsOf.java b/src/main/java/net/officefloor/hq/app/history/AsOf.java
+new file mode 100644
+index 000000000..ff33b9011
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/AsOf.java
+@@ -0,0 +1,106 @@
++package net.officefloor.hq.app.history;
++
++import java.time.LocalDate;
++import java.util.Comparator;
++import java.util.List;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.person.Patron;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.Statement;
++import net.officefloor.hq.app.person.Watch;
++import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.role.Delegation;
++import net.officefloor.hq.app.role.SheetRole;
++import net.officefloor.hq.app.sheet.Sheet;
++import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Component;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * A sheet as it stood at the end of an as-of date, for a user's screen while they view it so: its rows as
++ * the changes made while the sheet's today was on or before that date left them, a later change not
++ * counting, and the date standing in for the sheet's today. Each list is in the order the screen reads the
++ * live one in.
++ */
++@Component
++@Transactional(readOnly = true)
++public class AsOf {
++
++    /** The header a screen viewing the sheet as of a date (YYYY-MM-DD) sends with each request. */
++    public static final String HEADER = "X-As-Of";
++
++    private final History history;
++    private final SheetRepository sheets;
++
++    public AsOf(History history, SheetRepository sheets) {
++        this.history = history;
++        this.sheets = sheets;
++    }
++
++    /** The sheet as of the date, its today the date; as it was started when no change to it counts by then. */
++    public Sheet sheet(String sheetId, LocalDate asOf) {
++        Sheet now = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        Sheet then = history.findAsOf(Sheet.class, sheetId, sheetId, asOf)
++                .orElseGet(() -> new Sheet(sheetId, now.getCreatedBy(), now.getCreatedAt(), asOf));
++        then.setToday(asOf);
++        return then;
++    }
++
++    /** The sheet's today as of the date: the date itself. */
++    public LocalDate today(String sheetId, LocalDate asOf) {
++        sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        return asOf;
++    }
++
++    /** The people, in the order they were added. */
++    public List<Person> people(String sheetId, LocalDate asOf) {
++        return sorted(Person.class, sheetId, asOf, Comparator.comparing(Person::getId));
++    }
++
++    /** The claims as listed: newest first. */
++    public List<Claim> claims(String sheetId, LocalDate asOf) {
++        return sorted(Claim.class, sheetId, asOf, Comparator.comparingLong(Claim::getListOrder).reversed());
++    }
++
++    /** The rates, by grade. */
++    public List<Rate> rates(String sheetId, LocalDate asOf) {
++        return sorted(Rate.class, sheetId, asOf, Comparator.comparing(Rate::getGrade));
++    }
++
++    /** The periods, by from-date. */
++    public List<Period> periods(String sheetId, LocalDate asOf) {
++        return sorted(Period.class, sheetId, asOf, Comparator.comparing(Period::getFromDate));
++    }
++
++    /** The statements, in the order they were taken. */
++    public List<Statement> statements(String sheetId, LocalDate asOf) {
++        return sorted(Statement.class, sheetId, asOf, Comparator.comparing(Statement::getId));
++    }
++
++    /** The patrons named, in the order they were named. */
++    public List<Patron> patrons(String sheetId, LocalDate asOf) {
++        return sorted(Patron.class, sheetId, asOf, Comparator.comparing(Patron::getId));
++    }
++
++    /** The watches kept, in the order they were started. */
++    public List<Watch> watches(String sheetId, LocalDate asOf) {
++        return sorted(Watch.class, sheetId, asOf, Comparator.comparing(Watch::getId));
++    }
++
++    /** The roles given, by user name. */
++    public List<SheetRole> roles(String sheetId, LocalDate asOf) {
++        return sorted(SheetRole.class, sheetId, asOf, Comparator.comparing(SheetRole::getUserName));
++    }
++
++    /** The delegations, in the order they were made. */
++    public List<Delegation> delegations(String sheetId, LocalDate asOf) {
++        return sorted(Delegation.class, sheetId, asOf, Comparator.comparing(Delegation::getId));
++    }
++
++    private <T> List<T> sorted(Class<T> type, String sheetId, LocalDate asOf, Comparator<T> order) {
++        sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        return history.listAsOf(type, sheetId, asOf).stream().sorted(order).toList();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/history/AsOfException.java b/src/main/java/net/officefloor/hq/app/history/AsOfException.java
+new file mode 100644
+index 000000000..0f7071b91
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/AsOfException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.history;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** The screen shows the sheet as of a date: every change from it is refused until the date is cleared. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class AsOfException extends RuntimeException {
++
++    public AsOfException() {
++        super("The sheet is shown as of a date: clear it to make a change.");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/history/AsOfGuard.java b/src/main/java/net/officefloor/hq/app/history/AsOfGuard.java
+new file mode 100644
+index 000000000..0e9d38875
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/history/AsOfGuard.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.history;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.web.servlet.HandlerInterceptor;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/**
++ * A screen showing the sheet as of a date sees it as it stood then and changes nothing: every change it
++ * sends (a bulk action and a statement as of a date included) is refused before it reaches its handler and
++ * writes nothing. Loading a sheet is not a change.
++ */
++@Configuration
++public class AsOfGuard implements WebMvcConfigurer, HandlerInterceptor {
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(this)
++                .addPathPatterns("/api/sheets/*/**")
++                .excludePathPatterns("/api/sheets/*/load");
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        if ("GET".equals(request.getMethod()) || "HEAD".equals(request.getMethod())
++                || "OPTIONS".equals(request.getMethod())) {
++            return true;
++        }
++        String asOf = request.getHeader(AsOf.HEADER);
++        if (asOf != null && !asOf.isBlank()) {
++            throw new AsOfException();
++        }
++        return true;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+index 991ec205c..894adf7b7 100644
+--- a/src/main/java/net/officefloor/hq/app/history/History.java
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -13,8 +13,14 @@ import java.util.Map;
+ import java.util.Objects;
+ import java.util.Optional;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.person.Patron;
+ import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.Statement;
++import net.officefloor.hq.app.person.Watch;
+ import net.officefloor.hq.app.rate.Rate;
++import net.officefloor.hq.app.role.Delegation;
++import net.officefloor.hq.app.role.SheetRole;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Component;
+@@ -22,7 +28,8 @@ import tools.jackson.databind.DeserializationFeature;
+ import tools.jackson.databind.json.JsonMapper;
+ 
+ /**
+- * The versions of a sheet, its people, their claims and its rates: each change keeps the state it left the
++ * The versions of a sheet, its people, their claims, its rates, its periods, the statements taken, the
++ * patrons named, the watches kept, the roles given and the delegations made: each change keeps the state it left the
+  * row in, with the sheet's today when it was made, so the rows can be read back as of a date — as the
+  * changes made while the sheet's today was on or before it left them, each row's latest such change by the
+  * order they were made, a change made later not counting whatever its today.
+@@ -74,6 +81,24 @@ public class History {
+         } else if (entity instanceof Rate rate) {
+             sheetId = rate.getSheetId();
+             entityId = String.valueOf(rate.getId());
++        } else if (entity instanceof Period period) {
++            sheetId = period.getSheetId();
++            entityId = String.valueOf(period.getId());
++        } else if (entity instanceof Statement statement) {
++            sheetId = statement.getSheetId();
++            entityId = String.valueOf(statement.getId());
++        } else if (entity instanceof Patron patron) {
++            sheetId = patron.getSheetId();
++            entityId = String.valueOf(patron.getId());
++        } else if (entity instanceof Watch watch) {
++            sheetId = watch.getSheetId();
++            entityId = String.valueOf(watch.getId());
++        } else if (entity instanceof SheetRole role) {
++            sheetId = role.getSheetId();
++            entityId = String.valueOf(role.getId());
++        } else if (entity instanceof Delegation delegation) {
++            sheetId = delegation.getSheetId();
++            entityId = String.valueOf(delegation.getId());
+         } else {
+             throw new IllegalArgumentException("No history kept of " + entity.getClass());
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index bd7b79b9a..cd5b9520a 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -4,6 +4,7 @@ import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
+ import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+@@ -15,12 +16,14 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.HashMap;
+ import java.util.Map;
++import net.officefloor.hq.app.history.History;
+ 
+ /** A named period on the sheet, from one date to another, both inclusive. A claim belongs to the
+  *  period whose dates contain its date, or to none. A closed period keeps the due-total it had when
+  *  closed, and its claims can no longer change, until a steward reopens it. A soft-closed period keeps
+  *  its figures fixed the same way, but its claims can still change. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "period")
+ public class Period {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 47b5162d8..58fe49b59 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -8,6 +8,8 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
++import net.officefloor.hq.app.history.AsOf;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -48,16 +50,21 @@ public class PeriodController {
+     }
+ 
+     private final PeriodService service;
++    private final AsOf asOf;
+ 
+-    public PeriodController(PeriodService service) {
++    public PeriodController(PeriodService service, AsOf asOf) {
+         this.service = service;
++        this.asOf = asOf;
+     }
+ 
+-    /** The sheet's periods, by from-date. */
++    /** The sheet's periods, by from-date.; as they stood at the end of a date when the screen views the
++     *  sheet as of one. */
+     @GetMapping
+     public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return (asOf == null ? service.list(sheetId.trim()) : this.asOf.periods(sheetId.trim(), asOf)).stream()
++                .map(PeriodView::of).toList();
+     }
+ 
+     /** Add a period; refused when its name is taken, its dates run backwards or it overlaps another. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/Patron.java b/src/main/java/net/officefloor/hq/app/person/Patron.java
+index 1e476b248..29d20c9eb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Patron.java
++++ b/src/main/java/net/officefloor/hq/app/person/Patron.java
+@@ -2,13 +2,16 @@ package net.officefloor.hq.app.person;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import net.officefloor.hq.app.history.History;
+ 
+ /** One of a person's patrons: another person on the same sheet they have named. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "person_patron")
+ public class Patron {
+ 
+@@ -34,6 +37,10 @@ public class Patron {
+         this.patronId = patronId;
+     }
+ 
++    public Long getId() {
++        return id;
++    }
++
+     public String getSheetId() {
+         return sheetId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index cc00dbdbc..e15aa4b3c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -11,6 +11,9 @@ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.history.AsOf;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.orm.ObjectOptimisticLockingFailureException;
+@@ -107,20 +110,30 @@ public class PersonController {
+     }
+ 
+     private final PersonService service;
++    private final AsOf asOf;
+ 
+-    public PersonController(PersonService service) {
++    public PersonController(PersonService service, AsOf asOf) {
+         this.service = service;
++        this.asOf = asOf;
+     }
+ 
+-    /** The sheet's people in the order they were added. */
++    /** The sheet's people in the order they were added; as they stood at the end of a date when the screen
++     *  views the sheet as of one. */
+     @GetMapping
+     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        Map<Long, List<Statement>> statements = service.statements(sheetId.trim());
+-        Map<Long, List<Long>> patrons = service.patrons(sheetId.trim());
+-        List<Person> people = service.list(sheetId.trim());
+-        LocalDate today = service.today(sheetId.trim());
+-        Set<Long> watched = service.watchedBy(sheetId.trim(), user.trim());
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        String id = sheetId.trim();
++        Map<Long, List<Statement>> statements = asOf == null ? service.statements(id)
++                : this.asOf.statements(id, asOf).stream().collect(Collectors.groupingBy(Statement::getPersonId));
++        Map<Long, List<Long>> patrons = asOf == null ? service.patrons(id)
++                : this.asOf.patrons(id, asOf).stream().collect(Collectors.groupingBy(Patron::getPersonId,
++                        Collectors.mapping(Patron::getPatronId, Collectors.toList())));
++        List<Person> people = asOf == null ? service.list(id) : this.asOf.people(id, asOf);
++        LocalDate today = asOf == null ? service.today(id) : this.asOf.today(id, asOf);
++        Set<Long> watched = asOf == null ? service.watchedBy(id, user.trim())
++                : this.asOf.watches(id, asOf).stream().filter(w -> w.getUser().equals(user.trim()))
++                        .map(Watch::getPersonId).collect(Collectors.toSet());
+         return people.stream()
+                 .map(p -> PersonView.of(p, today, statements.getOrDefault(p.getId(), List.of()),
+                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))
+diff --git a/src/main/java/net/officefloor/hq/app/person/Statement.java b/src/main/java/net/officefloor/hq/app/person/Statement.java
+index 28cec6d0c..3f4cff5ab 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/person/Statement.java
+@@ -2,16 +2,19 @@ package net.officefloor.hq.app.person;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.history.History;
+ 
+ /** A statement taken of a person: the sheet's today then, or the date it was taken as of, their due-total
+  *  then (none when it was n/a) and how many of their claims counted. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "statement")
+ public class Statement {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Watch.java b/src/main/java/net/officefloor/hq/app/person/Watch.java
+index 346a5cc15..170e6bb61 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Watch.java
++++ b/src/main/java/net/officefloor/hq/app/person/Watch.java
+@@ -2,13 +2,16 @@ package net.officefloor.hq.app.person;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import net.officefloor.hq.app.history.History;
+ 
+ /** A user watching a person on a sheet: told of each of the person's claims settled, approved or re-settled. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "person_watch")
+ public class Watch {
+ 
+@@ -34,6 +37,10 @@ public class Watch {
+         this.user = user;
+     }
+ 
++    public Long getId() {
++        return id;
++    }
++
+     public String getSheetId() {
+         return sheetId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 2f1e591ab..f0f27dda7 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -10,6 +10,8 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.history.AsOf;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -41,16 +43,21 @@ public class RateController {
+     }
+ 
+     private final RateService service;
++    private final AsOf asOf;
+ 
+-    public RateController(RateService service) {
++    public RateController(RateService service, AsOf asOf) {
+         this.service = service;
++        this.asOf = asOf;
+     }
+ 
+-    /** The sheet's rates, by grade, each with its from-date; a grade with no rate is left out. */
++    /** The sheet's rates, by grade, each with its from-date; a grade with no rate is left out.; as they stood at the end of a date when the screen views the
++     *  sheet as of one. */
+     @GetMapping
+     public List<RateView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        return service.list(sheetId.trim()).stream().map(RateView::of).toList();
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return (asOf == null ? service.list(sheetId.trim()) : this.asOf.rates(sheetId.trim(), asOf)).stream()
++                .map(RateView::of).toList();
+     }
+ 
+     /** Set a grade's rate from a date (or from the beginning of time), perhaps through a to-date,
+diff --git a/src/main/java/net/officefloor/hq/app/role/Delegation.java b/src/main/java/net/officefloor/hq/app/role/Delegation.java
+index 89f437d7a..203025ef6 100644
+--- a/src/main/java/net/officefloor/hq/app/role/Delegation.java
++++ b/src/main/java/net/officefloor/hq/app/role/Delegation.java
+@@ -2,14 +2,17 @@ package net.officefloor.hq.app.role;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.history.History;
+ 
+ /** A steward's delegation of the steward role to a user name, from a date to a date, inclusive. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "delegation")
+ public class Delegation {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/role/DelegationController.java b/src/main/java/net/officefloor/hq/app/role/DelegationController.java
+index 3a5991c54..e18701c2d 100644
+--- a/src/main/java/net/officefloor/hq/app/role/DelegationController.java
++++ b/src/main/java/net/officefloor/hq/app/role/DelegationController.java
+@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
++import net.officefloor.hq.app.history.AsOf;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+@@ -38,16 +40,21 @@ public class DelegationController {
+     }
+ 
+     private final RoleService service;
++    private final AsOf asOf;
+ 
+-    public DelegationController(RoleService service) {
++    public DelegationController(RoleService service, AsOf asOf) {
+         this.service = service;
++        this.asOf = asOf;
+     }
+ 
+-    /** The sheet's delegations in the order they were made. */
++    /** The sheet's delegations in the order they were made.; as they stood at the end of a date when the screen views the
++     *  sheet as of one. */
+     @GetMapping
+     public List<DelegationView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        return service.delegations(sheetId.trim()).stream().map(DelegationView::of).toList();
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return (asOf == null ? service.delegations(sheetId.trim()) : this.asOf.delegations(sheetId.trim(), asOf))
++                .stream().map(DelegationView::of).toList();
+     }
+ 
+     /** Delegate the steward role to a user for a from-date to a to-date. */
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index c3e3dd3a8..6856be683 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -4,7 +4,10 @@ import jakarta.validation.Valid;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.history.AsOf;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -32,16 +35,21 @@ public class RoleController {
+     }
+ 
+     private final RoleService service;
++    private final AsOf asOf;
+ 
+-    public RoleController(RoleService service) {
++    public RoleController(RoleService service, AsOf asOf) {
+         this.service = service;
++        this.asOf = asOf;
+     }
+ 
+-    /** The names given a role on the sheet, by name; any other name is a clerk. */
++    /** The names given a role on the sheet, by name; any other name is a clerk.; as they stood at the end of a date when the screen views the
++     *  sheet as of one. */
+     @GetMapping
+     public List<RoleView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        return service.list(sheetId.trim()).stream().map(RoleView::of).toList();
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return (asOf == null ? service.list(sheetId.trim()) : this.asOf.roles(sheetId.trim(), asOf)).stream()
++                .map(RoleView::of).toList();
+     }
+ 
+     /** Give a user name a role: clerk, steward or viewer. */
+diff --git a/src/main/java/net/officefloor/hq/app/role/SheetRole.java b/src/main/java/net/officefloor/hq/app/role/SheetRole.java
+index 1ebd81d73..c2a4f772a 100644
+--- a/src/main/java/net/officefloor/hq/app/role/SheetRole.java
++++ b/src/main/java/net/officefloor/hq/app/role/SheetRole.java
+@@ -2,13 +2,16 @@ package net.officefloor.hq.app.role;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import net.officefloor.hq.app.history.History;
+ 
+ /** The role the sheet gives a user name. A name with none is a clerk. */
+ @Entity
++@EntityListeners(History.class)
+ @Table(name = "sheet_role")
+ public class SheetRole {
+ 
+@@ -38,6 +41,10 @@ public class SheetRole {
+         this.role = role;
+     }
+ 
++    public Long getId() {
++        return id;
++    }
++
+     public String getSheetId() {
+         return sheetId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 85763acb6..a526073c1 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -13,6 +13,8 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
++import net.officefloor.hq.app.history.AsOf;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -117,16 +119,21 @@ public class SheetController {
+     }
+ 
+     private final SheetService service;
++    private final AsOf asOf;
+ 
+-    public SheetController(SheetService service) {
++    public SheetController(SheetService service, AsOf asOf) {
+         this.service = service;
++        this.asOf = asOf;
+     }
+ 
+-    /** Load a sheet by id, starting it empty if it was never loaded before. */
++    /** Load a sheet by id, starting it empty if it was never loaded before; as it stood at the end of a date
++     *  when the screen views it as of one. */
+     @PostMapping("/{id}/load")
+     public SheetView load(@PathVariable @NotBlank @Size(max = 200) String id,
+-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        return SheetView.of(service.load(id.trim(), user.trim()));
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        Sheet sheet = service.load(id.trim(), user.trim());
++        return SheetView.of(asOf == null ? sheet : this.asOf.sheet(sheet.getId(), asOf));
+     }
+ 
+     /** Archive the sheet (a steward only). */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index fe0791746..ce63e4f12 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -196,6 +196,7 @@ public class SheetService {
+         String value = roles == null ? "" : roles.trim();
+         sheet.setPermission(action, value);
+         sheets.saveAndFlush(sheet);
++        history.keep(sheet);
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
+         return sheet;
+     }
