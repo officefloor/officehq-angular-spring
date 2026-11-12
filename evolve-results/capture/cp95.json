@@ -1,0 +1,64 @@
+{
+  "checkpoint": 95,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp95_rate-preview",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The rates panel gains a preview: a grade, a candidate rate and a preview button show how many\nOPEN and PENDING claims of people on that grade (the grade in force on the claim's date) would show\na different due if that rate applied to the grade on every date, and the sum of the differences\n(new due minus current due, two decimals, negative when lower). A claim bound by a statement does\nnot change; a settled claim is not counted. Nothing is saved and nothing is written to the audit.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rates panel gains a preview: a grade, a candidate rate and a preview button show how many\nOPEN and PENDING claims of people on that grade (the grade in force on the claim's date) would show\na different due if that rate applied to the grade on every date, and the sum of the differences\n(new due minus current due, two decimals, negative when lower). A claim bound by a statement does\nnot change; a settled claim is not counted. Nothing is saved and nothing is written to the audit.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ba1ed41c2ec4fce0e033c2e9e1cc19a96ee080e5",
+  "reset_sha": "",
+  "preagent_sha": "87aa56aef49b02752fd589f948cc83d0678e5bef",
+  "prev_sha": "87aa56aef49b02752fd589f948cc83d0678e5bef",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7401832,
+    "input_tokens": 6,
+    "output_tokens": 695,
+    "cache_read_tokens": 126267,
+    "cache_creation_tokens": 2458,
+    "num_turns": 2,
+    "duration_ms": 8261,
+    "duration_api_ms": 78177,
+    "model": "claude-opus-5-5",
+    "session_id": "1b5ff80f-3fd3-4bdf-8235-cea8274cf82c",
+    "stop_reason": "success",
+    "result_text": "The rates panel now has a rate preview. You pick a grade, type a candidate rate and press Preview, and it shows how many claims would get a different due and the total difference. I ran `bin/e2e` and all 4 tests pass: the new rate-preview test and the three existing scenarios.\n\n**How it decides:**\n- **Which claims:** OPEN and PENDING claims whose person had the chosen grade on the claim's date.\n- **Left out:** settled claims and claims bound by a statement, since those don't change.\n- **New due:** the claim amount times the candidate rate, worked out the way the screen already works out a claim's due. It uses the same rounding, plus any late charge, and is never below the floor.\n- **What counts:** a claim counts only if its new due differs from the one it shows now. The difference is new minus current, with two decimals, and is negative when lower. If a claim currently shows `n/a` (no rate applies), its current due is treated as 0.\n- **Bad input:** a rate that isn't a number of 0.00 or more with up to two decimals shows the error `rate-preview-error`.\n\n**What it doesn't touch:** it's worked out entirely in the browser, from the data the screen has already loaded. There's no server change, nothing is saved, and nothing is written to the audit file.\n\n**Two behaviours the test depends on:**\n- The previous result clears as soon as you change the grade or rate, or press Preview again.\n- The new result appears a moment after the press, so two presses giving the same answer can still be told apart.\n\nThe code is in `core/figures.ts` (`ratePreview`) and `features/rates/rates.ts` (the form and result).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7401832,
+        "num_turns": 2,
+        "duration_ms": 8261,
+        "duration_api_ms": 78177,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp95.agent.jsonl",
+  "agent_diff_file": "cp95.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
