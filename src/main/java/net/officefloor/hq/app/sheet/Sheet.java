@@ -85,7 +85,7 @@ public class Sheet {
     @Column(name = "policy_date")
     private LocalDate policyDate;
 
-    /** From this date (on the sheet's today) a claim opened is numbered within its period; null: off. */
+    /** From this date (on the sheet's today) a claim settled is numbered within its period; null: off. */
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
@@ -494,7 +494,7 @@ public class Sheet {
         this.archived = archived;
     }
 
-    /** Whether a claim opened now is numbered within its period: the setting is a date and today is on or after it. */
+    /** Whether a claim settled now is numbered within its period: the setting is a date and today is on or after it. */
     public boolean numbersByPeriod() {
         return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
     }

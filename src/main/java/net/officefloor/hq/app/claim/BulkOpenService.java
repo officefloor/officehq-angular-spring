@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Opens a selection of claims together, in list order: the people in the order they were added, each person's claims
- * newest first. Each claim is opened on its own, as its Open button would, so each gets the next number; one that
+ * newest first. Each claim is opened on its own, as its Open button would; one that
  * cannot be opened (not a DRAFT, dated in a closed period, above the note threshold with an empty note, over its period's cap, or gone) is left as it is and counted as refused.
  */
 @Service

@@ -361,7 +361,7 @@ public class SettingService {
 
     /**
      * Set the period numbering from; null means off. Every save is recorded, even of the same value. Claims already
-     * opened keep their numbers.
+     * numbered keep their numbers.
      */
     @Transactional
     public Sheet setPeriodNumberingFrom(String sheetId, String user, LocalDate from) {
