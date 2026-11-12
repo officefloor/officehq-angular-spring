@@ -1,0 +1,142 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 45451340d..db39201ae 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -72,6 +72,10 @@ export class Session {
+    *  is none or until the settings are read. */
+   readonly cap = computed(() => this.settingOn('cap', this.today()));
+   private loads = 0;
++  /** The number of sheet loads waiting for their answer. */
++  private loading = 0;
++  /** The completed load whose data each part of the screen last showed, by part. */
++  private readonly shownLoads: Record<string, number> = {};
+ 
+   signIn(name: string): void {
+     this.user.set(name);
+@@ -102,11 +106,12 @@ export class Session {
+   /** Load a sheet by id; an id never used before starts an empty sheet. */
+   async loadSheet(id: string): Promise<void> {
+     const load = ++this.loads;
++    this.loading++;
+     const loaded = await firstValueFrom(
+       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
+         headers: { 'X-User': this.user() ?? '' },
+       }),
+-    );
++    ).finally(() => this.loading--);
+     // A later load wins over a slower earlier one.
+     if (load === this.loads) {
+       this.show(loaded);
+@@ -114,6 +119,23 @@ export class Session {
+     }
+   }
+ 
++  /** Record that the part of the screen now shows the data it read for the completed load. */
++  shown(part: string, load: number): void {
++    this.shownLoads[part] = load;
++  }
++
++  /**
++   * Resolves once no sheet load is waiting for its answer and each of the parts shows the data read for the latest
++   * completed load (so a figure taken from the screen is the sheet as it now stands, or as of the as-of date).
++   */
++  async settled(...parts: string[]): Promise<void> {
++    // A part whose read failed never catches up: after a while, take the screen as it is.
++    for (let waited = 0; waited < 10_000; waited += 20) {
++      if (this.loading === 0 && parts.every((part) => this.shownLoads[part] === this.loaded())) return;
++      await new Promise((resolve) => setTimeout(resolve, 20));
++    }
++  }
++
+   /** Show the active sheet as of the date (null: as it stands), re-reading all of it. */
+   async setAsOf(date: string | null): Promise<void> {
+     const id = this.sheet();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1da3592d3..9511119be 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2257,7 +2257,8 @@ export class People {
+    * Download everyone on the sheet, retired people included, in list order as a CSV file: name, the grade in force
+    * today, the retired-from date or nothing, and the due-total as the list shows it.
+    */
+-  protected exportCsv(): void {
++  protected async exportCsv(): Promise<void> {
++    await this.session.settled('people', 'settings');
+     const lines = [['name', 'grade', 'retired-from', 'due-total']].concat(
+       this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueTotalOf(p)]),
+     );
+@@ -2269,7 +2270,8 @@ export class People {
+    * claims oldest first: the person's name, then the claim's number, date, amount, due, status and period as the list
+    * shows them.
+    */
+-  protected exportClaims(): void {
++  protected async exportClaims(): Promise<void> {
++    await this.session.settled('people', 'settings');
+     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']].concat(
+       this.people().flatMap((p) =>
+         [...this.claimsOf(p.id)]
+@@ -2315,6 +2317,7 @@ export class People {
+ 
+   private async read(sheet: string): Promise<void> {
+     const read = ++this.reads;
++    const load = this.session.loaded();
+     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
+     const [list, claims, rates, periods, tags, descendants] = await Promise.all([
+       firstValueFrom(this.http.get<Person[]>(`${url}/people`, this.session.headers())),
+@@ -2332,6 +2335,7 @@ export class People {
+       this.periods.set(periods);
+       this.tags.set(tags);
+       this.descendantFigures.set(descendants);
++      this.session.shown('people', load);
+     }
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 508ffd321..b7447831c 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -327,7 +327,8 @@ export class Pools {
+    * Download the pools as a CSV file, pools in the order added and each pool's members in the order added: the pool's
+    * name, the member's name (a pool as pool:<name>), their share and their cut as shown (empty when none).
+    */
+-  protected exportCsv(): void {
++  protected async exportCsv(): Promise<void> {
++    await this.session.settled('people', 'settings', 'pools');
+     const lines = [['pool', 'member', 'share', 'cut']].concat(
+       this.shown().flatMap((p) => p.members.map((m) => [p.name, m.name, m.share, m.cut])),
+     );
+@@ -496,12 +497,14 @@ export class Pools {
+ 
+   private async read(sheet: string): Promise<void> {
+     const read = ++this.reads;
++    const load = this.session.loaded();
+     const list = await firstValueFrom(this.http.get<PoolView[]>(this.base(sheet), this.session.headers())).catch(
+       () => null,
+     );
+     // A later read wins over a slower earlier one.
+     if (list && read === this.reads && this.session.sheet() === sheet) {
+       this.pools.set(list);
++      this.session.shown('pools', load);
+     }
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index b6a2878b4..fde01f234 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1066,6 +1066,7 @@ export class Settings {
+ 
+   private async read(sheet: string): Promise<void> {
+     const read = ++this.reads;
++    const load = this.session.loaded();
+     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
+     const [settings, roles, delegations] = await Promise.all([
+       firstValueFrom(this.http.get<SettingsView>(`${url}/settings`, this.session.headers())),
+@@ -1077,6 +1078,7 @@ export class Settings {
+       this.show(settings);
+       this.roleList.set(roles);
+       this.delegations.set(delegations);
++      this.session.shown('settings', load);
+     }
+   }
+ 
