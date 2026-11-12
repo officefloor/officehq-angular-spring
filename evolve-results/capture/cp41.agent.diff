@@ -1,0 +1,191 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index bd22636b1..f1101fcde 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -5,8 +5,11 @@ import { Periods } from './periods';
+ import { Rates, hundredths, money } from './rates';
+ import { Session } from './session';
+ 
+-// The due figures the screen shows, worked out in one place so the people list, the periods list
+-// and the summary always agree.
++/** The statuses claims are counted by, in the order the screen shows them. */
++export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
++
++// The due figures the screen shows, worked out in one place so the people list, the periods list,
++// the summary and the header always agree.
+ @Injectable({ providedIn: 'root' })
+ export class Figures {
+   private readonly claims = inject(Claims);
+@@ -33,6 +36,32 @@ export class Figures {
+     return rated || keptFigure ? sum : null;
+   }
+ 
++  /** Everyone's due-total added up, skipping those whose grade has no rate. */
++  readonly dueTotal = computed(() =>
++    money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
++  );
++
++  /** The due of everyone's overdue claims that count, added up. */
++  readonly overdueTotal = computed(() =>
++    money(this.people.people().reduce((sum, p) => sum + this.overdueCents(p), 0n)),
++  );
++
++  /** The number of claims in each status, in the order of STATUSES. */
++  readonly statusCounts = computed(() => {
++    const claims = this.claims.claims();
++    return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
++  });
++
++  /** A person's claims that count live and are overdue. */
++  overdue(p: Person): Claim[] {
++    return this.claims.live().filter((c) => c.personId === p.id && this.claims.overdue(c));
++  }
++
++  /** The due of a person's overdue claims that count, added up. */
++  overdueCents(p: Person): bigint {
++    return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p), 0n);
++  }
++
+   /** A claim's figure: its settled due, else the figure its person's last statement bound it to (not
+    *  while PENDING), else its live due at the rate in force on its date, an overdue claim's late charge on top;
+    *  nothing when it has no figure. */
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+new file mode 100644
+index 000000000..0be6c8dab
+--- /dev/null
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -0,0 +1,33 @@
++import { Component, inject } from '@angular/core';
++import { Figures } from '../../core/figures';
++import { People } from '../../core/people';
++
++// The sheet's counters, always in view: everyone on it (retired people included), the claims in
++// each status, and the sheet's due- and overdue-totals — the same figures the summary and the
++// people list show.
++@Component({
++  selector: 'app-header',
++  template: `
++    <header aria-label="Counters" data-testid="header">
++      <dl>
++        <div><dt>People</dt><dd data-testid="header-people-count">{{ people.people().length }}</dd></div>
++        @for (s of figures.statusCounts(); track s.status) {
++          <div><dt>{{ s.status }}</dt><dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd></div>
++        }
++        <div><dt>Due total</dt><dd data-testid="header-due-total">{{ figures.dueTotal() }}</dd></div>
++        <div><dt>Overdue total</dt><dd data-testid="header-overdue-total">{{ figures.overdueTotal() }}</dd></div>
++      </dl>
++    </header>
++  `,
++  styles: `
++    header { position: sticky; top: 0; z-index: 1; background: #fff; border-bottom: 1px solid #767676; }
++    dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; padding: 0.5rem 0; }
++    dt, dd { display: inline; }
++    dt::after { content: ': '; }
++    dd { margin: 0; font-weight: bold; }
++  `,
++})
++export class HeaderCounters {
++  protected readonly people = inject(People);
++  protected readonly figures = inject(Figures);
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 27fca857c..0c5dc5ec5 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -6,6 +6,7 @@ import { Rates } from '../../core/rates';
+ import { Roles } from '../../core/roles';
+ import { Session } from '../../core/session';
+ import { BulkOpen } from '../claims/bulk-open';
++import { HeaderCounters } from '../header/header';
+ import { PeopleList } from '../people/people';
+ import { PeriodsPanel } from '../periods/periods';
+ import { RatesPanel } from '../rates/rates';
+@@ -15,9 +16,12 @@ import { SummaryPanel } from '../summary/summary';
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [BulkOpen, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
++  imports: [BulkOpen, HeaderCounters, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
+   template: `
+     @if (session.user(); as user) {
++      @if (session.sheetId()) {
++        <app-header />
++      }
+       <section aria-label="Session" data-testid="session-bar">
+         <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+         <form (submit)="load($event)">
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5f6d1dc1d..a635e840a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -226,17 +226,13 @@ export class PeopleList {
+   /** The id of the person being put on hold. */
+   protected readonly holding = signal<number | null>(null);
+   /** Everyone's due-total added up, skipping those whose grade has no rate. */
+-  protected readonly dueTotal = computed(() =>
+-    money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
+-  );
++  protected readonly dueTotal = this.figures.dueTotal;
+   /** Everyone's overdue claims that count, counted. */
+   protected readonly overdueCount = computed(() =>
+     this.people.people().reduce((n, p) => n + this.overdue(p).length, 0),
+   );
+   /** The due of everyone's overdue claims that count, added up. */
+-  protected readonly overdueTotal = computed(() =>
+-    money(this.people.people().reduce((sum, p) => sum + this.overdueCents(p), 0n)),
+-  );
++  protected readonly overdueTotal = this.figures.overdueTotal;
+   protected readonly name = signal('');
+   protected readonly grade = signal<string>('A');
+   /** The date the editor's grade applies from; blank takes the sheet's today. */
+@@ -285,12 +281,12 @@ export class PeopleList {
+ 
+   /** A person's claims that count live and are overdue. */
+   protected overdue(p: Person): Claim[] {
+-    return this.claims.live().filter((c) => c.personId === p.id && this.claims.overdue(c));
++    return this.figures.overdue(p);
+   }
+ 
+   /** The due of a person's overdue claims that count, added up. */
+   private overdueCents(p: Person): bigint {
+-    return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p), 0n);
++    return this.figures.overdueCents(p);
+   }
+ 
+   protected overdueDue(p: Person): string {
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index fe57c241b..7bac3bc4d 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -1,13 +1,9 @@
+ import { Component, computed, inject } from '@angular/core';
+-import { Claims } from '../../core/claims';
+ import { Figures } from '../../core/figures';
+ import { GRADES, People } from '../../core/people';
+ import { Periods } from '../../core/periods';
+ import { money } from '../../core/rates';
+ 
+-/** The statuses the summary counts claims by, in the order it shows them. */
+-const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+-
+ // The sheet at a glance, from the same figures the lists show: per grade, the people on it today
+ // (retired people left out) and their due-totals added up (one that is n/a adds nothing); per period,
+ // its due-total; per status, the claims in it.
+@@ -64,7 +60,6 @@ const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+ })
+ export class SummaryPanel {
+   private readonly people = inject(People);
+-  private readonly claims = inject(Claims);
+   private readonly periods = inject(Periods);
+   private readonly figures = inject(Figures);
+ 
+@@ -85,8 +80,5 @@ export class SummaryPanel {
+     return this.periods.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? live.get(p.id) ?? '0.00' }));
+   });
+ 
+-  protected readonly byStatus = computed(() => {
+-    const claims = this.claims.claims();
+-    return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === status).length }));
+-  });
++  protected readonly byStatus = this.figures.statusCounts;
+ }
