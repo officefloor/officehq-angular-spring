@@ -1,0 +1,150 @@
+diff --git a/src/main/frontend/src/app/features/activity/activity.ts b/src/main/frontend/src/app/features/activity/activity.ts
+new file mode 100644
+index 000000000..14d5bea95
+--- /dev/null
++++ b/src/main/frontend/src/app/features/activity/activity.ts
+@@ -0,0 +1,61 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The sheet's activity: for every user and every event in the sheet's audit records, one line
++// "<user> <EVENT> <count>", sorted by user then event. It reads the audit file; it records nothing.
++@Component({
++  selector: 'app-activity',
++  template: `
++    <section aria-labelledby="activity-heading">
++      <h2 id="activity-heading">Activity</h2>
++      <button type="button" data-testid="activity-show" (click)="show()">Show activity</button>
++      @if (error(); as message) {
++        <p role="alert" data-testid="activity-error">{{ message }}</p>
++      }
++      <ul aria-label="Activity lines">
++        @for (line of lines(); track $index) {
++          <li data-testid="activity-line">{{ line }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class Activity {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  private reads = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.sheet();
++      this.session.loaded();
++      untracked(() => {
++        this.reads++;
++        this.lines.set([]);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const read = ++this.reads;
++    this.lines.set([]);
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/activity`, this.session.headers()),
++      );
++      // A later show wins over a slower earlier one.
++      if (read === this.reads && this.session.sheet() === sheet) this.lines.set(lines);
++    } catch {
++      if (read === this.reads) this.error.set('The activity could not be read.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index a48d50a9f..9e363e7a0 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -2,6 +2,7 @@ import { Component, inject, linkedSignal, signal } from '@angular/core';
+ import { LOCALES, Locale, UserLocale } from '../../core/locale';
+ import { Session } from '../../core/session';
+ import { AuditViewer } from '../audit-viewer/audit-viewer';
++import { Activity } from '../activity/activity';
+ import { Holidays } from '../holidays/holidays';
+ import { NotesList } from '../notes/notes';
+ import { People } from '../people/people';
+@@ -13,7 +14,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [AuditViewer, Holidays, NotesList, People, Settings, TemplatesList, TreeSearch, VoidReasonsList],
++  imports: [Activity, AuditViewer, Holidays, NotesList, People, Settings, TemplatesList, TreeSearch, VoidReasonsList],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -99,6 +100,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+         <app-people />
+         <app-tree-search />
+         <app-audit-viewer />
++        <app-activity />
+       }
+     } @else {
+       <form (submit)="signIn($event)">
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 3a0f70fb0..f227e2618 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -12,6 +12,7 @@ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.TreeMap;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.role.DelegationService;
+@@ -121,6 +122,23 @@ public class Audit {
+         return lines;
+     }
+ 
++    /**
++     * The sheet's activity: for every user and every event in the sheet's records, one line {@code <user> <EVENT>
++     * <count>}, sorted by user then event.
++     */
++    public List<String> activity(String sheetId) {
++        Map<String, Map<String, Integer>> counts = new TreeMap<>();
++        for (String line : lines(sheetId, "")) {
++            Matcher m = SHEET_BY.matcher(line);
++            if (m.find()) {
++                counts.computeIfAbsent(m.group(3), u -> new TreeMap<>()).merge(m.group(1), 1, Integer::sum);
++            }
++        }
++        List<String> activity = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, count) -> activity.add(user + " " + event + " " + count)));
++        return activity;
++    }
++
+     /**
+      * The sheet's records about one claim, exactly as the file holds them, newest first: with a number, those carrying
+      * {@code number=} that number; without one, those naming its person (compared as names are compared), amount and
+diff --git a/src/main/java/net/officefloor/hq/app/AuditController.java b/src/main/java/net/officefloor/hq/app/AuditController.java
+index 6786c1ae6..4e5a0f7c9 100644
+--- a/src/main/java/net/officefloor/hq/app/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/AuditController.java
+@@ -54,6 +54,13 @@ public class AuditController {
+         return lines;
+     }
+ 
++    /** The sheet's activity: one line {@code <user> <EVENT> <count>} per user and event, sorted by user then event. */
++    @GetMapping("/api/sheets/{sheetId}/activity")
++    public List<String> activity(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return audit.activity(sheetId.trim());
++    }
++
+     /** The ids of the sheet's descendants, each once, by id; a parent loop never brings back the sheet. */
+     private List<String> descendants(String sheetId) {
+         List<String> seen = new ArrayList<>(List.of(sheetId));
