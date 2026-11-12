@@ -54,6 +54,16 @@ public class ConsolidatedController {
     }
 
     /**
+     * The people of the sheet and the other sheets of its tree, one row each: {@code [<sheet id>, <name>, <grade>,
+     * <due-total>]}, this sheet's first in list order, then the other sheets' by sheet id. It changes nothing.
+     */
+    @GetMapping("/api/sheets/{sheetId}/tree/people")
+    public List<List<String>> treePeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return rollups.treePeople(sheetId.trim());
+    }
+
+    /**
      * This sheet compared with another, one line per grade: {@code <grade> <this sheet's due-total> <the other's>};
      * no lines when the other sheet does not exist. It changes nothing.
      */

@@ -4,9 +4,15 @@ import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
+/** A CSV field: quoted, with its quotes doubled, when it holds a comma, a quote or a line break. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
 // Tree search: every person on this sheet and the other sheets of its tree whose name or an alias contains the typed
 // text (case ignored), one line each as <sheet id> <name> <due-total>; this sheet's people first in list order, then
-// the other sheets' by sheet id. It records nothing.
+// the other sheets' by sheet id. It records nothing. And a button that downloads every person of the tree as a CSV
+// file, in the same order: their sheet id, name, grade and due-total.
 @Component({
   selector: 'app-tree-search',
   imports: [FigurePipe],
@@ -32,6 +38,10 @@ import { Session } from '../../core/session';
           <li data-testid="search-line">{{ line | fig }}</li>
         }
       </ol>
+      <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people (CSV)</button>
+      @if (exportError(); as message) {
+        <p role="alert" data-testid="export-tree-error">{{ message | fig }}</p>
+      }
     </section>
   `,
 })
@@ -44,6 +54,7 @@ export class TreeSearch {
   /** How many lines the last search found; null while a search runs and before the first. */
   protected readonly count = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  protected readonly exportError = signal<string | null>(null);
   private reads = 0;
 
   constructor() {
@@ -55,6 +66,7 @@ export class TreeSearch {
         this.lines.set([]);
         this.count.set(null);
         this.error.set(null);
+        this.exportError.set(null);
       });
     });
   }
@@ -85,6 +97,31 @@ export class TreeSearch {
       }
     } catch {
       if (read === this.reads) this.error.set('The sheet tree could not be searched.');
+    }
+  }
+
+  /**
+   * Download every person of the sheet tree as a CSV file: a header line, then one line each with their sheet id, name,
+   * grade and due-total; this sheet's people first in list order, then the other sheets' by sheet id.
+   */
+  protected async exportTree(): Promise<void> {
+    this.exportError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    try {
+      const rows = await firstValueFrom(
+        this.http.get<string[][]>(`/api/sheets/${encodeURIComponent(sheet)}/tree/people`, this.session.headers()),
+      );
+      const lines = [['sheet', 'name', 'grade', 'due-total'], ...rows];
+      const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tree-${sheet}.csv`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url));
+    } catch {
+      this.exportError.set('The sheet tree could not be exported.');
     }
   }
 }

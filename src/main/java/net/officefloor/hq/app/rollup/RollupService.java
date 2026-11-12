@@ -373,21 +373,8 @@ public class RollupService {
      */
     public List<String> search(String sheetId, String text) {
         String wanted = text.toLowerCase(Locale.ROOT);
-        List<String> others = new ArrayList<>();
-        String root = root(sheetId);
-        if (!root.equals(sheetId)) {
-            others.add(root);
-        }
-        for (String id : descendants(root)) {
-            if (!id.equals(sheetId)) {
-                others.add(id);
-            }
-        }
-        others.sort(null);
-        List<String> order = new ArrayList<>(List.of(sheetId));
-        order.addAll(others);
         List<String> lines = new ArrayList<>();
-        for (String id : order) {
+        for (String id : treeOrder(sheetId)) {
             Map<Long, List<String>> aliasesOf = new LinkedHashMap<>();
             for (PersonAlias alias : aliases.findBySheetId(id)) {
                 aliasesOf.computeIfAbsent(alias.getPersonId(), p -> new ArrayList<>()).add(alias.getAlias());
@@ -404,6 +391,39 @@ public class RollupService {
             }
         }
         return lines;
+    }
+
+    /**
+     * Every person on the sheet and the other sheets of its tree, each as {@code [<sheet id>, <name>, <grade>,
+     * <due-total>]} with the grade in force on that sheet's today (empty when none) and the due-total as that sheet
+     * shows it: the sheet's people first in list order, then the other sheets' by sheet id. It changes nothing.
+     */
+    public List<List<String>> treePeople(String sheetId) {
+        List<List<String>> rows = new ArrayList<>();
+        for (String id : treeOrder(sheetId)) {
+            for (Figures person : snapshot(id).people().values()) {
+                rows.add(List.of(id, person.name(), person.grade() == null ? "" : person.grade(), person.dueTotal()));
+            }
+        }
+        return rows;
+    }
+
+    /** The sheet, then the other sheets of its tree (its topmost ancestor and all that one's descendants) by sheet id. */
+    private List<String> treeOrder(String sheetId) {
+        List<String> others = new ArrayList<>();
+        String root = root(sheetId);
+        if (!root.equals(sheetId)) {
+            others.add(root);
+        }
+        for (String id : descendants(root)) {
+            if (!id.equals(sheetId)) {
+                others.add(id);
+            }
+        }
+        others.sort(null);
+        List<String> order = new ArrayList<>(List.of(sheetId));
+        order.addAll(others);
+        return order;
     }
 
     /** The person's name as the screen shows it: with the grade in force on the sheet's today, when there is one. */
