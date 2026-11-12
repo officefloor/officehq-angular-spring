@@ -179,6 +179,28 @@ export class People {
     }
   }
 
+  /** Cancel a person's last statement: the person and their claims as it left them, or an error message
+   *  when refused. */
+  async cancelStatement(id: number): Promise<Statement | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const unstated = await firstValueFrom(
+        this.http.post<Statement>(`${this.url(sid)}/${id}/statement/cancel`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) {
+        this.people.update((ps) => ps.map((p) => (p.id === id ? unstated.person : p)));
+      }
+      return unstated;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string') {
+        return e.error.message;
+      }
+      return failed('cancel the statement of', e);
+    }
+  }
+
   /** Retire a person from a date (blank takes the sheet's today); an error message when refused. */
   async retire(id: number, from: string): Promise<string | null> {
     const sid = this.session.sheetId();

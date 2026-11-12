@@ -133,15 +133,15 @@ public class PeriodService {
     }
 
     /** Close, in order of their to-dates, every open period whose to-date plus the grace days is before the
-     *  sheet's (new) today, each as a close by hand would; none when the grace days are off. The caller holds
-     *  the sheet's lock. */
+     *  sheet's (new) today, each as a close by hand would (a soft-closed period keeps its fixed figures); none
+     *  when the grace days are off. The caller holds the sheet's lock. */
     @Transactional
     public void closeOverdue(String sheetId, String user, LocalDate today, Integer graceDays) {
         if (graceDays == null) {
             return;
         }
         periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
-                .filter(p -> !p.isClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
+                .filter(p -> !p.isClosed() && !p.isSoftClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
                 .sorted(Comparator.comparing(Period::getToDate))
                 .forEach(p -> closeNow(sheetId, user, p, true));
     }

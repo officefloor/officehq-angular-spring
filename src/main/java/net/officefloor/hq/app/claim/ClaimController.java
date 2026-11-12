@@ -346,6 +346,24 @@ public class ClaimController {
                 stated.claims().stream().map(ClaimView::of).toList());
     }
 
+    /** Cancel a person's last statement (a steward only). */
+    @PostMapping("/people/{personId}/statement/cancel")
+    public StatementView cancelStatement(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        ClaimService.Stated stated = service.cancelStatement(sheetId.trim(), user.trim(), personId);
+        return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
+                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim())),
+                stated.claims().stream().map(ClaimView::of).toList());
+    }
+
+    /** A cancel of a statement that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(StatementCancelException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> cancelRefused(StatementCancelException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     /** A change to a claim in a closed period is refused with the reason, for the screen to show. */
     @ExceptionHandler(PeriodClosedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

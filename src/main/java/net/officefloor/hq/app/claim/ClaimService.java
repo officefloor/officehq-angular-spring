@@ -577,6 +577,34 @@ public class ClaimService {
         return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
     }
 
+    /** Cancel a person's last statement: the claims it bound are live again (a figure an earlier statement
+     *  bound is not restored), and the statement before it becomes their last. Refused unless the user is a
+     *  steward and the person has a statement. */
+    @Transactional
+    public Stated cancelStatement(String sheetId, String user, long personId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new StatementCancelException("Only a steward can cancel a statement.");
+        }
+        List<Claim> theirs = claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, personId);
+        List<Statement> taken = statements.findByPersonIdOrderByIdAsc(personId);
+        if (taken.isEmpty()) {
+            throw new StatementCancelException(person.getName() + " has no statement to cancel.");
+        }
+        Statement last = taken.get(taken.size() - 1);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        for (Claim claim : theirs) {
+            claim.setStated(false, null);
+        }
+        claims.saveAllAndFlush(theirs);
+        statements.delete(last);
+        statements.flush();
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
+        rollup.recordChanges(sheetId, user, before);
+        return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
+    }
+
     /** Refuse an edit of a claim whose editor another user has open. */
     private void refuseLocked(Claim claim, String user) {
         if (claim.getLockedBy() != null && !claim.getLockedBy().equals(user)) {

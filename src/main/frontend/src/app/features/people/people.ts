@@ -187,6 +187,14 @@ import { PersonClaims } from '../claims/claims';
                 >
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-unstate"
+                  [disabled]="stating() === p.id"
+                  (click)="cancelStatement(p)"
+                >
+                  Cancel statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   [id]="'person-retire-date-' + p.id"
@@ -401,6 +409,18 @@ export class PeopleList {
       const stated = await this.people.statement(p.id);
       if (typeof stated === 'string') this.actionError.set({ id: p.id, message: stated });
       else this.claims.replaceOf(p.id, stated.claims);
+    } finally {
+      this.stating.set(null);
+    }
+  }
+
+  protected async cancelStatement(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.stating.set(p.id);
+    try {
+      const unstated = await this.people.cancelStatement(p.id);
+      if (typeof unstated === 'string') this.actionError.set({ id: p.id, message: unstated });
+      else this.claims.replaceOf(p.id, unstated.claims);
     } finally {
       this.stating.set(null);
     }
