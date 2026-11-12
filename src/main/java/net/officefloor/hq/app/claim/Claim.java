@@ -107,6 +107,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether a reminder ever escalated the claim; a claim is escalated at most once. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** The user whose open editor locks the claim against other users' edits; null when not locked. */
     @Column(name = "locked_by")
     private String lockedBy;
@@ -346,6 +350,14 @@ public class Claim {
         this.remindedOn = remindedOn;
     }
 
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    public void setEscalated(boolean escalated) {
+        this.escalated = escalated;
+    }
+
     public String getLockedBy() {
         return lockedBy;
     }
@@ -406,6 +418,7 @@ public class Claim {
         copy.splitFrom = splitFrom;
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
+        copy.escalated = escalated;
         copy.ref = ref;
         copy.tags = tags;
         copy.voidReason = voidReason;

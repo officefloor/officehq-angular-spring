@@ -27,6 +27,8 @@ interface SettingsView {
   graceDays: number | null;
   /** The month (1 to 12) the sheet's fiscal year starts in. */
   fiscalStartMonth: number;
+  /** Days at least which a claim's previous reminder lies before today for a reminder to escalate it; null: off. */
+  escalateAfter: number | null;
   /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
   proofThreshold: string | null;
   /** The due above which a claim cannot be opened with an empty note, two decimals; null when there is none. */
@@ -69,7 +71,7 @@ const PERM = /^((clerk|steward)(\s*,\s*(clerk|steward))*)?$/;
 /** A date typed as yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, its note threshold and its review threshold; not dated: its policy date, its period numbering from, its entry date, its grace days, its pot, its alert threshold, its parent sheet and its permission matrix) and the roles of its user names, each with the form that sets it.
+// The sheet's settings (dated, each saved from a from-date: its clerk limit, its floor, its terms and each grade's own, each grade's grace days, its late percent, its cap, its proof threshold and each grade's, its note threshold and its review threshold; not dated: its policy date, its period numbering from, its entry date, its grace days, its escalation gap, its pot, its alert threshold, its parent sheet and its permission matrix) and the roles of its user names, each with the form that sets it.
 @Component({
   selector: 'app-settings',
   imports: [FigurePipe],
@@ -216,6 +218,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="graceDays()"
           (focus)="lastFocused = 'graceDays'"
           (input)="graceDays.set(value($event)); graceDaysEdited = true; settingsError.set(null)"
+        />
+        <label for="setting-escalate-after">Escalate after (days since a claim's previous reminder for a reminder to escalate it; blank: off)</label>
+        <input
+          id="setting-escalate-after"
+          data-testid="setting-escalate-after"
+          inputmode="numeric"
+          [value]="escalateAfter()"
+          (focus)="lastFocused = 'escalateAfter'"
+          (input)="escalateAfter.set(value($event)); escalateAfterEdited = true; settingsError.set(null)"
         />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input
@@ -386,6 +397,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Period numbering from: <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFromCurrent() ?? '' | fig }}</strong></p>
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' | fig }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' | fig }}</strong></p>
+      <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ escalateAfterCurrent() ?? '' | fig }}</strong></p>
       <p>Fiscal year start month: <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonthCurrent() ?? '' | fig }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' | fig }}</strong></p>
       <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ alertThresholdCurrent() ?? '' | fig }}</strong></p>
@@ -517,6 +529,8 @@ export class Settings {
   protected readonly entryDate = signal('');
   protected readonly graceDays = signal('');
   protected readonly graceDaysCurrent = signal<string | null>(null);
+  protected readonly escalateAfter = signal('');
+  protected readonly escalateAfterCurrent = signal<string | null>(null);
   protected readonly fiscalStartMonth = signal('');
   protected readonly fiscalStartMonthCurrent = signal<string | null>(null);
   protected readonly pot = signal('');
@@ -539,6 +553,7 @@ export class Settings {
   protected periodNumberingFromEdited = false;
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
+  protected escalateAfterEdited = false;
   protected fiscalStartMonthEdited = false;
   protected potEdited = false;
   protected alertThresholdEdited = false;
@@ -549,7 +564,7 @@ export class Settings {
   protected reviewThresholdEdited = false;
   protected roundingEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -577,6 +592,7 @@ export class Settings {
         this.periodNumberingFromCurrent.set(null);
         this.session.entryDate.set(null);
         this.graceDaysCurrent.set(null);
+        this.escalateAfterCurrent.set(null);
         this.fiscalStartMonthCurrent.set(null);
         this.session.pot.set(null);
         this.alertThresholdCurrent.set(null);
@@ -649,7 +665,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -660,6 +676,7 @@ export class Settings {
         case 'periodNumberingFrom': this.periodNumberingFromEdited = true; break;
         case 'entryDate': this.entryDateEdited = true; break;
         case 'graceDays': this.graceDaysEdited = true; break;
+        case 'escalateAfter': this.escalateAfterEdited = true; break;
         case 'fiscalStartMonth': this.fiscalStartMonthEdited = true; break;
         case 'pot': this.potEdited = true; break;
         case 'alertThreshold': this.alertThresholdEdited = true; break;
@@ -683,6 +700,7 @@ export class Settings {
     const savePeriodNumberingFrom = this.periodNumberingFromEdited;
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
+    const saveEscalateAfter = this.escalateAfterEdited;
     const saveFiscalStartMonth = this.fiscalStartMonthEdited;
     const savePot = this.potEdited;
     const saveAlertThreshold = this.alertThresholdEdited;
@@ -701,6 +719,7 @@ export class Settings {
     const periodNumberingFrom = this.periodNumberingFrom().trim();
     const entryDate = this.entryDate().trim();
     const graceDays = this.graceDays().trim();
+    const escalateAfter = this.escalateAfter().trim();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
     const pot = this.pot().trim();
     const alertThreshold = this.alertThreshold().trim();
@@ -768,6 +787,10 @@ export class Settings {
     }
     if (saveGraceDays && graceDays !== '' && !/^\d{1,5}$/.test(graceDays)) {
       this.settingsError.set('Type grace days of 0 or more whole days, or leave it blank for off.');
+      return;
+    }
+    if (saveEscalateAfter && escalateAfter !== '' && !/^\d{1,5}$/.test(escalateAfter)) {
+      this.settingsError.set('Type an escalation gap of 0 or more whole days, or leave it blank for off.');
       return;
     }
     if (saveFiscalStartMonth && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
@@ -885,6 +908,12 @@ export class Settings {
           this.http.put<SettingsView>(`${url}/grace-days`, { graceDays: graceDays === '' ? null : graceDays }, this.session.headers()),
         );
         this.graceDaysEdited = false;
+      }
+      if (saveEscalateAfter) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/escalate-after`, { escalateAfter: escalateAfter === '' ? null : escalateAfter }, this.session.headers()),
+        );
+        this.escalateAfterEdited = false;
       }
       if (saveFiscalStartMonth) {
         saved = await firstValueFrom(
@@ -1107,6 +1136,8 @@ export class Settings {
     this.entryDate.set(settings.entryDate ?? '');
     this.graceDaysCurrent.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
+    this.escalateAfterCurrent.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
+    this.escalateAfter.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
     this.fiscalStartMonthCurrent.set(String(settings.fiscalStartMonth));
     this.fiscalStartMonth.set(String(settings.fiscalStartMonth));
     this.session.pot.set(settings.pot ?? '');
@@ -1136,6 +1167,7 @@ export class Settings {
     this.periodNumberingFromEdited = false;
     this.entryDateEdited = false;
     this.graceDaysEdited = false;
+    this.escalateAfterEdited = false;
     this.fiscalStartMonthEdited = false;
     this.potEdited = false;
     this.alertThresholdEdited = false;

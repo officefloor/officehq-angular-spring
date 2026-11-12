@@ -231,6 +231,17 @@ public class SettingService {
         return saved;
     }
 
+    /** Set the escalation gap in days; null means off. Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setEscalateAfter(String sheetId, String user, Integer days) {
+        Sheet sheet = get(sheetId);
+        sheet.setEscalateAfter(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=escalate-after value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
     /** Set the fiscal year start month (1 to 12). Every save is recorded, even of the same value. */
     @Transactional
     public Sheet setFiscalStartMonth(String sheetId, String user, int month) {

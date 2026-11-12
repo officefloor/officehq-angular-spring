@@ -65,6 +65,11 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(() -> new SheetNotFoundException(id));
     }
 
+    /** The sheet's escalation gap in days; null when off. */
+    public Integer escalateAfter(String id) {
+        return get(id).getEscalateAfter();
+    }
+
     /** The default date of a new claim: the sheet's entry date while it is set, else its today. */
     public LocalDate entryDate(String id) {
         return get(id).entryDateOrToday();
