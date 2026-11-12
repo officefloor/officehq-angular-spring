@@ -4,7 +4,7 @@ import java.util.Set;
 
 /** A claim's status: DRAFT when added; it is opened, then settled. A clerk settling a due above the clerk
  *  limit puts it PENDING instead, until a steward approves it (SETTLED) or rejects it (back to OPEN). A
- *  DRAFT, OPEN or PENDING claim can be voided. */
+ *  DRAFT, OPEN or PENDING claim can be voided, and a SETTLED one by a steward within 7 days of settling. */
 public enum ClaimStatus {
     DRAFT, OPEN, PENDING, SETTLED, VOID;
 
@@ -15,7 +15,8 @@ public enum ClaimStatus {
             case DRAFT -> Set.of(OPEN, VOID).contains(to);
             case OPEN -> Set.of(SETTLED, VOID).contains(to);
             case PENDING -> to == VOID;
-            case SETTLED, VOID -> false;
+            case SETTLED -> to == VOID;
+            case VOID -> false;
         };
     }
 

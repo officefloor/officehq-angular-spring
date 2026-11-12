@@ -142,6 +142,11 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(to)) {
             throw new ClaimStatusException(claim.getStatus(), to);
         }
+        if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
+            refuseVoidSettled(claim, sheetId, user);
+        }
+        String reversed = to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED
+                ? " reversed=" + show(claim.getSettledDue()) : "";
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ClaimSettlerException();
         }
@@ -177,7 +182,7 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
         };
-        audit(event, updated, person, user, number, to == ClaimStatus.SETTLED ? dueField(updated) : "");
+        audit(event, updated, person, user, number, to == ClaimStatus.SETTLED ? dueField(updated) : reversed);
         if (to == ClaimStatus.SETTLED) {
             notifyWatchers(updated, person, user);
         }
@@ -516,6 +521,22 @@ public class ClaimService {
         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException();
+        }
+    }
+
+    /** Refuse voiding a SETTLED claim unless the user is a steward and the sheet's today is within 7 days
+     *  of the date its status log last records it SETTLED. */
+    private void refuseVoidSettled(Claim claim, String sheetId, String user) {
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ClaimVoidException("Only a steward can void a settled claim.");
+        }
+        LocalDate settledOn = claim.getStatusLog().stream()
+                .filter(line -> line.getStatus() == ClaimStatus.SETTLED)
+                .map(StatusChange::getOn)
+                .reduce((first, last) -> last)
+                .orElse(null);
+        if (settledOn == null || sheets.today(sheetId).isAfter(settledOn.plusDays(7))) {
+            throw new ClaimVoidException("A settled claim can only be voided within 7 days of settling it.");
         }
     }
 

@@ -290,7 +290,7 @@ public class ClaimController {
         return ClaimView.of(service.reassign(sheetId.trim(), user.trim(), claimId, request.personId()));
     }
 
-    /** Void a DRAFT, OPEN or PENDING claim. */
+    /** Void a DRAFT, OPEN or PENDING claim, or a SETTLED one by a steward within 7 days of settling. */
     @PostMapping("/claims/{claimId}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long claimId,
