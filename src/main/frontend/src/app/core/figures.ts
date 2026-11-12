@@ -112,6 +112,18 @@ export class Figures {
     return this.claims.live().some((c) => c.personId === p.id && isOpen(c) && c.date >= from && c.date <= today);
   }
 
+  /** A person's settled figure: the frozen dues of their SETTLED claims dated within the 90 days up to
+   *  and including the sheet's today, added up; 0 with none. */
+  recentSettledCents(p: Person): bigint {
+    const today = this.session.today();
+    if (!today) return 0n;
+    const from = addDays(today, -89);
+    return this.claims
+      .claims()
+      .filter((c) => c.personId === p.id && c.status === 'SETTLED' && c.settledDue !== null && c.date >= from && c.date <= today)
+      .reduce((sum, c) => sum + hundredths(c.settledDue as string), 0n);
+  }
+
   /** The grade in force on the sheet's today, the one the list shows. */
   gradeToday(p: Person): string {
     const today = this.session.today();

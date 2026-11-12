@@ -343,9 +343,9 @@ export class PeopleList {
     return this.patronsOf(p).map((o) => o.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
   }
 
-  /** A person's patrons' due-totals added up, skipping those that are n/a; 0.00 with no patrons. */
+  /** A person's patrons' recent settled figures added up; 0.00 with no patrons. */
   protected backing(p: Person): string {
-    return money(this.patronsOf(p).reduce((sum, o) => sum + (this.dueCents(o) ?? 0n), 0n));
+    return money(this.patronsOf(p).reduce((sum, o) => sum + this.figures.recentSettledCents(o), 0n));
   }
 
   protected setPatronChoice(id: number, choice: string): void {
