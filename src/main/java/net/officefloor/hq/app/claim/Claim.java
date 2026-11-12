@@ -11,7 +11,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note and a status. */
+/** A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note, a status and, once opened, a number. */
 @Entity
 @Table(name = "claim")
 public class Claim {
@@ -38,6 +38,10 @@ public class Claim {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
+
+    /** Given when the claim is opened; none while a draft or once voided. */
+    @Column(name = "claim_number")
+    private Integer number;
 
     protected Claim() {
     }
@@ -92,5 +96,13 @@ public class Claim {
 
     public void setStatus(ClaimStatus status) {
         this.status = status;
+    }
+
+    public Integer getNumber() {
+        return number;
+    }
+
+    public void setNumber(Integer number) {
+        this.number = number;
     }
 }

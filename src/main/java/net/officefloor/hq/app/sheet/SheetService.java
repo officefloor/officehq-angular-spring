@@ -41,4 +41,10 @@ public class SheetService {
         sheet.setToday(today);
         return sheet;
     }
+
+    /** The sheet's next claim number: 1 for the first, then 2, and so on, never given twice. */
+    @Transactional
+    public int nextClaimNumber(String id) {
+        return sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new).nextClaimNumber();
+    }
 }

@@ -63,7 +63,12 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(to)) {
             throw new ClaimStatusException(claim.getStatus(), to);
         }
+        Integer number = claim.getNumber();
+        if (to == ClaimStatus.OPEN) {
+            number = sheets.nextClaimNumber(sheetId);
+        }
         claim.setStatus(to);
+        claim.setNumber(to == ClaimStatus.VOID ? null : number);
         Claim updated = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
@@ -72,14 +77,19 @@ public class ClaimService {
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException();
-        }, updated, person, user);
+        }, updated, person, user, number);
         return updated;
     }
 
     /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */
     private void audit(String event, Claim claim, Person person, String user) {
+        audit(event, claim, person, user, claim.getNumber());
+    }
+
+    /** A claim with a number (or one voided while it had one) ends its line with number=. */
+    private void audit(String event, Claim claim, Person person, String user, Integer number) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
                 + " person=" + person.getName() + " amount=" + claim.getAmount().toPlainString()
-                + " date=" + claim.getDate());
+                + " date=" + claim.getDate() + (number != null ? " number=" + number : ""));
     }
 }

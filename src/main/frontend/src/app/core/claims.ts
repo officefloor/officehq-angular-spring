@@ -11,6 +11,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** Given when opened, the next on the sheet; null while a draft or once voided. */
+  number: number | null;
 }
 
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT or OPEN -> VOID. */
