@@ -1,0 +1,169 @@
+diff --git a/src/main/frontend/src/app/features/duplicates/duplicates.ts b/src/main/frontend/src/app/features/duplicates/duplicates.ts
+new file mode 100644
+index 000000000..cd4217217
+--- /dev/null
++++ b/src/main/frontend/src/app/features/duplicates/duplicates.ts
+@@ -0,0 +1,66 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { FigurePipe } from '../../core/locale';
++import { Session } from '../../core/session';
++
++// Duplicate claims: for each person, date and amount with two or more claims (VOID and DELETED claims left out), one
++// line as <name> <date> <amount> x<count>; people in list order, then by date, then by amount. It records nothing.
++@Component({
++  selector: 'app-duplicates',
++  imports: [FigurePipe],
++  template: `
++    <section aria-labelledby="dups-heading">
++      <h2 id="dups-heading">Duplicate claims</h2>
++      <button type="button" data-testid="dups-show" (click)="show()">Show duplicate claims</button>
++      @if (error(); as message) {
++        <p role="alert" data-testid="dups-error">{{ message | fig }}</p>
++      }
++      <ol aria-label="Duplicate claims">
++        @for (line of lines(); track $index) {
++          <li data-testid="dup-line">{{ line | fig }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class Duplicates {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  private reads = 0;
++
++  constructor() {
++    effect(() => {
++      this.session.sheet();
++      this.session.loaded();
++      untracked(() => {
++        this.reads++;
++        this.lines.set([]);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    const read = ++this.reads;
++    this.lines.set([]);
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(
++          `/api/sheets/${encodeURIComponent(sheet)}/claims/duplicates`,
++          this.session.headers(),
++        ),
++      );
++      // A later read wins over a slower earlier one.
++      if (read === this.reads && this.session.sheet() === sheet) this.lines.set(lines);
++    } catch {
++      if (read === this.reads) this.error.set('The duplicate claims could not be shown.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 9e363e7a0..8c1f05aa4 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -3,6 +3,7 @@ import { LOCALES, Locale, UserLocale } from '../../core/locale';
+ import { Session } from '../../core/session';
+ import { AuditViewer } from '../audit-viewer/audit-viewer';
+ import { Activity } from '../activity/activity';
++import { Duplicates } from '../duplicates/duplicates';
+ import { Holidays } from '../holidays/holidays';
+ import { NotesList } from '../notes/notes';
+ import { People } from '../people/people';
+@@ -14,7 +15,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [Activity, AuditViewer, Holidays, NotesList, People, Settings, TemplatesList, TreeSearch, VoidReasonsList],
++  imports: [Activity, AuditViewer, Duplicates, Holidays, NotesList, People, Settings, TemplatesList, TreeSearch, VoidReasonsList],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -98,6 +99,7 @@ import { VoidReasonsList } from '../void-reasons/void-reasons';
+         <app-notes />
+         <app-templates />
+         <app-people />
++        <app-duplicates />
+         <app-tree-search />
+         <app-audit-viewer />
+         <app-activity />
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 1e6d38195..c00e13fb2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -207,6 +207,15 @@ public class ClaimController {
+         return service.tags(sheetId.trim());
+     }
+ 
++    /**
++     * The duplicate claims, one line each: {@code <name> <date> <amount> x<count>}. It changes nothing.
++     */
++    @GetMapping("/claims/duplicates")
++    public List<String> duplicates(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return service.duplicates(sheetId.trim());
++    }
++
+     /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
+     @GetMapping("/claims/{id}/timeline")
+     public List<String> timeline(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 80ea28e52..eebc568b8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -3,7 +3,10 @@ package net.officefloor.hq.app.claim;
+ import java.math.BigDecimal;
+ import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.HashMap;
+ import java.util.List;
++import java.util.TreeMap;
+ import java.util.function.LongSupplier;
+ import java.util.Map;
+ import java.util.Optional;
+@@ -93,6 +96,32 @@ public class ClaimService {
+         return tags.findBySheetIdOrderByTagAsc(sheetId).stream().map(SheetTag::getTag).toList();
+     }
+ 
++    /**
++     * The duplicate claims: for each person, date and amount with two or more claims (VOID and DELETED claims left
++     * out), one line {@code <name> <date> <amount> x<count>}; people in list order, then by date, then by amount.
++     */
++    @Transactional(readOnly = true)
++    public List<String> duplicates(String sheetId) {
++        Map<Long, Map<LocalDate, Map<BigDecimal, Integer>>> counts = new HashMap<>();
++        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
++            if (claim.getStatus() == ClaimStatus.VOID || claim.getStatus() == ClaimStatus.DELETED) {
++                continue;
++            }
++            counts.computeIfAbsent(claim.getPersonId(), p -> new TreeMap<>())
++                    .computeIfAbsent(claim.getDate(), d -> new TreeMap<>())
++                    .merge(claim.getAmount().setScale(2, RoundingMode.UNNECESSARY), 1, Integer::sum);
++        }
++        List<String> lines = new ArrayList<>();
++        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++            counts.getOrDefault(person.getId(), Map.of()).forEach((date, amounts) -> amounts.forEach((amount, count) -> {
++                if (count >= 2) {
++                    lines.add(person.getName() + " " + date + " " + amount.toPlainString() + " x" + count);
++                }
++            }));
++        }
++        return lines;
++    }
++
+     /** The status logs of the sheet's claims by claim id, each oldest first. */
+     public Map<Long, List<ClaimLog>> logs(String sheetId) {
+         return logs.findBySheetIdOrderByIdAsc(sheetId).stream()
