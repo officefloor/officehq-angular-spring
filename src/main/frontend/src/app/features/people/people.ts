@@ -169,7 +169,7 @@ import { PersonClaims } from '../claims/claims';
       </section>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -184,6 +184,24 @@ import { PersonClaims } from '../claims/claims';
                 />
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
+              <td>
+                <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
+                <label [for]="'person-alias-input-' + p.id">Alias<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-alias-input-' + p.id"
+                  data-testid="person-alias-input"
+                  [value]="aliasInputs()[p.id] ?? ''"
+                  (input)="setAliasInput(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-alias-add"
+                  [disabled]="addingAlias() === p.id"
+                  (click)="addAlias(p)"
+                >
+                  Add<span class="visually-hidden"> alias for {{ p.name }}</span>
+                </button>
+              </td>
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -398,6 +416,10 @@ export class PeopleList {
   protected readonly addingPatron = signal<number | null>(null);
   /** The last refused patron added to a person, shown on their row until the next action on it. */
   protected readonly patronError = signal<{ id: number; message: string } | null>(null);
+  /** The alias typed on each person's row. */
+  protected readonly aliasInputs = signal<Record<number, string>>({});
+  /** The id of the person an alias is being added to. */
+  protected readonly addingAlias = signal<number | null>(null);
   /** The last refused action on a person, shown on their row until the next action on it. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
@@ -498,6 +520,23 @@ export class PeopleList {
       else this.patronChoices.update((cs) => ({ ...cs, [p.id]: '' }));
     } finally {
       this.addingPatron.set(null);
+    }
+  }
+
+  protected setAliasInput(id: number, alias: string): void {
+    this.clearActionError(id);
+    this.aliasInputs.update((as) => ({ ...as, [id]: alias }));
+  }
+
+  protected async addAlias(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.addingAlias.set(p.id);
+    try {
+      const err = await this.people.addAlias(p.id, this.aliasInputs()[p.id] ?? '');
+      if (err) this.actionError.set({ id: p.id, message: err });
+      else this.aliasInputs.update((as) => ({ ...as, [p.id]: '' }));
+    } finally {
+      this.addingAlias.set(null);
     }
   }
 

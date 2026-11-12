@@ -208,6 +208,13 @@ export class Claims {
     return isOpen(c) && !this.deferred(c) && today !== null && this.lateFrom(c) < today;
   }
 
+  /** Whether a claim shows as deferred: its deferred-until date is after the sheet's today, whatever its
+   *  status (a deferred claim voided keeps showing it). Only an OPEN one is left out of totals (`deferred`). */
+  deferredShown(c: Claim): boolean {
+    const today = this.session.today();
+    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+  }
+
   /** Whether a claim is deferred: OPEN, with a deferred-until date after the sheet's today. Until then it
    *  counts in no total, is not overdue and cannot be settled. */
   deferred(c: Claim): boolean {

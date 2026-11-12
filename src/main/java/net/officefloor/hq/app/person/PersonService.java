@@ -207,6 +207,34 @@ public class PersonService {
                 p.getTerms(), p.getContact())).toList();
     }
 
+    /** Give a person an alias, stored trimmed: refused when blank, or when it equals, ignoring case, any
+     *  name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long personId, String alias) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (alias == null || alias.isBlank()) {
+            throw new AliasRefusedException("Enter an alias.");
+        }
+        String trimmed = alias.trim();
+        if (trimmed.length() > 200) {
+            throw new AliasRefusedException("The alias is too long.");
+        }
+        if (people.nameTaken(sheetId, trimmed, null)) {
+            throw new AliasRefusedException("That name is already in use.");
+        }
+        person.addAlias(trimmed);
+        Person aliased;
+        try {
+            aliased = people.saveAndFlush(person);
+        } catch (DataIntegrityViolationException e) {
+            // taken by another user at the same moment
+            throw new AliasRefusedException("That name is already in use.");
+        }
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user + " name=" + aliased.getName()
+                + " alias=" + trimmed);
+        return aliased;
+    }
+
     /** Retire a person from a date, the sheet's today when none is given. */
     @Transactional
     public Person retire(String sheetId, String user, long personId, LocalDate from) {

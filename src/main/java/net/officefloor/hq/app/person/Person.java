@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import net.officefloor.hq.app.history.History;
 
@@ -58,6 +59,11 @@ public class Person {
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonHold> holds = new ArrayList<>();
+
+    /** The other names they go by. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private List<PersonAlias> aliases = new ArrayList<>();
 
     /** Moved on by each save, so a save made from an older version is refused. */
     @Version
@@ -177,6 +183,18 @@ public class Person {
     /** Put them on hold from a date, to a date when one is given. */
     public void hold(LocalDate from, LocalDate to) {
         holds.add(new PersonHold(from, to));
+    }
+
+    /** Their aliases, sorted as names are compared: without regard to case. */
+    public List<String> getAliases() {
+        return aliases.stream().map(PersonAlias::getAlias)
+                .sorted(Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT)).thenComparing(a -> a))
+                .toList();
+    }
+
+    /** Give them another name they go by, stored trimmed. */
+    public void addAlias(String alias) {
+        aliases.add(new PersonAlias(sheetId, alias.trim()));
     }
 
     public long getVersion() {

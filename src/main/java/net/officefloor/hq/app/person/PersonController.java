@@ -43,7 +43,8 @@ public class PersonController {
      *  the signed-in user watches them. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
-            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact) {
+            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
+            List<String> aliases) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
                 boolean watched) {
@@ -55,7 +56,7 @@ public class PersonController {
                     last == null ? null : last.getTakenOn().toString(),
                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
-                    watched, person.getTerms(), person.getContact());
+                    watched, person.getTerms(), person.getContact(), person.getAliases());
         }
     }
 
@@ -114,6 +115,10 @@ public class PersonController {
 
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {
+    }
+
+    /** An alias to give a person; a blank one is refused with the reason. */
+    public record AliasRequest(String alias) {
     }
 
     /** Whether the signed-in user is to watch the person. */
@@ -230,6 +235,22 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PatronRequest request) {
         return view(service.addPatron(sheetId.trim(), user.trim(), personId, request.patronId()), user.trim());
+    }
+
+    /** Give a person an alias. */
+    @PostMapping("/{personId}/aliases")
+    public PersonView addAlias(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody AliasRequest request) {
+        return view(service.addAlias(sheetId.trim(), user.trim(), personId, request.alias()), user.trim());
+    }
+
+    /** An alias the person cannot be given is refused with the reason, for the screen to show. */
+    @ExceptionHandler(AliasRefusedException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public Map<String, String> aliasRefused(AliasRefusedException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** Start or stop watching a person as the signed-in user. */

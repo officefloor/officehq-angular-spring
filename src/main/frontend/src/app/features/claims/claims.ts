@@ -92,7 +92,7 @@ import { VoidReasons } from '../../core/void-reasons';
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
-          <span>Deferred <span data-testid="claim-deferred">{{ claims.deferred(c) ? 'yes' : 'no' }}</span></span>
+          <span>Deferred <span data-testid="claim-deferred">{{ claims.deferredShown(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
           <ol data-testid="claim-log" aria-label="Status log">

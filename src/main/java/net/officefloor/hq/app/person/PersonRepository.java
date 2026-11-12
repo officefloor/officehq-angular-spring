@@ -16,9 +16,16 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("select p from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)")
     Optional<Person> findByName(String sheetId, String name);
 
-    /** Whether someone on the sheet other than {@code exceptId} has the name, ignoring case. */
-    @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)"
-            + " and (:exceptId is null or p.id <> :exceptId)")
+    /** The person on the sheet with the name or an alias equal to it, ignoring case. */
+    @Query("select distinct p from Person p left join p.aliases a where p.sheetId = :sheetId"
+            + " and (lower(p.name) = lower(:name) or lower(a.alias) = lower(:name))")
+    Optional<Person> findByNameOrAlias(String sheetId, String name);
+
+    /** Whether someone on the sheet other than {@code exceptId} has the name, ignoring case; or anyone on
+     *  the sheet has it as an alias. */
+    @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and (lower(p.name) = lower(:name)"
+            + " and (:exceptId is null or p.id <> :exceptId)"
+            + " or exists (select a from PersonAlias a where a.sheetId = :sheetId and lower(a.alias) = lower(:name)))")
     boolean nameTaken(String sheetId, String name, Long exceptId);
 
     /** Whether someone on the sheet other than {@code exceptId} has the contact. */

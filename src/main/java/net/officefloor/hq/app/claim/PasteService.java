@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * The paste box: lines of name,amount,date,note (the note may hold commas and may be absent; a blank date
  * takes the sheet's entry date, its today when off), each a DRAFT claim for the person on the sheet with
- * the name (ignoring case), added in order. A note ending in " #<reference>" gives the claim that external
+ * the name or an alias (ignoring case), added in order. A note ending in " #<reference>" gives the claim that external
  * reference, which is not part of the note. Blank lines are skipped. One change: every line is checked
  * with the claim form's rules (a reference used twice in the paste too, ignoring case), and a refused line
  * refuses the paste, adding nothing and writing nothing.
@@ -82,7 +82,7 @@ public class PasteService {
         if (name.isEmpty() || name.length() > 200) {
             throw refused(number, "enter a name.");
         }
-        Person person = people.findByName(sheetId, name)
+        Person person = people.findByNameOrAlias(sheetId, name)
                 .orElseThrow(() -> refused(number, "no one on the sheet is named " + name + "."));
         String amount = f.length > 1 ? f[1].trim() : "";
         if (!AMOUNT.matcher(amount).matches()) {

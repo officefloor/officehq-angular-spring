@@ -71,6 +71,8 @@ export interface Person {
   terms: number | null;
   /** Their contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
+  /** The other names they go by, sorted as names are compared: without regard to case. */
+  aliases: string[];
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -321,6 +323,27 @@ export class People {
         if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') return err.message;
       }
       return failed('add patron to', e);
+    }
+  }
+
+  /** Give a person an alias; an error message when refused. */
+  async addAlias(id: number, alias: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!alias.trim()) return 'Enter an alias.';
+    try {
+      const person = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/aliases`, { alias: alias.trim() }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 422) {
+        const err: unknown = e.error;
+        if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') return err.message;
+      }
+      return failed('add alias to', e);
     }
   }
 
