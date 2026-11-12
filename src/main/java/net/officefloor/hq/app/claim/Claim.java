@@ -143,6 +143,10 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: an OPEN or PENDING one then leaves the live totals unless a statement binds it. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     protected Claim() {
     }
 
@@ -426,6 +430,14 @@ public class Claim {
         this.waived = waived;
     }
 
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
+    }
+
     public Long getSettleBatch() {
         return settleBatch;
     }
@@ -461,6 +473,7 @@ public class Claim {
         copy.tags = tags;
         copy.voidReason = voidReason;
         copy.waived = waived;
+        copy.held = held;
         copy.rateStamp = rateStamp();
         return copy;
     }

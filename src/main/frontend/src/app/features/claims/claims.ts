@@ -69,6 +69,8 @@ export interface Claim {
   waived: boolean;
   /** How many proofs it has of each kind (receipt, photo), by kind. */
   proofsByKind: Record<string, number>;
+  /** Whether the claim is held: an OPEN or PENDING one then leaves the live totals unless a statement binds it. */
+  held: boolean;
 }
 
 /** The kinds a proof can be: one added with none chosen is a receipt. */
@@ -339,7 +341,7 @@ export function sumAmounts(amounts: string[]): string {
         <caption class="visually-hidden">Claims of {{ personName() }}</caption>
         <thead>
           <tr>
-            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Waived</th>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th><th scope="col">Waived</th><th scope="col">Held</th>
             <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Timeline</th><th scope="col">Comments</th><th scope="col">Lines</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -364,6 +366,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-due-by">{{ c.dueBy | fig }}</td>
               <td data-testid="claim-overdue">{{ overdue(c) ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="claim-held">{{ c.held ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-status">{{ c.status | fig }}</td>
               <td data-testid="claim-batch">{{ c.settleBatch ?? '' | fig }}</td>
               <td data-testid="claim-opened-by">{{ c.openedBy ?? '' | fig }}</td>
@@ -568,6 +571,14 @@ export function sumAmounts(amounts: string[]): string {
                   (click)="waive(c)"
                 >
                   Waive late charge
+                </button>
+                <button
+                  type="button"
+                  data-testid="claim-hold"
+                  [attr.aria-label]="(c.held ? 'Release claim of ' : 'Hold claim of ') + c.amount + ' on ' + c.date"
+                  (click)="toggleHold(c)"
+                >
+                  {{ c.held ? 'Release' : 'Hold' }}
                 </button>
                 <button
                   type="button"
@@ -1046,6 +1057,26 @@ export class Claims implements OnInit {
               : closed
                 ? `This claim is due by a date in the closed period ${closed.name}: its late charge cannot be waived.`
                 : 'The late charge of this claim could not be waived.';
+      this.actionError.set({ id: claim.id, message });
+    }
+  }
+
+  /** Hold an OPEN or PENDING claim, or release it when held; the store refuses any other status. */
+  protected async toggleHold(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/hold`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, {}, this.session.headers()));
+      if (this.session.sheet() === sheet) this.saved.emit(saved);
+    } catch {
+      const message =
+        claim.status !== 'OPEN' && claim.status !== 'PENDING'
+          ? `This claim is ${claim.status}: only an OPEN or PENDING claim can be held or released.`
+          : claim.held
+            ? 'This claim could not be released.'
+            : 'This claim could not be held.';
       this.actionError.set({ id: claim.id, message });
     }
   }

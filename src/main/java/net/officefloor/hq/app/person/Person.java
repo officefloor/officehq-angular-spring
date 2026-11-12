@@ -355,26 +355,26 @@ public class Person {
     }
 
     /**
-     * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one dated
+     * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one held or dated
      * within a hold, or once the person's retirement date is reached on the sheet's today, not unless a statement binds
      * it, and an OPEN one deferred on the sheet's today not at all.
      */
     public boolean counts(Claim claim, LocalDate today) {
         ClaimStatus status = claim.getStatus();
         return status.counts()
-                && !(status.isOpen() && !claim.isBound() && (heldOn(claim.getDate()) || retiredOn(today)))
+                && !(status.isOpen() && !claim.isBound() && (heldOn(claim.getDate()) || claim.isHeld() || retiredOn(today)))
                 && !claim.isDeferredOn(today);
     }
 
     /**
      * Whether the claim counts in a period's due-total, given the status it had at the end of the period's last day
-     * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and still open now and dated
+     * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and still open now and held or dated
      * within a hold, or once the person's retirement date is reached on the sheet's today, not unless a statement binds
      * it, and an OPEN one deferred on the sheet's today not at all.
      */
     public boolean countsAsOf(Claim claim, ClaimStatus status, LocalDate today) {
         return status != null && status.counts() && !(status.isOpen() && claim.getStatus().isOpen()
-                && !claim.isBound() && (heldOn(claim.getDate()) || retiredOn(today))) && !claim.isDeferredOn(today);
+                && !claim.isBound() && (heldOn(claim.getDate()) || claim.isHeld() || retiredOn(today))) && !claim.isDeferredOn(today);
     }
 
     /**

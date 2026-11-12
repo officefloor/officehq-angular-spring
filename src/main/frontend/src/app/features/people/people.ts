@@ -106,12 +106,12 @@ const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdue
 type LeftOutBy = Pick<Person, 'holds' | 'retiredFrom'>;
 
 /**
- * Whether an open claim of the person, not bound by a statement, is left out of the live totals: one dated within a
- * hold of theirs, or any once their retirement date is reached (the sheet's today on or after it).
+ * Whether an open claim of the person, not bound by a statement, is left out of the live totals: one held, or dated
+ * within a hold of theirs, or any once their retirement date is reached (the sheet's today on or after it).
  */
 function leftOut(claim: Claim, person: LeftOutBy, today: string | null): boolean {
   const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
-  return !bound(claim) && (heldOn(person.holds, claim.date) || retired);
+  return !bound(claim) && (claim.held || heldOn(person.holds, claim.date) || retired);
 }
 
 /**

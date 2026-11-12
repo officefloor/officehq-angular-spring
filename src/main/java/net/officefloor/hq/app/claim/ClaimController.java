@@ -43,7 +43,7 @@ public class ClaimController {
      * with (null when none); and its comments, oldest first; and the bulk settle batch that settled it (null when none);
      * and the stamp a forward-only rate is matched against (it sees one whose forwardAfter is below it); and the day it
      * last went to REVIEW (null when it never did); and whether a steward waived its late charge; and how many proofs
-     * it has of each kind, by kind (receipt, photo).
+     * it has of each kind, by kind (receipt, photo); and whether it is held.
      */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note, ClaimStatus status,
             String number, String settledDue, String openedBy, boolean stated, String statedDue, String corrects,
@@ -51,7 +51,7 @@ public class ClaimController {
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
             String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
             List<ClaimLineView> lines, Long rateStamp, LocalDate reviewOn, boolean waived,
-            Map<String, Integer> proofsByKind) {
+            Map<String, Integer> proofsByKind, boolean held) {
 
         /** A claim with no comments or lines yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
@@ -72,7 +72,7 @@ public class ClaimController {
                     claim.getTags(), claim.getVoidReason(),
                     comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
                     lines.stream().map(ClaimLineView::of).toList(), claim.rateStamp(), claim.getReviewOn(),
-                    claim.isWaived(), proofsByKind(claim));
+                    claim.isWaived(), proofsByKind(claim), claim.isHeld());
         }
 
         private static Map<String, Integer> proofsByKind(Claim claim) {
@@ -354,6 +354,14 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid ReassignRequest request) {
         return view(service.reassign(sheetId.trim(), user.trim(), id, request.personId()));
+    }
+
+    /** Hold an OPEN or PENDING claim, or release it when it is held. */
+    @PostMapping("/claims/{id}/hold")
+    public ClaimView hold(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(service.toggleHold(sheetId.trim(), user.trim(), id));
     }
 
     /** The date an OPEN claim is deferred until; it must be after the sheet's today. */

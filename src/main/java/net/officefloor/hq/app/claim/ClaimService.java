@@ -710,6 +710,29 @@ public class ClaimService {
     }
 
     /**
+     * Hold an OPEN or PENDING claim, or release it when it is held: while held it leaves the live totals as a held
+     * person's claims do, unless a statement binds it. Refused for any other status.
+     */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, Long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        if (!claim.getStatus().isOpen()) {
+            throw new ClaimHoldException(id, "it is " + claim.getStatus()
+                    + ", only an OPEN or PENDING claim can be held or released");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setHeld(!claim.isHeld());
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(record(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", user, person, saved)
+                + numberOf(saved.getNumber()));
+        rollup.recordChanges(sheetId, user, before);
+        return saved;
+    }
+
+    /**
      * A steward re-settles a SETTLED claim: its due is frozen again at the figure it would have today as an OPEN claim
      * bound by no statement (today's rates and grades with its late charge as of today, raised to the floor). Refused for any other
      * status, a closed period, or a user not a steward.
