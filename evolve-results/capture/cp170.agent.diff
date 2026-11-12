@@ -1,0 +1,184 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 4837f1779..df6de631f 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -9,13 +9,14 @@ import { sumDues } from '../rates/rates';
+ interface CrewView {
+   id: number;
+   name: string;
+-  leadId: number;
++  /** Null once the lead was transferred to another sheet. */
++  leadId: number | null;
+   memberIds: number[];
+ }
+ 
+ /** A crew's lead and its due-total, as the crew's row shows it. */
+ export interface CrewTotal {
+-  leadId: number;
++  leadId: number | null;
+   dueTotal: string;
+ }
+ 
+@@ -116,9 +117,11 @@ export class Crews {
+       id: crew.id,
+       name: crew.name,
+       leadId: crew.leadId,
+-      lead: byId.get(crew.leadId)?.name ?? '',
++      lead: crew.leadId === null ? '' : (byId.get(crew.leadId)?.name ?? ''),
+       members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
+-      dueTotal: sumDues([crew.leadId, ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a')),
++      dueTotal: sumDues(
++        [...(crew.leadId === null ? [] : [crew.leadId]), ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a'),
++      ),
+     }));
+   });
+ 
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 129ebc161..909eca8a3 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -276,6 +276,27 @@ export function trimmedSumDues(dues: string[]): string {
+           }
+         </tbody>
+       </table>
++      <table>
++        <caption>Rate calendar: in force on the first day of each month of {{ year() ?? '' | fig }}</caption>
++        <thead>
++          <tr>
++            <th scope="col">Grade</th>
++            @for (m of months(); track m) {
++              <th scope="col">{{ m.slice(5) | fig }}</th>
++            }
++          </tr>
++        </thead>
++        <tbody>
++          @for (g of grades(); track g) {
++            <tr>
++              <th scope="row">{{ g | fig }}</th>
++              @for (m of months(); track m) {
++                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ onFirstOf(g, m) ?? 'n/a' | fig }}</td>
++              }
++            </tr>
++          }
++        </tbody>
++      </table>
+       <table>
+         <caption>All rates</caption>
+         <thead>
+@@ -349,6 +370,19 @@ export class Rates {
+     return today === null ? undefined : rateOn(this.rates(), grade, today);
+   }
+ 
++  /** The year of the sheet's today, or null before it is known. */
++  protected readonly year = computed(() => this.session.today()?.slice(0, 4) ?? null);
++  /** Each month (yyyy-mm) of the sheet's today's calendar year. */
++  protected readonly months = computed(() => {
++    const year = this.year();
++    return year === null ? [] : Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
++  });
++
++  /** The grade's rate in force on the first day of the month (yyyy-mm), or undefined when none is. */
++  protected onFirstOf(grade: string, month: string): string | undefined {
++    return rateOn(this.rates(), grade, `${month}-01`);
++  }
++
+   protected async submit(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.submitting) return;
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crew.java b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+index 0bdbae9dd..a15047a1a 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/Crew.java
++++ b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+@@ -29,7 +29,8 @@ public class Crew {
+     @Column(name = "name", nullable = false)
+     private String name;
+ 
+-    @Column(name = "lead_person_id", nullable = false)
++    /** The lead; null once the lead was transferred to another sheet. */
++    @Column(name = "lead_person_id")
+     private Long leadId;
+ 
+     /** The crew's members besides its lead, in the order they were added. */
+@@ -59,6 +60,7 @@ public class Crew {
+         return name;
+     }
+ 
++    /** The lead, or null when the crew is without one. */
+     public Long getLeadId() {
+         return leadId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/TransferService.java b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+index 7c399b2b5..0b276b1ac 100644
+--- a/src/main/java/net/officefloor/hq/app/person/TransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/TransferService.java
+@@ -42,7 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * their claims are listed after that person's, their name and aliases join that person's aliases, and their grades,
+  * terms and contact are dropped (two such people, or a retired one, refuse the transfer). Otherwise a name or alias
+  * used elsewhere in the other sheet's tree, or a contact the other sheet has already, refuses the transfer. The person
+- * leaves this sheet entirely: their holds, patron links, pool and crew memberships and watches are dropped.
++ * leaves this sheet entirely: their holds, patron links, pool and crew memberships and watches are dropped, and a
++ * crew they lead is left without a lead.
+  */
+ @Service
+ public class TransferService {
+@@ -213,11 +214,11 @@ public class TransferService {
+                 pools.saveAndFlush(pool);
+             }
+         }
+-        // Crew memberships are dropped, and so is a crew the person leads.
++        // Crew memberships are dropped; a crew the person leads is left without a lead.
+         for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+             if (from.getId().equals(crew.getLeadId())) {
+-                crews.delete(crew);
+-                crews.flush();
++                crew.setLeadId(null);
++                crews.saveAndFlush(crew);
+             } else if (crew.getMembers().removeIf(m -> from.getId().equals(m.getPersonId()))) {
+                 crews.saveAndFlush(crew);
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 74f87fd6b..7ed8acdf1 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -43,7 +43,7 @@ public class PoolController {
+ 
+     /**
+      * A pool as shown, with its members in the order they were added. A crew is shown as a pool too ({@code crew}
+-     * true, its id the crew's id negated): its lead and then its members, at the shares patrons get.
++     * true, its id the crew's id negated): its lead (if it still has one) and then its members, at the shares patrons get.
+      */
+     public record PoolView(Long id, String name, List<PoolMemberView> members, boolean crew) {
+ 
+@@ -54,7 +54,9 @@ public class PoolController {
+ 
+         static PoolView of(Crew c) {
+             List<Long> people = new ArrayList<>();
+-            people.add(c.getLeadId());
++            if (c.getLeadId() != null) {
++                people.add(c.getLeadId());
++            }
+             c.getMembers().forEach(m -> people.add(m.getPersonId()));
+             List<BigDecimal> shares = PersonService.patronShares(people.size());
+             List<PoolMemberView> members = new ArrayList<>();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 52eff5de5..f0290fb95 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -202,7 +202,8 @@ public class SheetCloneService {
+ 
+         // The crews, with their leads and members.
+         for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+-            Crew copy = new Crew(to, crew.getName(), personIds.get(crew.getLeadId()));
++            Crew copy = new Crew(to, crew.getName(),
++                    crew.getLeadId() == null ? null : personIds.get(crew.getLeadId()));
+             for (CrewMember member : crew.getMembers()) {
+                 copy.getMembers().add(new CrewMember(personIds.get(member.getPersonId())));
+             }
+diff --git a/src/main/resources/db/migration/V94__crew_lead_left.sql b/src/main/resources/db/migration/V94__crew_lead_left.sql
+new file mode 100644
+index 000000000..521421f8b
+--- /dev/null
++++ b/src/main/resources/db/migration/V94__crew_lead_left.sql
+@@ -0,0 +1,2 @@
++-- A crew keeps going when its lead is transferred to another sheet: it is then without a lead.
++ALTER TABLE crew ALTER COLUMN lead_person_id SET NULL;
