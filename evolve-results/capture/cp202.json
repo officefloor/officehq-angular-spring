@@ -1,0 +1,64 @@
+{
+  "checkpoint": 202,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp202_snapshot-comparison",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Two snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nTwo snapshot dates can be compared: a from-date, a to-date and a button list, per person in list\norder, <name> <then> <now>: `then` is the due-total of the SNAPSHOT written when the sheet's today\nwas changed away from the from-date (empty when there is none), `now` is likewise the snapshot for\nthe to-date, or the person's due-total now when the to-date is blank. Each line is shown trimmed: an\nempty figure leaves no trailing space.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f553e5823241a28408f0e89d41a86a6edec4245f",
+  "reset_sha": "",
+  "preagent_sha": "cc2557f4a1dd080b9fc67ae88a3776efc9a6c595",
+  "prev_sha": "cc2557f4a1dd080b9fc67ae88a3776efc9a6c595",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6581606,
+    "input_tokens": 34,
+    "output_tokens": 8556,
+    "cache_read_tokens": 618323,
+    "cache_creation_tokens": 45405,
+    "num_turns": 18,
+    "duration_ms": 339062,
+    "duration_api_ms": 80418,
+    "model": "claude-opus-5-5",
+    "session_id": "9765e9bd-45cf-41db-9f55-598c713aab09",
+    "stop_reason": "success",
+    "result_text": "I added the snapshot comparison, and all 4 tests in `bin/e2e` pass.\n\nOn the screen there is a new \"Compare snapshots\" section, placed after the duplicate claims section. It has a from-date, a to-date and a Compare button, and shows one line per person in list order: `<name> <then> <now>`. A figure with no snapshot is left out, so lines like `Ada` don't end in a space.\n\n**Server:** the snapshot records were already stored per person (written whenever the sheet's today changes), so no new table or migration was needed.\n- A new `SnapshotCompareService` (`src/main/java/net/officefloor/hq/app/person/`) builds the lines. \"Then\" is the person's snapshot for the day the sheet's today moved off the from-date. \"Now\" is the snapshot for the to-date, or the person's current due-total when the to-date is blank.\n- A new endpoint `GET /api/sheets/{sheetId}/people/snapshot-compare?from=&to=` in `PersonController` serves them.\n\n**Front end:** a new `features/snapshot-compare/snapshot-compare.ts` component, added to `home.ts`. It follows the existing duplicate-claims component: the lines clear when the sheet is reloaded, and if the request fails an error shows under `snapshot-compare-error`.\n\nA few behaviours to know about:\n- **Exact dates only.** A date must match a day the sheet's today was moved off. A date in between (like 2026-03-02 when today went from 03-01 to 03-05) shows no figure.\n- **Repeated dates.** If the sheet's today was moved off the same date more than once, the latest snapshot for that date is used.\n- **Blank from-date.** If the from-date is blank, the \"then\" figure is left out.\n\nThe comparison only reads data and writes nothing to the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6581606,
+        "num_turns": 18,
+        "duration_ms": 339062,
+        "duration_api_ms": 80418,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp202.agent.jsonl",
+  "agent_diff_file": "cp202.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
