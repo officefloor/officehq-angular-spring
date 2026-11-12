@@ -1,0 +1,206 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index c01ad89c0..5457e7a2a 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -148,10 +148,11 @@ export class Claims {
+     }
+   }
+ 
+-  /** Change a claim's amount, date and note; an error message when refused. */
+-  async update(id: number, f: ClaimFields): Promise<string | null> {
++  /** Change a DRAFT claim's amount, date and note; when refused, the reason and whether it is the
++   *  claim itself that refused it (it is no longer a DRAFT) rather than the fields typed. */
++  async update(id: number, f: ClaimFields): Promise<{ message: string; onClaim: boolean } | null> {
+     const refused = this.check(f);
+-    if (refused) return refused;
++    if (refused) return { message: refused, onClaim: false };
+     const sid = this.session.sheetId()!;
+     try {
+       const claim = await firstValueFrom(
+@@ -162,7 +163,10 @@ export class Claims {
+       if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+       return null;
+     } catch (e) {
+-      return failed('save', e);
++      if (e instanceof HttpErrorResponse && e.status === 409) {
++        return { message: message(e) ?? 'Only a DRAFT claim can be edited.', onClaim: true };
++      }
++      return { message: failed('save', e), onClaim: false };
+     }
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 46a0254f4..529dd4435 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -15,7 +15,7 @@ import { NO_RATE, Rates } from '../../core/rates';
+         data-testid="claim-form-amount"
+         inputmode="decimal"
+         [value]="amount()"
+-        (input)="amount.set(value($event)); error.set(null)"
++        (input)="amount.set(value($event)); clearErrors()"
+       />
+       <label [for]="fid('date')">Date</label>
+       <input
+@@ -23,14 +23,14 @@ import { NO_RATE, Rates } from '../../core/rates';
+         data-testid="claim-form-date"
+         placeholder="YYYY-MM-DD"
+         [value]="date()"
+-        (input)="date.set(value($event)); error.set(null)"
++        (input)="date.set(value($event)); clearErrors()"
+       />
+       <label [for]="fid('note')">Note</label>
+       <input
+         [id]="fid('note')"
+         data-testid="claim-form-note"
+         [value]="note()"
+-        (input)="note.set(value($event)); error.set(null)"
++        (input)="note.set(value($event)); clearErrors()"
+       />
+       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
+         {{ editing() === null ? 'Add claim' : 'Save claim' }}
+@@ -99,7 +99,8 @@ export class PersonClaims {
+   ];
+   /** The id of the claim whose status change is under way. */
+   protected readonly acting = signal<number | null>(null);
+-  /** The last refused status change, shown on its claim until the next action on that claim. */
++  /** The last refused status change, or edit of a claim that is no longer a DRAFT, shown on its claim
++   *  until the next action on that claim. */
+   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
+ 
+   /** The claim's due: fixed when settled, else as its person's last statement bound it, else live. */
+@@ -141,7 +142,16 @@ export class PersonClaims {
+     if (this.actionError()?.id === id) this.actionError.set(null);
+   }
+ 
++  /** The form was changed: its error, and its claim's refused edit, no longer apply. */
++  protected clearErrors(): void {
++    this.error.set(null);
++    const id = this.editing();
++    if (id !== null) this.clearActionError(id);
++  }
++
+   protected reset(): void {
++    const id = this.editing();
++    if (id !== null) this.clearActionError(id);
+     this.editing.set(null);
+     this.amount.set('');
+     this.date.set('');
+@@ -152,14 +162,22 @@ export class PersonClaims {
+   protected async submit(e: Event): Promise<void> {
+     e.preventDefault();
+     if (this.saving()) return; // a second submit before the first has answered
+-    this.error.set(null);
++    this.clearErrors();
+     this.saving.set(true);
+     try {
+       const f = { amount: this.amount(), date: this.date(), note: this.note() };
+       const id = this.editing();
+-      const err = id === null ? await this.claims.add(this.personId(), f) : await this.claims.update(id, f);
+-      if (err) this.error.set(err);
+-      else this.reset();
++      if (id === null) {
++        const err = await this.claims.add(this.personId(), f);
++        if (err) this.error.set(err);
++        else this.reset();
++      } else {
++        // a refused edit leaves the editor open; a claim no longer a DRAFT shows the refusal on itself
++        const refused = await this.claims.update(id, f);
++        if (refused?.onClaim) this.actionError.set({ id, message: refused.message });
++        else if (refused) this.error.set(refused.message);
++        else this.reset();
++      }
+     } finally {
+       this.saving.set(false);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index acf6aedea..4177e2bcb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -108,7 +108,7 @@ public class ClaimController {
+                 added.personAdded(), ClaimView.of(added.claim()));
+     }
+ 
+-    /** Change a claim's amount, date and note. */
++    /** Change a DRAFT claim's amount, date and note. */
+     @PutMapping("/claims/{claimId}")
+     public ClaimView update(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @PathVariable long claimId,
+@@ -163,6 +163,13 @@ public class ClaimController {
+         return Map.of("message", e.getMessage());
+     }
+ 
++    /** An edit of a claim that is not a DRAFT is refused with the reason, for the screen to show. */
++    @ExceptionHandler(ClaimNotDraftException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> notDraft(ClaimNotDraftException e) {
++        return Map.of("message", e.getMessage());
++    }
++
+     /** A settle by the user who opened the claim is refused with the reason, for the screen to show. */
+     @ExceptionHandler(ClaimSettlerException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimNotDraftException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimNotDraftException.java
+new file mode 100644
+index 000000000..65bdd1448
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimNotDraftException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** An edit of a claim that is no longer a DRAFT: to change an open claim, void it and add a new one. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimNotDraftException extends RuntimeException {
++
++    public ClaimNotDraftException(ClaimStatus status) {
++        super("A " + status + " claim cannot be edited; only a DRAFT can. Void it and add a new one.");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 1dcb5053d..ab318ffbc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -68,9 +68,13 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** Change a DRAFT claim; a claim in any other status is refused. */
+     @Transactional
+     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ClaimNotDraftException(claim.getStatus());
++        }
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+         refuseClosed(sheetId, claim.getDate());
+         refuseClosed(sheetId, on);
+@@ -112,7 +116,7 @@ public class ClaimService {
+             claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : liveDue(claim, person));
+         }
+         claim.setStatus(to);
+-        claim.setNumber(to == ClaimStatus.VOID ? null : number);
++        claim.setNumber(number);
+         Claim updated = claims.saveAndFlush(claim);
+         String event = switch (to) {
+             case OPEN -> "CLAIM_OPENED";
+@@ -200,7 +204,7 @@ public class ClaimService {
+         audit(event, claim, person, user, claim.getNumber(), "");
+     }
+ 
+-    /** A claim with a number (or one voided while it had one) follows its date with number=, then any extra fields. */
++    /** A claim with a number (a voided claim keeps its own) follows its date with number=, then any extra fields. */
+     private void audit(String event, Claim claim, Person person, String user, Integer number, String extra) {
+         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
+                 + " person=" + person.getName() + " amount=" + claim.getAmount().toPlainString()
+diff --git a/src/main/resources/db/migration/V16__claim_void_keeps_number.sql b/src/main/resources/db/migration/V16__claim_void_keeps_number.sql
+new file mode 100644
+index 000000000..03a3437ca
+--- /dev/null
++++ b/src/main/resources/db/migration/V16__claim_void_keeps_number.sql
+@@ -0,0 +1,3 @@
++-- A voided claim now keeps the number it was given when opened (still never reused); only a draft
++-- has none. Only a DRAFT claim can be edited. No change to the columns is needed.
++SELECT 1;
