@@ -45,12 +45,13 @@ public class ClaimController {
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
-     *  not given), and its tags, sorted. */
+     *  not given), and its tags, sorted, and its comments, in the order written. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            String remindedOn, String ref, List<String> tags, String voidReason) {
+            String remindedOn, String ref, List<String> tags, String voidReason,
+            List<CommentLine> comments) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -64,7 +65,8 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
                     claim.isLateEntry(),
                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
-                    claim.getTags(), claim.getVoidReason());
+                    claim.getTags(), claim.getVoidReason(),
+                    claim.getComments().stream().map(CommentLine::of).toList());
         }
     }
 
@@ -75,6 +77,14 @@ public class ClaimController {
         static StatusLine of(StatusChange change) {
             return new StatusLine(change.getStatus(), change.getBy(), change.getOn().toString(),
                     change.getDue() == null ? null : change.getDue().toPlainString());
+        }
+    }
+
+    /** A comment on a claim: who wrote it, the sheet's today then (YYYY-MM-DD), and its text. */
+    public record CommentLine(String by, String on, String text) {
+
+        static CommentLine of(ClaimComment comment) {
+            return new CommentLine(comment.getBy(), comment.getOn().toString(), comment.getText());
         }
     }
 
@@ -285,6 +295,20 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.remind(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** A comment's text. */
+    public record CommentRequest(@Size(max = 1000) String text) {
+    }
+
+    /** Comment on a claim; an empty comment is refused. */
+    @PostMapping("/claims/{claimId}/comments")
+    public ClaimView comment(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid CommentRequest request) {
+        return ClaimView.of(service.comment(sheetId.trim(), user.trim(), claimId,
+                request.text() == null ? "" : request.text().trim()));
     }
 
     /** Re-settle a SETTLED claim at its figure today: a steward freezes it again. */
@@ -548,6 +572,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimRemindException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> remindRefused(ClaimRemindException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** An empty comment is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimCommentException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> commentRefused(ClaimCommentException e) {
         return Map.of("message", e.getMessage());
     }
 }

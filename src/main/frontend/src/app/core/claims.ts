@@ -55,6 +55,15 @@ export interface Claim {
   tags: string[];
   /** The reason it was voided with, from the sheet's list; null when not voided, or voided without one. */
   voidReason: string | null;
+  /** Its comments, in the order written. */
+  comments: CommentLine[];
+}
+
+/** A comment on a claim: who wrote it, the sheet's today then (YYYY-MM-DD), and its text. */
+export interface CommentLine {
+  by: string;
+  on: string;
+  text: string;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -468,6 +477,23 @@ export class Claims {
       return null;
     } catch (e) {
       return failed('remind', e);
+    }
+  }
+
+  /** Comment on a claim; an error message when refused (an empty comment). */
+  async comment(id: number, text: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!text.trim()) return 'Enter a comment.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/comments`, { text: text.trim() }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('comment on', e);
     }
   }
 

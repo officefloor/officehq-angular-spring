@@ -99,6 +99,21 @@ import { VoidReasons } from '../../core/void-reasons';
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? noRate }}</li>
             }
           </ol>
+          <ol data-testid="claim-comments" aria-label="Comments">
+            @for (m of c.comments; track $index) {
+              <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
+            }
+          </ol>
+          <label [for]="'claim-comment-text-' + c.id">Comment</label>
+          <input
+            [id]="'claim-comment-text-' + c.id"
+            data-testid="claim-comment-text"
+            [value]="commentTexts()[c.id] ?? ''"
+            (input)="setCommentText(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-comment-add" [disabled]="acting() === c.id" (click)="comment(c)">
+            Add comment<span class="visually-hidden"> to claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           @if (editing() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
           } @else {
@@ -270,6 +285,8 @@ export class PersonClaims {
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The amount typed in each claim's row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
+  /** The comment typed on each claim, by claim id. */
+  protected readonly commentTexts = signal<Record<number, string>>({});
   /** The reason typed to reject each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
   protected readonly voidReasons = inject(VoidReasons);
@@ -421,6 +438,24 @@ export class PersonClaims {
     try {
       const err = await this.claims.reassign(c.id, this.reassignTo()[c.id] ?? null);
       if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setCommentText(id: number, text: string): void {
+    this.clearActionError(id);
+    this.commentTexts.update((t) => ({ ...t, [id]: text }));
+  }
+
+  /** Comment on the claim; once it goes through, its comment box is emptied. */
+  protected async comment(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.comment(c.id, this.commentTexts()[c.id] ?? '');
+      if (err) this.actionError.set({ id: c.id, message: err });
+      else this.commentTexts.update((t) => ({ ...t, [c.id]: '' }));
     } finally {
       this.acting.set(null);
     }

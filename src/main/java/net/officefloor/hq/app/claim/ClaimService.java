@@ -340,6 +340,24 @@ public class ClaimService {
         return updated;
     }
 
+    /** Comment on a claim: keep the text with the user and the sheet's today, and write COMMENT_ADDED.
+     *  Refused for an empty comment. */
+    @Transactional
+    public Claim comment(String sheetId, String user, long claimId, String text) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (text.isEmpty()) {
+            throw new ClaimCommentException("Enter a comment.");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.addComment(user, sheets.today(sheetId), text);
+        Claim updated = claims.saveAndFlush(claim);
+        // A change to its comments alone may not reach the entity listener: keep its state for the as-of view.
+        history.saved(updated);
+        audit("COMMENT_ADDED", updated, person, user, updated.getNumber(), " text=" + text);
+        return updated;
+    }
+
     /** Re-settle a SETTLED claim: freeze it again at the figure it would have today as an OPEN claim bound by
      *  no statement (today's rates, grades and floor, the late charge on the sheet's today on top). Refused
      *  unless the claim is SETTLED and the user is a steward, and for a claim in a closed period. */

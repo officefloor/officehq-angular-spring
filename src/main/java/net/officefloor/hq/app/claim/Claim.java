@@ -127,6 +127,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<StatusChange> statusLog = new ArrayList<>();
 
+    /** Its comments, in the order written. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_comment", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimComment> comments = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -347,5 +353,14 @@ public class Claim {
     /** Add a line to its status log, for the status it has now. */
     public void logStatus(String by, LocalDate on, BigDecimal due) {
         statusLog.add(new StatusChange(status, by, on, due));
+    }
+
+    public List<ClaimComment> getComments() {
+        return List.copyOf(comments);
+    }
+
+    /** Add a comment after those it has. */
+    public void addComment(String by, LocalDate on, String text) {
+        comments.add(new ClaimComment(by, on, text));
     }
 }
