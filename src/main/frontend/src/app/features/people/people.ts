@@ -104,6 +104,22 @@ import { PersonClaims } from '../claims/claims';
           </tbody>
         </table>
       }
+      @if (figures.monthTotals().length > 0) {
+        <table data-testid="month-totals">
+          <caption>Due total by month</caption>
+          <thead>
+            <tr><th scope="col">Month</th><th scope="col">Due total</th></tr>
+          </thead>
+          <tbody>
+            @for (m of figures.monthTotals(); track m.month) {
+              <tr>
+                <th scope="row">{{ m.month }}</th>
+                <td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       <label>
         <input
           type="checkbox"

@@ -115,6 +115,21 @@ export class Figures {
     return [...sums].map(([tag, cents]) => ({ tag, dueTotal: money(cents) }));
   });
 
+  /** Each calendar month (yyyy-mm) any claim on the sheet is dated in, in order, with the due of the
+   *  claims dated in it that count live, not capped or trimmed. */
+  readonly monthTotals = computed(() => {
+    const byId = new Map(this.people.people().map((p) => [p.id, p]));
+    const months = [...new Set(this.claims.claims().map((c) => c.date.slice(0, 7)))].sort();
+    const sums = new Map<string, bigint>(months.map((m) => [m, 0n]));
+    for (const c of this.claims.live()) {
+      const p = byId.get(c.personId);
+      const month = c.date.slice(0, 7);
+      if (!p || !sums.has(month)) continue;
+      sums.set(month, sums.get(month)! + this.figureCents(c, p));
+    }
+    return [...sums].map(([month, cents]) => ({ month, dueTotal: money(cents) }));
+  });
+
   /** The number of claims in each status, in the order of STATUSES. */
   readonly statusCounts = computed(() => {
     const claims = this.claims.claims();
