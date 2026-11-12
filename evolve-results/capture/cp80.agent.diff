@@ -1,0 +1,313 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 9fd5b018a..9cdd3a5f8 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -149,7 +149,7 @@ export class Figures {
+   }
+ 
+   /** Each period's live due-total for each person, in cents, by period id then person id: the figures
+-   *  of the person's claims whose date falls in it and that counted by the status they had at the end of
++   *  of the person's claims whose due-by falls in it and that counted by the status they had at the end of
+    *  the period's last day, as their status log records it (one added after then does not count), and
+    *  that are not left out now by a hold or a deferral — each its due as shown now: a settled claim's
+    *  frozen due, else as its person's last statement bound it, else its live due, an overdue claim's
+@@ -158,7 +158,7 @@ export class Figures {
+     const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
+     const sums = new Map<number, Map<number, bigint>>();
+     for (const c of this.claims.periodCandidates()) {
+-      const period = this.periods.of(c.date);
++      const period = this.periods.of(c.dueBy);
+       if (!period || !countsAt(statusAt(c, period.to))) continue;
+       let due: bigint | null;
+       if (c.settledDue !== null) due = hundredths(c.settledDue);
+diff --git a/src/main/frontend/src/app/core/periods.ts b/src/main/frontend/src/app/core/periods.ts
+index 0e29f742d..81d6a1ecd 100644
+--- a/src/main/frontend/src/app/core/periods.ts
++++ b/src/main/frontend/src/app/core/periods.ts
+@@ -38,7 +38,8 @@ export class Periods {
+   readonly periods = signal<Period[]>([]);
+   private loads = 0;
+ 
+-  /** The period whose dates contain a date (YYYY-MM-DD), or undefined when none does. */
++  /** The period whose dates contain a date (YYYY-MM-DD), or undefined when none does; a claim belongs to
++   *  the one containing its due-by. */
+   of(date: string): Period | undefined {
+     return this.periods().find((p) => p.from <= date && date <= p.to);
+   }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 3ebeb5125..07a48cf6d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -65,7 +65,7 @@ import { Session } from '../../core/session';
+           <span>Due <span data-testid="claim-due">{{ figure(c) }}</span></span>
+           <span>Due by <span data-testid="claim-due-by">{{ claims.dueBy(c) }}</span></span>
+           <span>Overdue <span data-testid="claim-overdue">{{ claims.overdue(c) ? 'yes' : 'no' }}</span></span>
+-          <span>Period <span data-testid="claim-period">{{ periods.of(c.date)?.name ?? '' }}</span></span>
++          <span>Period <span data-testid="claim-period">{{ periods.of(c.dueBy)?.name ?? '' }}</span></span>
+           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 21b037560..f65c2f2ae 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -99,7 +99,7 @@ public class Claim {
+     @Column(name = "locked_by")
+     private String lockedBy;
+ 
+-    /** Whether it was added while its period was soft-closed. */
++    /** Whether it was added (or split off) while its period, the one containing its due-by, was soft-closed. */
+     @Column(name = "late_entry", nullable = false)
+     private boolean lateEntry;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 739448f44..857eca326 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -85,15 +85,16 @@ public class ClaimService {
+             String corrects) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
+-        refuseClosed(sheetId, on);
++        int terms = person.getTerms() != null ? person.getTerms()
++                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
++        LocalDate dueBy = on.plusDays(terms);
++        refuseClosed(sheetId, dueBy);
+         refuseRetired(person, on);
+         refuseCorrection(sheetId, personId, amount, corrects);
+         Rollup.Snapshot before = rollup.take(sheetId);
+-        int terms = person.getTerms() != null ? person.getTerms()
+-                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
+-        Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
++        Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, dueBy, note, corrects);
+         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
+-        claim.setLateEntry(periods.softClosedOn(sheetId, on));
++        claim.setLateEntry(periods.softClosedOn(sheetId, dueBy));
+         logStatus(claim, person, user);
+         claim = claims.saveAndFlush(claim);
+         audit("CLAIM_ADDED", claim, person, user);
+@@ -114,8 +115,7 @@ public class ClaimService {
+         }
+         refuseLocked(claim, user);
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+-        refuseClosed(sheetId, claim.getDate());
+-        refuseClosed(sheetId, on);
++        refuseClosed(sheetId, claim.getDueBy());
+         refuseRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new), on);
+         refuseCorrection(sheetId, claim.getPersonId(), amount, corrects);
+@@ -142,7 +142,7 @@ public class ClaimService {
+         if (claim.getStatus() != ClaimStatus.DRAFT) {
+             throw new ClaimNotDraftException(claim.getStatus());
+         }
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         refuseLocked(claim, user);
+         claim.setLockedBy(user);
+         return claims.saveAndFlush(claim);
+@@ -169,7 +169,7 @@ public class ClaimService {
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         roles.require(sheetId, user, switch (to) {
+             case OPEN -> "open";
+             case SETTLED, PENDING -> "settle";
+@@ -198,7 +198,7 @@ public class ClaimService {
+         Rollup.Snapshot before = rollup.take(sheetId);
+         String number = claim.getNumber();
+         if (to == ClaimStatus.OPEN) {
+-            number = sheets.nextClaimNumber(sheetId, claim.getDate());
++            number = sheets.nextClaimNumber(sheetId, claim.getDueBy());
+             claim.setOpenedBy(user);
+         }
+         if (to == ClaimStatus.SETTLED) {
+@@ -236,7 +236,7 @@ public class ClaimService {
+     @Transactional
+     public Claim approve(String sheetId, String user, long claimId) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         if (claim.getStatus() != ClaimStatus.PENDING) {
+             throw new ClaimStatusException(claim.getStatus(), ClaimStatus.SETTLED);
+         }
+@@ -267,7 +267,7 @@ public class ClaimService {
+     @Transactional
+     public Claim addProof(String sheetId, String user, long claimId) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+             throw new ClaimProofException("A " + claim.getStatus() + " claim takes no proof.");
+         }
+@@ -285,7 +285,7 @@ public class ClaimService {
+     @Transactional
+     public Claim resettle(String sheetId, String user, long claimId) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         if (!roles.isSteward(sheetId, user)) {
+             throw new ClaimResettleException("Only a steward can re-settle a claim.");
+         }
+@@ -320,7 +320,7 @@ public class ClaimService {
+     @Transactional
+     public Claim reject(String sheetId, String user, long claimId, String reason) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         if (claim.getStatus() != ClaimStatus.PENDING) {
+             throw new ClaimStatusException(claim.getStatus(), ClaimStatus.OPEN);
+         }
+@@ -347,7 +347,7 @@ public class ClaimService {
+     @Transactional
+     public Claim defer(String sheetId, String user, long claimId, LocalDate until) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         if (claim.getStatus() != ClaimStatus.OPEN) {
+             throw new ClaimDeferException("Only an OPEN claim can be deferred.");
+         }
+@@ -364,30 +364,27 @@ public class ClaimService {
+         return updated;
+     }
+ 
+-    /** Re-date an OPEN or PENDING claim. Its due-by stays as it was fixed and a figure a statement bound
+-     *  it to stays bound; its period follows the new date, and while the sheet numbers by period a move
+-     *  into another period gives it the next number of that period's sequence. A missing date is the
+-     *  sheet's today. Refused unless the user is a steward, and for a claim in any other status, a claim
+-     *  in a closed period or a new date inside one, and a date after its person's retirement. */
++    /** Re-date an OPEN or PENDING claim. Its due-by stays as it was fixed, and with it its period and
++     *  number, and a figure a statement bound it to stays bound. A missing date is the sheet's today.
++     *  Refused unless the user is a steward, and for a claim in any other status, a claim in a closed
++     *  period, and a date after its person's retirement. */
+     @Transactional
+     public Claim redate(String sheetId, String user, long claimId, LocalDate date) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         if (!roles.isSteward(sheetId, user)) {
+             throw new ClaimRedateException("Only a steward can re-date a claim.");
+         }
+         if (!claim.getStatus().isOpen()) {
+             throw new ClaimRedateException("Only an OPEN or PENDING claim can be re-dated.");
+         }
+-        refuseClosed(sheetId, on);
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+         refuseRetired(person, on);
+         Rollup.Snapshot before = rollup.take(sheetId);
+         LocalDate old = claim.getDate();
+-        claim.setNumber(sheets.redatedClaimNumber(sheetId, claim.getNumber(), old, on));
+-        claim.setDate(on);
++                claim.setDate(on);
+         Claim updated = claims.saveAndFlush(claim);
+         audit("CLAIM_REDATED", updated, person, user, updated.getNumber(), " old=" + old + " new=" + on);
+         rollup.recordChanges(sheetId, user, before);
+@@ -401,7 +398,7 @@ public class ClaimService {
+     @Transactional
+     public Claim reassign(String sheetId, String user, long claimId, long toPersonId) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         if (!roles.allows(sheetId, user, "reassign")) {
+             throw new ClaimReassignException("Your role may not reassign a claim.");
+         }
+@@ -439,7 +436,7 @@ public class ClaimService {
+     @Transactional
+     public Split split(String sheetId, String user, long claimId, BigDecimal amount) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+-        refuseClosed(sheetId, claim.getDate());
++        refuseClosed(sheetId, claim.getDueBy());
+         roles.require(sheetId, user, "open");
+         if (claim.getStatus() != ClaimStatus.OPEN) {
+             throw new ClaimSplitException("Only an OPEN claim can be split.");
+@@ -464,8 +461,9 @@ public class ClaimService {
+         Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(), claim.getDate().plusDays(terms),
+                 claim.getNote(), null);
+         split.setListOrder(claims.maxListOrder(sheetId) + 1);
++        split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
+         split.setStatus(ClaimStatus.OPEN);
+-        split.setNumber(sheets.nextClaimNumber(sheetId, claim.getDate()));
++        split.setNumber(sheets.nextClaimNumber(sheetId, split.getDueBy()));
+         split.setOpenedBy(user);
+         split.setSplitFrom(claim.getNumber());
+         logStatus(split, person, user);
+@@ -680,7 +678,8 @@ public class ClaimService {
+         }
+     }
+ 
+-    /** Refuse a change to a claim dated inside a closed period. Locks the sheet first, so a period being
++    /** Refuse a change to a claim due by a day inside a closed period (it belongs to the period containing
++     *  its due-by). Locks the sheet first, so a period being
+      *  closed at the same moment is seen. */
+     private void refuseClosed(String sheetId, LocalDate date) {
+         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index cd5b9520a..a2ec14131 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -19,7 +19,7 @@ import java.util.Map;
+ import net.officefloor.hq.app.history.History;
+ 
+ /** A named period on the sheet, from one date to another, both inclusive. A claim belongs to the
+- *  period whose dates contain its date, or to none. A closed period keeps the due-total it had when
++ *  period whose dates contain its due-by date, or to none. A closed period keeps the due-total it had when
+  *  closed, and its claims can no longer change, until a steward reopens it. A soft-closed period keeps
+  *  its figures fixed the same way, but its claims can still change. */
+ @Entity
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 447e1cc37..9a308609a 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -126,7 +126,7 @@ public class Rollup {
+         return sum.subtract(max).subtract(min);
+     }
+ 
+-    /** Each person's due-total of their claims dated from one date to another, both inclusive, by person
++    /** Each person's due-total of their claims due by a day from one date to another, both inclusive, by person
+      *  id, every person on the sheet in the order they were added, as the screen shows a person's for a
+      *  period: a claim counts by the status it had at the end of the last day, as its status log records
+      *  it (one added after then does not), unless a hold or a deferral leaves it out now; each counts its
+@@ -145,7 +145,7 @@ public class Rollup {
+         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+         for (Claim claim : sheetClaims) {
+             Person person = byId.get(claim.getPersonId());
+-            if (person == null || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)
++            if (person == null || claim.getDueBy().isBefore(from) || claim.getDueBy().isAfter(to)
+                     || !countsAt(claim, to) || heldOut(claim, person, today) || claim.deferredOn(today)) {
+                 continue;
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 1e73bdd2d..ee8050486 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -247,7 +247,7 @@ public class SheetService {
+         return sheet;
+     }
+ 
+-    /** The next number for a claim dated on a date: while the sheet numbers by period, the next in the
++    /** The next number for a claim due by a date: while the sheet numbers by period, the next in the
+      *  sequence of the period containing the date (<period name>-1, -2, ...), or of no period (X-1, ...);
+      *  otherwise the sheet-wide one (1, 2, ...). None is ever given twice. */
+     @Transactional
+@@ -264,18 +264,6 @@ public class SheetService {
+         return number;
+     }
+ 
+-    /** The number a claim keeps when re-dated from one date to another: while the sheet numbers by period
+-     *  and the new date is in another period (or no period, X) than the old, the next in the new period's
+-     *  sequence (the old number is never given again); otherwise the number it has. */
+-    @Transactional
+-    public String redatedClaimNumber(String id, String number, LocalDate from, LocalDate to) {
+-        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+-        if (number == null || !sheet.numbersByPeriod() || periodPrefix(id, from).equals(periodPrefix(id, to))) {
+-            return number;
+-        }
+-        return nextClaimNumber(id, to);
+-    }
+-
+     /** The prefix of the numbering sequence of a date: the name of the period containing it, else X. */
+     private String periodPrefix(String id, LocalDate date) {
+         return periods.findBySheetIdOrderByFromDateAsc(id).stream()
