@@ -114,6 +114,17 @@ public class ClaimService {
         return comments.findByClaimIdOrderByIdAsc(claim.getId());
     }
 
+    /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
+    @Transactional(readOnly = true)
+    public List<String> timeline(String sheetId, Long id) {
+        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ClaimNotFoundException(sheetId, id));
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, claim.getPersonId()));
+        return audit.claimLines(sheetId, claim.getNumber(), person.getName(),
+                claim.getAmount().setScale(2, RoundingMode.UNNECESSARY).toPlainString(), claim.getDate().toString());
+    }
+
     /**
      * Comment a claim of any status: the comment keeps the user and the sheet's today. Refused for an empty comment.
      */

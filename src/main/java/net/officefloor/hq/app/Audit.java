@@ -7,8 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,6 +40,9 @@ public class Audit {
 
     /** A name a record is about: the value of its {@code name=} or {@code person=} field, up to the next field. */
     private static final Pattern ABOUT = Pattern.compile(" (?:name|person)=(.*?)(?= [\\w-]+=|$)");
+
+    /** A field of a record: its key and its value, up to the next field. */
+    private static final Pattern FIELD = Pattern.compile(" ([\\w-]+)=(.*?)(?= [\\w-]+=|$)");
 
     private final Path file;
     private final ObjectProvider<DelegationService> delegations;
@@ -114,6 +119,34 @@ public class Audit {
             }
         }
         return lines;
+    }
+
+    /**
+     * The sheet's records about one claim, exactly as the file holds them, newest first: with a number, those carrying
+     * {@code number=} that number; without one, those naming its person (compared as names are compared), amount and
+     * date together that carry no number.
+     */
+    public List<String> claimLines(String sheetId, String number, String person, String amount, String date) {
+        String who = person.trim().toLowerCase(Locale.ROOT);
+        return lines(sheetId, "").stream().filter(line -> {
+            Map<String, String> f = fields(line);
+            if (number != null) {
+                return number.equals(f.get("number"));
+            }
+            return !f.containsKey("number") && f.get("person") != null
+                    && f.get("person").trim().toLowerCase(Locale.ROOT).equals(who)
+                    && amount.equals(f.get("amount")) && date.equals(f.get("date"));
+        }).toList();
+    }
+
+    /** A record's fields after its event: each {@code key=} with its value up to the next field; the first of a key kept. */
+    private static Map<String, String> fields(String line) {
+        Map<String, String> fields = new HashMap<>();
+        Matcher m = FIELD.matcher(line);
+        while (m.find()) {
+            fields.putIfAbsent(m.group(1), m.group(2));
+        }
+        return fields;
     }
 
     private static boolean isAbout(String line, String who) {

@@ -331,7 +331,7 @@ export function sumAmounts(amounts: string[]): string {
         <thead>
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">No.</th><th scope="col">Amount</th><th scope="col">Date</th><th scope="col">Note</th><th scope="col">Due</th><th scope="col">Due by</th><th scope="col">Overdue</th>
-            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Comments</th><th scope="col">Lines</th>
+            <th scope="col">Status</th><th scope="col">Batch</th><th scope="col">Opened by</th><th scope="col">Stated</th><th scope="col">Period</th><th scope="col">Corrects</th><th scope="col">Reference</th><th scope="col">Tags</th><th scope="col">Deferred</th><th scope="col">Deferred until</th><th scope="col">Proofs</th><th scope="col">Split from</th><th scope="col">Late entry</th><th scope="col">Reminded</th><th scope="col">Log</th><th scope="col">Timeline</th><th scope="col">Comments</th><th scope="col">Lines</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -372,6 +372,21 @@ export function sumAmounts(amounts: string[]): string {
                 <ol class="claim-log">
                   @for (line of c.log; track $index) {
                     <li data-testid="claim-log-line">{{ line.status }} by {{ line.by }} on {{ line.date }} due={{ line.due }}</li>
+                  }
+                </ol>
+              </td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="claim-timeline"
+                  [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date"
+                  (click)="showTimeline(c)"
+                >
+                  Timeline
+                </button>
+                <ol class="claim-timeline">
+                  @for (line of timelineOf(c); track $index) {
+                    <li data-testid="claim-timeline-line">{{ line | fig }}</li>
                   }
                 </ol>
               </td>
@@ -673,6 +688,8 @@ export class Claims implements OnInit {
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The comment typed for each claim, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
+  /** The timeline last shown for each claim, by claim id, with the claim as it was shown for. */
+  protected readonly timelines = signal<Record<number, { of: Claim; lines: string[] }>>({});
   /** The new line typed for each DRAFT claim, by claim id. */
   protected readonly lineEntries = signal<Record<number, LineEntry>>({});
   /** The new amount typed for each DRAFT claim in its row, by claim id. */
@@ -1021,6 +1038,30 @@ export class Claims implements OnInit {
       if (this.session.sheet() === sheet) this.saved.emit(saved);
     } catch {
       this.actionError.set({ id: claim.id, message: 'This comment could not be added to the claim.' });
+    }
+  }
+
+  /** The claim's timeline as last shown: none once the claim has been re-read, since it may have changed. */
+  protected timelineOf(claim: Claim): string[] {
+    const shown = this.timelines()[claim.id];
+    return shown && shown.of === claim ? shown.lines : [];
+  }
+
+  /** Show the claim's timeline: the audit lines about it, newest first, as the audit file holds them. */
+  protected async showTimeline(claim: Claim): Promise<void> {
+    this.actionError.set(null);
+    this.timelines.update((all) => {
+      const { [claim.id]: _, ...rest } = all;
+      return rest;
+    });
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/timeline`;
+    try {
+      const lines = await firstValueFrom(this.http.get<string[]>(url, this.session.headers()));
+      if (this.session.sheet() === sheet) this.timelines.update((all) => ({ ...all, [claim.id]: { of: claim, lines } }));
+    } catch {
+      this.actionError.set({ id: claim.id, message: 'The timeline of this claim could not be read.' });
     }
   }
 

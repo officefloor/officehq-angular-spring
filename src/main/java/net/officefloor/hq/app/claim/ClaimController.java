@@ -184,6 +184,14 @@ public class ClaimController {
         return service.tags(sheetId.trim());
     }
 
+    /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
+    @GetMapping("/claims/{id}/timeline")
+    public List<String> timeline(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return service.timeline(sheetId.trim(), id);
+    }
+
     @PostMapping("/people/{personId}/claims")
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimView add(@PathVariable @NotBlank @Size(max = 100) String sheetId,
