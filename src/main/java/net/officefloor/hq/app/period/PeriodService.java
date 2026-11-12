@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.pool.PoolCutService;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -26,14 +27,16 @@ public class PeriodService {
     private final Audit audit;
     private final RollupService rollup;
     private final RoleService roles;
+    private final PoolCutService poolCuts;
 
     public PeriodService(PeriodRepository periods, SheetRepository sheets, Audit audit, RollupService rollup,
-            RoleService roles) {
+            RoleService roles, PoolCutService poolCuts) {
         this.periods = periods;
         this.sheets = sheets;
         this.audit = audit;
         this.rollup = rollup;
         this.roles = roles;
+        this.poolCuts = poolCuts;
     }
 
     public List<Period> list(String sheetId) {
@@ -149,7 +152,7 @@ public class PeriodService {
         return date -> Sheet.fiscalYearOf(date, startMonth);
     }
 
-    /** Close a period, fixing every person's due-total and carried figure for it, and so its own, as they are now; refused when it is already closed or the user's role may not close; a soft-closed period's figures are fixed afresh. */
+    /** Close a period, fixing every person's due-total and carried figure for it, and so its own, and every pool member's cut, as they are now; refused when it is already closed or the user's role may not close; a soft-closed period's figures are fixed afresh. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
         // Lock the sheet so no claim in the period changes while its total is fixed.
@@ -168,7 +171,7 @@ public class PeriodService {
     }
 
     /**
-     * Soft-close a period, fixing every person's due-total and carried figure for it, and so its own, as they are now, while claims due by
+     * Soft-close a period, fixing every person's due-total and carried figure for it, and so its own, and every pool member's cut, as they are now, while claims due by
      * a date in it can still change; refused when it is closed or soft-closed already or the user's role may not close.
      */
     @Transactional
@@ -185,7 +188,7 @@ public class PeriodService {
             throw new PeriodClosedException(name);
         }
         period.softClose(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()),
-                rollup.carriedInto(sheetId, list(sheetId), period));
+                rollup.carriedInto(sheetId, list(sheetId), period), cutsNow(sheetId));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString());
@@ -213,15 +216,21 @@ public class PeriodService {
 
     private Period closeNow(String sheetId, String user, Period period, boolean auto) {
         period.close(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()),
-                rollup.carriedInto(sheetId, list(sheetId), period));
+                rollup.carriedInto(sheetId, list(sheetId), period), cutsNow(sheetId));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + saved.getName()
                 + " total=" + saved.getClosedTotal().toPlainString() + (auto ? " auto=yes" : ""));
         return saved;
     }
 
+    /** Every pool member's cut as it stands now, to fix for a period. */
+    private List<PeriodPoolCut> cutsNow(String sheetId) {
+        return poolCuts.cutsNow(sheetId).stream().map(c -> new PeriodPoolCut(c.poolId(), c.member(), c.cut()))
+                .toList();
+    }
+
     /**
-     * Reopen a closed or soft-closed period, making its due-total and carried figures live again; refused unless the user's role may reopen
+     * Reopen a closed or soft-closed period, making its due-total and carried figures and its pool members' cuts live again; refused unless the user's role may reopen
      * and it is closed or soft-closed.
      */
     @Transactional

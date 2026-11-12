@@ -1942,6 +1942,8 @@ export class People {
       [...list.filter((p) => p.id !== period.id), period].sort((a, b) => a.from.localeCompare(b.from)),
     );
     void this.read(sheet);
+    // A close fixes the pool members' cuts for the period, a reopen makes them live again.
+    this.pools()?.reread();
   }
 
   /** Show an added or saved claim at once, then re-read so the screen holds what the store does. */

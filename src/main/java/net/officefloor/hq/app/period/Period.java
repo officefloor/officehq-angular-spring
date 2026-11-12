@@ -13,7 +13,10 @@ import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** A period of a sheet: a name unique on the sheet, and the from and to dates it covers, both inclusive. */
@@ -76,6 +79,11 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "opening", precision = 14, scale = 2)
     private Map<Long, BigDecimal> personOpenings = new HashMap<>();
+
+    /** Each pool member's cut for the period, fixed when it was closed or soft-closed; empty while it is open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    private List<PeriodPoolCut> poolCuts = new ArrayList<>();
 
     protected Period() {
     }
@@ -144,6 +152,10 @@ public class Period {
         return Map.copyOf(personCarried);
     }
 
+    public List<PeriodPoolCut> getPoolCuts() {
+        return List.copyOf(poolCuts);
+    }
+
     public Map<Long, BigDecimal> getPersonOpenings() {
         return Map.copyOf(personOpenings);
     }
@@ -153,20 +165,25 @@ public class Period {
         personOpenings.merge(personId, amount, BigDecimal::add);
     }
 
-    /** Close the period, fixing each person's due-total and carried figure for it and its own due-total, their sum. */
-    public void close(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
+    /**
+     * Close the period, fixing each person's due-total and carried figure for it, its own due-total, their sum, and each
+     * pool member's cut.
+     */
+    public void close(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried, List<PeriodPoolCut> cuts) {
         this.closed = true;
         this.softClosed = false;
-        fix(totals, carried);
+        fix(totals, carried, cuts);
     }
 
     /** Soft-close the period, fixing its figures as a close does while its claims can still change. */
-    public void softClose(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
+    public void softClose(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried, List<PeriodPoolCut> cuts) {
         this.softClosed = true;
-        fix(totals, carried);
+        fix(totals, carried, cuts);
     }
 
-    private void fix(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried) {
+    private void fix(Map<Long, BigDecimal> totals, Map<Long, BigDecimal> carried, List<PeriodPoolCut> cuts) {
+        this.poolCuts.clear();
+        this.poolCuts.addAll(cuts);
         this.personTotals.clear();
         this.personTotals.putAll(totals);
         this.personCarried.clear();
@@ -188,15 +205,28 @@ public class Period {
         if (opening != null) {
             personOpenings.merge(intoId, opening, BigDecimal::add);
         }
+        String fromKey = "person:" + fromId;
+        String intoKey = "person:" + intoId;
+        if (poolCuts.stream().anyMatch(c -> c.getMember().equals(fromKey))) {
+            Map<PeriodPoolCut, BigDecimal> merged = new LinkedHashMap<>();
+            for (PeriodPoolCut c : poolCuts) {
+                PeriodPoolCut key = new PeriodPoolCut(c.getPoolId(),
+                        c.getMember().equals(fromKey) ? intoKey : c.getMember(), c.getCut());
+                merged.merge(key, c.getCut(), BigDecimal::add);
+            }
+            poolCuts.clear();
+            merged.forEach((k, cut) -> poolCuts.add(new PeriodPoolCut(k.getPoolId(), k.getMember(), cut)));
+        }
     }
 
-    /** Reopen the period: its due-total is live again. */
+    /** Reopen the period: its due-total and its pool members' cuts are live again. */
     public void reopen() {
         this.closed = false;
         this.softClosed = false;
         this.closedTotal = null;
         this.personTotals.clear();
         this.personCarried.clear();
+        this.poolCuts.clear();
     }
 
     /** Whether the date falls in the period, both ends inclusive. */

@@ -28,7 +28,9 @@ export interface Period {
   /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
   cap: number | null;
   /** Whether a steward has locked the period: it cannot be reopened while locked. */
-  locked: boolean;
+  locked: boolean;  /** Each pool member's cut fixed when it was closed or soft-closed (the pool's id, a crew's negated, the member as
+   *  person:<id> or pool:<id>); empty while it is open. */
+  poolCuts: { poolId: number; member: string; cut: string }[];
 }
 
 /** The period whose dates contain the date; undefined when none does. */

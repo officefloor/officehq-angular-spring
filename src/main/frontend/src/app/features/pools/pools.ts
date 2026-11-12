@@ -59,17 +59,37 @@ export interface PoolPerson {
   holds: PoolHold[];
 }
 
-/** A period of the sheet: its name and its last day (yyyy-mm-dd). */
+/** A pool member's cut fixed when a period was closed: the pool's id (a crew's negated), the member as person:<id> or
+ *  pool:<id>, and the cut (two decimals). */
+interface FixedCut {
+  poolId: number;
+  member: string;
+  cut: string;
+}
+
+/**
+ * A period of the sheet: its name, its last day (yyyy-mm-dd), whether it is closed or soft-closed, and the pool
+ * members' cuts fixed then.
+ */
 interface PoolPeriod {
   name: string;
   to: string;
+  closed: boolean;
+  softClosed: boolean;
+  poolCuts: FixedCut[];
 }
 
-/** The pools as they stood at the end of a period, with that day as the sheet's today, and their figures then. */
-interface PastPools {
-  period: string;
-  pools: PoolView[];
-  figures: Map<number, Figures>;
+/**
+ * A period's cuts: for a closed or soft-closed period, those fixed then, by pool id and member; else the pools as they
+ * stood at the end of the period, with that day as the sheet's today, and their figures then.
+ */
+type PastPools =
+  | { period: string; fixed: Map<string, string> }
+  | { period: string; fixed?: undefined; pools: PoolView[]; figures: Map<number, Figures> };
+
+/** A member's key as a fixed cut names it. */
+function memberKey(m: PoolMemberView): string {
+  return m.poolId !== null ? `pool:${m.poolId}` : `person:${m.personId}`;
 }
 
 /** A share: more than 0.00 and at most 100.00, with at most two decimals. */
@@ -183,8 +203,12 @@ function poolFigures(pools: PoolView[], people: PoolPerson[], potText: string | 
   return figures;
 }
 
-/** The member's cut (two decimals) in the pool as it stood at the end of the period; blank when there was none. */
+/**
+ * The member's cut (two decimals) in the pool for the period: the one fixed when it was closed, else as it stood at the
+ * end of the period; blank when there was none.
+ */
 function pastCut(past: PastPools, poolId: number, member: PoolMemberView): string {
+  if (past.fixed) return past.fixed.get(`${poolId}/${memberKey(member)}`) ?? '';
   const pool = past.pools.find((p) => p.id === poolId);
   const f = past.figures.get(poolId);
   if (!pool || !f?.cuts) return '';
@@ -302,7 +326,7 @@ export class Pools {
   readonly people = input<PoolPerson[]>([]);
 
   protected readonly pools = signal<PoolView[]>([]);
-  /** For every period whose to-date is on or before the sheet's today, the pools as they stood at its end. */
+  /** For every period closed, soft-closed or whose to-date is on or before the sheet's today, its members' cuts. */
   protected readonly history = signal<PastPools[]>([]);
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
@@ -568,15 +592,19 @@ export class Pools {
   }
 
   /**
-   * For every period whose to-date is on or before today, in period order, the pools, people and pot as they stood at
-   * the end of its to-date (read as of that day), and the pools' figures then with that day as the sheet's today.
+   * For every period closed or soft-closed, in period order, the cuts fixed then; for every other period whose to-date
+   * is on or before today, the pools, people and pot as they stood at the end of its to-date (read as of that day), and
+   * the pools' figures then with that day as the sheet's today.
    */
   private async readHistory(sheet: string, today: string | null): Promise<PastPools[]> {
     const url = `/api/sheets/${encodeURIComponent(sheet)}`;
     const periods = await firstValueFrom(this.http.get<PoolPeriod[]>(`${url}/periods`, this.session.headers()));
-    const past = today === null ? [] : periods.filter((p) => p.to <= today);
+    const past = periods.filter((p) => p.closed || p.softClosed || (today !== null && p.to <= today));
     return Promise.all(
-      past.map(async (period) => {
+      past.map(async (period): Promise<PastPools> => {
+        if (period.closed || period.softClosed) {
+          return { period: period.name, fixed: new Map(period.poolCuts.map((c) => [`${c.poolId}/${c.member}`, c.cut])) };
+        }
         const options = { headers: { ...this.session.headers().headers, 'X-As-Of': period.to } };
         const [pools, people, settings] = await Promise.all([
           firstValueFrom(this.http.get<PoolView[]>(this.base(sheet), options)),

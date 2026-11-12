@@ -34,12 +34,12 @@ public class PeriodController {
      * person's due-total for it fixed then, by person id (empty while open), and each person's carried figure fixed
      * then, likewise; the fiscal year (FYyyyy) its from-date
      * falls in; each person's opening balance for it, by person id, added to their carried figure; and whether a
-     * steward has locked it.
+     * steward has locked it; and each pool member's cut fixed when it was closed or soft-closed (empty while open).
      */
     public record PeriodView(Long id, String name, String from, String to, boolean closed, boolean softClosed,
             String closedTotal,
             Map<Long, String> personTotals, String fy, Integer cap, Map<Long, String> personCarried,
-            Map<Long, String> personOpenings, boolean locked) {
+            Map<Long, String> personOpenings, boolean locked, List<PoolCutView> poolCuts) {
 
         static PeriodView of(Period period, Function<LocalDate, String> fiscalYears) {
             Map<Long, String> personTotals = new TreeMap<>();
@@ -52,8 +52,14 @@ public class PeriodController {
                     period.getToDate().toString(), period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() == null ? null : period.getClosedTotal().toPlainString(), personTotals,
                     fiscalYears.apply(period.getFromDate()), period.getCap(), personCarried,
-                    personOpenings, period.isLocked());
+                    personOpenings, period.isLocked(),
+                    period.getPoolCuts().stream().map(c -> new PoolCutView(c.getPoolId(), c.getMember(),
+                            c.getCut().toPlainString())).toList());
         }
+    }
+
+    /** A pool member's fixed cut: the pool's id (a crew's negated), the member as person:<id> or pool:<id>, the cut. */
+    public record PoolCutView(Long poolId, String member, String cut) {
     }
 
     /**
