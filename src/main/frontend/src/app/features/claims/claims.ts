@@ -1,6 +1,6 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Claim, ClaimAction, Claims } from '../../core/claims';
-import { Rates } from '../../core/rates';
+import { NO_RATE, Rates } from '../../core/rates';
 
 // A person's claims: one form adds a claim, or edits the one whose editor is open, and the list
 // shows the person's claims newest first.
@@ -44,7 +44,8 @@ import { Rates } from '../../core/rates';
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
-          <span>Due <span data-testid="claim-due">{{ c.settledDue ?? rates.due(c.amount, grade(), c.date) }}</span></span>
+          <span>Due <span data-testid="claim-due">{{ figure(c) }}</span></span>
+          <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
@@ -75,10 +76,10 @@ import { Rates } from '../../core/rates';
 })
 export class PersonClaims {
   private readonly claims = inject(Claims);
-  protected readonly rates = inject(Rates);
+  private readonly rates = inject(Rates);
   readonly personId = input.required<number>();
   /** The person's grade, whose rate in force on each claim's date gives its due, unless fixed when
-   *  it was settled. */
+   *  it was settled or bound by the person's last statement. */
   readonly grade = input.required<string>();
   protected readonly list = computed(() => this.claims.of(this.personId()));
   protected readonly amount = signal('');
@@ -97,6 +98,13 @@ export class PersonClaims {
   protected readonly acting = signal<number | null>(null);
   /** The last refused status change, shown on its claim until the next action on that claim. */
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
+
+  /** The claim's due: fixed when settled, else as its person's last statement bound it, else live. */
+  protected figure(c: Claim): string {
+    if (c.settledDue !== null) return c.settledDue;
+    if (c.stated) return c.statedDue ?? NO_RATE;
+    return this.rates.due(c.amount, this.grade(), c.date);
+  }
 
   protected fid(field: string): string {
     return `claim-form-${field}-${this.personId()}`;

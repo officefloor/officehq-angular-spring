@@ -18,6 +18,10 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened it; null while a draft. That user cannot settle it. */
   openedBy: string | null;
+  /** Bound by its person's last statement, which counted it: it shows and totals `statedDue`. */
+  stated: boolean;
+  /** The figure the last statement bound, two decimals; null while unbound, or when that was n/a. */
+  statedDue: string | null;
 }
 
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT or OPEN -> VOID. */
@@ -67,6 +71,12 @@ export class Claims {
   /** A person's claimed, with two decimals. */
   claimed(personId: number): string {
     return money(this.claimedCents().get(personId) ?? 0);
+  }
+
+  /** Replace a person's claims with these, as the server answered them (newest first). */
+  replaceOf(personId: number, theirs: Claim[]): void {
+    const byId = new Map(theirs.map((c) => [c.id, c]));
+    this.claims.update((cs) => cs.map((c) => (c.personId === personId ? (byId.get(c.id) ?? c) : c)));
   }
 
   /** Re-read the active sheet's claims from the server; an error message when that failed. */

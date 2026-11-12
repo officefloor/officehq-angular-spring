@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -17,11 +19,14 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final StatementRepository statements;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetRepository sheets, Audit audit) {
+    public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
+            Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.statements = statements;
         this.audit = audit;
     }
 
@@ -29,6 +34,19 @@ public class PersonService {
     public List<Person> list(String sheetId) {
         requireSheet(sheetId);
         return people.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** The sheet's statements by person id, each person's in the order they were taken. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<Statement>> statements(String sheetId) {
+        return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(Statement::getPersonId));
+    }
+
+    /** The person's statements in the order they were taken. */
+    @Transactional(readOnly = true)
+    public List<Statement> statementsOf(long personId) {
+        return statements.findByPersonIdOrderByIdAsc(personId);
     }
 
     @Transactional

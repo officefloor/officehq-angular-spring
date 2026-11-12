@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -26,10 +27,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade, long version) {
+    /** A person as the screen shows it, with how many statements were taken of them and the last one's
+     *  due-total (n/a when it was) and date; none of either before their first statement. */
+    public record PersonView(long id, String name, String grade, long version, int statementCount,
+            String statedTotal, String statementDate) {
 
-        static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+        public static PersonView of(Person person, List<Statement> statements) {
+            Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    statements.size(),
+                    last == null ? null : last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(),
+                    last == null ? null : last.getTakenOn().toString());
         }
     }
 
@@ -55,7 +63,9 @@ public class PersonController {
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return service.list(sheetId.trim()).stream().map(PersonView::of).toList();
+        Map<Long, List<Statement>> statements = service.statements(sheetId.trim());
+        return service.list(sheetId.trim()).stream()
+                .map(p -> PersonView.of(p, statements.getOrDefault(p.getId(), List.of()))).toList();
     }
 
     /** Add a person to the sheet. */
@@ -63,7 +73,7 @@ public class PersonController {
     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonRequest request) {
-        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()));
+        return PersonView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.grade()), List.of());
     }
 
     /** Change a person's name and grade. */
@@ -73,8 +83,9 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonUpdate request) {
         try {
-            return PersonView.of(service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade()));
+            Person updated = service.update(sheetId.trim(), user.trim(), personId, request.version(),
+                    request.name(), request.grade());
+            return PersonView.of(updated, service.statementsOf(updated.getId()));
         } catch (ObjectOptimisticLockingFailureException e) {
             // saved by someone else between the version check and the write
             throw new PersonVersionConflictException(service.current(sheetId.trim(), personId));
@@ -84,6 +95,6 @@ public class PersonController {
     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */
     @ExceptionHandler(PersonVersionConflictException.class)
     public ResponseEntity<PersonView> conflict(PersonVersionConflictException e) {
-        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(PersonView.of(e.getCurrent()));
+        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(PersonView.of(e.getCurrent(), service.statementsOf(e.getCurrent().getId())));
     }
 }

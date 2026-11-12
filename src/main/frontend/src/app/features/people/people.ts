@@ -46,7 +46,7 @@ import { PersonClaims } from '../claims/claims';
       <p>Due total: <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people.people(); track p.id) {
@@ -55,11 +55,27 @@ import { PersonClaims } from '../claims/claims';
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
+              <td>
+                <span data-testid="person-statement-count">{{ p.statementCount }}</span>
+                <span>Last <span data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</span></span>
+                <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+              </td>
               <td><app-person-claims [personId]="p.id" [grade]="p.grade" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
                   Edit<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-statement"
+                  [disabled]="stating() === p.id"
+                  (click)="statement(p)"
+                >
+                  Statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+                @if (actionError()?.id === p.id) {
+                  <p role="alert" data-testid="person-error">{{ actionError()?.message }}</p>
+                }
               </td>
             </tr>
           }
@@ -86,28 +102,34 @@ export class PeopleList {
   private readonly version = signal(0);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** The id of the person whose statement is being taken. */
+  protected readonly stating = signal<number | null>(null);
+  /** The last refused action on a person, shown on their row until the next action on it. */
+  protected readonly actionError = signal<{ id: number; message: string } | null>(null);
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
   }
 
-  /** The sum of the figures of a person's claims that count: a settled claim's frozen due, else its
-   *  live due at the rate in force on its date (a claim with no rate then adds nothing). Null when
-   *  the grade has no rate on the sheet's today and no settled claim keeps a figure. */
+  /** The sum of the figures of a person's claims that count: a settled claim's frozen due, else the
+   *  figure their last statement bound it to, else its live due at the rate in force on its date (a
+   *  claim with no figure adds nothing). Null when the grade has no rate on the sheet's today and no
+   *  settled or bound claim keeps a figure. */
   private dueCents(p: Person): bigint | null {
     let sum = 0n;
-    let settledFigure = false;
+    let keptFigure = false;
     for (const c of this.claims.of(p.id).filter(counts)) {
-      if (c.settledDue !== null) {
-        settledFigure = true;
-        sum += hundredths(c.settledDue);
-      } else {
+      const kept = c.settledDue ?? (c.stated ? c.statedDue : null);
+      if (kept !== null) {
+        keptFigure = true;
+        sum += hundredths(kept);
+      } else if (!c.stated) {
         sum += this.rates.dueCents(hundredths(c.amount), p.grade, c.date) ?? 0n;
       }
     }
     const today = this.session.today();
     const rated = today ? this.rates.inForce(p.grade, today) !== undefined : false;
-    return rated || settledFigure ? sum : null;
+    return rated || keptFigure ? sum : null;
   }
 
   protected due(p: Person): string {
@@ -115,7 +137,24 @@ export class PeopleList {
     return d === null ? NO_RATE : money(d);
   }
 
+  protected async statement(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.stating.set(p.id);
+    try {
+      const stated = await this.people.statement(p.id);
+      if (typeof stated === 'string') this.actionError.set({ id: p.id, message: stated });
+      else this.claims.replaceOf(p.id, stated.claims);
+    } finally {
+      this.stating.set(null);
+    }
+  }
+
+  private clearActionError(id: number): void {
+    if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
   protected edit(p: Person): void {
+    this.clearActionError(p.id);
     this.editing.set(p.id);
     this.load(p);
     this.error.set(null);

@@ -14,4 +14,9 @@ public enum ClaimStatus {
             case SETTLED, VOID -> false;
         };
     }
+
+    /** Whether a claim in this status counts toward claimed, due-total and statements. */
+    public boolean counts() {
+        return this == OPEN || this == SETTLED;
+    }
 }

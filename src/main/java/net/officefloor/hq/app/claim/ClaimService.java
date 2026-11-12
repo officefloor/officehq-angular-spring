@@ -8,6 +8,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.Statement;
+import net.officefloor.hq.app.person.StatementRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -22,14 +24,16 @@ public class ClaimService {
     private final PersonRepository people;
     private final RateRepository rates;
     private final SheetService sheets;
+    private final StatementRepository statements;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit) {
+            StatementRepository statements, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.rates = rates;
         this.sheets = sheets;
+        this.statements = statements;
         this.audit = audit;
     }
 
@@ -64,7 +68,8 @@ public class ClaimService {
 
     /** Move a claim to another status; refused when its current status does not allow it,
      *  or when the user settling it is the one who opened it. Settling fixes the
-     *  claim's due at its grade's rate in force on its date; with no rate then, its due stays live. */
+     *  claim's due at its grade's rate in force on its date (a claim bound by a statement at the figure it
+     *  bound); with no figure then, its due stays live. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
@@ -82,9 +87,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (to == ClaimStatus.SETTLED) {
-            claim.setSettledDue(rates.findInForce(sheetId, person.getGrade(), claim.getDate())
-                    .map(rate -> due(claim.getAmount(), rate))
-                    .orElse(null));
+            claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : liveDue(claim, person));
         }
         claim.setStatus(to);
         claim.setNumber(to == ClaimStatus.VOID ? null : number);
@@ -99,6 +102,58 @@ public class ClaimService {
                 ? " due=" + (updated.getSettledDue() == null ? "n/a" : updated.getSettledDue().toPlainString())
                 : "");
         return updated;
+    }
+
+    /** A person, their statements in the order taken, and their claims newest first. */
+    public record Stated(Person person, List<Statement> statements, List<Claim> claims) {
+    }
+
+    /** Take a person's statement: record their due-total now and how many claims count, and bind each
+     *  claim that counts to the figure it has now; a claim that does not count is left unbound. */
+    @Transactional
+    public Stated statement(String sheetId, String user, long personId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        LocalDate today = sheets.today(sheetId);
+        List<Claim> theirs = claims.findForUpdateBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        boolean figure = false;
+        int counted = 0;
+        for (Claim claim : theirs) {
+            if (!claim.getStatus().counts()) {
+                claim.setStated(false, null);
+                continue;
+            }
+            BigDecimal due = due(claim, person);
+            if (due != null) {
+                total = total.add(due);
+                figure |= claim.getSettledDue() != null || claim.isStated();
+            }
+            claim.setStated(true, due);
+            counted++;
+        }
+        boolean rated = rates.findInForce(sheetId, person.getGrade(), today).isPresent();
+        BigDecimal dueTotal = rated || figure ? total : null;
+        claims.saveAllAndFlush(theirs);
+        statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
+        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted);
+        return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
+    }
+
+    /** A claim's figure: the due fixed when settled, else the one its last statement bound, else its live
+     *  due; none when that is n/a. */
+    private BigDecimal due(Claim claim, Person person) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
+        return claim.isStated() ? claim.getStatedDue() : liveDue(claim, person);
+    }
+
+    /** The claim's amount at its person's grade's rate in force on its date; none when no rate applies. */
+    private BigDecimal liveDue(Claim claim, Person person) {
+        return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
+                .map(rate -> due(claim.getAmount(), rate))
+                .orElse(null);
     }
 
     /** An amount times a rate, divided by 100, rounded half to even to cents. */

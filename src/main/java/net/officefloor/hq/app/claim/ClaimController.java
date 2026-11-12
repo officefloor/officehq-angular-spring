@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.person.PersonController.PersonView;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -31,15 +32,18 @@ public class ClaimController {
 
     /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD, no number unless opened,
      *  the due fixed when it was settled (none while its due is live)
-     *  and who opened it (none while a draft). */
+     *  who opened it (none while a draft), whether its person's last statement bound it and the figure
+     *  it bound (none while unbound, or when that was n/a). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
-            ClaimStatus status, Integer number, String settledDue, String openedBy) {
+            ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
+            String statedDue) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate().toString(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.isStated(),
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString());
         }
     }
 
@@ -109,6 +113,20 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.VOID));
+    }
+
+    /** A person after a statement, with their claims as it bound them, newest first. */
+    public record StatementView(PersonView person, List<ClaimView> claims) {
+    }
+
+    /** Take a person's statement. */
+    @PostMapping("/people/{personId}/statement")
+    public StatementView statement(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        ClaimService.Stated stated = service.statement(sheetId.trim(), user.trim(), personId);
+        return new StatementView(PersonView.of(stated.person(), stated.statements()),
+                stated.claims().stream().map(ClaimView::of).toList());
     }
 
     /** A settle by the user who opened the claim is refused with the reason, for the screen to show. */

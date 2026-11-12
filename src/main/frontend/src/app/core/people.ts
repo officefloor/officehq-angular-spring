@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Claim } from './claims';
 import { Session } from './session';
 
 export const GRADES = ['A', 'B', 'C'] as const;
@@ -11,6 +12,18 @@ export interface Person {
   grade: string;
   /** Moved on by each save; an edit made from an older version is refused. */
   version: number;
+  /** How many statements were taken of them. */
+  statementCount: number;
+  /** The last statement's due-total, two decimals or n/a; null before their first. */
+  statedTotal: string | null;
+  /** The sheet's today when the last statement was taken; null before their first. */
+  statementDate: string | null;
+}
+
+/** A person after a statement, with their claims as it bound them, newest first. */
+export interface Statement {
+  person: Person;
+  claims: Claim[];
 }
 
 /** A refused save: why, and the person as stored now when someone else saved them first. */
@@ -93,6 +106,25 @@ export class People {
         return { error: 'Someone else has changed this person. Their values are shown; review and save again.', current };
       }
       return { error: failed('save', e) };
+    }
+  }
+
+  /** Take a person's statement: the person and their claims as it left them, or an error message
+   *  when refused. */
+  async statement(id: number): Promise<Statement | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const stated = await firstValueFrom(
+        this.http.post<Statement>(`${this.url(sid)}/${id}/statement`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) {
+        this.people.update((ps) => ps.map((p) => (p.id === id ? stated.person : p)));
+      }
+      return stated;
+    } catch (e) {
+      return failed('take statement of', e);
     }
   }
 

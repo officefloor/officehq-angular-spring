@@ -52,6 +52,14 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** Bound by its person's last statement, which counted it: it shows and totals its stated due. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The figure it had when its person's last statement bound it; none when that was n/a, or unbound. */
+    @Column(name = "stated_due")
+    private BigDecimal statedDue;
+
     protected Claim() {
     }
 
@@ -129,5 +137,19 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public boolean isStated() {
+        return stated;
+    }
+
+    public BigDecimal getStatedDue() {
+        return statedDue;
+    }
+
+    /** Bind the claim to a figure (none for n/a), or unbind it. */
+    public void setStated(boolean stated, BigDecimal statedDue) {
+        this.stated = stated;
+        this.statedDue = stated ? statedDue : null;
     }
 }
