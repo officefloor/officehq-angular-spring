@@ -66,6 +66,9 @@ export class Session {
   /** The active sheet's parent sheet id, whose rates a grade with none in force falls back on; blank means none;
    *  null until the settings are read. */
   readonly parent = signal<string | null>(null);
+  /** The active sheet's review SLA in days: a REVIEW claim whose review day plus it is before the sheet's today is
+   *  late; blank means none; null until the settings are read. */
+  readonly reviewSla = signal<string | null>(null);
   /** The default date of a new claim: the entry date while it is set, else the sheet's today. */
   readonly newClaimDate = computed(() => this.entryDate() || this.today());
   /** The active sheet's cap (two decimals) in force on its today: a person's due-total is at most it; null when there
@@ -96,6 +99,16 @@ export class Session {
       if (d.from <= date) value = d.value;
     }
     return value;
+  }
+
+  /** Whether a claim is late for review: in REVIEW, with its review day plus the review SLA before the sheet's today. */
+  reviewLate(claim: { status: string; reviewOn: string | null }): boolean {
+    const sla = this.reviewSla();
+    const today = this.today();
+    if (claim.status !== 'REVIEW' || !sla || claim.reviewOn === null || today === null) return false;
+    const [y, m, d] = claim.reviewOn.split('-').map(Number);
+    const limit = new Date(Date.UTC(y, m - 1, d + Number(sla))).toISOString().slice(0, 10);
+    return limit < today;
   }
 
   /** Request options carrying the signed-in user. */

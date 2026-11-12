@@ -40,7 +40,7 @@ public class SettingController {
      */
     public record SettingsView(String clerkLimit, String floor, int terms, Map<String, Integer> gradeTerms,
             String latePct, LocalDate policyDate, LocalDate periodNumberingFrom, LocalDate entryDate, String cap,
-            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, Integer escalateAfter, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
+            Integer graceDays, int fiscalStartMonth, String proofThreshold, String noteThreshold, String reviewThreshold, String pot, String alertThreshold, String parent, Integer escalateAfter, Integer reviewSla, Map<String, String> permissions, Map<String, List<DatedValue>> dated) {
 
         static SettingsView of(Sheet sheet, Map<String, Integer> gradeTerms) {
             LocalDate today = sheet.getToday();
@@ -52,7 +52,7 @@ public class SettingController {
             return new SettingsView(shown(sheet.getClerkLimit()), shown(sheet.floorOn(today)), sheet.termsOn(today),
                     gradeTerms, shown(sheet.latePctOn(today)), sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(),
                     sheet.getEntryDate(), shown(sheet.getCap()), sheet.getGraceDays(), sheet.getFiscalStartMonth(), shown(sheet.proofThresholdOn(today)),
-                    shown(sheet.noteThresholdOn(today)), shown(sheet.reviewThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), sheet.getEscalateAfter(), permissions,
+                    shown(sheet.noteThresholdOn(today)), shown(sheet.reviewThresholdOn(today)), shown(sheet.getPot()), shown(sheet.getAlertThreshold()), sheet.getParent(), sheet.getEscalateAfter(), sheet.getReviewSla(), permissions,
                     dated);
         }
 
@@ -196,6 +196,14 @@ public class SettingController {
         }
     }
 
+    /** A review SLA of 0 or more whole days; blank or missing means none. */
+    public record ReviewSlaRequest(@Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String reviewSla) {
+
+        Integer reviewSlaValue() {
+            return reviewSla == null || reviewSla.isBlank() ? null : Integer.valueOf(reviewSla.trim());
+        }
+    }
+
     /** An escalation gap of 0 or more whole days; blank or missing means off. */
     public record EscalateAfterRequest(@Pattern(regexp = "\\s*(\\d{1,5})?\\s*") String escalateAfter) {
 
@@ -327,6 +335,13 @@ public class SettingController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid GraceDaysRequest request) {
         return view(service.setGraceDays(sheetId.trim(), user.trim(), request.graceDaysValue()));
+    }
+
+    @PutMapping("/review-sla")
+    public SettingsView setReviewSla(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
+            @RequestBody @Valid ReviewSlaRequest request) {
+        return view(service.setReviewSla(sheetId.trim(), user.trim(), request.reviewSlaValue()));
     }
 
     @PutMapping("/escalate-after")

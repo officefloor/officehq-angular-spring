@@ -29,6 +29,8 @@ interface SettingsView {
   fiscalStartMonth: number;
   /** Days at least which a claim's previous reminder lies before today for a reminder to escalate it; null: off. */
   escalateAfter: number | null;
+  /** Days after its review day a REVIEW claim may wait before it is late; null: none. */
+  reviewSla: number | null;
   /** The due above which a claim cannot be settled or approved without a proof, two decimals; null when there is none. */
   proofThreshold: string | null;
   /** The due above which a claim cannot be opened with an empty note, two decimals; null when there is none. */
@@ -228,6 +230,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'escalateAfter'"
           (input)="escalateAfter.set(value($event)); escalateAfterEdited = true; settingsError.set(null)"
         />
+        <label for="setting-review-sla">Review SLA (days a claim may wait in review after its review day; blank: none)</label>
+        <input
+          id="setting-review-sla"
+          data-testid="setting-review-sla"
+          inputmode="numeric"
+          [value]="reviewSla()"
+          (focus)="lastFocused = 'reviewSla'"
+          (input)="reviewSla.set(value($event)); reviewSlaEdited = true; settingsError.set(null)"
+        />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input
           id="setting-fiscal-start-month"
@@ -398,6 +409,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' | fig }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' | fig }}</strong></p>
       <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ escalateAfterCurrent() ?? '' | fig }}</strong></p>
+      <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' | fig }}</strong></p>
       <p>Fiscal year start month: <strong data-testid="setting-fiscal-start-month-current">{{ fiscalStartMonthCurrent() ?? '' | fig }}</strong></p>
       <p>Pot: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' | fig }}</strong></p>
       <p>Alert threshold: <strong data-testid="setting-alert-threshold-current">{{ alertThresholdCurrent() ?? '' | fig }}</strong></p>
@@ -531,6 +543,7 @@ export class Settings {
   protected readonly graceDaysCurrent = signal<string | null>(null);
   protected readonly escalateAfter = signal('');
   protected readonly escalateAfterCurrent = signal<string | null>(null);
+  protected readonly reviewSla = signal('');
   protected readonly fiscalStartMonth = signal('');
   protected readonly fiscalStartMonthCurrent = signal<string | null>(null);
   protected readonly pot = signal('');
@@ -554,6 +567,7 @@ export class Settings {
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
   protected escalateAfterEdited = false;
+  protected reviewSlaEdited = false;
   protected fiscalStartMonthEdited = false;
   protected potEdited = false;
   protected alertThresholdEdited = false;
@@ -564,7 +578,7 @@ export class Settings {
   protected reviewThresholdEdited = false;
   protected roundingEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -593,6 +607,7 @@ export class Settings {
         this.session.entryDate.set(null);
         this.graceDaysCurrent.set(null);
         this.escalateAfterCurrent.set(null);
+        this.session.reviewSla.set(null);
         this.fiscalStartMonthCurrent.set(null);
         this.session.pot.set(null);
         this.alertThresholdCurrent.set(null);
@@ -665,7 +680,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -677,6 +692,7 @@ export class Settings {
         case 'entryDate': this.entryDateEdited = true; break;
         case 'graceDays': this.graceDaysEdited = true; break;
         case 'escalateAfter': this.escalateAfterEdited = true; break;
+        case 'reviewSla': this.reviewSlaEdited = true; break;
         case 'fiscalStartMonth': this.fiscalStartMonthEdited = true; break;
         case 'pot': this.potEdited = true; break;
         case 'alertThreshold': this.alertThresholdEdited = true; break;
@@ -701,6 +717,7 @@ export class Settings {
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
     const saveEscalateAfter = this.escalateAfterEdited;
+    const saveReviewSla = this.reviewSlaEdited;
     const saveFiscalStartMonth = this.fiscalStartMonthEdited;
     const savePot = this.potEdited;
     const saveAlertThreshold = this.alertThresholdEdited;
@@ -720,6 +737,7 @@ export class Settings {
     const entryDate = this.entryDate().trim();
     const graceDays = this.graceDays().trim();
     const escalateAfter = this.escalateAfter().trim();
+    const reviewSla = this.reviewSla().trim();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
     const pot = this.pot().trim();
     const alertThreshold = this.alertThreshold().trim();
@@ -791,6 +809,10 @@ export class Settings {
     }
     if (saveEscalateAfter && escalateAfter !== '' && !/^\d{1,5}$/.test(escalateAfter)) {
       this.settingsError.set('Type an escalation gap of 0 or more whole days, or leave it blank for off.');
+      return;
+    }
+    if (saveReviewSla && reviewSla !== '' && !/^\d{1,5}$/.test(reviewSla)) {
+      this.settingsError.set('Type a review SLA of 0 or more whole days, or leave it blank for none.');
       return;
     }
     if (saveFiscalStartMonth && !/^(0?[1-9]|1[0-2])$/.test(fiscalStartMonth)) {
@@ -914,6 +936,12 @@ export class Settings {
           this.http.put<SettingsView>(`${url}/escalate-after`, { escalateAfter: escalateAfter === '' ? null : escalateAfter }, this.session.headers()),
         );
         this.escalateAfterEdited = false;
+      }
+      if (saveReviewSla) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/review-sla`, { reviewSla: reviewSla === '' ? null : reviewSla }, this.session.headers()),
+        );
+        this.reviewSlaEdited = false;
       }
       if (saveFiscalStartMonth) {
         saved = await firstValueFrom(
@@ -1138,6 +1166,8 @@ export class Settings {
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.escalateAfterCurrent.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
     this.escalateAfter.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
+    this.session.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
+    this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
     this.fiscalStartMonthCurrent.set(String(settings.fiscalStartMonth));
     this.fiscalStartMonth.set(String(settings.fiscalStartMonth));
     this.session.pot.set(settings.pot ?? '');
@@ -1168,6 +1198,7 @@ export class Settings {
     this.entryDateEdited = false;
     this.graceDaysEdited = false;
     this.escalateAfterEdited = false;
+    this.reviewSlaEdited = false;
     this.fiscalStartMonthEdited = false;
     this.potEdited = false;
     this.alertThresholdEdited = false;

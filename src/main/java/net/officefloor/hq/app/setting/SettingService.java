@@ -231,6 +231,17 @@ public class SettingService {
         return saved;
     }
 
+    /** Set the review SLA in days; null means none. Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setReviewSla(String sheetId, String user, Integer days) {
+        Sheet sheet = get(sheetId);
+        sheet.setReviewSla(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=review-sla value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
     /** Set the escalation gap in days; null means off. Every save is recorded, even of the same value. */
     @Transactional
     public Sheet setEscalateAfter(String sheetId, String user, Integer days) {

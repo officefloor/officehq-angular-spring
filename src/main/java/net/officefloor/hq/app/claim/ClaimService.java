@@ -444,9 +444,10 @@ public class ClaimService {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         }
-        // Sent to REVIEW, it records who opened it but takes no number until it is reviewed.
+        // Sent to REVIEW, it records who opened it and its review day but takes no number until it is reviewed.
         if (status == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
+            claim.setReviewOn(sheets.today(sheetId));
         }
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);

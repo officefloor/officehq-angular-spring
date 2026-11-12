@@ -111,6 +111,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** The day (the sheet's today then) the claim last went to REVIEW; null when it never did. */
+    @Column(name = "review_on")
+    private LocalDate reviewOn;
+
     /** The user whose open editor locks the claim against other users' edits; null when not locked. */
     @Column(name = "locked_by")
     private String lockedBy;
@@ -358,6 +362,14 @@ public class Claim {
         this.escalated = escalated;
     }
 
+    public LocalDate getReviewOn() {
+        return reviewOn;
+    }
+
+    public void setReviewOn(LocalDate reviewOn) {
+        this.reviewOn = reviewOn;
+    }
+
     public String getLockedBy() {
         return lockedBy;
     }
@@ -419,6 +431,7 @@ public class Claim {
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
+        copy.reviewOn = reviewOn;
         copy.ref = ref;
         copy.tags = tags;
         copy.voidReason = voidReason;

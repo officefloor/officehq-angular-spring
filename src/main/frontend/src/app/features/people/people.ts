@@ -816,7 +816,7 @@ function csvField(value: string): string {
         </table>
       }
     </section>
-    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
+    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" [reviewLateCount]="reviewLateCount()" />
     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
     <app-pools #poolsView [people]="people()" />
     <app-crews
@@ -1090,6 +1090,8 @@ export class People {
       count: this.claims().filter((c) => c.status === status).length,
     })),
   );
+  /** How many of the sheet's REVIEW claims are late for review. */
+  protected readonly reviewLateCount = computed(() => this.claims().filter((c) => this.session.reviewLate(c)).length);
   private readonly voidReasons = inject(VoidReasons);
   /** Per void reason on the sheet's list: how many VOID claims were voided with it. */
   protected readonly voidReasonSummary = computed<VoidReasonSummary[]>(() =>

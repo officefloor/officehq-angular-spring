@@ -61,6 +61,8 @@ export interface Claim {
   settleBatch: number | null;
   /** The stamp a forward-only rate is matched against: the claim sees one whose forwardAfter is below it. */
   rateStamp: number;
+  /** The day (yyyy-mm-dd) the claim last went to REVIEW; null when it never did. */
+  reviewOn: string | null;
   /** Its lines, oldest first: with any, its amount is their quantities times their unit amounts added up. */
   lines: ClaimLine[];
 }
@@ -368,6 +370,7 @@ export function sumAmounts(amounts: string[]): string {
               <td data-testid="claim-split-from">{{ c.splitFrom ?? '' | fig }}</td>
               <td data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' | fig }}</td>
               <td data-testid="claim-reminded">{{ c.remindedOn ?? '' | fig }}</td>
+              <td data-testid="claim-review-late">{{ reviewLate(c) ? 'yes' : 'no' | fig }}</td>
               <td>
                 <ol class="claim-log">
                   @for (line of c.log; track $index) {
@@ -724,6 +727,11 @@ export class Claims implements OnInit {
 
   protected due(claim: Claim): string {
     return claimDue(claim, this.rates(), this.grades(), this.session);
+  }
+
+  /** Whether the claim is in REVIEW past the review SLA. */
+  protected reviewLate(claim: Claim): boolean {
+    return this.session.reviewLate(claim);
   }
 
   /** Whether the claim is OPEN and was due by (plus its grace) a day before the sheet's today. */
