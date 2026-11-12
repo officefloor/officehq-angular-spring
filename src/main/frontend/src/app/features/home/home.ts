@@ -1,9 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
+import { People } from '../../core/people';
 import { Session } from '../../core/session';
+import { PeopleList } from '../people/people';
 
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
+  imports: [PeopleList],
   template: `
     @if (session.user(); as user) {
       <section aria-label="Session" data-testid="session-bar">
@@ -40,6 +43,9 @@ import { Session } from '../../core/session';
           }
         }
       </section>
+      @if (session.sheetId()) {
+        <app-people />
+      }
     } @else {
       <form aria-label="Sign in" (submit)="signIn($event)">
         <label for="signin-name">Your name</label>
@@ -59,6 +65,7 @@ import { Session } from '../../core/session';
 })
 export class Home {
   protected readonly session = inject(Session);
+  private readonly people = inject(People);
   protected readonly nameInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetInput = signal('');
@@ -83,7 +90,9 @@ export class Home {
     this.todayError.set(null);
     this.loading.set(true);
     try {
-      this.sheetError.set(await this.session.loadSheet(this.sheetInput()));
+      this.sheetError.set(
+        (await this.session.loadSheet(this.sheetInput())) ?? (await this.people.load()),
+      );
     } finally {
       this.loading.set(false);
     }
