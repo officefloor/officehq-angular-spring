@@ -1,9 +1,11 @@
 import { Component, inject, signal } from '@angular/core';
+import { GRADES } from '../../core/people';
 import { ROLES, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
 // The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
-// floor (the least a claim's live due can be), the terms (the days after a claim's date it is due by), the
+// floor (the least a claim's live due can be), the terms (the days after a claim's date it is due by, fixed
+// when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), the
 // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
 // date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), the
 // period numbering from-date (while the sheet's today is on or after it, a claim opened is numbered within its
@@ -42,6 +44,19 @@ import { Session } from '../../core/session';
           (input)="terms.set(value($event)); termsTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (blank for the sheet's terms)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            [attr.data-testid]="'setting-terms-' + g"
+            inputmode="numeric"
+            [value]="gradeTerms()[g] ?? ''"
+            (input)="setGradeTerms(g, value($event))"
+            (keydown.delete)="touchGradeTerms(g)"
+            (keydown.backspace)="touchGradeTerms(g)"
+          />
+          <p>In force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.gradeTerms()[g] ?? '' }}</strong></p>
+        }
         <label for="setting-late-pct">Late percent (of an overdue claim's figure, per full 30 days)</label>
         <input
           id="setting-late-pct"
@@ -124,6 +139,10 @@ export class SettingsPanel {
   protected readonly floorTouched = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTouched = signal(false);
+  protected readonly grades = GRADES;
+  /** What is typed for each grade's terms, and the grades typed into since the last save. */
+  protected readonly gradeTerms = signal<Record<string, string>>({});
+  protected readonly gradeTermsTouched = signal<ReadonlySet<string>>(new Set());
   protected readonly latePct = signal('');
   protected readonly latePctTouched = signal(false);
   protected readonly policyDate = signal('');
@@ -136,6 +155,16 @@ export class SettingsPanel {
   protected readonly role = signal('');
   protected readonly roleError = signal<string | null>(null);
   protected readonly settingRole = signal(false);
+
+  protected setGradeTerms(grade: string, terms: string): void {
+    this.gradeTerms.update((t) => ({ ...t, [grade]: terms }));
+    this.touchGradeTerms(grade);
+  }
+
+  protected touchGradeTerms(grade: string): void {
+    this.gradeTermsTouched.update((t) => new Set([...t, grade]));
+    this.error.set(null);
+  }
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
@@ -151,7 +180,8 @@ export class SettingsPanel {
       // counts: it saves the blank). With none, the settings that may be blank
       // are saved where they differ from the value in force (a blank field clears one), else the clerk limit.
       const untouched = !this.limitTouched() && !this.floorTouched() && !this.termsTouched()
-        && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched();
+        && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
+        && this.gradeTermsTouched().size === 0;
       const floor = this.floorTouched();
       const terms = this.termsTouched();
       const latePct = this.latePctTouched();
@@ -164,6 +194,7 @@ export class SettingsPanel {
       const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
         ?? (floor ? await this.session.setFloor(this.floor()) : null)
         ?? (terms ? await this.session.setTerms(this.terms()) : null)
+        ?? (await this.saveGradeTerms())
         ?? (latePct ? await this.session.setLatePct(this.latePct()) : null)
         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null);
@@ -175,6 +206,8 @@ export class SettingsPanel {
         this.floorTouched.set(false);
         this.terms.set('');
         this.termsTouched.set(false);
+        this.gradeTerms.set({});
+        this.gradeTermsTouched.set(new Set());
         this.latePct.set('');
         this.latePctTouched.set(false);
         this.policyDate.set('');
@@ -185,6 +218,16 @@ export class SettingsPanel {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  /** Save the terms of each grade typed into, in grade order; the first refusal stops the rest. */
+  private async saveGradeTerms(): Promise<string | null> {
+    for (const g of this.grades) {
+      if (!this.gradeTermsTouched().has(g)) continue;
+      const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '');
+      if (err) return err;
+    }
+    return null;
   }
 
   protected async setRole(e: Event): Promise<void> {

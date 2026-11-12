@@ -37,6 +37,11 @@ public class Claim {
     @Column(name = "claim_date", nullable = false)
     private LocalDate date;
 
+    /** The day it is due by: fixed when it is added, from the terms of its person's grade in force on its
+     *  date then; it does not follow later changes to the terms or its date. */
+    @Column(name = "due_by", nullable = false)
+    private LocalDate dueBy;
+
     @Column(name = "note", nullable = false)
     private String note;
 
@@ -71,11 +76,13 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
+            String corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
+        this.dueBy = dueBy;
         this.note = note;
         this.corrects = corrects;
     }
@@ -132,6 +139,10 @@ public class Claim {
 
     public void setDate(LocalDate date) {
         this.date = date;
+    }
+
+    public LocalDate getDueBy() {
+        return dueBy;
     }
 
     public String getNote() {

@@ -7,9 +7,11 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,16 +28,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off). */
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), and the terms of each grade that has its own. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
-            LocalDate policyDate, LocalDate periodNumberingFrom) {
+            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
-                    sheet.getPeriodNumberingFrom());
+                    sheet.getPeriodNumberingFrom(), sheet.getGradeTerms());
         }
     }
 
@@ -49,6 +51,10 @@ public class SheetController {
 
     /** The sheet's terms: the number of days after a claim's date it is due by. */
     public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer terms) {
+    }
+
+    /** A grade's own terms; a missing one means the grade uses the sheet's terms. */
+    public record GradeTermsRequest(@Min(0) @Max(36500) Integer terms) {
     }
 
     /** The sheet's late percent: what an overdue claim's due gains of its figure for every full 30 days. */
@@ -109,6 +115,15 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid TermsRequest request) {
         return SheetView.of(service.setTerms(id.trim(), user.trim(), request.terms()));
+    }
+
+    /** Change a grade's own terms. */
+    @PutMapping("/{id}/settings/terms/{grade}")
+    public SheetView setGradeTerms(@PathVariable @NotBlank @Size(max = 200) String id,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GradeTermsRequest request) {
+        return SheetView.of(service.setGradeTerms(id.trim(), user.trim(), grade, request.terms()));
     }
 
     /** Change the sheet's late percent. */

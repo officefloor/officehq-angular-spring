@@ -79,7 +79,9 @@ public class ClaimService {
         refuseRetired(person, on);
         refuseCorrection(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.take(sheetId);
-        Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, note, corrects);
+        int terms = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
+                .termsFor(person.gradeOn(on));
+        Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
         claim = claims.saveAndFlush(claim);
         audit("CLAIM_ADDED", claim, person, user);

@@ -3,7 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { People, Person } from './people';
 import { hundredths, rounded } from './rates';
-import { Session, addDays, daysBetween, isDate } from './session';
+import { Session, daysBetween, isDate } from './session';
 
 export interface Claim {
   id: number;
@@ -26,6 +26,9 @@ export interface Claim {
   stated: boolean;
   /** The figure the last statement bound, two decimals; null while unbound, or when that was n/a. */
   statedDue: string | null;
+  /** The date it is due by (YYYY-MM-DD): fixed when it was added, its date plus the terms of its person's
+   *  grade in force on its date then (the sheet's terms when the grade has none of its own). */
+  dueBy: string;
   /** A correction's (a negative amount): the number of the SETTLED claim of the same person it
    *  corrects; null otherwise. */
   corrects: string | null;
@@ -95,9 +98,9 @@ export class Claims {
   /** Everyone's claimed added up, with two decimals. */
   readonly total = computed(() => money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)));
 
-  /** The date a claim is due by: its date plus the sheet's terms. */
+  /** The date a claim is due by: fixed when it was added, from the terms of its person's grade then. */
   dueBy(c: Claim): string {
-    return addDays(c.date, this.session.terms());
+    return c.dueBy;
   }
 
   /** Whether a claim is overdue: OPEN or PENDING, with its due-by before the sheet's today. */

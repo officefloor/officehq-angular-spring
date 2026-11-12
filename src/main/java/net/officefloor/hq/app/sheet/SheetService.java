@@ -80,15 +80,24 @@ public class SheetService {
         return sheet;
     }
 
-    /** Change the sheet's terms: the number of days after a claim's date it is due by, recording the figures
-     *  it moves (an overdue claim's late charge follows it). */
+    /** Change the sheet's terms: the number of days after a claim's date it is due by, for a claim added
+     *  later whose grade has no terms of its own. A claim already added keeps its due-by. */
     @Transactional
     public Sheet setTerms(String id, String user, int terms) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
-        Rollup.Snapshot before = rollup.take(id);
         sheet.setTerms(terms);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms value=" + terms);
-        rollup.recordChanges(id, user, before);
+        return sheet;
+    }
+
+    /** Change a grade's own terms (none: it uses the sheet's terms), for a claim added later. A claim already
+     *  added keeps its due-by. */
+    @Transactional
+    public Sheet setGradeTerms(String id, String user, String grade, Integer terms) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setGradeTerms(grade, terms);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=terms-" + grade + " value="
+                + (terms == null ? "" : terms.toString()));
         return sheet;
     }
 

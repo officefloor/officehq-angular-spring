@@ -1,14 +1,21 @@
 package net.officefloor.hq.app.sheet;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.TreeMap;
 
 /** A sheet, chosen by its id. Everything else in the app is kept per sheet. */
 @Entity
@@ -43,6 +50,13 @@ public class Sheet {
     /** The number of days after a claim's date it is due by; a sheet starts at 14. */
     @Column(name = "terms", nullable = false)
     private int terms = 14;
+
+    /** The terms of each grade that has its own; a grade without uses the sheet's terms. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_grade_terms", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "grade")
+    @Column(name = "terms", nullable = false)
+    private Map<String, Integer> gradeTerms = new TreeMap<>();
 
     /** The percent of its figure an overdue claim's due gains for every full 30 days it is overdue; a sheet
      *  starts at 0.00. */
@@ -113,6 +127,26 @@ public class Sheet {
         this.terms = terms;
     }
 
+    /** The grades with their own terms, and their terms. */
+    public Map<String, Integer> getGradeTerms() {
+        return new TreeMap<>(gradeTerms);
+    }
+
+    /** Give a grade its own terms; none takes them away, so it uses the sheet's terms. */
+    public void setGradeTerms(String grade, Integer terms) {
+        if (terms == null) {
+            gradeTerms.remove(grade);
+        } else {
+            gradeTerms.put(grade, terms);
+        }
+    }
+
+    /** The terms of a grade: its own, else the sheet's (the sheet's for no grade). */
+    public int termsFor(String grade) {
+        Integer own = grade == null ? null : gradeTerms.get(grade);
+        return own != null ? own : terms;
+    }
+
     public BigDecimal getLatePct() {
         return latePct;
     }
@@ -151,10 +185,10 @@ public class Sheet {
     }
 
     /** The late charge on an overdue claim's figure: the late percent of it for every full 30 days past its
-     *  due-by (its date plus the terms) on the sheet's today, rounded to cents as its date rounds; 0.00 for no
-     *  figure (n/a). Only an OPEN or PENDING claim is overdue, so the caller asks only for those. */
-    public BigDecimal lateCharge(BigDecimal figure, LocalDate date) {
-        long late = ChronoUnit.DAYS.between(date.plusDays(terms), today);
+     *  due-by on the sheet's today, rounded to cents as its date rounds; 0.00 for no figure (n/a). Only an
+     *  OPEN or PENDING claim is overdue, so the caller asks only for those. */
+    public BigDecimal lateCharge(BigDecimal figure, LocalDate dueBy, LocalDate date) {
+        long late = ChronoUnit.DAYS.between(dueBy, today);
         if (figure == null || late < 30) {
             return BigDecimal.ZERO.setScale(2);
         }

@@ -17,6 +17,8 @@ export interface SheetView {
   policyDate: string | null;
   /** The period numbering from-date (YYYY-MM-DD); null when off. */
   periodNumberingFrom: string | null;
+  /** The terms of each grade that has its own; a grade without uses the sheet's terms. */
+  gradeTerms: Record<string, number>;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
@@ -35,6 +37,9 @@ export class Session {
   readonly floor = signal<string>('1.00');
   /** The sheet's terms: the number of days after a claim's date it is due by. */
   readonly terms = signal<number>(14);
+  /** The terms of each grade that has its own (a claim added for it is due that many days after its date);
+   *  a grade without uses the sheet's terms. */
+  readonly gradeTerms = signal<Record<string, number>>({});
   /** The sheet's late percent (two decimals): what an overdue claim's due gains of its figure for every
    *  full 30 days it is overdue. */
   readonly latePct = signal<string>('0.00');
@@ -68,6 +73,7 @@ export class Session {
       this.clerkLimit.set(sheet.clerkLimit);
       this.floor.set(sheet.floor);
       this.terms.set(sheet.terms);
+      this.gradeTerms.set(sheet.gradeTerms);
       this.latePct.set(sheet.latePct);
       this.policyDate.set(sheet.policyDate);
       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
@@ -150,6 +156,28 @@ export class Session {
         }),
       );
       if (this.sheetId() === sheet.id) this.terms.set(sheet.terms);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change a grade's own terms (whole days; blank: it uses the sheet's terms); an error message when
+   *  refused. */
+  async setGradeTerms(grade: string, terms: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const t = terms.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (t && (!/^\d{1,5}$/.test(t) || Number(t) > 36500)) {
+      return `Enter terms for grade ${grade} as a whole number of days, 0 or more, or leave it blank.`;
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms/${encodeURIComponent(grade)}`,
+          { terms: t ? Number(t) : null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.gradeTerms.set(sheet.gradeTerms);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

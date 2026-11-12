@@ -198,7 +198,7 @@ public class Rollup {
         if (!claim.getStatus().isOpen() || claim.isCorrection()) {
             return figure;
         }
-        return figure.add(sheet.map(s -> s.lateCharge(figure, claim.getDate())).orElse(ZERO));
+        return figure.add(sheet.map(s -> s.lateCharge(figure, claim.getDueBy(), claim.getDate())).orElse(ZERO));
     }
 
     private static boolean sameDue(BigDecimal a, BigDecimal b) {
