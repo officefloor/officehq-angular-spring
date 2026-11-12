@@ -253,6 +253,17 @@ public class SettingService {
         return saved;
     }
 
+    /** Set the most OPEN or PENDING claims a person may have; null means none. Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setMaxOpen(String sheetId, String user, Integer maxOpen) {
+        Sheet sheet = get(sheetId);
+        sheet.setMaxOpen(maxOpen);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=max-open value="
+                + (maxOpen == null ? "" : maxOpen.toString()));
+        return saved;
+    }
+
     /** Set the mid score threshold; null means blank. Every save is recorded, even of the same value. */
     @Transactional
     public Sheet setScoreMid(String sheetId, String user, Integer score) {

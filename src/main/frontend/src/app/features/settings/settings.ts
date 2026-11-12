@@ -29,6 +29,7 @@ interface SettingsView {
   fiscalStartMonth: number;
   /** Days at least which a claim's previous reminder lies before today for a reminder to escalate it; null: off. */
   escalateAfter: number | null;
+  maxOpen: number | null;
   /** Days after its review day a REVIEW claim may wait before it is late; null: none. */
   reviewSla: number | null;
   /** The score at or above which a person is MID while both score thresholds are set; null: blank. */
@@ -258,6 +259,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           (focus)="lastFocused = 'escalateAfter'"
           (input)="escalateAfter.set(value($event)); escalateAfterEdited = true; settingsError.set(null)"
         />
+        <label for="setting-max-open">Most open claims per person (OPEN or PENDING; blank: none)</label>
+        <input
+          id="setting-max-open"
+          data-testid="setting-max-open"
+          inputmode="numeric"
+          [value]="maxOpen()"
+          (focus)="lastFocused = 'maxOpen'"
+          (input)="maxOpen.set(value($event)); maxOpenEdited = true; settingsError.set(null)"
+        />
         <label for="setting-review-sla">Review SLA (days a claim may wait in review after its review day; blank: none)</label>
         <input
           id="setting-review-sla"
@@ -482,6 +492,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       <p>Entry date: <strong data-testid="setting-entry-date-current">{{ session.entryDate() ?? '' | fig }}</strong></p>
       <p>Grace days: <strong data-testid="setting-grace-days-current">{{ graceDaysCurrent() ?? '' | fig }}</strong></p>
       <p>Escalate after: <strong data-testid="setting-escalate-after-current">{{ escalateAfterCurrent() ?? '' | fig }}</strong></p>
+      <p>Most open claims per person: <strong data-testid="setting-max-open-current">{{ maxOpenCurrent() ?? '' | fig }}</strong></p>
       <p>Review SLA: <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' | fig }}</strong></p>
       <p>Mid score threshold: <strong data-testid="setting-score-mid-current">{{ session.scoreMid() ?? '' | fig }}</strong></p>
       <p>High score threshold: <strong data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' | fig }}</strong></p>
@@ -625,6 +636,8 @@ export class Settings {
   protected readonly graceDaysCurrent = signal<string | null>(null);
   protected readonly escalateAfter = signal('');
   protected readonly escalateAfterCurrent = signal<string | null>(null);
+  protected readonly maxOpen = signal('');
+  protected readonly maxOpenCurrent = signal<string | null>(null);
   protected readonly reviewSla = signal('');
   protected readonly scoreMid = signal('');
   protected readonly scoreHigh = signal('');
@@ -657,6 +670,7 @@ export class Settings {
   protected entryDateEdited = false;
   protected graceDaysEdited = false;
   protected escalateAfterEdited = false;
+  protected maxOpenEdited = false;
   protected reviewSlaEdited = false;
   protected scoreMidEdited = false;
   protected scoreHighEdited = false;
@@ -673,7 +687,7 @@ export class Settings {
   protected reviewThresholdEdited = false;
   protected roundingEdited = false;
   /** The setting whose field was focused last: a save with nothing typed saves it as it stands. */
-  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'reviewSla' | 'scoreMid' | 'scoreHigh' | 'scoreLog' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'proofKinds' | 'defaultGrade' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
+  protected lastFocused: 'clerkLimit' | 'floor' | 'terms' | 'latePct' | 'policyDate' | 'periodNumberingFrom' | 'entryDate' | 'graceDays' | 'escalateAfter' | 'maxOpen' | 'reviewSla' | 'scoreMid' | 'scoreHigh' | 'scoreLog' | 'fiscalStartMonth' | 'pot' | 'alertThreshold' | 'proofKinds' | 'defaultGrade' | 'parent' | 'cap' | 'proofThreshold' | 'noteThreshold' | 'reviewThreshold' | 'rounding' | `perm-${string}` | null =
     null;
   protected readonly settingsError = signal<string | null>(null);
   protected readonly roleList = signal<RoleView[]>([]);
@@ -702,6 +716,7 @@ export class Settings {
         this.session.entryDate.set(null);
         this.graceDaysCurrent.set(null);
         this.escalateAfterCurrent.set(null);
+        this.maxOpenCurrent.set(null);
         this.session.reviewSla.set(null);
         this.session.scoreMid.set(null);
         this.session.scoreHigh.set(null);
@@ -786,7 +801,7 @@ export class Settings {
     if (!sheet) return;
     // Saving with nothing typed saves the setting last focused as it stands (clearing an already blank field types
     // nothing), else the clerk limit.
-    const nothingTyped = !this.clerkLimitEdited && this.gradeClerkLimitEdited.size === 0 && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.reviewSlaEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.scoreLogEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.proofKindsEdited && !this.defaultGradeEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
+    const nothingTyped = !this.clerkLimitEdited && this.gradeClerkLimitEdited.size === 0 && !this.floorEdited && !this.termsEdited && this.gradeTermsEdited.size === 0 && this.gradeGraceEdited.size === 0 && this.gradeProofThresholdEdited.size === 0 && !this.latePctEdited && !this.policyDateEdited && !this.periodNumberingFromEdited && !this.entryDateEdited && !this.graceDaysEdited && !this.escalateAfterEdited && !this.maxOpenEdited && !this.reviewSlaEdited && !this.scoreMidEdited && !this.scoreHighEdited && !this.scoreLogEdited && !this.fiscalStartMonthEdited && !this.potEdited && !this.alertThresholdEdited && !this.proofKindsEdited && !this.defaultGradeEdited && !this.parentEdited && !this.capEdited && !this.proofThresholdEdited && !this.noteThresholdEdited && !this.reviewThresholdEdited && !this.roundingEdited && this.permsEdited.size === 0;
     if (nothingTyped) {
       switch (this.lastFocused) {
         case 'clerkLimit': this.clerkLimitEdited = true; break;
@@ -798,6 +813,7 @@ export class Settings {
         case 'entryDate': this.entryDateEdited = true; break;
         case 'graceDays': this.graceDaysEdited = true; break;
         case 'escalateAfter': this.escalateAfterEdited = true; break;
+        case 'maxOpen': this.maxOpenEdited = true; break;
         case 'reviewSla': this.reviewSlaEdited = true; break;
         case 'scoreMid': this.scoreMidEdited = true; break;
         case 'scoreHigh': this.scoreHighEdited = true; break;
@@ -829,6 +845,7 @@ export class Settings {
     const saveEntryDate = this.entryDateEdited;
     const saveGraceDays = this.graceDaysEdited;
     const saveEscalateAfter = this.escalateAfterEdited;
+    const saveMaxOpen = this.maxOpenEdited;
     const saveReviewSla = this.reviewSlaEdited;
     const saveScoreMid = this.scoreMidEdited;
     const saveScoreHigh = this.scoreHighEdited;
@@ -854,6 +871,7 @@ export class Settings {
     const entryDate = this.entryDate().trim();
     const graceDays = this.graceDays().trim();
     const escalateAfter = this.escalateAfter().trim();
+    const maxOpen = this.maxOpen().trim();
     const reviewSla = this.reviewSla().trim();
     const scoreMid = this.scoreMid().trim();
     const scoreHigh = this.scoreHigh().trim();
@@ -932,6 +950,10 @@ export class Settings {
     }
     if (saveEscalateAfter && escalateAfter !== '' && !/^\d{1,5}$/.test(escalateAfter)) {
       this.settingsError.set('Type an escalation gap of 0 or more whole days, or leave it blank for off.');
+      return;
+    }
+    if (saveMaxOpen && maxOpen !== '' && !/^\d{1,5}$/.test(maxOpen)) {
+      this.settingsError.set('Type a maximum of 0 or more open claims as a whole number, or leave it blank for none.');
       return;
     }
     if (saveReviewSla && reviewSla !== '' && !/^\d{1,5}$/.test(reviewSla)) {
@@ -1094,6 +1116,12 @@ export class Settings {
           this.http.put<SettingsView>(`${url}/escalate-after`, { escalateAfter: escalateAfter === '' ? null : escalateAfter }, this.session.headers()),
         );
         this.escalateAfterEdited = false;
+      }
+      if (saveMaxOpen) {
+        saved = await firstValueFrom(
+          this.http.put<SettingsView>(`${url}/max-open`, { maxOpen: maxOpen === '' ? null : maxOpen }, this.session.headers()),
+        );
+        this.maxOpenEdited = false;
       }
       if (saveReviewSla) {
         saved = await firstValueFrom(
@@ -1357,6 +1385,8 @@ export class Settings {
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.escalateAfterCurrent.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
     this.escalateAfter.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
+    this.maxOpenCurrent.set(settings.maxOpen === null ? '' : String(settings.maxOpen));
+    this.maxOpen.set(settings.maxOpen === null ? '' : String(settings.maxOpen));
     this.session.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
     this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
     this.session.scoreMid.set(settings.scoreMid === null ? '' : String(settings.scoreMid));
@@ -1400,6 +1430,7 @@ export class Settings {
     this.entryDateEdited = false;
     this.graceDaysEdited = false;
     this.escalateAfterEdited = false;
+    this.maxOpenEdited = false;
     this.reviewSlaEdited = false;
     this.scoreMidEdited = false;
     this.scoreHighEdited = false;

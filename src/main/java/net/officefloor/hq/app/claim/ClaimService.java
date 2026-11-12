@@ -1092,6 +1092,7 @@ public class ClaimService {
      * counted against each other.
      */
     private void requireUnderCap(String sheetId, Claim claim) {
+        requireUnderMaxOpen(sheetId, claim);
         Period period = periods.on(sheetId, claim.getDueBy()).orElse(null);
         if (period == null || period.getCap() == null) {
             return;
@@ -1103,6 +1104,24 @@ public class ClaimService {
                 .count();
         if (held >= period.getCap()) {
             throw new ClaimCapException(claim.getId(), period.getName(), period.getCap());
+        }
+    }
+
+    /**
+     * Refuse opening a claim when the sheet sets a maximum of open claims per person and its person already has that
+     * many OPEN or PENDING claims. The sheet is locked by the caller, so two opens at once are counted against each other.
+     */
+    private void requireUnderMaxOpen(String sheetId, Claim claim) {
+        Integer max = settings.get(sheetId).getMaxOpen();
+        if (max == null) {
+            return;
+        }
+        long held = claims.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, claim.getPersonId()).stream()
+                .filter(c -> !c.getId().equals(claim.getId()))
+                .filter(c -> c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                .count();
+        if (held >= max) {
+            throw new ClaimMaxOpenException(claim.getId(), max);
         }
     }
 

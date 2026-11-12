@@ -65,6 +65,7 @@ public class BulkOpenService {
                 service.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN);
                 opened++;
             } catch (ClaimStatusException | ClaimActionForbiddenException | ClaimNoteException | ClaimCapException
+                    | ClaimMaxOpenException
                     | PeriodClosedException
                     | ClaimNotFoundException
                     | PersonNotFoundException refused) {
