@@ -1,0 +1,64 @@
+{
+  "checkpoint": 62,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp62_archive-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can archive the sheet (a button; SHEET_ARCHIVED; anyone else is refused with an error\non the sheet). Show archived yes/no. On an archived sheet everything stays visible and every\nchange is refused with its usual error, including changing the sheet's today, every bulk action,\nthe paste box and the quick-add bar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can archive the sheet (a button; SHEET_ARCHIVED; anyone else is refused with an error\non the sheet). Show archived yes/no. On an archived sheet everything stays visible and every\nchange is refused with its usual error, including changing the sheet's today, every bulk action,\nthe paste box and the quick-add bar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "184d631d952803049b53438a7560109d763b8d0f",
+  "reset_sha": "",
+  "preagent_sha": "78190dacb8af4132215c73c853babf8c5f2c27ca",
+  "prev_sha": "78190dacb8af4132215c73c853babf8c5f2c27ca",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.017171,
+    "input_tokens": 36,
+    "output_tokens": 9274,
+    "cache_read_tokens": 970935,
+    "cache_creation_tokens": 79670,
+    "num_turns": 19,
+    "duration_ms": 298358,
+    "duration_api_ms": 90243,
+    "model": "claude-opus-5-5",
+    "session_id": "7d156ead-d17d-4b41-abac-12d093ae5deb",
+    "stop_reason": "success",
+    "result_text": "A steward can now archive a sheet. `bin/e2e` passes all 4 tests in the archive spec.\n\n**How it behaves**\n- The screen shows \"Archived: yes/no\" (`sheet-archived`) and an **Archive sheet** button (`sheet-archive`).\n- Only a steward can archive. Anyone else gets an error under the sheet (`sheet-error`), and so does a second archive of a sheet that's already archived. A successful archive writes `SHEET_ARCHIVED sheet=<id> by=<user>` to the audit file.\n- On an archived sheet, loading and viewing still work. Every other change is turned down before it reaches the code that would make it, so it shows its usual error and writes nothing. That covers changing today, settings, rates, people, holds, retiring, claims, statements, quick-add and paste. Bulk open and bulk settle work like they do for a viewer: they report every chosen claim as refused and change nothing.\n\n**What changed**\n- **Data:** a new migration, `V45__sheet_archived.sql`, adds an `archived` column to `sheet` (default false).\n- **Server:**\n  - The `Sheet` entity has an `archived` flag, and the sheet data sent to the screen now includes it.\n  - `SheetService.archive` checks the steward rule and the already-archived case.\n  - A new endpoint, `POST /api/sheets/{id}/archive`, calls it.\n  - A new `ArchivedGuard` blocks changes to an archived sheet (refused with `SheetArchivedException`, a 409). It is modelled on the existing `ViewerGuard`.\n  - `ClaimService.bulkOpen` and `bulkSettle` refuse every claim on an archived sheet.\n- **Front end:** `Session` keeps an `archived` value and has an `archive()` call. `home.ts` shows the yes/no and the button, and uses the existing `sheet-error` element for errors.\n\nArchiving can't be undone: the request didn't ask for an unarchive, so there isn't one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.017171,
+        "num_turns": 19,
+        "duration_ms": 298358,
+        "duration_api_ms": 90243,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp62.agent.jsonl",
+  "agent_diff_file": "cp62.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
