@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -52,12 +53,14 @@ public class ClaimService {
     private final RoleService roles;
     private final WatchRepository watches;
     private final History history;
+    private final HolidayService holidays;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
             SheetRepository sheetRows, PeriodRepository periods, StatementRepository statements, Rollup rollup,
-            RoleService roles, WatchRepository watches, History history, Audit audit) {
+            RoleService roles, WatchRepository watches, History history, HolidayService holidays, Audit audit) {
         this.history = history;
+        this.holidays = holidays;
         this.watches = watches;
         this.roles = roles;
         this.sheetRows = sheetRows;
@@ -87,7 +90,7 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
         int terms = person.getTerms() != null ? person.getTerms()
                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
-        LocalDate dueBy = on.plusDays(terms);
+        LocalDate dueBy = holidays.pastHolidays(sheetId, on.plusDays(terms));
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
         refuseCorrection(sheetId, personId, amount, corrects);
@@ -449,7 +452,8 @@ public class ClaimService {
 
     /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any figure a
      *  statement bound it to; a new OPEN claim of the person with the amount split off, the same date and
-     *  note, the next number, opened by the user and due by its date plus the terms in force on it, is
+     *  note, the next number, opened by the user and due by its date plus the terms in force on it (moved past
+     *  the sheet's holidays), is
      *  listed as the sheet's newest, naming the original's number as split from. Refused unless the user's
      *  role may open a claim, the claim is OPEN and not deferred, and the amount is above 0.00 and below the
      *  claim's; and for a claim in a closed period. */
@@ -478,7 +482,8 @@ public class ClaimService {
         int terms = person.getTerms() != null ? person.getTerms()
                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
                         .termsFor(person.gradeOn(claim.getDate()), claim.getDate());
-        Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(), claim.getDate().plusDays(terms),
+        Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(),
+                holidays.pastHolidays(sheetId, claim.getDate().plusDays(terms)),
                 claim.getNote(), null);
         split.setListOrder(claims.maxListOrder(sheetId) + 1);
         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
