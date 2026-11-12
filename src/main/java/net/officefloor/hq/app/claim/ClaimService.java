@@ -88,9 +88,13 @@ public class ClaimService {
                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
+        claim.setLateEntry(periods.softClosedOn(sheetId, on));
         logStatus(claim, person, user);
         claim = claims.saveAndFlush(claim);
         audit("CLAIM_ADDED", claim, person, user);
+        if (claim.isLateEntry()) {
+            audit("LATE_ENTRY", claim, person, user);
+        }
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }

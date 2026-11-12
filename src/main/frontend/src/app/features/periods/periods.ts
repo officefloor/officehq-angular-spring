@@ -4,7 +4,7 @@ import { Period, Periods } from '../../core/periods';
 
 // The sheet's periods: one form adds a period, another generates one per calendar month, and the list shows each with its dates and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
-// whether it is closed, with buttons to close it and reopen it (by the roles the sheet allows).
+// whether it is closed or soft-closed, with buttons to close it, soft-close it and reopen it (by the roles the sheet allows).
 @Component({
   selector: 'app-periods',
   template: `
@@ -75,10 +75,13 @@ import { Period, Periods } from '../../core/periods';
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.soft ? 'soft' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" [disabled]="acting() === p.id" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="period-soft-close" [disabled]="acting() === p.id" (click)="softClose(p)">
+                  Soft-close<span class="visually-hidden"> period {{ p.name }}</span>
                 </button>
                 <button type="button" data-testid="period-reopen" [disabled]="acting() === p.id" (click)="reopen(p)">
                   Reopen<span class="visually-hidden"> period {{ p.name }}</span>
@@ -117,6 +120,10 @@ export class PeriodsPanel {
 
   protected close(p: Period): Promise<void> {
     return this.act(p, () => this.periods.close(p.id));
+  }
+
+  protected softClose(p: Period): Promise<void> {
+    return this.act(p, () => this.periods.softClose(p.id));
   }
 
   protected reopen(p: Period): Promise<void> {

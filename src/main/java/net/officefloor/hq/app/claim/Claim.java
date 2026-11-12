@@ -96,6 +96,10 @@ public class Claim {
     @Column(name = "locked_by")
     private String lockedBy;
 
+    /** Whether it was added while its period was soft-closed. */
+    @Column(name = "late_entry", nullable = false)
+    private boolean lateEntry;
+
     /** Its status log: one line per status it has had, oldest first. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -271,6 +275,14 @@ public class Claim {
 
     public void setLockedBy(String lockedBy) {
         this.lockedBy = lockedBy;
+    }
+
+    public boolean isLateEntry() {
+        return lateEntry;
+    }
+
+    public void setLateEntry(boolean lateEntry) {
+        this.lateEntry = lateEntry;
     }
 
     public List<StatusChange> getStatusLog() {

@@ -157,10 +157,10 @@ export class Figures {
     return sums;
   });
 
-  /** A person's due-total for a period: fixed when it was closed (0.00 for a person added since), else
+  /** A person's due-total for a period: fixed when it was closed or soft-closed (0.00 for a person added since), else
    *  live. */
   personPeriodDue(period: Period, personId: number): string {
-    if (period.closed) return period.closedPersonTotals?.[personId] ?? '0.00';
+    if (period.closed || period.soft) return period.closedPersonTotals?.[personId] ?? '0.00';
     return money(this.livePersonPeriodCents().get(period.id)?.get(personId) ?? 0n);
   }
 

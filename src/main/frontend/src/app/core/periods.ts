@@ -12,7 +12,9 @@ export interface Period {
   to: string;
   /** Closed: its due-total is fixed and its claims can no longer change, until a steward reopens it. */
   closed: boolean;
-  /** The due-total fixed when it was closed, two decimals; null while open. */
+  /** Soft-closed: its due-total and each person's figure are fixed, but its claims can still change. */
+  soft: boolean;
+  /** The due-total fixed when it was closed or soft-closed, two decimals; null while open. */
   closedTotal: string | null;
   /** Each person's due-total for it fixed when it was closed, two decimals, by person id; empty while
    *  open. A person missing here (added after it closed) has 0.00. */
@@ -127,7 +129,26 @@ export class Periods {
     }
   }
 
-  /** Reopen a closed period, making its due-total live again (a role the sheet allows); an error message when
+  /** Soft-close a period, fixing its figures while its claims can still change; an error message when
+   *  refused. */
+  async softClose(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const period = await firstValueFrom(
+        this.http.post<Period>(`${this.url(sid)}/${id}/soft-close`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.periods.update((ps) => ps.map((p) => (p.id === id ? period : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not close a period.';
+      if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already closed.';
+      return e instanceof HttpErrorResponse ? `Could not soft-close period (${e.status}).` : 'Could not soft-close period.';
+    }
+  }
+
+  /** Reopen a closed or soft-closed period, making its due-total live again (a role the sheet allows); an error message when
    *  refused. */
   async reopen(id: number): Promise<string | null> {
     const sid = this.session.sheetId();

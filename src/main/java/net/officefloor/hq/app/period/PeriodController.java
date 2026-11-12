@@ -26,16 +26,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class PeriodController {
 
     /** A period as the screen shows it: its name, its from and to dates (YYYY-MM-DD), whether it is
-     *  closed and, once closed, the due-total fixed then and each person's fixed then, by person id
+     *  closed or soft-closed and, once either, the due-total fixed then and each person's fixed then, by person id
      *  (two decimals). */
-    public record PeriodView(long id, String name, String from, String to, boolean closed, String closedTotal,
+    public record PeriodView(long id, String name, String from, String to, boolean closed, boolean soft, String closedTotal,
             Map<Long, String> closedPersonTotals) {
 
         static PeriodView of(Period p) {
             Map<Long, String> people = new TreeMap<>();
             p.getClosedPersonTotals().forEach((id, total) -> people.put(id, total.toPlainString()));
             return new PeriodView(p.getId(), p.getName(), p.getFromDate().toString(), p.getToDate().toString(),
-                    p.isClosed(), p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), people);
+                    p.isClosed(), p.isSoftClosed(), p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), people);
         }
     }
 
@@ -80,7 +80,7 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
-    /** Close a period, fixing its due-total; refused when it is already closed. */
+    /** Close a period (a soft-closed one too), fixing its due-total afresh; refused when it is already closed. */
     @PostMapping("/{periodId}/close")
     public PeriodView close(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long periodId,
@@ -88,7 +88,16 @@ public class PeriodController {
         return PeriodView.of(service.close(sheetId.trim(), user.trim(), periodId));
     }
 
-    /** Reopen a closed period, making its due-total live again; by a steward only, and refused when it
+    /** Soft-close a period, fixing its figures while its claims can still change; refused when it is
+     *  already closed or soft-closed. */
+    @PostMapping("/{periodId}/soft-close")
+    public PeriodView softClose(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long periodId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return PeriodView.of(service.softClose(sheetId.trim(), user.trim(), periodId));
+    }
+
+    /** Reopen a closed or soft-closed period, making its due-total live again; by a steward only, and refused when it
      *  is open. */
     @PostMapping("/{periodId}/reopen")
     public PeriodView reopen(@PathVariable @NotBlank @Size(max = 200) String sheetId,

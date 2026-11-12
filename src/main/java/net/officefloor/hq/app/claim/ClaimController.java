@@ -39,11 +39,12 @@ public class ClaimController {
      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
-     *  and the user whose editor is open on it (none while unlocked). */
+     *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
+     *  was soft-closed. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
-            int proofs, String splitFrom, String lockedBy) {
+            int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -54,7 +55,8 @@ public class ClaimController {
                     claim.getCorrects(), claim.getDueBy().toString(),
                     claim.getStatusLog().stream().map(StatusLine::of).toList(),
                     claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
+                    claim.isLateEntry());
         }
     }
 

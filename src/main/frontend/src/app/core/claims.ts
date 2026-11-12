@@ -45,6 +45,8 @@ export interface Claim {
   /** The user whose editor is open on it, locking it for every other user until they save or cancel it,
    *  or the sheet's today changes; null while unlocked. */
   lockedBy: string | null;
+  /** Whether it was added while its period was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
