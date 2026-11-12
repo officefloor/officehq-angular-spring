@@ -116,13 +116,13 @@ public class StatementService {
             if (claim.getSettledDue() != null || claim.getBoundDue() != null) {
                 anyDue = true;
             }
-            // The statement binds the claim's due as shown, late charge and floor included; a claim already bound
+            // The statement binds the claim's due as shown: its floored figure with the late charge on it; a claim already bound
             // shows its bound due, so it stays as it is.
             BigDecimal figure = figureOf(sheetId, person, claim).orElse(null);
             BigDecimal due = claim.getSettledDue() != null || claim.isBound() || claim.isCorrection() ? figure
-                    : sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen() && !claim.isWaived(),
+                    : sheet.liveDue(figure, claim.getStatus().isOpen() && !claim.isWaived(),
                             sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()),
-                            claim.getDate()), claim.getDate());
+                            claim.getDate());
             if (due != null) {
                 total = total.add(due);
                 // A due under a grade the person had on an earlier date counts too.
@@ -182,9 +182,9 @@ public class StatementService {
                             .map(pct -> sheet.rateStep(claim.getAmount(), pct, claim.getDate(), claim.getRoundingDate(), asOf))
                             .orElse(null);
             BigDecimal due = settled != null || bound || claim.isCorrection() ? figure
-                    : sheet.floored(sheet.withLateCharge(figure, status.isOpen() && !claim.isWaived(),
+                    : sheet.liveDue(figure, status.isOpen() && !claim.isWaived(),
                             sheet.overdueBy(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate()),
-                            claim.getDate(), asOf), claim.getDate());
+                            claim.getDate(), asOf);
             if (due != null) {
                 total = total.add(due);
                 if (!claim.getDate().isAfter(asOf)) {

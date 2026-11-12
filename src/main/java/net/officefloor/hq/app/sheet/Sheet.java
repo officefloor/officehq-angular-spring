@@ -586,4 +586,17 @@ public class Sheet {
     public BigDecimal floored(BigDecimal due, LocalDate date) {
         return due == null ? null : due.max(floorOn(date));
     }
+
+    /**
+     * The live due on a rate figure of a claim dated on the date: the figure raised to the floor in force on that date,
+     * with the late charge worked out on that floored figure added on top when the claim is OPEN; null (n/a) stays null.
+     */
+    public BigDecimal liveDue(BigDecimal figure, boolean open, LocalDate dueBy, LocalDate date) {
+        return liveDue(figure, open, dueBy, date, today);
+    }
+
+    /** The live due with {@code asOf} standing in for the sheet's today. */
+    public BigDecimal liveDue(BigDecimal figure, boolean open, LocalDate dueBy, LocalDate date, LocalDate asOf) {
+        return withLateCharge(floored(figure, date), open, dueBy, date, asOf);
+    }
 }

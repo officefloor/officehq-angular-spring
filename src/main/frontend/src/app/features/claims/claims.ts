@@ -198,7 +198,7 @@ export function roundingOf(claim: Claim, session: Session): Rounding {
 /**
  * The due fixed when the claim was settled, else the due its person's last statement bound it to (as shown then, late
  * charge included), else the greater of the floor in force on its date and its figure (its amount times the rate of its
- * person's grade on its date, both in force on its date, or n/a with no rate) with its late charge added on top. A
+ * person's grade on its date, both in force on its date, or n/a with no rate), with the late charge on that added on top. A
  * correction has neither floor nor late charge.
  */
 export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], session: Session): string {
@@ -207,7 +207,8 @@ export function claimDue(claim: Claim, rates: Rate[], grades: PersonGrade[], ses
   const grade = gradeOn(grades, claim.date);
   const figure = dueOf(claim.amount, grade === undefined ? undefined : rateOn(rates, grade, claim.date, claim.rateStamp), roundingOf(claim, session));
   if (figure === 'n/a' || isCorrection(claim)) return figure;
-  return floored(sumDues([figure, lateCharge(claim, figure, grades, session)]), session.settingOn('floor', claim.date));
+  const base = floored(figure, session.settingOn('floor', claim.date));
+  return sumDues([base, lateCharge(claim, base, grades, session)]);
 }
 
 /**

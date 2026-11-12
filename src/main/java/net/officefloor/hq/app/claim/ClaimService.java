@@ -814,7 +814,7 @@ public class ClaimService {
 
     /**
      * A steward re-settles a SETTLED claim: its due is frozen again at the figure it would have today as an OPEN claim
-     * bound by no statement (today's rates and grades with its late charge as of today, raised to the floor). Refused for any other
+     * bound by no statement (today's rates and grades raised to the floor, with its late charge on that as of today). Refused for any other
      * status, a closed period, or a user not a steward.
      */
     @Transactional
@@ -835,7 +835,7 @@ public class ClaimService {
         BigDecimal figure = dueOf(sheetId, person, claim);
         Sheet sheet = settings.get(sheetId);
         claim.setSettledDue(claim.isCorrection() ? figure
-                : sheet.floored(sheet.withLateCharge(figure, !claim.isWaived(), overdueBy(sheet, person, claim), claim.getDate()), claim.getDate()));
+                : sheet.liveDue(figure, !claim.isWaived(), overdueBy(sheet, person, claim), claim.getDate()));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(record("CLAIM_RESETTLED", user, person, saved) + numberOf(saved.getNumber())
@@ -1131,7 +1131,7 @@ public class ClaimService {
 
     /**
      * Fixes the due the claim shows as it settles: the due its statement binds it to (late charge included), else its
-     * figure worked out from the rate on the claim's date with its late charge, raised to the floor on its date, frozen
+     * figure worked out from the rate on the claim's date raised to the floor on its date, with its late charge, frozen
      * in (a correction freezes its bare figure); with no figure it stays live. Gives the due at the
      * end of its audit record.
      */
@@ -1139,8 +1139,7 @@ public class ClaimService {
         BigDecimal figure = figureOf(sheetId, person, claim);
         Sheet sheet = settings.get(sheetId);
         BigDecimal settledDue = figure == null || claim.isBound() || claim.isCorrection() ? figure
-                : sheet.floored(claim.isWaived() ? figure
-                        : figure.add(sheet.lateCharge(figure, overdueBy(sheet, person, claim), claim.getDate())), claim.getDate());
+                : sheet.liveDue(figure, !claim.isWaived(), overdueBy(sheet, person, claim), claim.getDate());
         claim.setSettledDue(settledDue);
         return " due=" + (settledDue == null ? "n/a" : settledDue.toPlainString());
     }
@@ -1225,8 +1224,8 @@ public class ClaimService {
     }
 
     /**
-     * The live due on a figure: the greater of the floor in force on the claim's date and the figure with the late
-     * charge of an OPEN or PENDING claim overdue on the sheet's today added on top (no late charge on a claim deferred
+     * The live due on a figure: the greater of the floor in force on the claim's date and the figure, with the late
+     * charge on that of an OPEN or PENDING claim overdue on the sheet's today added on top (no late charge on a claim deferred
      * on the sheet's today; a correction has neither floor nor late charge, and a bound claim's figure is its due as
      * shown when bound, late charge included); null (n/a) stays null.
      */
@@ -1235,8 +1234,8 @@ public class ClaimService {
         if (claim.isBound() || claim.isCorrection()) {
             return figure;
         }
-        return sheet.floored(sheet.withLateCharge(figure, claim.getStatus().isOpen()
-                && !claim.isWaived() && !claim.isDeferredOn(sheet.getToday()), overdueBy(sheet, person, claim), claim.getDate()), claim.getDate());
+        return sheet.liveDue(figure, claim.getStatus().isOpen()
+                && !claim.isWaived() && !claim.isDeferredOn(sheet.getToday()), overdueBy(sheet, person, claim), claim.getDate());
     }
 
     /** The day the claim goes overdue after: its due-by plus the grace days its person's grade has on its date. */
