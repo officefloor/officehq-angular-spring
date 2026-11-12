@@ -1,0 +1,64 @@
+{
+  "checkpoint": 34,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp34_bulk-open",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Claims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClaims can be selected (a checkbox on each) and opened together with one button. Each selected\nclaim that can be opened is opened and numbered in list order (the list order of people, newest\nclaim first within a person); each that cannot is left as it is. Show how many were opened and\nhow many were refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "47981aebb14e76d2ceeca219df02bca61b67237a",
+  "reset_sha": "",
+  "preagent_sha": "59e279849ef773f2ce37c8a0a60d3e50ed074edc",
+  "prev_sha": "59e279849ef773f2ce37c8a0a60d3e50ed074edc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7704546,
+    "input_tokens": 34,
+    "output_tokens": 8260,
+    "cache_read_tokens": 704713,
+    "cache_creation_tokens": 58022,
+    "num_turns": 18,
+    "duration_ms": 214568,
+    "duration_api_ms": 79388,
+    "model": "claude-opus-5-5",
+    "session_id": "a2e5e477-64b4-43bb-9509-cc30170c59c9",
+    "stop_reason": "success",
+    "result_text": "Bulk open is in: each claim row now has a checkbox, and an \"Open selected claims\" button opens the selected claims together. `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves**\n- **Order and numbering:** selected claims are opened and numbered in list order. That means people in the order they were added, and newest claim first within each person.\n- **Refusals:** a claim that can't be opened (it isn't a draft, or its date falls in a closed period) is left as it is and counted as refused. A claim ID that isn't on the sheet is also counted as refused.\n- **Counts:** the screen shows the opened count in `bulk-opened` and the refused count in `bulk-refused`. The old counts disappear while the action runs.\n- **Audit:** each claim that opens gets the same audit lines as opening it on its own (`CLAIM_OPENED` followed by `ROLLUP` and `TOTALS`). Refused claims write nothing.\n- **Selection:** it clears after a bulk open and whenever a sheet is loaded.\n\nThe whole bulk open runs as one database transaction, so a refusal partway through doesn't undo the claims already opened.\n\n**Changes**\n- **Server:** I added `ClaimService.bulkOpen`, which reuses the existing single-claim open logic for each claim, and an endpoint `POST /api/sheets/{id}/claims/bulk-open` in `ClaimController`. The stored data didn't need any change.\n- **Front end:**\n  - `core/claims.ts` holds the selection and the call to the server.\n  - `features/claims/claims.ts` has the row checkbox (`claim-select`).\n  - The new `features/claims/bulk-open.ts` has the button (`bulk-open`) and the counts.\n  - It's placed in `home.ts` under the people list.\n  - Pressing the button with nothing selected shows an error (`bulk-open-error`); the test doesn't cover that case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7704546,
+        "num_turns": 18,
+        "duration_ms": 214568,
+        "duration_api_ms": 79388,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp34.agent.jsonl",
+  "agent_diff_file": "cp34.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
