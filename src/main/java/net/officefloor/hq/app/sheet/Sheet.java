@@ -30,6 +30,7 @@ public class Sheet {
     public static final String TERMS = "terms";
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String CAP = "cap";
+    public static final String PROOF_THRESHOLD = "proof-threshold";
     private static final BigDecimal START_FLOOR = new BigDecimal("1.00");
     private static final BigDecimal START_LATE_PCT = new BigDecimal("0.00");
     private static final int START_TERMS = 14;
@@ -52,7 +53,7 @@ public class Sheet {
     private int lastClaimNumber;
 
     /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
-     *  each grade's terms (terms-<grade>), the clerk limit and the cap. */
+     *  each grade's terms (terms-<grade>), the clerk limit, the cap and the proof threshold. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<SheetSetting> settings = new ArrayList<>();
@@ -141,6 +142,17 @@ public class Sheet {
     /** The most a person's due-total can be, in force on the sheet's today; none when there is no cap. */
     public BigDecimal getCap() {
         return decimalOn(CAP, today, null);
+    }
+
+    /** The proof threshold in force on a date: a claim dated then whose due is above it needs a proof to be
+     *  settled or approved; none when there is no threshold. */
+    public BigDecimal proofThresholdOn(LocalDate date) {
+        return decimalOn(PROOF_THRESHOLD, date, null);
+    }
+
+    /** The proof threshold in force on the sheet's today; none when there is no threshold. */
+    public BigDecimal getProofThreshold() {
+        return proofThresholdOn(today);
     }
 
     /** A person's due-total as it counts: at most the cap; none (n/a) stays none. */

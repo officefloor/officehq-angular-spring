@@ -147,6 +147,7 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
             BigDecimal due = figure == null ? null : charged(claim, figure);
+            refuseUnproved(claim, due);
             if (overLimit(sheetId, user, due)) {
                 to = ClaimStatus.PENDING;
             } else {
@@ -189,12 +190,31 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         BigDecimal figure = liveDue(claim, person);
-        claim.setSettledDue(figure == null ? null : charged(claim, figure));
+        BigDecimal due = figure == null ? null : charged(claim, figure);
+        refuseUnproved(claim, due);
+        claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
         logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
         audit("CLAIM_APPROVED", updated, person, user, updated.getNumber(), dueField(updated));
         rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
+    /** Raise a claim's proofs count by one. Refused for a SETTLED or VOID claim, and a claim in a closed
+     *  period. */
+    @Transactional
+    public Claim addProof(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ClaimProofException("A " + claim.getStatus() + " claim takes no proof.");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.addProof();
+        Claim updated = claims.saveAndFlush(claim);
+        audit("CLAIM_PROOF_ADDED", updated, person, user, updated.getNumber(), " proofs=" + updated.getProofs());
         return updated;
     }
 
@@ -346,7 +366,8 @@ public class ClaimService {
         for (Claim claim : inListOrder(sheetId, chosen)) {
             try {
                 settled.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.SETTLED));
-            } catch (ClaimStatusException | ClaimSettlerException | ClaimDeferException | PeriodClosedException
+            } catch (ClaimStatusException | ClaimSettlerException | ClaimDeferException | ClaimProofException
+                    | PeriodClosedException
                     | ClaimNotFoundException e) {
                 // refused: left as it is
             }
@@ -417,6 +438,16 @@ public class ClaimService {
         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException();
+        }
+    }
+
+    /** Refuse settling or approving a claim with no proof whose due is above the proof threshold in force on
+     *  its date; a due of n/a, or no threshold then, needs none. */
+    private void refuseUnproved(Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new)
+                .proofThresholdOn(claim.getDate());
+        if (threshold != null && due != null && due.compareTo(threshold) > 0 && claim.getProofs() == 0) {
+            throw new ClaimProofException("The claim's due is above the proof threshold: add a proof first.");
         }
     }
 

@@ -23,9 +23,11 @@ export interface SheetView {
   cap: string | null;
   /** Every value recorded for a dated setting, by key then from-date. */
   settings: DatedSetting[];
+  /** The due above which a claim needs a proof to be settled or approved, two decimals; null for none. */
+  proofThreshold: string | null;
 }
 
-/** A value a dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit or cap) takes from a date
+/** A value a dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit, cap or proof-threshold) takes from a date
  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
 export interface DatedSetting {
   key: string;
@@ -55,6 +57,9 @@ export class Session {
   /** The sheet's cap (two decimals) in force on its today: the most a person's due-total can be; null when
    *  there is none. */
   readonly cap = computed(() => this.onToday('cap'));
+  /** The sheet's proof threshold (two decimals) in force on its today: a claim dated then whose due is above
+   *  it needs a proof to be settled or approved; null when there is none. */
+  readonly proofThreshold = computed(() => this.onToday('proof-threshold'));
   /** The sheet's terms in force on its today: the number of days after a claim's date it is due by. */
   readonly terms = computed(() => Number(this.onToday('terms') ?? STARTING['terms']));
   /** The terms of each grade that has its own in force on the sheet's today (a claim added for it is due
@@ -184,6 +189,33 @@ export class Session {
         this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/cap`, { cap: c || null, from: d || null }, {
           headers: { 'X-User': user },
         }),
+      );
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Record the sheet's proof threshold (blank: none) from a date (blank: the sheet's today); an error message
+   *  when refused. */
+  async setProofThreshold(threshold: string, from = ''): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const t = threshold.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+    if (t && !/^\d+(\.\d{1,2})?$/.test(t)) {
+      return 'Enter a proof threshold of 0.00 or more, with up to two decimals, or leave it blank.';
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(
+          `/api/sheets/${encodeURIComponent(sid)}/settings/proof-threshold`,
+          { proofThreshold: t || null, from: d || null },
+          { headers: { 'X-User': user } },
+        ),
       );
       if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
       return null;

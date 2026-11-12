@@ -70,8 +70,9 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+          <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ claims.deferred(c) ? 'yes' : 'no' }}</span></span>
-          <span>Deferred until <span data-testid="claim-deferred-until">{{ claims.deferred(c) ? c.deferredUntil : '' }}</span></span>
+          <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <ol data-testid="claim-log" aria-label="Status log">
             @for (l of c.statusLog; track $index) {
               <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? noRate }}</li>
@@ -94,6 +95,9 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
             </button>
           }
+          <button type="button" data-testid="claim-proof" [disabled]="acting() === c.id" (click)="addProof(c)">
+            Add proof<span class="visually-hidden"> to claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
             [id]="'claim-defer-date-' + c.id"
@@ -230,6 +234,17 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.act(c.id, action, this.rejectReasons()[c.id] ?? '');
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected async addProof(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.addProof(c.id);
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

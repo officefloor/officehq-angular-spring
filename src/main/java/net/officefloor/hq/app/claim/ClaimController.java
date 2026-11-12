@@ -37,10 +37,11 @@ public class ClaimController {
      *  the due fixed when it was settled (none while its due is live)
      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
-     *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred). */
+     *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), and its proofs count. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil) {
+            String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
+            int proofs) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -50,7 +51,8 @@ public class ClaimController {
                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
                     claim.getCorrects(), claim.getDueBy().toString(),
                     claim.getStatusLog().stream().map(StatusLine::of).toList(),
-                    claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString());
+                    claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
+                    claim.getProofs());
         }
     }
 
@@ -214,6 +216,14 @@ public class ClaimController {
         return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
     }
 
+    /** Raise a claim's proofs count by one. */
+    @PostMapping("/claims/{claimId}/proof")
+    public ClaimView addProof(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.addProof(sheetId.trim(), user.trim(), claimId));
+    }
+
     /** Re-settle a SETTLED claim at its figure today: a steward freezes it again. */
     @PostMapping("/claims/{claimId}/resettle")
     public ClaimView resettle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -347,6 +357,14 @@ public class ClaimController {
     @ExceptionHandler(ClaimDeferException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> deferRefused(ClaimDeferException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A proof that is not allowed, or a settle or approval of an unproved claim above the proof threshold,
+     *  is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimProofException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> proofRefused(ClaimProofException e) {
         return Map.of("message", e.getMessage());
     }
 

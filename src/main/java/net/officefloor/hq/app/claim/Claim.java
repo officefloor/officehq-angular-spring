@@ -84,6 +84,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs it has: raised by one at a time. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     /** Its status log: one line per status it has had, oldest first. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
@@ -234,6 +238,15 @@ public class Claim {
      *  like any other. */
     public boolean deferredOn(LocalDate today) {
         return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Raise its proofs count by one. */
+    public void addProof() {
+        proofs++;
     }
 
     public List<StatusChange> getStatusLog() {

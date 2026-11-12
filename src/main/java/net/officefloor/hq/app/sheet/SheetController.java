@@ -29,12 +29,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap).
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold).
      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            List<SettingView> settings) {
+            List<SettingView> settings, String proofThreshold) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -43,11 +43,12 @@ public class SheetController {
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
                     sheet.getPeriodNumberingFrom(), sheet.getGradeTerms(),
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
-                    sheet.getSettings().stream().map(SettingView::of).toList());
+                    sheet.getSettings().stream().map(SettingView::of).toList(),
+                    sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString());
         }
     }
 
-    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, clerk-limit or cap)
+    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, clerk-limit, cap or proof-threshold)
      *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
     public record SettingView(String key, LocalDate from, String value) {
 
@@ -69,6 +70,11 @@ public class SheetController {
     /** The sheet's cap from a date (missing: the sheet's today): the most a person's due-total can be; a
      *  missing one means no cap. */
     public record CapRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal cap,
+            LocalDate from) {
+    }
+
+    /** The sheet's proof threshold from a date (missing: the sheet's today); a missing one means none. */
+    public record ProofThresholdRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal proofThreshold,
             LocalDate from) {
     }
 
@@ -142,6 +148,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid CapRequest request) {
         return SheetView.of(service.setCap(id.trim(), user.trim(), request.cap(), request.from()));
+    }
+
+    /** Change the sheet's proof threshold. */
+    @PutMapping("/{id}/settings/proof-threshold")
+    public SheetView setProofThreshold(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ProofThresholdRequest request) {
+        return SheetView.of(service.setProofThreshold(id.trim(), user.trim(), request.proofThreshold(), request.from()));
     }
 
     /** Change the sheet's terms. */

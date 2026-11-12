@@ -37,6 +37,9 @@ export interface Claim {
   /** The date it was deferred until (YYYY-MM-DD); null when never deferred. It is deferred only while
    *  OPEN and the sheet's today is before it (see `Claims.deferred`). */
   deferredUntil: string | null;
+  /** How many proofs it has. One whose due is above the proof threshold in force on its date cannot be
+   *  settled or approved with none. */
+  proofs: number;
 }
 
 /** A line of a claim's status log: the status it took, who changed it, the sheet's today then
@@ -296,6 +299,23 @@ export class Claims {
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 409) return refusal(e, action);
       return failed(action, e);
+    }
+  }
+
+  /** Raise a claim's proofs count by one; an error message when refused (a SETTLED or VOID claim, or one in
+   *  a closed period). */
+  async addProof(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/proof`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('add a proof to', e);
     }
   }
 
