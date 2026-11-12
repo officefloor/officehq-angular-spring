@@ -2,7 +2,7 @@ import { Injectable, computed, inject } from '@angular/core';
 import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
 import { People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
-import { Rates, hundredths, money } from './rates';
+import { Rates, hundredths, money, rounded } from './rates';
 import { Session, addDays } from './session';
 
 /** The statuses claims are counted by, in the order the screen shows them. */
@@ -159,6 +159,29 @@ export class Figures {
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
       : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c));
     return f === null ? 0n : this.claims.chargedCents(c, f);
+  }
+
+  /** What a candidate rate (a percent with up to two decimals) would change if it applied to a grade on
+   *  every date: of the OPEN and PENDING claims of people on that grade on the claim's date, not bound
+   *  by a statement, how many would show a different due, and the sum of new due minus current due in
+   *  cents (a due shown as n/a counting as nothing). Nothing is saved. */
+  ratePreview(grade: string, pct: string): { count: number; diffCents: bigint } {
+    const people = new Map(this.people.people().map((p) => [p.id, p]));
+    const rate = hundredths(pct);
+    let count = 0;
+    let diffCents = 0n;
+    for (const c of this.claims.claims()) {
+      const p = people.get(c.personId);
+      if (!p || !isOpen(c) || bound(c) || gradeOn(p.grades, c.date) !== grade) continue;
+      const roundOn = this.claims.roundingDate(c);
+      const now = this.rates.dueCents(hundredths(c.amount), grade, c.date, roundOn);
+      const was = now === null ? null : this.claims.chargedCents(c, now);
+      const will = this.claims.chargedCents(c, rounded(hundredths(c.amount) * rate, 10000n, this.session.roundsHalfUp(roundOn)));
+      if (was === will) continue;
+      count++;
+      diffCents += will - (was ?? 0n);
+    }
+    return { count, diffCents };
   }
 
   /** Whether a person is active: they have an OPEN or PENDING claim that counts live dated within the

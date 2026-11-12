@@ -1,10 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
+import { Figures } from '../../core/figures';
 import { GRADES } from '../../core/people';
-import { Rates } from '../../core/rates';
+import { Rates, money } from '../../core/rates';
 
 // The sheet's rates for each grade: one form sets a grade's rate from a date (or from the beginning
 // of time) through a to-date (or for good), one table shows each grade's rate in force on the sheet's today, or n/a when none
-// applies, and another lists every rate with its from- and to-date.
+// applies, and another lists every rate with its from- and to-date. A preview shows how many open and
+// pending claims of a grade a candidate rate would change, and by how much; it saves nothing.
 @Component({
   selector: 'app-rates',
   template: `
@@ -49,6 +51,37 @@ import { Rates } from '../../core/rates';
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
         }
       </form>
+      <form (submit)="preview($event)" data-testid="rate-preview-form" aria-label="Rate preview">
+        <label for="rate-preview-grade">Preview grade</label>
+        <select
+          id="rate-preview-grade"
+          data-testid="rate-preview-grade"
+          [value]="previewGrade()"
+          (change)="previewGrade.set(value($event)); clearPreview()"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input
+          id="rate-preview-pct"
+          data-testid="rate-preview-pct"
+          inputmode="decimal"
+          [value]="previewPct()"
+          (input)="previewPct.set(value($event)); clearPreview()"
+        />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewed(); as r) {
+          <p>
+            Claims changed <span data-testid="rate-preview-count">{{ r.count }}</span>,
+            difference <span data-testid="rate-preview-diff">{{ r.diff }}</span>
+          </p>
+        }
+        @if (previewError(); as err) {
+          <p role="alert" data-testid="rate-preview-error">{{ err }}</p>
+        }
+      </form>
       <table data-testid="rate-today">
         <caption>In force today</caption>
         <thead>
@@ -84,6 +117,7 @@ import { Rates } from '../../core/rates';
 })
 export class RatesPanel {
   protected readonly rates = inject(Rates);
+  private readonly figures = inject(Figures);
   protected readonly grades = GRADES;
   protected readonly grade = signal<string>('A');
   protected readonly pct = signal('');
@@ -91,6 +125,16 @@ export class RatesPanel {
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+
+  protected readonly previewGrade = signal<string>('A');
+  protected readonly previewPct = signal('');
+  protected readonly previewed = signal<{ count: number; diff: string } | null>(null);
+  protected readonly previewError = signal<string | null>(null);
+
+  protected clearPreview(): void {
+    this.previewed.set(null);
+    this.previewError.set(null);
+  }
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLSelectElement).value;
@@ -112,5 +156,18 @@ export class RatesPanel {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  protected preview(e: Event): void {
+    e.preventDefault();
+    this.clearPreview();
+    const pct = this.previewPct().trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(pct)) {
+      this.previewError.set('Enter a rate of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    const r = this.figures.ratePreview(this.previewGrade(), pct);
+    // shown after a tick, so two presses with the same result can be told apart
+    setTimeout(() => this.previewed.set({ count: r.count, diff: money(r.diffCents) }));
   }
 }
