@@ -18,6 +18,8 @@ export interface PlanView {
   /** The day of the month (1 to 31) a monthly plan runs on, or null. */
   day: number | null;
   end: string;
+  /** The descendant sheet the plan's claims are made on, or null for this sheet. */
+  sheet: string | null;
   /** How many claims the plan has made so far. */
   generated: number;
   /** The first five plan dates after the sheet's today, up to the end, comma and space separated. */
@@ -49,7 +51,7 @@ export class Plans {
   }
 
   /** Add a plan to the person on the active sheet; throws when the store refuses it. */
-  async add(personId: number, plan: { amount: string; start: string; every: string; day: string; end: string }): Promise<void> {
+  async add(personId: number, plan: { amount: string; start: string; every: string; day: string; sheet: string; end: string }): Promise<void> {
     const sheet = this.session.sheet();
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(

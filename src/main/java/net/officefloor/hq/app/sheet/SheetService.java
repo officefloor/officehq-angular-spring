@@ -164,6 +164,22 @@ public class SheetService {
         return year + "-" + next;
     }
 
+    /** The ids of the sheet's descendants: its children, their children and so on, the sheet itself left out. */
+    public Set<String> descendantsOf(String id) {
+        Set<String> seen = new HashSet<>(Set.of(id));
+        Set<String> found = new TreeSet<>();
+        Deque<String> todo = new ArrayDeque<>(List.of(id));
+        while (!todo.isEmpty()) {
+            for (String child : sheets.childIdsOf(todo.pop())) {
+                if (seen.add(child)) {
+                    found.add(child);
+                    todo.add(child);
+                }
+            }
+        }
+        return found;
+    }
+
     /** The ids of the sheets in the sheet's tree: its topmost ancestor and every sheet below it. */
     private SortedSet<String> treeOf(String id) {
         Set<String> seen = new HashSet<>();

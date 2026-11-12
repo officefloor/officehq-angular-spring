@@ -36,12 +36,12 @@ public class PlanController {
      * oldest first.
      */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated, String nextDates, boolean paused, List<ChangeView> changes) {
+            LocalDate end, String sheet, long generated, String nextDates, boolean paused, List<ChangeView> changes) {
 
         static PlanView of(Plan plan, long generated, List<LocalDate> nextDates, boolean paused,
                 List<PlanChange> changes) {
             return new PlanView(plan.getId(), plan.getPersonId(), money(plan.getAmount()), plan.getStart(),
-                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getTargetSheetId(), generated,
                     nextDates.stream().map(LocalDate::toString).collect(Collectors.joining(", ")), paused,
                     changes.stream().map(c -> new ChangeView(c.getChangedOn(), money(c.getAmount()))).toList());
         }
@@ -65,13 +65,15 @@ public class PlanController {
 
     /**
      * An amount with up to two decimals, a start and end date, and either the interval in whole days or the day of the
-     * month (the other blank or left out).
+     * month (the other blank or left out), and optionally the id of a descendant sheet its claims are made on (blank
+     * or left out: this sheet).
      */
     public record PlanRequest(
             @NotNull @Pattern(regexp = "\\s*\\d{1,10}(\\.\\d{1,2})?\\s*") String amount,
             @NotNull LocalDate start,
             @Pattern(regexp = "\\s*(\\d{1,6})?\\s*") String every,
             @Pattern(regexp = "\\s*(\\d{1,6})?\\s*") String day,
+            @Size(max = 100) String sheet,
             @NotNull LocalDate end) {
 
         BigDecimal amountValue() {
@@ -84,6 +86,10 @@ public class PlanController {
 
         Integer dayValue() {
             return whole(day);
+        }
+
+        String sheetValue() {
+            return sheet == null || sheet.isBlank() ? null : sheet.trim();
         }
 
         private static Integer whole(String text) {
@@ -123,7 +129,7 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user,
             @RequestBody @Valid PlanRequest request) {
         Plan plan = service.add(sheetId.trim(), user.trim(), personId, request.amountValue(), request.start(),
-                request.everyValue(), request.dayValue(), request.end());
+                request.everyValue(), request.dayValue(), request.end(), request.sheetValue());
         return PlanView.of(plan, 0, service.nextDates(sheetId.trim(), plan), false, List.of());
     }
 

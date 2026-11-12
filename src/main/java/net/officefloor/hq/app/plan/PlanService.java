@@ -23,7 +23,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * many days (at least 1) or, run monthly, a day of the month (1 to 31), and an end date not before its start. Generate makes, for every plan on the sheet in the order
  * they were added, a DRAFT claim of its amount with an empty note for each plan date (the start, then every so many
  * days) up to its end and the sheet's today that it has made none for yet, each added as the claim form adds one: a
- * date the claim form refuses is skipped, and tried again by the next generate.
+ * date the claim form refuses is skipped, and tried again by the next generate. A plan may name one of the sheet's
+ * descendants: its claims are then made on that sheet, for the person there of the same name (none when there is no
+ * such person), as that sheet's claim form adds them; the plan still counts what it made.
  */
 @Service
 public class PlanService {
@@ -113,7 +115,7 @@ public class PlanService {
 
     @Transactional
     public Plan add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String targetSheetId) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, personId));
         if (amount.signum() <= 0) {
@@ -131,10 +133,14 @@ public class PlanService {
         if (end.isBefore(start)) {
             throw new PlanRefusedException("A plan's end may not be before its start");
         }
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end));
+        if (targetSheetId != null && !sheets.descendantsOf(sheetId).contains(targetSheetId)) {
+            throw new PlanRefusedException("A plan's sheet must be one of this sheet's descendants");
+        }
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, amount, start, every, day, end, targetSheetId));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " amount=" + amount.setScale(2, RoundingMode.UNNECESSARY).toPlainString()
-                + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+                + " start=" + start + (day != null ? " day=" + day : " every=" + every) + " end=" + end
+                + (targetSheetId != null ? " sheet=" + targetSheetId : ""));
         return saved;
     }
 
@@ -201,10 +207,14 @@ public class PlanService {
         Map<Long, List<PlanPause>> paused = pausesByPlan(sheetId);
         int count = 0;
         for (Plan plan : list(sheetId)) {
+            Long personId = claimant(sheetId, plan);
+            if (personId == null) {
+                continue;
+            }
             Set<LocalDate> done = made.getOrDefault(plan.getId(), Set.of());
             List<PlanPause> its = paused.getOrDefault(plan.getId(), List.of());
             for (LocalDate date : plan.datesUpTo(today)) {
-                if (!done.contains(date) && !skipped(its, date) && make(sheetId, user, plan, date)) {
+                if (!done.contains(date) && !skipped(its, date) && make(sheetId, user, plan, personId, date)) {
                     count++;
                 }
             }
@@ -212,11 +222,28 @@ public class PlanService {
         return count;
     }
 
-    /** Make the plan's claim on the date as the claim form would: false when it refuses it (nothing is kept). */
-    private boolean make(String sheetId, String user, Plan plan, LocalDate date) {
+    /**
+     * The person the plan's claims are made for: the plan's own person, or, for a plan on a descendant sheet, the person
+     * of the same name there (null when there is none).
+     */
+    private Long claimant(String sheetId, Plan plan) {
+        if (plan.getTargetSheetId() == null) {
+            return plan.getPersonId();
+        }
+        return people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .flatMap(person -> people.findBySheetIdAndNameKey(plan.getTargetSheetId(), Person.key(person.getName())))
+                .map(Person::getId).orElse(null);
+    }
+
+    /**
+     * Make the plan's claim for the person on the date as the claim form of the plan's sheet (its own or the descendant
+     * it names) would: false when it refuses it (nothing is kept).
+     */
+    private boolean make(String sheetId, String user, Plan plan, Long personId, LocalDate date) {
+        String on = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
         try {
             each.executeWithoutResult(status -> {
-                claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), date, "", null);
+                claims.add(on, user, personId, plan.getAmount(), date, "", null);
                 dates.saveAndFlush(new PlanDate(sheetId, plan.getId(), date));
             });
             return true;

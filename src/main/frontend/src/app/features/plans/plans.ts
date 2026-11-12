@@ -20,7 +20,7 @@ const WHOLE = /^\d{1,6}$/;
         <li [attr.data-testid]="'plan-row-' + pl.id">
           {{ pl.amount }} from {{ pl.start }}
           @if (pl.day !== null) { monthly on day {{ pl.day }} } @else { every {{ pl.every }} days }
-          to {{ pl.end }};
+          to {{ pl.end }}@if (pl.sheet !== null) { on sheet {{ pl.sheet }}};
           made <span data-testid="plan-generated">{{ pl.generated | fig }}</span>;
           next <span data-testid="plan-next-dates">{{ pl.nextDates | fig }}</span>;
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
@@ -79,6 +79,14 @@ const WHOLE = /^\d{1,6}$/;
         [value]="day()"
         (input)="day.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-form-sheet-' + personId()" class="visually-hidden">Or on a descendant sheet</label>
+      <input
+        [id]="'plan-form-sheet-' + personId()"
+        data-testid="plan-form-sheet"
+        placeholder="Descendant sheet (optional)"
+        [value]="sheet()"
+        (input)="sheet.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()" class="visually-hidden">Plan end</label>
       <input
         [id]="'plan-form-end-' + personId()"
@@ -105,6 +113,8 @@ export class PersonPlans {
   protected readonly start = signal('');
   protected readonly every = signal('');
   protected readonly day = signal('');
+  /** The id of a descendant sheet the plan's claims are made on (blank: this sheet). */
+  protected readonly sheet = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
   /** The error of the last action on each plan's row, by plan id. */
@@ -159,6 +169,7 @@ export class PersonPlans {
       start: this.start().trim(),
       every: this.every().trim(),
       day: this.day().trim(),
+      sheet: this.sheet().trim(),
       end: this.end().trim(),
     };
     if (!AMOUNT.test(plan.amount) || Number(plan.amount) <= 0) {
@@ -192,6 +203,7 @@ export class PersonPlans {
       this.start.set('');
       this.every.set('');
       this.day.set('');
+      this.sheet.set('');
       this.end.set('');
     } catch (e) {
       const detail = e instanceof HttpErrorResponse && typeof e.error?.message === 'string' ? ` ${e.error.message}` : '';
