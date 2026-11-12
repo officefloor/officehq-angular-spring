@@ -144,8 +144,12 @@ public class RollupService {
         return new Snapshot(figures, shown(claimedTotal), shown(trimmedSum(dues)), shown(trimmedSum(overdues)));
     }
 
-    /** Figures added up over sheets: the number of people, the due-totals and the overdue-totals (two decimals). */
-    public record Consolidated(int people, String dueTotal, String overdueTotal) {
+    /**
+     * Figures added up over sheets: the number of people, the due-totals and the overdue-totals (two decimals); per
+     * grade, the due-totals of the people on it not retired (two decimals); and per status, how many claims have it.
+     */
+    public record Consolidated(int people, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
+            Map<String, Integer> statusCounts) {
     }
 
     /**
@@ -153,16 +157,33 @@ public class RollupService {
      * sheet's people, due-total and overdue-total as that sheet shows them, added up.
      */
     public Consolidated descendantFigures(String sheetId) {
+        return figuresOf(descendantsAsOf(sheetId));
+    }
+
+    /** The figures of the sheets, each sheet's as that sheet shows them, added up. */
+    private Consolidated figuresOf(List<String> sheetIds) {
         int count = 0;
         BigDecimal due = zero();
         BigDecimal overdue = zero();
-        for (String id : descendantsAsOf(sheetId)) {
+        Map<String, BigDecimal> gradeDues = new TreeMap<>();
+        Map<String, Integer> statuses = new TreeMap<>();
+        for (String id : sheetIds) {
             Snapshot figures = snapshot(id);
             count += figures.people().size();
             due = due.add(new BigDecimal(figures.dueTotal()));
             overdue = overdue.add(new BigDecimal(figures.overdueTotal()));
+            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
+                Figures theirs = figures.people().get(person.getId());
+                if (person.isRetired() || theirs == null || theirs.grade() == null || theirs.dueTotal().equals("n/a")) {
+                    continue;
+                }
+                gradeDues.merge(theirs.grade(), new BigDecimal(theirs.dueTotal()), BigDecimal::add);
+            }
+            for (Claim claim : claims.findBySheetIdOrderByIdDesc(id)) {
+                statuses.merge(claim.getStatus().name(), 1, Integer::sum);
+            }
         }
-        return new Consolidated(count, shown(due), shown(overdue));
+        return new Consolidated(count, shown(due), shown(overdue), shownAll(gradeDues), statuses);
     }
 
     /**
@@ -171,11 +192,18 @@ public class RollupService {
      * the end of that date, with the date as its today.
      */
     public Consolidated consolidatedFigures(String sheetId) {
-        Snapshot own = snapshot(sheetId);
+        Consolidated own = figuresOf(List.of(sheetId));
         Consolidated descendants = descendantFigures(sheetId);
-        return new Consolidated(own.people().size() + descendants.people(),
+        Map<String, BigDecimal> gradeDues = new TreeMap<>();
+        own.gradeDueTotals().forEach((grade, total) -> gradeDues.merge(grade, new BigDecimal(total), BigDecimal::add));
+        descendants.gradeDueTotals()
+                .forEach((grade, total) -> gradeDues.merge(grade, new BigDecimal(total), BigDecimal::add));
+        Map<String, Integer> statuses = new TreeMap<>(own.statusCounts());
+        descendants.statusCounts().forEach((status, n) -> statuses.merge(status, n, Integer::sum));
+        return new Consolidated(own.people() + descendants.people(),
                 shown(new BigDecimal(own.dueTotal()).add(new BigDecimal(descendants.dueTotal()))),
-                shown(new BigDecimal(own.overdueTotal()).add(new BigDecimal(descendants.overdueTotal()))));
+                shown(new BigDecimal(own.overdueTotal()).add(new BigDecimal(descendants.overdueTotal()))),
+                shownAll(gradeDues), statuses);
     }
 
     /**
@@ -622,6 +650,13 @@ public class RollupService {
 
     private static BigDecimal zero() {
         return BigDecimal.ZERO.setScale(2);
+    }
+
+    /** Each figure with two decimals. */
+    private static Map<String, String> shownAll(Map<String, BigDecimal> values) {
+        Map<String, String> shown = new TreeMap<>();
+        values.forEach((key, value) -> shown.put(key, shown(value)));
+        return shown;
     }
 
     private static String shown(BigDecimal value) {

@@ -79,11 +79,16 @@ interface PersonHold {
   to: string | null;
 }
 
-/** The figures of a sheet's descendants added up: their people, due-totals and overdue-totals. */
+/**
+ * The figures of a sheet's descendants added up: their people, due-totals and overdue-totals; per grade, the due-totals
+ * of the people on it not retired; and per status, how many claims have it.
+ */
 interface DescendantFigures {
   people: number;
   dueTotal: string;
   overdueTotal: string;
+  gradeDueTotals: Record<string, string>;
+  statusCounts: Record<string, number>;
 }
 
 /** A name as names are compared: trimmed, ignoring case. */
@@ -97,7 +102,13 @@ function compareKeys(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+const NO_DESCENDANTS: DescendantFigures = {
+  people: 0,
+  dueTotal: '0.00',
+  overdueTotal: '0.00',
+  gradeDueTotals: {},
+  statusCounts: {},
+};
 
 /** What decides which of a person's open claims leave the live totals: their retirement date (a hold does not). */
 type LeftOutBy = Pick<Person, 'retiredFrom'>;
@@ -167,6 +178,14 @@ function csvField(value: string): string {
         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() | fig }}</dd>
         <dt>Overdue total</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() | fig }}</dd>
+        @for (g of consolidatedGrades(); track g.grade) {
+          <dt>Grade {{ g.grade }} due total</dt>
+          <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal | fig }}</dd>
+        }
+        @for (s of consolidatedStatuses(); track s.status) {
+          <dt>{{ s.status }} claims</dt>
+          <dd [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count | fig }}</dd>
+        }
       </dl>
     </section>
     <section aria-labelledby="dashboard-heading">
@@ -1134,6 +1153,20 @@ export class People {
   /** The sheet's overdue-total as shown and its descendants' added up. */
   protected readonly consolidatedOverdueTotal = computed(() =>
     sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
+  );
+  /** Per grade: the sheet's due-total of the people on it not retired, as the summary shows it, and its descendants'. */
+  protected readonly consolidatedGrades = computed(() =>
+    this.gradeSummary().map((g) => ({
+      grade: g.grade,
+      dueTotal: sumDues([g.dueTotal, this.descendantFigures().gradeDueTotals[g.grade] ?? '0.00']),
+    })),
+  );
+  /** Per status: how many of the sheet's claims have it, and its descendants'. */
+  protected readonly consolidatedStatuses = computed(() =>
+    this.statusSummary().map((s) => ({
+      status: s.status,
+      count: s.count + (this.descendantFigures().statusCounts[s.status] ?? 0),
+    })),
   );
   /** The person's tags, sorted; none when they have none. */
   protected personTagsOf(person: Person): string[] {
