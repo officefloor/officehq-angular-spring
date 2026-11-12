@@ -89,6 +89,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Whether the sheet is archived: everything stays visible and every change is refused. */
+    @Column(name = "archived", nullable = false)
+    private boolean archived;
+
     protected Sheet() {
     }
 
@@ -247,6 +251,14 @@ public class Sheet {
         List<String> allowed = typed == null ? STANDING_PERMISSIONS.getOrDefault(action, List.of())
                 : Arrays.stream(typed.split(",")).map(String::trim).toList();
         return allowed.contains(role);
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void archive() {
+        this.archived = true;
     }
 
     public LocalDate getPolicyDate() {

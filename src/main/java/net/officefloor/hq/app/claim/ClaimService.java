@@ -406,7 +406,7 @@ public class ClaimService {
     @Transactional
     public BulkOpened bulkOpen(String sheetId, String user, Collection<Long> claimIds) {
         Set<Long> chosen = new HashSet<>(claimIds);
-        if (roles.isViewer(sheetId, user)) {
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
             return new BulkOpened(0, chosen.size(), List.of());
         }
         List<Claim> opened = new ArrayList<>();
@@ -432,7 +432,7 @@ public class ClaimService {
     @Transactional
     public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> claimIds) {
         Set<Long> chosen = new HashSet<>(claimIds);
-        if (roles.isViewer(sheetId, user)) {
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
             return new BulkSettled(0, chosen.size(), List.of());
         }
         List<Claim> settled = new ArrayList<>();

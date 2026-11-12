@@ -53,6 +53,8 @@ import { SummaryPanel } from '../summary/summary';
             />
             <button type="submit" data-testid="sheet-today-save" [disabled]="savingToday()">Set today</button>
           </form>
+          <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
+          <button type="button" data-testid="sheet-archive" [disabled]="archiving()" (click)="archive()">Archive sheet</button>
           @if (todayError(); as err) {
             <p role="alert" data-testid="sheet-error">{{ err }}</p>
           }
@@ -100,6 +102,7 @@ export class Home {
   protected readonly todayInput = signal('');
   protected readonly todayError = signal<string | null>(null);
   protected readonly savingToday = signal(false);
+  protected readonly archiving = signal(false);
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
@@ -123,6 +126,17 @@ export class Home {
       );
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  protected async archive(): Promise<void> {
+    if (this.archiving()) return; // a second press before the first has answered
+    this.todayError.set(null);
+    this.archiving.set(true);
+    try {
+      this.todayError.set(await this.session.archive());
+    } finally {
+      this.archiving.set(false);
     }
   }
 

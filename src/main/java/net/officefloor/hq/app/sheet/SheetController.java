@@ -29,12 +29,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its grace days (none: off).
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived.
      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
-            List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays) {
+            List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
+            boolean archived) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -45,7 +46,7 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     sheet.getSettings().stream().map(SettingView::of).toList(),
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
-                    sheet.getPermissions(), sheet.getGraceDays());
+                    sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived());
         }
     }
 
@@ -126,6 +127,13 @@ public class SheetController {
     public SheetView load(@PathVariable @NotBlank @Size(max = 200) String id,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         return SheetView.of(service.load(id.trim(), user.trim()));
+    }
+
+    /** Archive the sheet (a steward only). */
+    @PostMapping("/{id}/archive")
+    public SheetView archive(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return SheetView.of(service.archive(id.trim(), user.trim()));
     }
 
     /** Change the sheet's today. */

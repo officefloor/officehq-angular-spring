@@ -7,6 +7,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.period.PeriodService;
+import net.officefloor.hq.app.role.ActionNotAllowedException;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -21,16 +23,48 @@ public class SheetService {
     private final PeriodRepository periods;
     private final PeriodService periodService;
     private final Rollup rollup;
+    private final RoleService roles;
     private final Audit audit;
 
     public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences, PeriodRepository periods,
-            PeriodService periodService, Rollup rollup, Audit audit) {
+            PeriodService periodService, Rollup rollup, RoleService roles, Audit audit) {
         this.sheets = sheets;
         this.sequences = sequences;
         this.periods = periods;
         this.periodService = periodService;
         this.rollup = rollup;
+        this.roles = roles;
         this.audit = audit;
+    }
+
+    /** Whether the sheet is archived; a sheet never loaded is not. */
+    @Transactional(readOnly = true)
+    public boolean isArchived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+    }
+
+    /** Refuse any change to an archived sheet. */
+    public void requireNotArchived(String id) {
+        if (isArchived(id)) {
+            throw new SheetArchivedException();
+        }
+    }
+
+    /** A steward archives the sheet: everything stays visible and every change is refused from then on.
+     *  Anyone but a steward is refused, as is a sheet already archived. */
+    @Transactional
+    public Sheet archive(String id, String user) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        if (sheet.isArchived()) {
+            throw new SheetArchivedException();
+        }
+        if (!roles.isSteward(id, user)) {
+            throw new ActionNotAllowedException("archive the sheet");
+        }
+        sheet.archive();
+        sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + user);
+        return sheet;
     }
 
     @Transactional

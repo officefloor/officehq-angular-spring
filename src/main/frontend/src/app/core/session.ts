@@ -31,6 +31,8 @@ export interface SheetView {
   /** The grace days: a today change closes each open period whose to-date plus these days is before it;
    *  null when off. */
   graceDays: number | null;
+  /** Whether the sheet is archived: everything stays visible and every change is refused. */
+  archived: boolean;
 }
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
@@ -98,6 +100,8 @@ export class Session {
   /** The sheet's grace days; null when off. A today change closes each open period whose to-date plus these
    *  days is before the new today. */
   readonly graceDays = signal<number | null>(null);
+  /** Whether the sheet is archived: everything stays visible and every change is refused. */
+  readonly archived = signal(false);
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -124,6 +128,7 @@ export class Session {
       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
       this.permissions.set(sheet.permissions);
       this.graceDays.set(sheet.graceDays);
+      this.archived.set(sheet.archived);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -146,6 +151,24 @@ export class Session {
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not change today (${e.status}).` : 'Could not change today.';
+    }
+  }
+
+  /** Archive the sheet (a steward only); an error message when refused. */
+  async archive(): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/archive`, null, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.archived.set(sheet.archived);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not archive the sheet (${e.status}).` : 'Could not archive the sheet.';
     }
   }
 
