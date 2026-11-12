@@ -18,11 +18,30 @@ export class Figures {
   private readonly rates = inject(Rates);
   private readonly session = inject(Session);
 
+  /** A person's due-total: the sum of their figures, at most the sheet's cap. Null (n/a) is not capped. */
+  dueCents(p: Person): bigint | null {
+    const sum = this.sumCents(p);
+    const cap = this.capCents();
+    return sum !== null && cap !== null && sum > cap ? cap : sum;
+  }
+
+  /** How far the sum of a person's figures is above the sheet's cap; 0 when it is not (or is n/a). */
+  excessCents(p: Person): bigint {
+    const sum = this.sumCents(p);
+    const cap = this.capCents();
+    return sum !== null && cap !== null && sum > cap ? sum - cap : 0n;
+  }
+
+  private capCents(): bigint | null {
+    const cap = this.session.cap();
+    return cap === null ? null : hundredths(cap);
+  }
+
   /** The sum of the figures of a person's claims that count live (not left out by a hold): a settled claim's frozen due, else the
    *  figure their last statement bound it to, else its live due at the rate in force on its date (a
    *  claim with no figure adds nothing). Null when the grade in force on the sheet's today has no rate
    *  there and no claim has a figure. */
-  dueCents(p: Person): bigint | null {
+  sumCents(p: Person): bigint | null {
     let sum = 0n;
     let keptFigure = false;
     for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
@@ -36,7 +55,7 @@ export class Figures {
     return rated || keptFigure ? sum : null;
   }
 
-  /** Everyone's due-total added up, skipping those whose grade has no rate. */
+  /** Everyone's (capped) due-total added up, skipping those whose grade has no rate. */
   readonly dueTotal = computed(() =>
     money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
   );

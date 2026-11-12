@@ -73,6 +73,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The most a person's due-total can be; none when there is no cap. */
+    @Column(name = "due_cap")
+    private BigDecimal cap;
+
     protected Sheet() {
     }
 
@@ -117,6 +121,19 @@ public class Sheet {
 
     public void setFloor(BigDecimal floor) {
         this.floor = floor;
+    }
+
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
+    }
+
+    /** A person's due-total as it counts: at most the cap; none (n/a) stays none. */
+    public BigDecimal capped(BigDecimal dueTotal) {
+        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
     public int getTerms() {

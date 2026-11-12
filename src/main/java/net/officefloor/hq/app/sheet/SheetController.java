@@ -28,16 +28,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), and the terms of each grade that has its own. */
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap). */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
-            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
+            LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().toPlainString(), sheet.getPolicyDate(),
-                    sheet.getPeriodNumberingFrom(), sheet.getGradeTerms());
+                    sheet.getPeriodNumberingFrom(), sheet.getGradeTerms(),
+                    sheet.getCap() == null ? null : sheet.getCap().toPlainString());
         }
     }
 
@@ -47,6 +48,10 @@ public class SheetController {
 
     /** The sheet's floor: the least a claim's live due can be. */
     public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal floor) {
+    }
+
+    /** The sheet's cap: the most a person's due-total can be; a missing one means no cap. */
+    public record CapRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal cap) {
     }
 
     /** The sheet's terms: the number of days after a claim's date it is due by. */
@@ -107,6 +112,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid FloorRequest request) {
         return SheetView.of(service.setFloor(id.trim(), user.trim(), request.floor()));
+    }
+
+    /** Change the sheet's cap. */
+    @PutMapping("/{id}/settings/cap")
+    public SheetView setCap(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid CapRequest request) {
+        return SheetView.of(service.setCap(id.trim(), user.trim(), request.cap()));
     }
 
     /** Change the sheet's terms. */

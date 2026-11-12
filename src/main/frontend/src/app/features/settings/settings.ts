@@ -4,7 +4,7 @@ import { ROLES, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
 // The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
-// floor (the least a claim's live due can be), the terms (the days after a claim's date it is due by, fixed
+// floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the terms (the days after a claim's date it is due by, fixed
 // when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), the
 // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
 // date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), the
@@ -35,6 +35,17 @@ import { Session } from '../../core/session';
           (input)="floor.set(value($event)); floorTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
+        <label for="setting-cap">Cap (the most a person's due-total can be; blank for none)</label>
+        <input
+          id="setting-cap"
+          data-testid="setting-cap"
+          inputmode="decimal"
+          [value]="cap()"
+          (input)="cap.set(value($event)); capTouched.set(true); error.set(null)"
+          (keydown.delete)="capTouched.set(true); error.set(null)"
+          (keydown.backspace)="capTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
         <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
         <input
           id="setting-terms"
@@ -137,6 +148,8 @@ export class SettingsPanel {
   protected readonly limitTouched = signal(false);
   protected readonly floor = signal('');
   protected readonly floorTouched = signal(false);
+  protected readonly cap = signal('');
+  protected readonly capTouched = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTouched = signal(false);
   protected readonly grades = GRADES;
@@ -179,20 +192,23 @@ export class SettingsPanel {
       // Only the settings typed into since the last save change (a delete in a blank field that may be blank
       // counts: it saves the blank). With none, the settings that may be blank
       // are saved where they differ from the value in force (a blank field clears one), else the clerk limit.
-      const untouched = !this.limitTouched() && !this.floorTouched() && !this.termsTouched()
+      const untouched = !this.limitTouched() && !this.floorTouched() && !this.capTouched() && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
         && this.gradeTermsTouched().size === 0;
       const floor = this.floorTouched();
+      const cap = this.capTouched()
+        || (untouched && this.cap().trim() !== (this.session.cap() ?? ''));
       const terms = this.termsTouched();
       const latePct = this.latePctTouched();
       const policyDate = this.policyDateTouched()
         || (untouched && this.policyDate().trim() !== (this.session.policyDate() ?? ''));
       const numberingFrom = this.numberingFromTouched()
         || (untouched && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
-      const limit = this.limitTouched() || (untouched && !policyDate && !numberingFrom)
+      const limit = this.limitTouched() || (untouched && !cap && !policyDate && !numberingFrom)
         || (untouched && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
         ?? (floor ? await this.session.setFloor(this.floor()) : null)
+        ?? (cap ? await this.session.setCap(this.cap()) : null)
         ?? (terms ? await this.session.setTerms(this.terms()) : null)
         ?? (await this.saveGradeTerms())
         ?? (latePct ? await this.session.setLatePct(this.latePct()) : null)
@@ -204,6 +220,8 @@ export class SettingsPanel {
         this.limitTouched.set(false);
         this.floor.set('');
         this.floorTouched.set(false);
+        this.cap.set('');
+        this.capTouched.set(false);
         this.terms.set('');
         this.termsTouched.set(false);
         this.gradeTerms.set({});

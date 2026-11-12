@@ -315,7 +315,9 @@ public class ClaimService {
             counted++;
         }
         boolean rated = rates.findInForce(sheetId, person.gradeOn(today), today).isPresent();
-        BigDecimal dueTotal = rated || figure ? total : null;
+        BigDecimal summed = total;
+        BigDecimal dueTotal = rated || figure
+                ? sheetRows.findById(sheetId).map(s -> s.capped(summed)).orElse(summed) : null;
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

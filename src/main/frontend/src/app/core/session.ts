@@ -19,6 +19,8 @@ export interface SheetView {
   periodNumberingFrom: string | null;
   /** The terms of each grade that has its own; a grade without uses the sheet's terms. */
   gradeTerms: Record<string, number>;
+  /** The most a person's due-total can be, two decimals; null when there is no cap. */
+  cap: string | null;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
@@ -35,6 +37,8 @@ export class Session {
   readonly clerkLimit = signal<string | null>(null);
   /** The sheet's floor (two decimals): the least a claim's live due can be. */
   readonly floor = signal<string>('1.00');
+  /** The sheet's cap (two decimals): the most a person's due-total can be; null when there is none. */
+  readonly cap = signal<string | null>(null);
   /** The sheet's terms: the number of days after a claim's date it is due by. */
   readonly terms = signal<number>(14);
   /** The terms of each grade that has its own (a claim added for it is due that many days after its date);
@@ -72,6 +76,7 @@ export class Session {
       this.today.set(sheet.today);
       this.clerkLimit.set(sheet.clerkLimit);
       this.floor.set(sheet.floor);
+      this.cap.set(sheet.cap);
       this.terms.set(sheet.terms);
       this.gradeTerms.set(sheet.gradeTerms);
       this.latePct.set(sheet.latePct);
@@ -136,6 +141,26 @@ export class Session {
         }),
       );
       if (this.sheetId() === sheet.id) this.floor.set(sheet.floor);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's cap (blank: no cap); an error message when refused. */
+  async setCap(cap: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const c = cap.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (c && !/^\d+(\.\d{1,2})?$/.test(c)) return 'Enter a cap of 0.00 or more, with up to two decimals, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/cap`, { cap: c || null }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.cap.set(sheet.cap);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

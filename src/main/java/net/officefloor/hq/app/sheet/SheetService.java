@@ -80,6 +80,19 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's cap: the most a person's due-total can be (none: no cap), recording the figures
+     *  it moves. */
+    @Transactional
+    public Sheet setCap(String id, String user, BigDecimal cap) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(id);
+        sheet.setCap(cap == null ? null : cap.setScale(2));
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=cap value="
+                + (sheet.getCap() == null ? "" : sheet.getCap().toPlainString()));
+        rollup.recordChanges(id, user, before);
+        return sheet;
+    }
+
     /** Change the sheet's terms: the number of days after a claim's date it is due by, for a claim added
      *  later whose grade has no terms of its own. A claim already added keeps its due-by. */
     @Transactional

@@ -90,7 +90,7 @@ public class Rollup {
                 }
             }
             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
-            BigDecimal personDue = rated || keptFigure ? due : null;
+            BigDecimal personDue = rated || keptFigure ? capped(sheet, due) : null;
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue));
             claimedTotal = claimedTotal.add(claimed);
             if (personDue != null) {
@@ -196,6 +196,11 @@ public class Rollup {
             return figure;
         }
         return figure.add(sheet.map(s -> s.lateCharge(figure, claim.getDueBy(), claim.getDate())).orElse(ZERO));
+    }
+
+    /** A person's due-total at most the sheet's cap. */
+    private static BigDecimal capped(Optional<Sheet> sheet, BigDecimal dueTotal) {
+        return sheet.map(s -> s.capped(dueTotal)).orElse(dueTotal);
     }
 
     private static boolean sameDue(BigDecimal a, BigDecimal b) {
