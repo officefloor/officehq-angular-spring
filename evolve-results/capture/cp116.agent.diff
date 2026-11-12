@@ -1,0 +1,216 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 68bd0f3c4..afdd05bb0 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -150,21 +150,26 @@ export class People {
+     }
+   }
+ 
+-  /** Add a person for each pasted line of name,grade,terms,contact, in order; how many were added, or
+-   *  an error message when any line is refused (then the server adds none). */
+-  async importPeople(text: string): Promise<number | string> {
++  /** Update the person each pasted line of name,grade,terms,contact names, or add one, in order; how many
++   *  were added and updated, or an error message when any line is refused (then the server changes none). */
++  async importPeople(text: string): Promise<{ added: number; updated: number } | string> {
+     const sid = this.session.sheetId();
+     const user = this.session.user();
+     if (!user || !sid) return 'Load a sheet first.';
+     if (!text.trim()) return 'Paste at least one line of name,grade,terms,contact.';
+     try {
+       const done = await firstValueFrom(
+-        this.http.post<{ added: number; people: Person[] }>(`${this.url(sid)}/import`, { text }, {
+-          headers: { 'X-User': user },
+-        }),
++        this.http.post<{ added: number; people: Person[]; updated: number; changed: Person[] }>(
++          `${this.url(sid)}/import`,
++          { text },
++          { headers: { 'X-User': user } },
++        ),
+       );
+-      if (this.session.sheetId() === sid) this.people.update((ps) => [...ps, ...done.people]);
+-      return done.added;
++      if (this.session.sheetId() === sid) {
++        const changed = new Map(done.changed.map((p) => [p.id, p]));
++        this.people.update((ps) => [...ps.map((p) => changed.get(p.id) ?? p), ...done.people]);
++      }
++      return { added: done.added, updated: done.updated };
+     } catch (e) {
+       return failed('add', e).replace(' person', ' people');
+     }
+diff --git a/src/main/frontend/src/app/features/people/import-people.ts b/src/main/frontend/src/app/features/people/import-people.ts
+index 07f3b57c3..b4a314e4a 100644
+--- a/src/main/frontend/src/app/features/people/import-people.ts
++++ b/src/main/frontend/src/app/features/people/import-people.ts
+@@ -1,8 +1,9 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { People } from '../../core/people';
+ 
+-// An import box of name,grade,terms,contact lines, each a person added as the person form would; reports
+-// how many were added, or why the import was refused (then no one is added).
++// An import box of name,grade,terms,contact lines, each updating the person it names (by name or alias) or
++// adding one, as the person form would; reports how many were added and updated, or why the import was
++// refused (then no one is changed).
+ @Component({
+   selector: 'app-import-people',
+   template: `
+@@ -16,8 +17,11 @@ import { People } from '../../core/people';
+         (input)="text.set(value($event)); error.set(null)"
+       ></textarea>
+       <button type="submit" data-testid="import-submit" [disabled]="running()">Import people</button>
+-      @if (added() !== null) {
+-        <p>Added <span data-testid="import-added">{{ added() }}</span></p>
++      @if (done(); as d) {
++        <p>
++          Added <span data-testid="import-added">{{ d.added }}</span>, updated
++          <span data-testid="import-updated">{{ d.updated }}</span>
++        </p>
+       }
+       @if (error(); as err) {
+         <p role="alert" data-testid="import-error">{{ err }}</p>
+@@ -29,20 +33,20 @@ export class ImportPeople {
+   private readonly people = inject(People);
+   protected readonly text = signal('');
+   protected readonly running = signal(false);
+-  protected readonly added = signal<number | null>(null);
++  protected readonly done = signal<{ added: number; updated: number } | null>(null);
+   protected readonly error = signal<string | null>(null);
+ 
+   protected async import(e: Event): Promise<void> {
+     e.preventDefault();
+     if (this.running()) return; // a second submit before the first has answered
+-    this.added.set(null);
++    this.done.set(null);
+     this.error.set(null);
+     this.running.set(true);
+     try {
+       const done = await this.people.importPeople(this.text());
+       if (typeof done === 'string') this.error.set(done);
+       else {
+-        this.added.set(done);
++        this.done.set(done);
+         this.text.set('');
+       }
+     } finally {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index a890e83a1..f5f620610 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -178,19 +178,21 @@ public class PersonController {
+     public record ImportRequest(@NotNull @Size(max = 1000000) String text) {
+     }
+ 
+-    /** How many an import added, and the people it added, in the order of their lines. */
+-    public record ImportView(int added, List<PersonView> people) {
++    /** How many an import added and updated, the people it added and those it updated, each in the order
++     *  of their lines. */
++    public record ImportView(int added, List<PersonView> people, int updated, List<PersonView> changed) {
+     }
+ 
+-    /** Add a person for each imported line, in order; one refused line refuses them all. */
++    /** Update the person each imported line names, or add one, in order; one refused line refuses them all. */
+     @PostMapping("/import")
+     public ImportView importPeople(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid ImportRequest request) {
+-        List<Person> added = service.importPeople(sheetId.trim(), user.trim(), request.text());
++        PersonService.ImportResult done = service.importPeople(sheetId.trim(), user.trim(), request.text());
+         LocalDate today = service.today(sheetId.trim());
+-        return new ImportView(added.size(), added.stream()
+-                .map(p -> PersonView.of(p, today, List.of(), List.of(), false, service.clashing(p))).toList());
++        return new ImportView(done.added().size(), done.added().stream()
++                .map(p -> PersonView.of(p, today, List.of(), List.of(), false, service.clashing(p))).toList(),
++                done.updated().size(), done.updated().stream().map(p -> view(p, user.trim())).toList());
+     }
+ 
+     /** An import with a refused line is refused with the reason, for the screen to show. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index ed346aee0..2ef525114 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -186,15 +186,24 @@ public class PersonService {
+     private record ImportLine(int number, String name, String grade, Integer terms, String contact) {
+     }
+ 
++    /** What an import did: the people it added and those it updated, each in line order. */
++    public record ImportResult(List<Person> added, List<Person> updated) {
++    }
++
+     /** The import box: lines of name,grade,terms,contact (the last two may be absent or blank), blank lines
+-     *  skipped. Every line is checked first with the person form's rules, a name or contact repeated within
+-     *  the import too (ignoring case); a refused line refuses the import, adding no one and writing nothing.
+-     *  Otherwise each is added in order, exactly as the form adds them. The people added, in line order. */
++     *  skipped. A line whose name is a name or alias on the sheet (ignoring case) updates that person; any
++     *  other adds one. Every line is checked first with the person form's rules, a name, person or contact
++     *  repeated within the import too (ignoring case); a refused line refuses the import, changing no one and
++     *  writing nothing. Otherwise each is applied in order: an add exactly as the form adds, an update as the
++     *  form saves, keeping their name, recording the grade from the sheet's today, and setting their terms
++     *  and contact only when the line gives them. */
+     @Transactional
+-    public List<Person> importPeople(String sheetId, String user, String text) {
++    public ImportResult importPeople(String sheetId, String user, String text) {
+         requireSheet(sheetId);
+         List<ImportLine> lines = new ArrayList<>();
++        Map<ImportLine, Person> matched = new HashMap<>();
+         Set<String> names = new HashSet<>();
++        Set<Long> matchedIds = new HashSet<>();
+         Set<String> contacts = new HashSet<>();
+         Set<String> tree = namesInTree(sheetId, null);
+         String[] raw = text == null ? new String[0] : text.split("\\r?\\n");
+@@ -207,14 +216,24 @@ public class PersonService {
+             if (!names.add(lower)) {
+                 throw importRefused(line.number(), "the name " + line.name() + " is already in this import.");
+             }
+-            if (people.nameTaken(sheetId, line.name(), null) || tree.contains(lower)) {
++            Person match = people.findByNameOrAlias(sheetId, line.name()).orElse(null);
++            if (match != null) {
++                if (!matchedIds.add(match.getId())) {
++                    throw importRefused(line.number(), match.getName() + " is already in this import.");
++                }
++                if (Stream.concat(Stream.of(match.getName()), match.getAliases().stream())
++                        .anyMatch(n -> tree.contains(n.toLowerCase(Locale.ROOT)))) {
++                    throw importRefused(line.number(), "the name " + match.getName() + " is already in use.");
++                }
++                matched.put(line, match);
++            } else if (tree.contains(lower)) {
+                 throw importRefused(line.number(), "the name " + line.name() + " is already in use.");
+             }
+             if (line.contact() != null) {
+                 if (!contacts.add(line.contact())) {
+                     throw importRefused(line.number(), "the contact " + line.contact() + " is already in this import.");
+                 }
+-                if (people.contactTaken(sheetId, line.contact(), null)) {
++                if (people.contactTaken(sheetId, line.contact(), match == null ? null : match.getId())) {
+                     throw importRefused(line.number(), "the contact " + line.contact() + " is already in use.");
+                 }
+             }
+@@ -224,15 +243,26 @@ public class PersonService {
+             throw new PersonImportException("Paste at least one line of name,grade,terms,contact.");
+         }
+         List<Person> added = new ArrayList<>();
++        List<Person> updated = new ArrayList<>();
+         for (ImportLine line : lines) {
++            Person match = matched.get(line);
+             try {
+-                added.add(add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+-            } catch (PersonNameTakenException | PersonContactTakenException e) {
+-                // taken by another user at the same moment
++                if (match == null) {
++                    added.add(add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
++                } else {
++                    Person now = people.findByIdAndSheetId(match.getId(), sheetId)
++                            .orElseThrow(PersonNotFoundException::new);
++                    updated.add(update(sheetId, user, now.getId(), now.getVersion(), now.getName(), line.grade(),
++                            null, line.terms() != null ? line.terms() : now.getTerms(),
++                            line.contact() != null ? line.contact() : now.getContact(), true));
++                }
++            } catch (PersonNameTakenException | PersonContactTakenException | PersonNotFoundException
++                    | PersonVersionConflictException e) {
++                // changed by another user at the same moment
+                 throw importRefused(line.number(), e.getMessage());
+             }
+         }
+-        return added;
++        return new ImportResult(added, updated);
+     }
+ 
+     private static ImportLine parseImport(int number, String raw) {
