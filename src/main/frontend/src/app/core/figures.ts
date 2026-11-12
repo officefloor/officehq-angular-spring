@@ -92,14 +92,15 @@ export class Figures {
   }
 
   /** A claim's figure: its settled due, else the figure its person's last statement bound it to (not
-   *  while PENDING), else its live due at the rate in force on its date, an overdue claim's late charge on top;
+   *  while PENDING), else its live due at the rate in force on its date, an overdue claim's late charge on top, at
+   *  least the floor;
    *  nothing when it has no figure. */
   figureCents(c: Claim, p: Person): bigint {
     if (c.settledDue !== null) return hundredths(c.settledDue);
     const f = bound(c)
-      ? (c.statedDue === null ? 0n : hundredths(c.statedDue))
-      : (this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c)) ?? 0n);
-    return f + this.claims.lateCents(c, f);
+      ? (c.statedDue === null ? null : hundredths(c.statedDue))
+      : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c));
+    return f === null ? 0n : this.claims.chargedCents(c, f);
   }
 
   /** The grade in force on the sheet's today, the one the list shows. */
@@ -127,7 +128,7 @@ export class Figures {
         const grade = grades.get(c.personId);
         due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date, this.claims.roundingDate(c));
       }
-      if (due !== null && c.settledDue === null) due += this.claims.lateCents(c, due);
+      if (due !== null && c.settledDue === null) due = this.claims.chargedCents(c, due);
       const byPerson = sums.get(period.id) ?? new Map<number, bigint>();
       byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0n) + (due ?? 0n));
       sums.set(period.id, byPerson);

@@ -252,9 +252,13 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new);
         BigDecimal old = claim.getSettledDue();
         BigDecimal figure = liveDue(claim, person);
-        BigDecimal due = figure == null || claim.isCorrection() ? figure
-                : figure.add(sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
-                        .lateCharge(figure, claim.getDueBy(), claim.getDate()));
+        BigDecimal due = null;
+        if (figure != null) {
+            Sheet sheet = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+            due = claim.isCorrection() ? figure
+                    : sheet.floored(figure.add(sheet.lateCharge(figure, claim.getDueBy(), claim.getDate())),
+                            claim.getDate());
+        }
         claim.setSettledDue(due);
         logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
@@ -467,8 +471,8 @@ public class ClaimService {
     }
 
     /** Take a person's statement: record their due-total now (late charges included) and how many claims
-     *  count, and bind each claim that counts to the figure it has now, under its late charge (the charge is
-     *  never bound: it keeps following the sheet's today; a PENDING claim is bound only once it is back to
+     *  count, and bind each claim that counts to its rate figure now, under its late charge and floor (the charge is
+     *  never bound: it keeps following the sheet's today, and the floor is applied on top; a PENDING claim is bound only once it is back to
      *  OPEN); a claim that does not count, is OPEN or PENDING and dated within one of its person's holds, or is
      *  deferred past the sheet's today, is left unbound. */
     @Transactional
@@ -582,19 +586,19 @@ public class ClaimService {
         return figure == null ? null : charged(claim, figure);
     }
 
-    /** A claim's figure with its late charge on the sheet's today on top while it is OPEN or PENDING. */
+    /** A claim's due from its figure: its late charge on the sheet's today on top while it is OPEN or
+     *  PENDING, then at least the floor in force on its date (a correction has neither). */
     private BigDecimal charged(Claim claim, BigDecimal figure) {
         return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, figure);
     }
 
-    /** The claim's amount at the rate in force on its date of its person's grade in force then, at least the sheet's floor in force then
-     *  (a correction has none); none when no rate applies. */
+    /** The claim's rate figure: its amount at the rate in force on its date of its person's grade in force
+     *  then, before any late charge or floor; none when no rate applies. */
     private BigDecimal liveDue(Claim claim, Person person) {
         Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
         RoundingMode rounding = sheet.rounding(roundingDate(claim));
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
-                .map(rate -> claim.isCorrection() ? due(claim.getAmount(), rate, rounding)
-                        : sheet.floored(due(claim.getAmount(), rate, rounding), claim.getDate()))
+                .map(rate -> due(claim.getAmount(), rate, rounding))
                 .orElse(null);
     }
 

@@ -218,7 +218,7 @@ export class PersonClaims {
     const f = bound(c)
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
       : this.rates.dueCents(hundredths(c.amount), gradeOn(this.grades(), c.date), c.date, this.claims.roundingDate(c));
-    return f === null ? NO_RATE : money(f + this.claims.lateCents(c, f));
+    return f === null ? NO_RATE : money(this.claims.chargedCents(c, f));
   }
 
   protected fid(field: string): string {

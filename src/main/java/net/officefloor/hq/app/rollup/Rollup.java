@@ -89,7 +89,6 @@ public class Rollup {
                     // a claim priced at the grade in force on its date keeps a figure too
                     BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                             .map(rate -> rated(sheet, claim, sheetClaims, rate))
-                            .map(d -> floored(sheet, claim, d))
                             .orElse(null);
                     if (live != null) {
                         keptFigure = true;
@@ -131,8 +130,8 @@ public class Rollup {
      *  id, every person on the sheet in the order they were added, as the screen shows a person's for a
      *  period: a claim counts by the status it had at the end of the last day, as its status log records
      *  it (one added after then does not), unless a hold or a deferral leaves it out now; each counts its
-     *  due as shown now: its settled due, else the figure its statement bound, else its live due, at
-     *  least the floor, an overdue claim's late charge on top (a claim with no figure adds nothing). */
+     *  due as shown now: its settled due, else the figure its statement bound, else its live due, an
+     *  overdue claim's late charge on top, at least the floor (a claim with no figure adds nothing). */
     public Map<Long, BigDecimal> dueBetweenByPerson(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
@@ -158,7 +157,6 @@ public class Rollup {
             } else {
                 due = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                         .map(rate -> rated(sheet, claim, sheetClaims, rate))
-                        .map(d -> floored(sheet, claim, d))
                         .orElse(null);
             }
             if (due != null) {
@@ -245,20 +243,17 @@ public class Rollup {
                 .findFirst().map(Claim::getDate).orElse(claim.getDate());
     }
 
-    /** A live due as it counts: at least the sheet's floor in force on its claim's date, unless its claim is
-     *  a correction. */
-    private static BigDecimal floored(Optional<Sheet> sheet, Claim claim, BigDecimal due) {
-        return claim.isCorrection() ? due : sheet.map(s -> s.floored(due, claim.getDate())).orElse(due);
-    }
-
-    /** A figure with its late charge on top while its claim is OPEN or PENDING (only those go overdue); a
-     *  settled claim's due already holds the charge frozen in when it was settled. A correction has no
-     *  late charge. */
+    /** A claim's due from its figure (its rate figure, or the one its statement bound): its late charge on
+     *  top while it is OPEN or PENDING (only those go overdue), then at least the sheet's floor in force on its
+     *  date. A settled claim's due is frozen (it already holds the charge and floor fixed when it was
+     *  settled); a correction has neither late charge nor floor. */
     public static BigDecimal charged(Optional<Sheet> sheet, Claim claim, BigDecimal figure) {
-        if (!claim.getStatus().isOpen() || claim.isCorrection()) {
+        if (claim.getSettledDue() != null || claim.isCorrection()) {
             return figure;
         }
-        return figure.add(sheet.map(s -> s.lateCharge(figure, claim.getDueBy(), claim.getDate())).orElse(ZERO));
+        return sheet.map(s -> s.floored(claim.getStatus().isOpen()
+                ? figure.add(s.lateCharge(figure, claim.getDueBy(), claim.getDate())) : figure, claim.getDate()))
+                .orElse(figure);
     }
 
     /** A person's due-total at most the sheet's cap. */

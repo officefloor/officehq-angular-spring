@@ -46,15 +46,12 @@ export class Rates {
   }
 
   /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded to cents as
-   *  a claim dated `roundOn` rounds (half up before the policy date, else half to even), and at least the sheet's floor in force on `date` unless the amount is negative (a correction has no
-   *  floor); null when no rate of the grade applies then. */
+   *  a claim dated `roundOn` rounds (half up before the policy date, else half to even): the rate figure,
+   *  before any late charge or floor; null when no rate of the grade applies then. */
   dueCents(amountCents: bigint, grade: string, date: string, roundOn: string = date): bigint | null {
     const rate = this.inForce(grade, date);
     if (rate === undefined) return null;
-    const due = rounded(amountCents * hundredths(rate.rate), 10000n, this.session.roundsHalfUp(roundOn));
-    if (amountCents < 0n) return due;
-    const floor = hundredths(this.session.floorOn(date));
-    return due < floor ? floor : due;
+    return rounded(amountCents * hundredths(rate.rate), 10000n, this.session.roundsHalfUp(roundOn));
   }
 
   /** An amount written with two decimals times the grade's rate on a date, as `dueCents`, shown
