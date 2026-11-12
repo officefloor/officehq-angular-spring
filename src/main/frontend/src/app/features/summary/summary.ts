@@ -87,6 +87,7 @@ export interface VoidReasonSummary {
         </tbody>
       </table>
       <p>Late for review <strong data-testid="summary-review-late-count">{{ reviewLateCount() | fig }}</strong></p>
+      <p>Late pending <strong data-testid="summary-pending-late-count">{{ pendingLateCount() | fig }}</strong></p>
       @if (voidReasons().length > 0) {
         <table>
           <caption>By void reason</caption>
@@ -113,6 +114,8 @@ export class Summary {
   readonly voidReasons = input<VoidReasonSummary[]>([]);
   /** How many REVIEW claims are late for review. */
   readonly reviewLateCount = input(0);
+  /** How many PENDING claims are late pending. */
+  readonly pendingLateCount = input(0);
 }
 
 /** A period's line of the classic summary: its due-total counting each claim by its status now. */

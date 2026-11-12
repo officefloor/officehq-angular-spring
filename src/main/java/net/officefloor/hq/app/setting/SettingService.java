@@ -254,6 +254,17 @@ public class SettingService {
         return saved;
     }
 
+    /** Set the pending SLA in days; null means none. Every save is recorded, even of the same value. */
+    @Transactional
+    public Sheet setPendingSla(String sheetId, String user, Integer days) {
+        Sheet sheet = get(sheetId);
+        sheet.setPendingSla(days);
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user + " key=pending-sla value="
+                + (days == null ? "" : days.toString()));
+        return saved;
+    }
+
     /** Set the most OPEN or PENDING claims a person may have; null means none. Every save is recorded, even of the same value. */
     @Transactional
     public Sheet setMaxOpen(String sheetId, String user, Integer maxOpen) {

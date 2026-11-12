@@ -626,6 +626,10 @@ public class ClaimService {
             claim.setOpenedBy(user);
             claim.setReviewOn(sheets.today(sheetId));
         }
+        // Sent to PENDING, it records its pending day, the latest time it went there.
+        if (status == ClaimStatus.PENDING) {
+            claim.setPendingOn(sheets.today(sheetId));
+        }
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         String event = switch (status) {

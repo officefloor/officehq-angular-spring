@@ -119,6 +119,10 @@ public class Claim {
     @Column(name = "review_on")
     private LocalDate reviewOn;
 
+    /** The day (the sheet's today then) the claim last went to PENDING; null when it never did. */
+    @Column(name = "pending_on")
+    private LocalDate pendingOn;
+
     /** The user whose open editor locks the claim against other users' edits; null when not locked. */
     @Column(name = "locked_by")
     private String lockedBy;
@@ -394,6 +398,14 @@ public class Claim {
         this.reviewOn = reviewOn;
     }
 
+    public LocalDate getPendingOn() {
+        return pendingOn;
+    }
+
+    public void setPendingOn(LocalDate pendingOn) {
+        this.pendingOn = pendingOn;
+    }
+
     public String getLockedBy() {
         return lockedBy;
     }
@@ -481,6 +493,7 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.reviewOn = reviewOn;
+        copy.pendingOn = pendingOn;
         copy.ref = ref;
         copy.tags = tags;
         copy.voidReason = voidReason;

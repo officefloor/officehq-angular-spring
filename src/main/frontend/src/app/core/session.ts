@@ -89,6 +89,9 @@ export class Session {
   /** The active sheet's review SLA in days: a REVIEW claim whose review day plus it is before the sheet's today is
    *  late; blank means none; null until the settings are read. */
   readonly reviewSla = signal<string | null>(null);
+  /** The active sheet's pending SLA in days: a PENDING claim whose pending day plus it is before the sheet's today is
+   *  late; blank means none; null until the settings are read. */
+  readonly pendingSla = signal<string | null>(null);
   /** The active sheet's mid score threshold (a whole number): while both thresholds are set, a person whose score is at
    *  or above it is MID; blank means none; null until the settings are read. */
   readonly scoreMid = signal<string | null>(null);
@@ -134,6 +137,16 @@ export class Session {
     const today = this.today();
     if (claim.status !== 'REVIEW' || !sla || claim.reviewOn === null || today === null) return false;
     const [y, m, d] = claim.reviewOn.split('-').map(Number);
+    const limit = new Date(Date.UTC(y, m - 1, d + Number(sla))).toISOString().slice(0, 10);
+    return limit < today;
+  }
+
+  /** Whether a claim is late pending: PENDING, with its pending day plus the pending SLA before the sheet's today. */
+  pendingLate(claim: { status: string; pendingOn: string | null }): boolean {
+    const sla = this.pendingSla();
+    const today = this.today();
+    if (claim.status !== 'PENDING' || !sla || claim.pendingOn === null || today === null) return false;
+    const [y, m, d] = claim.pendingOn.split('-').map(Number);
     const limit = new Date(Date.UTC(y, m - 1, d + Number(sla))).toISOString().slice(0, 10);
     return limit < today;
   }

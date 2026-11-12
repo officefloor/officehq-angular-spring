@@ -63,6 +63,8 @@ export interface Claim {
   rateStamp: number;
   /** The day (yyyy-mm-dd) the claim last went to REVIEW; null when it never did. */
   reviewOn: string | null;
+  /** The day (yyyy-mm-dd) the claim last went to PENDING; null when it never did. */
+  pendingOn: string | null;
   /** Its lines, oldest first: with any, its amount is their quantities times their unit amounts added up. */
   lines: ClaimLine[];
   /** Whether a steward waived its late charge: it then bears none, whatever its overdue state. */
@@ -430,6 +432,7 @@ export function sumAmounts(amounts: string[]): string {
                 </button>
               </td>
               <td data-testid="claim-review-late">{{ reviewLate(c) ? 'yes' : 'no' | fig }}</td>
+              <td data-testid="claim-pending-late">{{ pendingLate(c) ? 'yes' : 'no' | fig }}</td>
               <td>
                 <ol class="claim-log">
                   @for (line of c.log; track $index) {
@@ -873,6 +876,11 @@ export class Claims implements OnInit {
   /** Whether the claim is in REVIEW past the review SLA. */
   protected reviewLate(claim: Claim): boolean {
     return this.session.reviewLate(claim);
+  }
+
+  /** Whether the claim is PENDING past the pending SLA. */
+  protected pendingLate(claim: Claim): boolean {
+    return this.session.pendingLate(claim);
   }
 
   /** Whether the claim is OPEN and was due by (plus its grace) a day before the sheet's today. */

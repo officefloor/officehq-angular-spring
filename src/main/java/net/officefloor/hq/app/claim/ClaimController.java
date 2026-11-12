@@ -54,7 +54,8 @@ public class ClaimController {
             int proofs, String splitFrom, String lockedBy, boolean lateEntry, LocalDate remindedOn, String ref,
             String tags, String voidReason, List<ClaimCommentView> comments, Long settleBatch,
             List<ClaimLineView> lines, Long rateStamp, LocalDate reviewOn, boolean waived,
-            Map<String, Integer> proofsByKind, boolean held, List<ClaimShareView> shares, String reviewAssignee) {
+            Map<String, Integer> proofsByKind, boolean held, List<ClaimShareView> shares, String reviewAssignee,
+            LocalDate pendingOn) {
 
         /** A claim with no comments, lines or shares yet. */
         static ClaimView of(Claim claim, List<ClaimLog> log) {
@@ -77,7 +78,8 @@ public class ClaimController {
                     comments.stream().map(ClaimCommentView::of).toList(), claim.getSettleBatch(),
                     lines.stream().map(ClaimLineView::of).toList(), claim.rateStamp(), claim.getReviewOn(),
                     claim.isWaived(), proofsByKind(claim), claim.isHeld(),
-                    shares.stream().map(ClaimShareView::of).toList(), claim.getReviewAssignee());
+                    shares.stream().map(ClaimShareView::of).toList(), claim.getReviewAssignee(),
+                    claim.getPendingOn());
         }
 
         private static Map<String, Integer> proofsByKind(Claim claim) {
