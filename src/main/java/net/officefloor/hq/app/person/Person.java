@@ -73,7 +73,7 @@ public class Person {
     @Column(name = "retired_on")
     private LocalDate retiredOn;
 
-    /** The person's holds: their OPEN claims dated within one, not bound by a statement, count in no live total. */
+    /** The person's holds: on the sheet's today within one, the person gets no cut of a pool. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonHold> holds = new ArrayList<>();
@@ -369,36 +369,30 @@ public class Person {
     }
 
     /**
-     * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one held or dated
-     * within a hold, or once the person's retirement date is reached on the sheet's today, not unless a statement binds
-     * it, and an OPEN one deferred on the sheet's today not at all.
+     * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one once the
+     * person's retirement date is reached on the sheet's today not unless a statement binds it, and an OPEN one deferred
+     * on the sheet's today not at all. A hold (the person's or the claim's) does not take it out.
      */
     public boolean counts(Claim claim, LocalDate today) {
-        ClaimStatus status = claim.getStatus();
-        return status.counts()
-                && !(status.isOpen() && !claim.isBound() && (heldOn(claim.getDate()) || claim.isHeld() || retiredOn(today)))
-                && !claim.isDeferredOn(today);
-    }
-
-    /**
-     * Whether the claim's amount counts in claimed: as {@link #counts(Claim, LocalDate)}, but a hold (the person's or
-     * the claim's) does not take it out; only its due leaves the totals while held.
-     */
-    public boolean countsClaimed(Claim claim, LocalDate today) {
         ClaimStatus status = claim.getStatus();
         return status.counts() && !(status.isOpen() && !claim.isBound() && retiredOn(today))
                 && !claim.isDeferredOn(today);
     }
 
+    /** Whether the claim's amount counts in claimed: as {@link #counts(Claim, LocalDate)}. */
+    public boolean countsClaimed(Claim claim, LocalDate today) {
+        return counts(claim, today);
+    }
+
     /**
      * Whether the claim counts in a period's due-total, given the status it had at the end of the period's last day
-     * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and still open now and held or dated
-     * within a hold, or once the person's retirement date is reached on the sheet's today, not unless a statement binds
-     * it, and an OPEN one deferred on the sheet's today not at all.
+     * (null when it was added after): an OPEN, PENDING or SETTLED one, but one open then and still open now once the
+     * person's retirement date is reached on the sheet's today not unless a statement binds it, and an OPEN one deferred
+     * on the sheet's today not at all. A hold does not take it out.
      */
     public boolean countsAsOf(Claim claim, ClaimStatus status, LocalDate today) {
         return status != null && status.counts() && !(status.isOpen() && claim.getStatus().isOpen()
-                && !claim.isBound() && (heldOn(claim.getDate()) || claim.isHeld() || retiredOn(today))) && !claim.isDeferredOn(today);
+                && !claim.isBound() && retiredOn(today)) && !claim.isDeferredOn(today);
     }
 
     /**

@@ -111,7 +111,7 @@ public class RollupService {
                 if (claim.getCorrects() == null) {
                     claimed = claimed.add(claim.getAmount());
                 }
-                // A held claim stays in claimed; its due leaves the totals.
+                // A deferred or retired-out claim leaves the due totals.
                 if (!person.counts(claim, today)) {
                     continue;
                 }
@@ -323,8 +323,8 @@ public class RollupService {
     /**
      * Each person's due-total of the dates from and to, both inclusive, by person id for every person on the sheet, as
      * the screen shows a person's for a period: the dues as shown now of their claims due by a date in them that were OPEN,
-     * PENDING or SETTLED at the end of the to-date by their status log, skipping those with no due and the open ones a
-     * hold of theirs leaves out; 0.00 with none.
+     * PENDING or SETTLED at the end of the to-date by their status log, skipping those with no due and the open ones
+     * their retirement leaves out; 0.00 with none.
      */
     public Map<Long, BigDecimal> dueTotalsBetween(String sheetId, LocalDate from, LocalDate to) {
         Sheet sheet = sheets.findById(sheetId).orElse(null);

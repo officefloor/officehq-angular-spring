@@ -79,11 +79,6 @@ interface PersonHold {
   to: string | null;
 }
 
-/** Whether the date is within any of the holds. */
-function heldOn(holds: PersonHold[], date: string): boolean {
-  return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
-}
-
 /** The figures of a sheet's descendants added up: their people, due-totals and overdue-totals. */
 interface DescendantFigures {
   people: number;
@@ -104,39 +99,35 @@ function compareKeys(a: string, b: string): number {
 
 const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
 
-/** What decides which of a person's open claims leave the live totals: their holds and their retirement date. */
-type LeftOutBy = Pick<Person, 'holds' | 'retiredFrom'>;
+/** What decides which of a person's open claims leave the live totals: their retirement date (a hold does not). */
+type LeftOutBy = Pick<Person, 'retiredFrom'>;
 
 /**
- * Whether an open claim of the person, not bound by a statement, is left out of the live totals: one held, or dated
- * within a hold of theirs, or any once their retirement date is reached (the sheet's today on or after it).
+ * Whether an open claim of the person, not bound by a statement, is left out of the live totals: any once their
+ * retirement date is reached (the sheet's today on or after it).
  */
 function leftOut(claim: Claim, person: LeftOutBy, today: string | null): boolean {
   const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
-  return !bound(claim) && (claim.held || heldOn(person.holds, claim.date) || retired);
+  return !bound(claim) && retired;
 }
 
 /**
- * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one dated within
- * a hold of its person, or any once their retirement date is reached, not unless a statement binds it, and one deferred
+ * Whether the claim counts in the live totals: an OPEN, PENDING or SETTLED one, but an OPEN or PENDING one
+ * once their retirement date is reached, not unless a statement binds it, and one deferred
  * on the sheet's today not at all.
  */
 function live(claim: Claim, person: LeftOutBy, today: string | null): boolean {
   return counts(claim, today) && !(isOpen(claim) && leftOut(claim, person, today));
 }
 
-/**
- * Whether the claim's amount counts in claimed: as {@link live}, but a hold (the person's or the claim's) does not take
- * it out; only its due leaves the totals while held.
- */
+/** Whether the claim's amount counts in claimed: as {@link live}. */
 function claimedLive(claim: Claim, person: LeftOutBy, today: string | null): boolean {
-  const retired = person.retiredFrom !== null && today !== null && person.retiredFrom <= today;
-  return counts(claim, today) && !(isOpen(claim) && !bound(claim) && retired);
+  return live(claim, person, today);
 }
 
 /**
  * Whether the claim counts in a period's due-total: by the status it had at the end of the period's last day, an OPEN,
- * PENDING or SETTLED one, but one open then and still open now and dated within a hold of its person, or any once
+ * PENDING or SETTLED one, but one open then and still open now once
  * their retirement date is reached, not unless a statement binds it, and one deferred on the sheet's today not at all.
  */
 function liveAtEnd(claim: Claim, person: LeftOutBy, today: string | null, end: string): boolean {
@@ -1600,9 +1591,9 @@ export class People {
     return this.claimsByPerson().get(personId) ?? [];
   }
 
-  /** The sum of the person's OPEN, PENDING and SETTLED claims' amounts, with two decimals, leaving out corrections; open ones once their retirement date is reached, not unless a statement binds them (a hold leaves them in). */
+  /** The sum of the person's OPEN, PENDING and SETTLED claims' amounts, with two decimals, leaving out corrections; open ones once their retirement date is reached, not unless a statement binds them (a hold does not). */
   protected claimedBy(personId: number): string {
-    const person = this.people().find((p) => p.id === personId) ?? { holds: [], retiredFrom: null };
+    const person = this.people().find((p) => p.id === personId) ?? { retiredFrom: null };
     return sumAmounts(this.claimsOf(personId).filter((c) => c.corrects === null && claimedLive(c, person, this.session.today())).map((c) => c.amount));
   }
 

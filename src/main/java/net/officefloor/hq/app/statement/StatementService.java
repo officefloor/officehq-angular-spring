@@ -163,8 +163,7 @@ public class StatementService {
             ClaimStatus status = statusAsOf(claim, asOf);
             boolean bound = bindingsStood && claim.isStated();
             boolean counts = status != null && status.counts()
-                    && !(status.isOpen() && !bound
-                            && (person.heldAsOf(claim.getDate(), asOf) || claim.isHeld() || person.retiredAsOf(asOf)))
+                    && !(status.isOpen() && !bound && person.retiredAsOf(asOf))
                     && !(status == ClaimStatus.OPEN && claim.getDeferredUntil() != null
                             && asOf.isBefore(claim.getDeferredUntil()));
             if (!counts) {
