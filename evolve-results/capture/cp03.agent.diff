@@ -1,0 +1,516 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+new file mode 100644
+index 000000000..51ef65325
+--- /dev/null
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -0,0 +1,99 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from './session';
++
++export const GRADES = ['A', 'B', 'C'] as const;
++
++export interface Person {
++  id: number;
++  name: string;
++  grade: string;
++}
++
++export interface PersonFields {
++  name: string;
++  grade: string;
++}
++
++// The people on the active sheet, in the order they were added, re-read from the server each
++// time the sheet is loaded.
++@Injectable({ providedIn: 'root' })
++export class People {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  readonly people = signal<Person[]>([]);
++  private loads = 0;
++
++  /** Re-read the active sheet's people from the server; an error message when that failed. */
++  async load(): Promise<string | null> {
++    const user = this.session.user();
++    const sid = this.session.sheetId();
++    const load = ++this.loads;
++    this.people.set([]);
++    if (!user || !sid) return null;
++    try {
++      const people = await firstValueFrom(
++        this.http.get<Person[]>(this.url(sid), { headers: { 'X-User': user } }),
++      );
++      if (load === this.loads) this.people.set(people);
++      return null;
++    } catch (e) {
++      return failed('load', e).replace(' person', ' people');
++    }
++  }
++
++  /** Add a person; an error message when refused. */
++  async add(f: PersonFields): Promise<string | null> {
++    const refused = this.check(f);
++    if (refused) return refused;
++    const sid = this.session.sheetId()!;
++    try {
++      const person = await firstValueFrom(
++        this.http.post<Person>(this.url(sid), this.body(f), { headers: { 'X-User': this.session.user()! } }),
++      );
++      if (this.session.sheetId() === sid) this.people.update((ps) => [...ps, person]);
++      return null;
++    } catch (e) {
++      return failed('add', e);
++    }
++  }
++
++  /** Change a person's name and grade; an error message when refused. */
++  async update(id: number, f: PersonFields): Promise<string | null> {
++    const refused = this.check(f);
++    if (refused) return refused;
++    const sid = this.session.sheetId()!;
++    try {
++      const person = await firstValueFrom(
++        this.http.put<Person>(`${this.url(sid)}/${id}`, this.body(f), {
++          headers: { 'X-User': this.session.user()! },
++        }),
++      );
++      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
++      return null;
++    } catch (e) {
++      return failed('save', e);
++    }
++  }
++
++  private check(f: PersonFields): string | null {
++    if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
++    if (!f.name.trim()) return 'Enter a name.';
++    if (!(GRADES as readonly string[]).includes(f.grade)) return 'Choose a grade.';
++    return null;
++  }
++
++  private body(f: PersonFields): PersonFields {
++    return { name: f.name.trim(), grade: f.grade };
++  }
++
++  private url(sid: string): string {
++    return `/api/sheets/${encodeURIComponent(sid)}/people`;
++  }
++}
++
++function failed(what: string, e: unknown): string {
++  return e instanceof HttpErrorResponse ? `Could not ${what} person (${e.status}).` : `Could not ${what} person.`;
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 4b1ad0753..aeec30087 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,9 +1,12 @@
+ import { Component, inject, signal } from '@angular/core';
++import { People } from '../../core/people';
+ import { Session } from '../../core/session';
++import { PeopleList } from '../people/people';
+ 
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
++  imports: [PeopleList],
+   template: `
+     @if (session.user(); as user) {
+       <section aria-label="Session" data-testid="session-bar">
+@@ -40,6 +43,9 @@ import { Session } from '../../core/session';
+           }
+         }
+       </section>
++      @if (session.sheetId()) {
++        <app-people />
++      }
+     } @else {
+       <form aria-label="Sign in" (submit)="signIn($event)">
+         <label for="signin-name">Your name</label>
+@@ -59,6 +65,7 @@ import { Session } from '../../core/session';
+ })
+ export class Home {
+   protected readonly session = inject(Session);
++  private readonly people = inject(People);
+   protected readonly nameInput = signal('');
+   protected readonly signinError = signal<string | null>(null);
+   protected readonly sheetInput = signal('');
+@@ -83,7 +90,9 @@ export class Home {
+     this.todayError.set(null);
+     this.loading.set(true);
+     try {
+-      this.sheetError.set(await this.session.loadSheet(this.sheetInput()));
++      this.sheetError.set(
++        (await this.session.loadSheet(this.sheetInput())) ?? (await this.people.load()),
++      );
+     } finally {
+       this.loading.set(false);
+     }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+new file mode 100644
+index 000000000..0c9a79d03
+--- /dev/null
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -0,0 +1,103 @@
++import { Component, inject, signal } from '@angular/core';
++import { GRADES, People, Person } from '../../core/people';
++
++// The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
++// list shows everyone in the order they were added.
++@Component({
++  selector: 'app-people',
++  template: `
++    <section aria-label="People" data-testid="people">
++      <h2>People</h2>
++      <form (submit)="submit($event)" data-testid="person-form">
++        <label for="person-form-name">Name</label>
++        <input
++          id="person-form-name"
++          data-testid="person-form-name"
++          [value]="name()"
++          (input)="name.set(value($event)); error.set(null)"
++        />
++        <label for="person-form-grade">Grade</label>
++        <select
++          id="person-form-grade"
++          data-testid="person-form-grade"
++          [value]="grade()"
++          (change)="grade.set(value($event)); error.set(null)"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="g === grade()">{{ g }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
++          {{ editing() === null ? 'Add person' : 'Save person' }}
++        </button>
++        @if (editing() !== null) {
++          <button type="button" data-testid="person-form-cancel" (click)="reset()">Cancel</button>
++        }
++        @if (error(); as err) {
++          <p role="alert" data-testid="person-form-error">{{ err }}</p>
++        }
++      </form>
++      <table data-testid="person-list">
++        <thead>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++        </thead>
++        <tbody>
++          @for (p of people.people(); track p.id) {
++            <tr [attr.data-testid]="'person-row-' + p.id">
++              <td data-testid="person-name">{{ p.name }}</td>
++              <td data-testid="person-grade">{{ p.grade }}</td>
++              <td>
++                <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">
++                  Edit<span class="visually-hidden"> {{ p.name }}</span>
++                </button>
++              </td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class PeopleList {
++  protected readonly people = inject(People);
++  protected readonly grades = GRADES;
++  protected readonly name = signal('');
++  protected readonly grade = signal<string>('A');
++  /** The id of the person whose editor is open, or null when the form adds. */
++  protected readonly editing = signal<number | null>(null);
++  protected readonly error = signal<string | null>(null);
++  protected readonly saving = signal(false);
++
++  protected value(e: Event): string {
++    return (e.target as HTMLInputElement | HTMLSelectElement).value;
++  }
++
++  protected edit(p: Person): void {
++    this.editing.set(p.id);
++    this.name.set(p.name);
++    this.grade.set(p.grade);
++    this.error.set(null);
++  }
++
++  protected reset(): void {
++    this.editing.set(null);
++    this.name.set('');
++    this.grade.set('A');
++    this.error.set(null);
++  }
++
++  protected async submit(e: Event): Promise<void> {
++    e.preventDefault();
++    this.error.set(null);
++    this.saving.set(true);
++    try {
++      const f = { name: this.name(), grade: this.grade() };
++      const id = this.editing();
++      const err = id === null ? await this.people.add(f) : await this.people.update(id, f);
++      if (err) this.error.set(err);
++      else this.reset();
++    } finally {
++      this.saving.set(false);
++    }
++  }
++}
+diff --git a/src/main/frontend/src/styles.css b/src/main/frontend/src/styles.css
+index e69de29bb..ba2abfc6c 100644
+--- a/src/main/frontend/src/styles.css
++++ b/src/main/frontend/src/styles.css
+@@ -0,0 +1,9 @@
++/* Text for screen readers only. */
++.visually-hidden {
++  position: absolute;
++  width: 1px;
++  height: 1px;
++  overflow: hidden;
++  clip: rect(0 0 0 0);
++  white-space: nowrap;
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+new file mode 100644
+index 000000000..79405eafb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -0,0 +1,60 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A person on a sheet, with a name and a grade (A, B or C). */
++@Entity
++@Table(name = "person")
++public class Person {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "name", nullable = false)
++    private String name;
++
++    @Column(name = "grade", nullable = false)
++    private String grade;
++
++    protected Person() {
++    }
++
++    public Person(String sheetId, String name, String grade) {
++        this.sheetId = sheetId;
++        this.name = name;
++        this.grade = grade;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public void setName(String name) {
++        this.name = name;
++    }
++
++    public String getGrade() {
++        return grade;
++    }
++
++    public void setGrade(String grade) {
++        this.grade = grade;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+new file mode 100644
+index 000000000..43f35f876
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -0,0 +1,66 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The people on a sheet. The signed-in user's name comes in the X-User header. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/people")
++public class PersonController {
++
++    public record PersonView(long id, String name, String grade) {
++
++        static PersonView of(Person person) {
++            return new PersonView(person.getId(), person.getName(), person.getGrade());
++        }
++    }
++
++    public record PersonRequest(
++            @NotBlank @Size(max = 200) String name,
++            @NotNull @Pattern(regexp = "[ABC]") String grade) {
++    }
++
++    private final PersonService service;
++
++    public PersonController(PersonService service) {
++        this.service = service;
++    }
++
++    /** The sheet's people in the order they were added. */
++    @GetMapping
++    public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
++        return service.list(sheetId.trim()).stream().map(PersonView::of).toList();
++    }
++
++    /** Add a person to the sheet. */
++    @PostMapping
++    public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid PersonRequest request) {
++        return PersonView.of(service.add(sheetId.trim(), request.name(), request.grade()));
++    }
++
++    /** Change a person's name and grade. */
++    @PutMapping("/{personId}")
++    public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @PathVariable long personId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid PersonRequest request) {
++        return PersonView.of(service.update(sheetId.trim(), personId, request.name(), request.grade()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonNotFoundException.java b/src/main/java/net/officefloor/hq/app/person/PersonNotFoundException.java
+new file mode 100644
+index 000000000..1a9f20434
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonNotFoundException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.person;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** No such person on the sheet. */
++@ResponseStatus(HttpStatus.NOT_FOUND)
++public class PersonNotFoundException extends RuntimeException {
++
++    public PersonNotFoundException() {
++        super("No such person.");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+new file mode 100644
+index 000000000..0cccf6e8a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.person;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PersonRepository extends JpaRepository<Person, Long> {
++
++    /** The sheet's people in the order they were added. */
++    List<Person> findBySheetIdOrderByIdAsc(String sheetId);
++
++    Optional<Person> findByIdAndSheetId(Long id, String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+new file mode 100644
+index 000000000..e245169f5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -0,0 +1,46 @@
++package net.officefloor.hq.app.person;
++
++import java.util.List;
++import net.officefloor.hq.app.sheet.SheetNotFoundException;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Keeps the people on each sheet. Names arrive validated (not blank) and are stored trimmed. */
++@Service
++public class PersonService {
++
++    private final PersonRepository people;
++    private final SheetRepository sheets;
++
++    public PersonService(PersonRepository people, SheetRepository sheets) {
++        this.people = people;
++        this.sheets = sheets;
++    }
++
++    @Transactional(readOnly = true)
++    public List<Person> list(String sheetId) {
++        requireSheet(sheetId);
++        return people.findBySheetIdOrderByIdAsc(sheetId);
++    }
++
++    @Transactional
++    public Person add(String sheetId, String name, String grade) {
++        requireSheet(sheetId);
++        return people.save(new Person(sheetId, name.trim(), grade));
++    }
++
++    @Transactional
++    public Person update(String sheetId, long personId, String name, String grade) {
++        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++        person.setName(name.trim());
++        person.setGrade(grade);
++        return person;
++    }
++
++    private void requireSheet(String sheetId) {
++        if (!sheets.existsById(sheetId)) {
++            throw new SheetNotFoundException();
++        }
++    }
++}
+diff --git a/src/main/resources/db/migration/V3__person.sql b/src/main/resources/db/migration/V3__person.sql
+new file mode 100644
+index 000000000..f0c0fbb55
+--- /dev/null
++++ b/src/main/resources/db/migration/V3__person.sql
+@@ -0,0 +1,8 @@
++-- The people on a sheet, listed in the order they were added (by id).
++CREATE TABLE person (
++    id       BIGINT       GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    sheet_id VARCHAR(200) NOT NULL REFERENCES sheet (id),
++    name     VARCHAR(200) NOT NULL,
++    grade    VARCHAR(1)   NOT NULL CHECK (grade IN ('A', 'B', 'C'))
++);
++CREATE INDEX person_sheet ON person (sheet_id, id);
