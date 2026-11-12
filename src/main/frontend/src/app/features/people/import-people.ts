@@ -1,8 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
 import { People } from '../../core/people';
 
-// An import box of name,grade,terms,contact lines, each a person added as the person form would; reports
-// how many were added, or why the import was refused (then no one is added).
+// An import box of name,grade,terms,contact lines, each updating the person it names (by name or alias) or
+// adding one, as the person form would; reports how many were added and updated, or why the import was
+// refused (then no one is changed).
 @Component({
   selector: 'app-import-people',
   template: `
@@ -16,8 +17,11 @@ import { People } from '../../core/people';
         (input)="text.set(value($event)); error.set(null)"
       ></textarea>
       <button type="submit" data-testid="import-submit" [disabled]="running()">Import people</button>
-      @if (added() !== null) {
-        <p>Added <span data-testid="import-added">{{ added() }}</span></p>
+      @if (done(); as d) {
+        <p>
+          Added <span data-testid="import-added">{{ d.added }}</span>, updated
+          <span data-testid="import-updated">{{ d.updated }}</span>
+        </p>
       }
       @if (error(); as err) {
         <p role="alert" data-testid="import-error">{{ err }}</p>
@@ -29,20 +33,20 @@ export class ImportPeople {
   private readonly people = inject(People);
   protected readonly text = signal('');
   protected readonly running = signal(false);
-  protected readonly added = signal<number | null>(null);
+  protected readonly done = signal<{ added: number; updated: number } | null>(null);
   protected readonly error = signal<string | null>(null);
 
   protected async import(e: Event): Promise<void> {
     e.preventDefault();
     if (this.running()) return; // a second submit before the first has answered
-    this.added.set(null);
+    this.done.set(null);
     this.error.set(null);
     this.running.set(true);
     try {
       const done = await this.people.importPeople(this.text());
       if (typeof done === 'string') this.error.set(done);
       else {
-        this.added.set(done);
+        this.done.set(done);
         this.text.set('');
       }
     } finally {

@@ -150,21 +150,26 @@ export class People {
     }
   }
 
-  /** Add a person for each pasted line of name,grade,terms,contact, in order; how many were added, or
-   *  an error message when any line is refused (then the server adds none). */
-  async importPeople(text: string): Promise<number | string> {
+  /** Update the person each pasted line of name,grade,terms,contact names, or add one, in order; how many
+   *  were added and updated, or an error message when any line is refused (then the server changes none). */
+  async importPeople(text: string): Promise<{ added: number; updated: number } | string> {
     const sid = this.session.sheetId();
     const user = this.session.user();
     if (!user || !sid) return 'Load a sheet first.';
     if (!text.trim()) return 'Paste at least one line of name,grade,terms,contact.';
     try {
       const done = await firstValueFrom(
-        this.http.post<{ added: number; people: Person[] }>(`${this.url(sid)}/import`, { text }, {
-          headers: { 'X-User': user },
-        }),
+        this.http.post<{ added: number; people: Person[]; updated: number; changed: Person[] }>(
+          `${this.url(sid)}/import`,
+          { text },
+          { headers: { 'X-User': user } },
+        ),
       );
-      if (this.session.sheetId() === sid) this.people.update((ps) => [...ps, ...done.people]);
-      return done.added;
+      if (this.session.sheetId() === sid) {
+        const changed = new Map(done.changed.map((p) => [p.id, p]));
+        this.people.update((ps) => [...ps.map((p) => changed.get(p.id) ?? p), ...done.people]);
+      }
+      return { added: done.added, updated: done.updated };
     } catch (e) {
       return failed('add', e).replace(' person', ' people');
     }

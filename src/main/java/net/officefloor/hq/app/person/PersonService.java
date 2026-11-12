@@ -186,15 +186,24 @@ public class PersonService {
     private record ImportLine(int number, String name, String grade, Integer terms, String contact) {
     }
 
+    /** What an import did: the people it added and those it updated, each in line order. */
+    public record ImportResult(List<Person> added, List<Person> updated) {
+    }
+
     /** The import box: lines of name,grade,terms,contact (the last two may be absent or blank), blank lines
-     *  skipped. Every line is checked first with the person form's rules, a name or contact repeated within
-     *  the import too (ignoring case); a refused line refuses the import, adding no one and writing nothing.
-     *  Otherwise each is added in order, exactly as the form adds them. The people added, in line order. */
+     *  skipped. A line whose name is a name or alias on the sheet (ignoring case) updates that person; any
+     *  other adds one. Every line is checked first with the person form's rules, a name, person or contact
+     *  repeated within the import too (ignoring case); a refused line refuses the import, changing no one and
+     *  writing nothing. Otherwise each is applied in order: an add exactly as the form adds, an update as the
+     *  form saves, keeping their name, recording the grade from the sheet's today, and setting their terms
+     *  and contact only when the line gives them. */
     @Transactional
-    public List<Person> importPeople(String sheetId, String user, String text) {
+    public ImportResult importPeople(String sheetId, String user, String text) {
         requireSheet(sheetId);
         List<ImportLine> lines = new ArrayList<>();
+        Map<ImportLine, Person> matched = new HashMap<>();
         Set<String> names = new HashSet<>();
+        Set<Long> matchedIds = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         Set<String> tree = namesInTree(sheetId, null);
         String[] raw = text == null ? new String[0] : text.split("\\r?\\n");
@@ -207,14 +216,24 @@ public class PersonService {
             if (!names.add(lower)) {
                 throw importRefused(line.number(), "the name " + line.name() + " is already in this import.");
             }
-            if (people.nameTaken(sheetId, line.name(), null) || tree.contains(lower)) {
+            Person match = people.findByNameOrAlias(sheetId, line.name()).orElse(null);
+            if (match != null) {
+                if (!matchedIds.add(match.getId())) {
+                    throw importRefused(line.number(), match.getName() + " is already in this import.");
+                }
+                if (Stream.concat(Stream.of(match.getName()), match.getAliases().stream())
+                        .anyMatch(n -> tree.contains(n.toLowerCase(Locale.ROOT)))) {
+                    throw importRefused(line.number(), "the name " + match.getName() + " is already in use.");
+                }
+                matched.put(line, match);
+            } else if (tree.contains(lower)) {
                 throw importRefused(line.number(), "the name " + line.name() + " is already in use.");
             }
             if (line.contact() != null) {
                 if (!contacts.add(line.contact())) {
                     throw importRefused(line.number(), "the contact " + line.contact() + " is already in this import.");
                 }
-                if (people.contactTaken(sheetId, line.contact(), null)) {
+                if (people.contactTaken(sheetId, line.contact(), match == null ? null : match.getId())) {
                     throw importRefused(line.number(), "the contact " + line.contact() + " is already in use.");
                 }
             }
@@ -224,15 +243,26 @@ public class PersonService {
             throw new PersonImportException("Paste at least one line of name,grade,terms,contact.");
         }
         List<Person> added = new ArrayList<>();
+        List<Person> updated = new ArrayList<>();
         for (ImportLine line : lines) {
+            Person match = matched.get(line);
             try {
-                added.add(add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
-            } catch (PersonNameTakenException | PersonContactTakenException e) {
-                // taken by another user at the same moment
+                if (match == null) {
+                    added.add(add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+                } else {
+                    Person now = people.findByIdAndSheetId(match.getId(), sheetId)
+                            .orElseThrow(PersonNotFoundException::new);
+                    updated.add(update(sheetId, user, now.getId(), now.getVersion(), now.getName(), line.grade(),
+                            null, line.terms() != null ? line.terms() : now.getTerms(),
+                            line.contact() != null ? line.contact() : now.getContact(), true));
+                }
+            } catch (PersonNameTakenException | PersonContactTakenException | PersonNotFoundException
+                    | PersonVersionConflictException e) {
+                // changed by another user at the same moment
                 throw importRefused(line.number(), e.getMessage());
             }
         }
-        return added;
+        return new ImportResult(added, updated);
     }
 
     private static ImportLine parseImport(int number, String raw) {
