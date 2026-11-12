@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -30,7 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the people on each sheet. Names arrive validated (not blank) and are stored trimmed; a name
- * is unique on the sheet, compared without regard to case.
+ * is unique on the sheet, compared without regard to case, and is not used as a name or alias on any other sheet
+ * of the sheet's tree (its ancestors and descendants).
  */
 @Service
 public class PersonService {
@@ -165,6 +167,7 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         requireSheet(sheetId);
         requireFreeName(sheetId, name.trim(), null);
+        requireFreeInTree(sheetId, List.of(name.trim()), null);
         String key = contactKey(contact);
         requireFreeContact(sheetId, key, null);
         Rollup.Snapshot before = rollup.take(sheetId);
@@ -185,11 +188,24 @@ public class PersonService {
      *  contact to the one given (blank clears it). */
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, true);
+    }
+
+    /** As the person form saves, which (form) also refuses a name or alias some other sheet of the tree
+     *  uses, so a person who clashes keeps being refused until a rename leaves them clashing with no one. */
+    private Person update(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, boolean form) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonVersionConflictException(person);
         }
         requireFreeName(sheetId, name.trim(), person.getId());
+        if (form) {
+            List<String> names = new ArrayList<>();
+            names.add(name.trim());
+            names.addAll(person.getAliases());
+            requireFreeInTree(sheetId, names, null);
+        }
         String key = contactKey(contact);
         requireFreeContact(sheetId, key, person.getId());
         Rollup.Snapshot before = rollup.take(sheetId);
@@ -225,7 +241,7 @@ public class PersonService {
             throw new PersonNotFoundException();
         }
         return picked.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade, from,
-                p.getTerms(), p.getContact())).toList();
+                p.getTerms(), p.getContact(), false)).toList();
     }
 
     /** Give a person an alias, stored trimmed: refused when blank, or when it equals, ignoring case, any
@@ -240,7 +256,8 @@ public class PersonService {
         if (trimmed.length() > 200) {
             throw new AliasRefusedException("The alias is too long.");
         }
-        if (people.nameTaken(sheetId, trimmed, null)) {
+        if (people.nameTaken(sheetId, trimmed, null)
+                || namesInTree(sheetId, null).contains(trimmed.toLowerCase(Locale.ROOT))) {
             throw new AliasRefusedException("That name is already in use.");
         }
         person.addAlias(trimmed);
@@ -341,8 +358,8 @@ public class PersonService {
      *  were added). Figures a statement bound are lost, their statement count starts again, and references
      *  are not carried. They leave this sheet entirely: their patron links, pool memberships, watches,
      *  statements, holds and fixed period figures are dropped. Refused for anyone but a steward, a retired
-     *  person, this sheet's own id, a sheet never loaded or archived, and when their name, an alias or their
-     *  contact is already on the other sheet. Answers the person as they arrived. */
+     *  person, this sheet's own id, an archived sheet, and when their name, an alias or their contact is already
+     *  on the other sheet or their name or an alias on another sheet of its tree; a sheet never loaded is started. Answers the person as they arrived. */
     @Transactional
     public Person transfer(String sheetId, String user, long personId, String toSheetId) {
         Person from = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
@@ -359,8 +376,8 @@ public class PersonService {
         if (to.equals(sheetId)) {
             throw new TransferRefusedException("A person cannot be transferred to their own sheet.");
         }
-        Sheet target = sheets.findById(to)
-                .orElseThrow(() -> new TransferRefusedException("No sheet has the id " + to + "."));
+        // a sheet never loaded starts empty, as loading it would
+        Sheet target = sheets.findById(to).orElseGet(() -> sheetService.load(to, user));
         if (target.isArchived()) {
             throw new TransferRefusedException("Sheet " + to + " is archived.");
         }
@@ -368,7 +385,8 @@ public class PersonService {
         names.add(from.getName());
         names.addAll(from.getAliases());
         for (String name : names) {
-            if (people.nameTaken(to, name, null)) {
+            if (people.nameTaken(to, name, null)
+                    || namesInTree(to, from.getId()).contains(name.toLowerCase(Locale.ROOT))) {
                 throw new TransferRefusedException("The name " + name + " is already in use on sheet " + to + ".");
             }
         }
@@ -485,6 +503,46 @@ public class PersonService {
         if (people.nameTaken(sheetId, name, exceptId)) {
             throw new PersonNameTakenException();
         }
+    }
+
+    /** Refuse names (compared without regard to case) any other sheet of the sheet's tree uses as a name or
+     *  alias. */
+    private void requireFreeInTree(String sheetId, List<String> names, Long exceptId) {
+        Set<String> used = namesInTree(sheetId, exceptId);
+        if (names.stream().anyMatch(n -> used.contains(n.toLowerCase(Locale.ROOT)))) {
+            throw new PersonNameTakenException();
+        }
+    }
+
+    /** The names and aliases, lower-cased, of everyone but {@code exceptId} on the other sheets of the
+     *  sheet's tree. */
+    private Set<String> namesInTree(String sheetId, Long exceptId) {
+        Set<String> tree = sheets.tree(sheetId);
+        if (tree.isEmpty()) {
+            return Set.of();
+        }
+        return people.findBySheetIdIn(tree).stream().filter(p -> !p.getId().equals(exceptId))
+                .flatMap(p -> Stream.concat(Stream.of(p.getName()),
+                        p.getAliases().stream()))
+                .map(n -> n.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+    }
+
+    /** The names and aliases, lower-cased, used on the other sheets of the sheet's tree. */
+    @Transactional(readOnly = true)
+    public Set<String> treeNames(String sheetId) {
+        return namesInTree(sheetId, null);
+    }
+
+    /** Whether the person's name or an alias is used on another sheet of their sheet's tree. */
+    @Transactional(readOnly = true)
+    public boolean clashing(Person person) {
+        return clashing(person, treeNames(person.getSheetId()));
+    }
+
+    /** Whether the person's name or an alias is among the tree's names. */
+    public static boolean clashing(Person person, Set<String> treeNames) {
+        return treeNames.contains(person.getName().toLowerCase(Locale.ROOT))
+                || person.getAliases().stream().anyMatch(a -> treeNames.contains(a.toLowerCase(Locale.ROOT)));
     }
 
     /** A contact as stored: trimmed and lower-cased; none when blank. */

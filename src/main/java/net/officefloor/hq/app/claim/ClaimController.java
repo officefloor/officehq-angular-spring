@@ -209,7 +209,7 @@ public class ClaimController {
             @RequestBody @Valid QuickAddRequest request) {
         QuickAddService.Added added = quickAdd.add(sheetId.trim(), user.trim(), request.name(), request.amount());
         return new QuickAddView(PersonView.of(added.person(), people.today(sheetId.trim()), people.statementsOf(added.person().getId()),
-                people.patronsOf(added.person().getId()), people.watching(added.person().getId(), user.trim())),
+                people.patronsOf(added.person().getId()), people.watching(added.person().getId(), user.trim()), people.clashing(added.person())),
                 added.personAdded(), ClaimView.of(added.claim()));
     }
 
@@ -466,7 +466,7 @@ public class ClaimController {
         ClaimService.Stated stated = asOf == null ? service.statement(sheetId.trim(), user.trim(), personId)
                 : service.statementAsOf(sheetId.trim(), user.trim(), personId, asOf);
         return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
-                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim())),
+                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim()), people.clashing(stated.person())),
                 stated.claims().stream().map(ClaimView::of).toList());
     }
 
@@ -477,7 +477,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         ClaimService.Stated stated = service.cancelStatement(sheetId.trim(), user.trim(), personId);
         return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
-                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim())),
+                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim()), people.clashing(stated.person())),
                 stated.claims().stream().map(ClaimView::of).toList());
     }
 

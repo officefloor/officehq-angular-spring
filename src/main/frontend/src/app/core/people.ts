@@ -73,6 +73,9 @@ export interface Person {
   contact: string | null;
   /** The other names they go by, sorted as names are compared: without regard to case. */
   aliases: string[];
+  /** Whether their name or an alias is used on another sheet of the sheet's tree: every save of the person
+   *  form is refused until a rename leaves them clashing with no one. */
+  clashing: boolean;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */

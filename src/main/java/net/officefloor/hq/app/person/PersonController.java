@@ -40,14 +40,15 @@ public class PersonController {
      *  due-total (n/a when it was) and date; none of either before their first statement; and the ids
      *  of their patrons. Their grade is the one in force on the sheet's today; grades lists every grade
      *  they were given, each with its from-date (YYYY-MM-DD, none for the first); watched says whether
-     *  the signed-in user watches them. */
+     *  the signed-in user watches them; clashing says whether their name or an alias is used on another sheet
+     *  of the sheet's tree. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
-            List<String> aliases) {
+            List<String> aliases, boolean clashing) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
-                boolean watched) {
+                boolean watched, boolean clashing) {
             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
@@ -56,7 +57,7 @@ public class PersonController {
                     last == null ? null : last.getTakenOn().toString(),
                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
-                    watched, person.getTerms(), person.getContact(), person.getAliases());
+                    watched, person.getTerms(), person.getContact(), person.getAliases(), clashing);
         }
     }
 
@@ -154,9 +155,11 @@ public class PersonController {
         Set<Long> watched = asOf == null ? service.watchedBy(id, user.trim())
                 : this.asOf.watches(id, asOf).stream().filter(w -> w.getUser().equals(user.trim()))
                         .map(Watch::getPersonId).collect(Collectors.toSet());
+        Set<String> treeNames = service.treeNames(id);
         return people.stream()
                 .map(p -> PersonView.of(p, today, statements.getOrDefault(p.getId(), List.of()),
-                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))
+                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
+                        PersonService.clashing(p, treeNames)))
                 .toList();
     }
 
@@ -167,7 +170,8 @@ public class PersonController {
             @RequestBody @Valid PersonRequest request) {
         Person added = service.add(sheetId.trim(), user.trim(), request.name(), request.grade(), request.terms(),
                 request.contact());
-        return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of(), false);
+        return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of(), false,
+                service.clashing(added));
     }
 
     /** Change a person's name, and give them a grade from a date. */
@@ -326,7 +330,7 @@ public class PersonController {
 
     private PersonView view(Person person, String user) {
         return PersonView.of(person, service.today(person.getSheetId()), service.statementsOf(person.getId()),
-                service.patronsOf(person.getId()), service.watching(person.getId(), user));
+                service.patronsOf(person.getId()), service.watching(person.getId(), user), service.clashing(person));
     }
 
     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */

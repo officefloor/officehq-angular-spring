@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { Claim, ClaimAction, Claims, bound } from '../../core/claims';
 import { Periods } from '../../core/periods';
@@ -248,8 +248,10 @@ import { VoidReasons } from '../../core/void-reasons';
       }
     </ul>
   `,
+  host: { '(document:click)': 'clickedElsewhere($event)' },
 })
 export class PersonClaims {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly claims = inject(Claims);
   private readonly rates = inject(Rates);
   protected readonly periods = inject(Periods);
@@ -274,7 +276,8 @@ export class PersonClaims {
   /** The template the person's next claim from a template is made from: none chosen yet. */
   protected readonly template = signal('');
   /** The edit whose edit button was refused while no editor was open: the form's next submit is its save,
-   *  refused on the claim again, until the next action on that claim or another editor opens. */
+   *  refused on the claim again, until the next action on that claim, another editor opens, or an action is
+   *  taken anywhere else on the screen. */
   private refusedEdit: { id: number; message: string } | null = null;
   /** The lock asked for by the last edit button, until it answers: true when granted. */
   private locking: Promise<boolean> | null = null;
@@ -565,6 +568,11 @@ export class PersonClaims {
   private clearActionError(id: number): void {
     if (this.refusedEdit?.id === id) this.refusedEdit = null;
     if (this.actionError()?.id === id) this.actionError.set(null);
+  }
+
+  /** An action taken elsewhere on the screen: a refused edit button no longer makes the next submit its save. */
+  protected clickedElsewhere(e: Event): void {
+    if (e.target instanceof Node && !this.host.nativeElement.contains(e.target)) this.refusedEdit = null;
   }
 
   /** The form was changed: its error, and its claim's refused edit, no longer apply. */

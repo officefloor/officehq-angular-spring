@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -32,4 +33,7 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and p.contact = :contact"
             + " and (:exceptId is null or p.id <> :exceptId)")
     boolean contactTaken(String sheetId, String contact, Long exceptId);
+
+    /** Everyone on the sheets. */
+    List<Person> findBySheetIdIn(Collection<String> sheetIds);
 }

@@ -2,7 +2,11 @@ package net.officefloor.hq.app.sheet;
 
 import jakarta.persistence.LockModeType;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -33,6 +37,26 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
             found.add(parent);
             at = parent;
         }
+        return found;
+    }
+
+    /** The other sheets of the sheet's tree: all its ancestors, however far up, and all its descendants and
+     *  theirs, among the sheets that exist. */
+    default Set<String> tree(String id) {
+        Set<String> found = new LinkedHashSet<>();
+        String at = findById(id).map(Sheet::getParent).orElse(null);
+        while (at != null && !at.equals(id) && found.add(at)) {
+            at = findById(at).map(Sheet::getParent).orElse(null);
+        }
+        Deque<String> next = new ArrayDeque<>(List.of(id));
+        while (!next.isEmpty()) {
+            for (Sheet child : findByParentOrderByIdAsc(next.pop())) {
+                if (!child.getId().equals(id) && found.add(child.getId())) {
+                    next.add(child.getId());
+                }
+            }
+        }
+        found.removeIf(s -> !existsById(s));
         return found;
     }
 }
