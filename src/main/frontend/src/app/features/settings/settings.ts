@@ -2,7 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { ROLES, Roles } from '../../core/roles';
 import { Session } from '../../core/session';
 
-// The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), and
+// The sheet's settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
+// floor (the least a claim's live due can be), and
 // the role each user name has on the sheet (clerk unless given another).
 @Component({
   selector: 'app-settings',
@@ -16,9 +17,18 @@ import { Session } from '../../core/session';
           data-testid="setting-clerk-limit"
           inputmode="decimal"
           [value]="limit()"
-          (input)="limit.set(value($event)); error.set(null)"
+          (input)="limit.set(value($event)); limitTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</strong></p>
+        <label for="setting-floor">Floor (the least a live due can be)</label>
+        <input
+          id="setting-floor"
+          data-testid="setting-floor"
+          inputmode="decimal"
+          [value]="floor()"
+          (input)="floor.set(value($event)); floorTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
         <button type="submit" data-testid="settings-save" [disabled]="saving()">Save settings</button>
         @if (error(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -67,6 +77,9 @@ export class SettingsPanel {
   protected readonly roles = inject(Roles);
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly limit = signal('');
+  protected readonly limitTouched = signal(false);
+  protected readonly floor = signal('');
+  protected readonly floorTouched = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly user = signal('');
@@ -84,9 +97,18 @@ export class SettingsPanel {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const err = await this.session.setClerkLimit(this.limit());
+      // Only the settings typed into since the last save change; with neither, the clerk limit is saved.
+      const floor = this.floorTouched();
+      const limit = this.limitTouched() || !floor;
+      const err = (limit ? await this.session.setClerkLimit(this.limit()) : null)
+        ?? (floor ? await this.session.setFloor(this.floor()) : null);
       if (err) this.error.set(err);
-      else this.limit.set('');
+      else {
+        this.limit.set('');
+        this.limitTouched.set(false);
+        this.floor.set('');
+        this.floorTouched.set(false);
+      }
     } finally {
       this.saving.set(false);
     }

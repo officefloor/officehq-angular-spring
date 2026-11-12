@@ -23,17 +23,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    /** A sheet as the screen shows it: its today and its clerk limit (two decimals; none for no limit). */
-    public record SheetView(String id, LocalDate today, String clerkLimit) {
+    /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
+     *  its floor (two decimals). */
+    public record SheetView(String id, LocalDate today, String clerkLimit, String floor) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
-                    sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString());
+                    sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
+                    sheet.getFloor().toPlainString());
         }
     }
 
     /** The sheet's settings; a missing clerk limit means no limit. */
     public record SettingsRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal clerkLimit) {
+    }
+
+    /** The sheet's floor: the least a claim's live due can be. */
+    public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal floor) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -66,5 +72,13 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid SettingsRequest request) {
         return SheetView.of(service.setClerkLimit(id.trim(), user.trim(), request.clerkLimit()));
+    }
+
+    /** Change the sheet's floor. */
+    @PutMapping("/{id}/settings/floor")
+    public SheetView setFloor(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid FloorRequest request) {
+        return SheetView.of(service.setFloor(id.trim(), user.trim(), request.floor()));
     }
 }

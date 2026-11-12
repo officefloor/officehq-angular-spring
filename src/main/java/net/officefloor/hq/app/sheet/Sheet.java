@@ -34,6 +34,10 @@ public class Sheet {
     @Column(name = "clerk_limit")
     private BigDecimal clerkLimit;
 
+    /** The least a claim's live due can be; a sheet starts at 1.00. */
+    @Column(name = "due_floor", nullable = false)
+    private BigDecimal floor = new BigDecimal("1.00");
+
     protected Sheet() {
     }
 
@@ -70,6 +74,19 @@ public class Sheet {
 
     public void setClerkLimit(BigDecimal clerkLimit) {
         this.clerkLimit = clerkLimit;
+    }
+
+    public BigDecimal getFloor() {
+        return floor;
+    }
+
+    public void setFloor(BigDecimal floor) {
+        this.floor = floor;
+    }
+
+    /** A live due as it counts: at least the floor; none (n/a) stays none. */
+    public BigDecimal floored(BigDecimal due) {
+        return due == null ? null : due.max(floor);
     }
 
     /** Give out the sheet's next claim number. */

@@ -17,6 +17,7 @@ import net.officefloor.hq.app.person.StatementRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.role.RoleService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -213,10 +214,12 @@ public class ClaimService {
         return claim.isStated() ? claim.getStatedDue() : liveDue(claim, person);
     }
 
-    /** The claim's amount at its person's grade's rate in force on its date; none when no rate applies. */
+    /** The claim's amount at its person's grade's rate in force on its date, at least the sheet's floor;
+     *  none when no rate applies. */
     private BigDecimal liveDue(Claim claim, Person person) {
+        Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
         return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
-                .map(rate -> due(claim.getAmount(), rate))
+                .map(rate -> sheet.floored(due(claim.getAmount(), rate)))
                 .orElse(null);
     }
 

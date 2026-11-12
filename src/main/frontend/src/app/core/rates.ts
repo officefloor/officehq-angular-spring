@@ -43,10 +43,13 @@ export class Rates {
   }
 
   /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded half to
-   *  even to cents; null when no rate of the grade applies then. */
+   *  even to cents, and at least the sheet's floor; null when no rate of the grade applies then. */
   dueCents(amountCents: bigint, grade: string, date: string): bigint | null {
     const rate = this.inForce(grade, date);
-    return rate === undefined ? null : halfEven(amountCents * hundredths(rate.rate), 10000n);
+    if (rate === undefined) return null;
+    const due = halfEven(amountCents * hundredths(rate.rate), 10000n);
+    const floor = hundredths(this.session.floor());
+    return due < floor ? floor : due;
   }
 
   /** An amount written with two decimals times the grade's rate on a date, as `dueCents`, shown

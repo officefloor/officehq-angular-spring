@@ -61,6 +61,18 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's floor: the least a claim's live due can be, recording the figures it moves. */
+    @Transactional
+    public Sheet setFloor(String id, String user, BigDecimal floor) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(id);
+        sheet.setFloor(floor.setScale(2));
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=floor value="
+                + sheet.getFloor().toPlainString());
+        rollup.recordChanges(id, user, before);
+        return sheet;
+    }
+
     /** The sheet's next claim number: 1 for the first, then 2, and so on, never given twice. */
     @Transactional
     public int nextClaimNumber(String id) {

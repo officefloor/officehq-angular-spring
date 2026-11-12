@@ -7,6 +7,8 @@ export interface SheetView {
   today: string;
   /** The largest due a clerk may settle, two decimals; null when there is no limit. */
   clerkLimit: string | null;
+  /** The least a claim's live due can be, two decimals. */
+  floor: string;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
@@ -21,6 +23,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** The sheet's clerk limit (two decimals); null when there is none. */
   readonly clerkLimit = signal<string | null>(null);
+  /** The sheet's floor (two decimals): the least a claim's live due can be. */
+  readonly floor = signal<string>('1.00');
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -43,6 +47,7 @@ export class Session {
       this.sheetId.set(sheet.id);
       this.today.set(sheet.today);
       this.clerkLimit.set(sheet.clerkLimit);
+      this.floor.set(sheet.floor);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -82,6 +87,26 @@ export class Session {
         }),
       );
       if (this.sheetId() === sheet.id) this.clerkLimit.set(sheet.clerkLimit);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's floor; an error message when refused. */
+  async setFloor(floor: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const f = floor.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!/^\d+(\.\d{1,2})?$/.test(f)) return 'Enter a floor of 0.00 or more, with up to two decimals.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/floor`, { floor: f }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.floor.set(sheet.floor);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

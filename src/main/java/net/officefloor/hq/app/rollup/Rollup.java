@@ -59,7 +59,8 @@ public class Rollup {
 
     /** The sheet's figures now. */
     public Snapshot take(String sheetId) {
-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        Optional<Sheet> sheet = sheets.findById(sheetId);
+        LocalDate today = sheet.map(Sheet::getToday).orElse(null);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
@@ -83,6 +84,7 @@ public class Rollup {
                     BigDecimal live = inForce(sheetRates, person.getGrade(), claim.getDate())
                             .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
                                     .setScale(2, RoundingMode.HALF_EVEN))
+                            .map(d -> sheet.map(s -> s.floored(d)).orElse(d))
                             .orElse(ZERO);
                     due = due.add(live);
                 }
@@ -100,8 +102,9 @@ public class Rollup {
 
     /** The due-total of the claims that count dated from one date to another, both inclusive, as the
      *  screen shows a period's: each claim's settled due, else the figure its statement bound, else its
-     *  live due (a claim with no figure adds nothing). */
+     *  live due, at least the floor (a claim with no figure adds nothing). */
     public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
+        Optional<Sheet> sheet = sheets.findById(sheetId);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         Map<Long, String> grades = new LinkedHashMap<>();
         Set<Long> held = new HashSet<>();
@@ -126,6 +129,7 @@ public class Rollup {
                 due = grade == null ? null : inForce(sheetRates, grade, claim.getDate())
                         .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
                                 .setScale(2, RoundingMode.HALF_EVEN))
+                        .map(d -> sheet.map(s -> s.floored(d)).orElse(d))
                         .orElse(null);
             }
             if (due != null) {
