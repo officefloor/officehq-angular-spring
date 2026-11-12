@@ -1,0 +1,51 @@
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
+index cc37f7bea..067050b9b 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
+@@ -88,6 +88,8 @@ public class SheetSnapshotService {
+      * a transaction that is rolled back: it changes the store for that transaction alone.
+      */
+     public void restore(String sheetId, LocalDate asOf) {
++        // Lock the sheet's row first, as every change does, so a restore waits on a change rather than deadlocks with it.
++        jdbc.update("UPDATE sheet SET id = id WHERE id = ?", sheetId);
+         List<byte[]> found = jdbc.query("SELECT data FROM sheet_snapshot WHERE sheet_id = ? AND made_on <= ? "
+                 + "ORDER BY seq DESC LIMIT 1", (rs, i) -> rs.getBytes(1), sheetId, asOf);
+         Map<String, List<Map<String, Object>>> rows = found.isEmpty() ? Map.of() : deserialize(found.get(0));
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 6f960a978..33fe8d661 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -187,6 +187,11 @@ public class PeriodService {
+         if (period.isClosed() || period.isSoftClosed()) {
+             throw new PeriodClosedException(name);
+         }
++        return softCloseNow(sheetId, user, period);
++    }
++
++    /** Soft-close an open period as a soft close by hand would; the caller has locked the sheet and checked it is open. */
++    Period softCloseNow(String sheetId, String user, Period period) {
+         period.softClose(rollup.dueTotalsBetween(sheetId, period.getFromDate(), period.getToDate()),
+                 rollup.carriedInto(sheetId, list(sheetId), period), cutsNow(sheetId));
+         Period saved = periods.saveAndFlush(period);
+diff --git a/src/main/java/net/officefloor/hq/app/period/RolloverService.java b/src/main/java/net/officefloor/hq/app/period/RolloverService.java
+index 148e2f021..cb0d87cbc 100644
+--- a/src/main/java/net/officefloor/hq/app/period/RolloverService.java
++++ b/src/main/java/net/officefloor/hq/app/period/RolloverService.java
+@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
+  * Rolls a fiscal year over: generates the next fiscal year's twelve periods as the fiscal year generator does, and adds
+  * each person's open figure at the end of the old year's last period to their opening balance for the new year's first
+  * period, and so to their carried figure for it. A fiscal year rolled over again, its last rollover not undone, adds
+- * no opening balances a second time. Each rollover is kept, so the last can be undone on the day it was made.
++ * no opening balances a second time. Every period of the old year still open is then soft-closed, in start-date order. Each rollover is kept, so the last can be undone on the day it was made.
+  */
+ @Service
+ public class RolloverService {
+@@ -94,6 +94,8 @@ public class RolloverService {
+         }
+         rollovers.save(record);
+         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=" + fy + " periods=" + made.size());
++        old.stream().filter(p -> !p.isClosed() && !p.isSoftClosed()).sorted(Comparator.comparing(Period::getFromDate))
++                .forEach(p -> periods.softCloseNow(sheetId, user, p));
+         return made;
+     }
+ 
