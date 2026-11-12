@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
 
 /**
  * Audit sink: appends one record per line to a KNOWN FILE (app.audit.file, default .run/audit.log)
@@ -22,6 +24,13 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  */
 @Service
 public class Audit {
+
+    /** The request attribute naming the steward a user delegated the steward role acts for: each line of a
+     *  change they make ends with for=<steward>, but for the lines that only report figures. */
+    public static final String ACTING_FOR = Audit.class.getName() + ".actingFor";
+
+    /** The events that only report figures, and so carry no for=. */
+    private static final String[] FIGURES = { "ROLLUP ", "TOTALS ", "ALERT " };
 
     private final Path file;
 
@@ -47,7 +56,8 @@ public class Audit {
      * Append one audit record once the current transaction commits, so a change that is refused or
      * rolled back (by any rule) writes nothing. Outside a transaction the record is written now.
      */
-    public void recordOnCommit(String entry) {
+    public void recordOnCommit(String line) {
+        String entry = line + actingFor(line);
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             record(entry);
             return;
@@ -58,6 +68,20 @@ public class Audit {
                 record(entry);
             }
         });
+    }
+
+    private static String actingFor(String entry) {
+        RequestAttributes request = RequestContextHolder.getRequestAttributes();
+        Object steward = request == null ? null : request.getAttribute(ACTING_FOR, RequestAttributes.SCOPE_REQUEST);
+        if (steward == null) {
+            return "";
+        }
+        for (String figures : FIGURES) {
+            if (entry.startsWith(figures)) {
+                return "";
+            }
+        }
+        return " for=" + steward;
     }
 
     /** Truncate the audit file. */

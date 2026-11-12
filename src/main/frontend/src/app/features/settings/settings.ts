@@ -15,7 +15,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // period; blank for off), the grace days (a today change closes each open period whose to-date plus these days
 // is before the new today; blank for off; not dated), the permission matrix (for each action, the roles that may take it, comma separated;
 // blank keeps the standing rule; not dated), and
-// the role each user name has on the sheet (clerk unless given another).
+// the role each user name has on the sheet (clerk unless given another), and the delegations of the steward role
+// (a steward gives a user the role from a date to a date, inclusive, by the sheet's today).
 @Component({
   selector: 'app-settings',
   template: `
@@ -233,6 +234,39 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           }
         </tbody>
       </table>
+      <h3>Delegations</h3>
+      <form (submit)="delegate($event)" data-testid="delegate-form">
+        <label for="delegate-user">User name</label>
+        <input
+          id="delegate-user"
+          data-testid="delegate-user"
+          [value]="delegateUser()"
+          (input)="delegateUser.set(value($event)); delegateError.set(null)"
+        />
+        <label for="delegate-from">From (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="delegate-from"
+          data-testid="delegate-from"
+          [value]="delegateFrom()"
+          (input)="delegateFrom.set(value($event)); delegateError.set(null)"
+        />
+        <label for="delegate-to">To (YYYY-MM-DD; blank for the from-date)</label>
+        <input
+          id="delegate-to"
+          data-testid="delegate-to"
+          [value]="delegateTo()"
+          (input)="delegateTo.set(value($event)); delegateError.set(null)"
+        />
+        <button type="submit" data-testid="delegate-submit" [disabled]="delegating()">Delegate steward role</button>
+        @if (delegateError(); as err) {
+          <p role="alert" data-testid="delegate-error">{{ err }}</p>
+        }
+      </form>
+      <ul data-testid="delegate-list" aria-label="Delegations">
+        @for (d of roles.delegations(); track d.id) {
+          <li data-testid="delegate-line">{{ d.delegator }} delegated steward to {{ d.user }} from {{ d.from }} to {{ d.to }}</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -277,6 +311,11 @@ export class SettingsPanel {
   protected readonly role = signal('');
   protected readonly roleError = signal<string | null>(null);
   protected readonly settingRole = signal(false);
+  protected readonly delegateUser = signal('');
+  protected readonly delegateFrom = signal('');
+  protected readonly delegateTo = signal('');
+  protected readonly delegateError = signal<string | null>(null);
+  protected readonly delegating = signal(false);
 
   protected fromOf(key: string): string {
     return this.froms()[key] ?? '';
@@ -425,6 +464,24 @@ export class SettingsPanel {
       }
     } finally {
       this.settingRole.set(false);
+    }
+  }
+
+  protected async delegate(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.delegating()) return; // a second submit before the first has answered
+    this.delegateError.set(null);
+    this.delegating.set(true);
+    try {
+      const err = await this.roles.delegate(this.delegateUser(), this.delegateFrom(), this.delegateTo());
+      if (err) this.delegateError.set(err);
+      else {
+        this.delegateUser.set('');
+        this.delegateFrom.set('');
+        this.delegateTo.set('');
+      }
+    } finally {
+      this.delegating.set(false);
     }
   }
 }
