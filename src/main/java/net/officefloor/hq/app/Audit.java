@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.role.DelegationService;
@@ -119,6 +120,23 @@ public class Audit {
             }
         }
         return lines;
+    }
+
+    /**
+     * The sheet's activity: for every user and every event in the sheet's records, one line {@code <user> <EVENT>
+     * <count>}, sorted by user then event.
+     */
+    public List<String> activity(String sheetId) {
+        Map<String, Map<String, Integer>> counts = new TreeMap<>();
+        for (String line : lines(sheetId, "")) {
+            Matcher m = SHEET_BY.matcher(line);
+            if (m.find()) {
+                counts.computeIfAbsent(m.group(3), u -> new TreeMap<>()).merge(m.group(1), 1, Integer::sum);
+            }
+        }
+        List<String> activity = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, count) -> activity.add(user + " " + event + " " + count)));
+        return activity;
     }
 
     /**

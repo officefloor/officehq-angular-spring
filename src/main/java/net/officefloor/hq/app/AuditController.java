@@ -54,6 +54,13 @@ public class AuditController {
         return lines;
     }
 
+    /** The sheet's activity: one line {@code <user> <EVENT> <count>} per user and event, sorted by user then event. */
+    @GetMapping("/api/sheets/{sheetId}/activity")
+    public List<String> activity(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return audit.activity(sheetId.trim());
+    }
+
     /** The ids of the sheet's descendants, each once, by id; a parent loop never brings back the sheet. */
     private List<String> descendants(String sheetId) {
         List<String> seen = new ArrayList<>(List.of(sheetId));
