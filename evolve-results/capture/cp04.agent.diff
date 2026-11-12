@@ -1,0 +1,118 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 51ef65325..11c2d56ad 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -95,5 +95,6 @@ export class People {
+ }
+ 
+ function failed(what: string, e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use.';
+   return e instanceof HttpErrorResponse ? `Could not ${what} person (${e.status}).` : `Could not ${what} person.`;
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonNameTakenException.java b/src/main/java/net/officefloor/hq/app/person/PersonNameTakenException.java
+new file mode 100644
+index 000000000..32395c7c1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonNameTakenException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.person;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** Another person on the sheet already has the name, compared without regard to case. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class PersonNameTakenException extends RuntimeException {
++
++    public PersonNameTakenException() {
++        super("That name is already in use.");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 0cccf6e8a..67d04b9ac 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface PersonRepository extends JpaRepository<Person, Long> {
+ 
+@@ -10,4 +11,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
++
++    /** Whether someone on the sheet other than {@code exceptId} has the name, ignoring case. */
++    @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)"
++            + " and (:exceptId is null or p.id <> :exceptId)")
++    boolean nameTaken(String sheetId, String name, Long exceptId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index e245169f5..0aa68196b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -3,10 +3,14 @@ package net.officefloor.hq.app.person;
+ import java.util.List;
+ import net.officefloor.hq.app.sheet.SheetNotFoundException;
+ import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Keeps the people on each sheet. Names arrive validated (not blank) and are stored trimmed. */
++/**
++ * Keeps the people on each sheet. Names arrive validated (not blank) and are stored trimmed; a name
++ * is unique on the sheet, compared without regard to case.
++ */
+ @Service
+ public class PersonService {
+ 
+@@ -27,15 +31,32 @@ public class PersonService {
+     @Transactional
+     public Person add(String sheetId, String name, String grade) {
+         requireSheet(sheetId);
+-        return people.save(new Person(sheetId, name.trim(), grade));
++        requireFreeName(sheetId, name.trim(), null);
++        return saved(new Person(sheetId, name.trim(), grade));
+     }
+ 
+     @Transactional
+     public Person update(String sheetId, long personId, String name, String grade) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
++        requireFreeName(sheetId, name.trim(), person.getId());
+         person.setName(name.trim());
+         person.setGrade(grade);
+-        return person;
++        return saved(person);
++    }
++
++    private void requireFreeName(String sheetId, String name, Long exceptId) {
++        if (people.nameTaken(sheetId, name, exceptId)) {
++            throw new PersonNameTakenException();
++        }
++    }
++
++    /** Save now, so a name another user took at the same moment is refused here, not at commit. */
++    private Person saved(Person person) {
++        try {
++            return people.saveAndFlush(person);
++        } catch (DataIntegrityViolationException e) {
++            throw new PersonNameTakenException();
++        }
+     }
+ 
+     private void requireSheet(String sheetId) {
+diff --git a/src/main/resources/db/migration/V4__person_name_unique.sql b/src/main/resources/db/migration/V4__person_name_unique.sql
+new file mode 100644
+index 000000000..564ea08ef
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__person_name_unique.sql
+@@ -0,0 +1,5 @@
++-- A person's name is unique on the sheet, compared without regard to case. Names are stored
++-- trimmed; name_key is the name as compared, and the index refuses a second person with it.
++UPDATE person SET name = TRIM(name);
++ALTER TABLE person ADD COLUMN name_key VARCHAR(200) GENERATED ALWAYS AS (LOWER(name));
++CREATE UNIQUE INDEX person_sheet_name ON person (sheet_id, name_key);
