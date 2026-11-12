@@ -3,8 +3,8 @@ import { GRADES } from '../../core/people';
 import { Rates } from '../../core/rates';
 
 // The sheet's rates for each grade: one form sets a grade's rate from a date (or from the beginning
-// of time), one table shows each grade's rate in force on the sheet's today, or n/a when none
-// applies, and another lists every rate with its from-date.
+// of time) through a to-date (or for good), one table shows each grade's rate in force on the sheet's today, or n/a when none
+// applies, and another lists every rate with its from- and to-date.
 @Component({
   selector: 'app-rates',
   template: `
@@ -37,6 +37,13 @@ import { Rates } from '../../core/rates';
           [value]="from()"
           (input)="from.set(value($event)); error.set(null)"
         />
+        <label for="rate-form-to">To (YYYY-MM-DD, blank for no end)</label>
+        <input
+          id="rate-form-to"
+          data-testid="rate-form-to"
+          [value]="to()"
+          (input)="to.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit" [disabled]="saving()">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
@@ -59,13 +66,14 @@ import { Rates } from '../../core/rates';
       <table data-testid="rate-list">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (r of rates.rates(); track r.grade + '-' + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td><span data-testid="rate-pct">{{ r.rate }}</span></td>
             </tr>
           }
@@ -80,6 +88,7 @@ export class RatesPanel {
   protected readonly grade = signal<string>('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');
+  protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
 
@@ -93,11 +102,12 @@ export class RatesPanel {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const err = await this.rates.set(this.grade(), this.pct(), this.from());
+      const err = await this.rates.set(this.grade(), this.pct(), this.from(), this.to());
       if (err) this.error.set(err);
       else {
         this.pct.set('');
         this.from.set('');
+        this.to.set('');
       }
     } finally {
       this.saving.set(false);

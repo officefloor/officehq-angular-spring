@@ -206,11 +206,13 @@ public class Rollup {
         return due == null ? "n/a" : due.toPlainString();
     }
 
-    /** The grade's rate in force on a date: the latest from-date on or before it, none first. */
+    /** The grade's rate in force on a date: the latest from-date on or before it, none first; none
+     *  when the date is after that rate's to-date. */
     private static Optional<Rate> inForce(List<Rate> sheetRates, String grade, LocalDate date) {
         return sheetRates.stream()
                 .filter(r -> r.getGrade().equals(grade))
                 .filter(r -> r.getFromDate() == null || !r.getFromDate().isAfter(date))
-                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())));
+                .max(Comparator.comparing(Rate::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .filter(r -> r.coversThrough(date));
     }
 }

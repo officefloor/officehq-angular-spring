@@ -9,8 +9,8 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** The sheet's rate for a grade from a date (or from the beginning of time when it has none): a
- *  percent (0.00 or more, two decimals). */
+/** The sheet's rate for a grade from a date (or from the beginning of time when it has none),
+ *  perhaps through a to-date: a percent (0.00 or more, two decimals). */
 @Entity
 @Table(name = "rate")
 public class Rate {
@@ -29,16 +29,21 @@ public class Rate {
     @Column(name = "from_date")
     private LocalDate fromDate;
 
+    /** The last day the rate applies; none when it applies on for good. */
+    @Column(name = "to_date")
+    private LocalDate toDate;
+
     @Column(name = "rate", nullable = false)
     private BigDecimal rate;
 
     protected Rate() {
     }
 
-    public Rate(String sheetId, String grade, LocalDate fromDate, BigDecimal rate) {
+    public Rate(String sheetId, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal rate) {
         this.sheetId = sheetId;
         this.grade = grade;
         this.fromDate = fromDate;
+        this.toDate = toDate;
         this.rate = rate;
     }
 
@@ -56,6 +61,19 @@ public class Rate {
 
     public LocalDate getFromDate() {
         return fromDate;
+    }
+
+    public LocalDate getToDate() {
+        return toDate;
+    }
+
+    public void setToDate(LocalDate toDate) {
+        this.toDate = toDate;
+    }
+
+    /** Whether the rate still applies on a date on or after its from-date: not past its to-date. */
+    public boolean coversThrough(LocalDate date) {
+        return toDate == null || !date.isAfter(toDate);
     }
 
     public BigDecimal getRate() {

@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Keeps each sheet's rates for each grade, each from a date or from the beginning of time.
- *  Setting a grade's rate for a from-date it already has replaces that rate. */
+ *  perhaps through a to-date. Setting a grade's rate for a from-date it already has replaces that
+ *  rate, and its to-date. */
 @Service
 public class RateService {
 
@@ -35,25 +36,30 @@ public class RateService {
     }
 
     @Transactional
-    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         requireSheet(sheetId);
+        if (to != null && from != null && to.isBefore(from)) {
+            throw new RateRefusedException("A rate's to-date cannot be before its from-date.");
+        }
         BigDecimal value = pct.setScale(2);
         Rollup.Snapshot before = rollup.take(sheetId);
         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
         if (rate == null) {
             try {
-                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, value));
+                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, value));
             } catch (DataIntegrityViolationException e) {
                 // Another user set the same grade and from-date's first rate at the same moment.
                 throw new RateConflictException();
             }
         } else {
             rate.setRate(value);
+            rate.setToDate(to);
             rate = rates.saveAndFlush(rate);
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + grade + " rate=" + rate.getRate().toPlainString()
-                + (from == null ? "" : " from=" + from));
+                + (from == null ? "" : " from=" + from)
+                + (to == null ? "" : " to=" + to));
         rollup.recordChanges(sheetId, user, before);
         return rate;
     }

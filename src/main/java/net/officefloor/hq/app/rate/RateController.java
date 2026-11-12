@@ -26,17 +26,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** A grade's rate as the screen shows it: its from-date (YYYY-MM-DD, none when it applies from
-     *  the beginning of time) and a percent with two decimals. */
-    public record RateView(String grade, String from, String rate) {
+     *  the beginning of time), its to-date (none when it applies on for good) and a percent with two
+     *  decimals. */
+    public record RateView(String grade, String from, String to, String rate) {
 
         static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getFromDate() == null ? null : rate.getFromDate().toString(),
-                    rate.getRate().toPlainString());
+                    rate.getToDate() == null ? null : rate.getToDate().toString(), rate.getRate().toPlainString());
         }
     }
 
     public record RateRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal rate,
-            LocalDate from) {
+            LocalDate from, LocalDate to) {
     }
 
     private final RateService service;
@@ -52,12 +53,13 @@ public class RateController {
         return service.list(sheetId.trim()).stream().map(RateView::of).toList();
     }
 
-    /** Set a grade's rate from a date (or from the beginning of time), replacing the one it had then. */
+    /** Set a grade's rate from a date (or from the beginning of time), perhaps through a to-date,
+     *  replacing the one it had then. */
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid RateRequest request) {
-        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.rate()));
+        return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.rate()));
     }
 }

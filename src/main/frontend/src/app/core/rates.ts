@@ -7,6 +7,8 @@ export interface Rate {
   grade: string;
   /** The first day the rate applies (YYYY-MM-DD); null when it applies from the beginning of time. */
   from: string | null;
+  /** The last day the rate applies (YYYY-MM-DD); null when it applies on for good. */
+  to: string | null;
   /** A percent with two decimals, as the server stores it. */
   rate: string;
 }
@@ -16,7 +18,8 @@ export const NO_RATE = 'n/a';
 
 // The active sheet's rates for each grade, re-read from the server each time the sheet is loaded.
 // A grade may have several, each from a date; on a date the one in force is the one whose from-date
-// is the latest on or before it, a rate with no from-date applying from the beginning of time.
+// is the latest on or before it, a rate with no from-date applying from the beginning of time; none
+// is in force when the date is after that rate's to-date.
 // Due is worked out in whole cents and hundredths of a percent, with BigInt, so it is exact.
 @Injectable({ providedIn: 'root' })
 export class Rates {
@@ -33,7 +36,7 @@ export class Rates {
     for (const r of this.rates()) {
       if (r.grade === grade && (r.from === null || r.from <= date)) found = r;
     }
-    return found;
+    return found && (found.to === null || date <= found.to) ? found : undefined;
   }
 
   /** A grade's rate in force on the sheet's today, with two decimals, or n/a when it has none. */
@@ -77,16 +80,18 @@ export class Rates {
     }
   }
 
-  /** Set a grade's rate from a date (blank: from the beginning of time), replacing the one it had
-   *  from that date; an error message when refused. */
-  async set(grade: string, pct: string, from: string): Promise<string | null> {
+  /** Set a grade's rate from a date (blank: from the beginning of time) through a to-date (blank:
+   *  for good), replacing the one it had from that date; an error message when refused. */
+  async set(grade: string, pct: string, from: string, to: string): Promise<string | null> {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!/^\d+(\.\d{1,2})?$/.test(pct.trim())) return 'Enter a rate of 0.00 or more, with up to two decimals.';
     if (from.trim() && !isDate(from.trim())) return 'Enter a from-date as YYYY-MM-DD, or leave it blank.';
+    if (to.trim() && !isDate(to.trim())) return 'Enter a to-date as YYYY-MM-DD, or leave it blank.';
+    if (to.trim() && from.trim() && to.trim() < from.trim()) return "A rate's to-date cannot be before its from-date.";
     const sid = this.session.sheetId()!;
     try {
       const rate = await firstValueFrom(
-        this.http.put<Rate>(`${this.url(sid)}/${encodeURIComponent(grade)}`, { rate: pct.trim(), from: from.trim() || null }, {
+        this.http.put<Rate>(`${this.url(sid)}/${encodeURIComponent(grade)}`, { rate: pct.trim(), from: from.trim() || null, to: to.trim() || null }, {
           headers: { 'X-User': this.session.user()! },
         }),
       );
@@ -142,5 +147,6 @@ export function money(h: bigint): string {
 
 function failed(what: string, e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a rate of 0.00 or more, with up to two decimals.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return "A rate's to-date cannot be before its from-date.";
   return e instanceof HttpErrorResponse ? `Could not ${what} rate (${e.status}).` : `Could not ${what} rate.`;
 }
