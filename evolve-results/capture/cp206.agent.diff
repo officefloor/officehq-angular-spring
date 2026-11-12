@@ -1,0 +1,288 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 05e9344d8..9fba95333 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -18,6 +18,7 @@ interface SheetView {
+   viewer: boolean;
+   lastSettleBatch: number | null;
+   steward: boolean;
++  visiblePeople: number[] | null;
+ }
+ 
+ // The signed-in user and the active sheet. Signing in only takes a name; the name is sent with
+@@ -37,6 +38,9 @@ export class Session {
+   /** Whether the signed-in user is a steward of the active sheet (in their own right or by delegation), as of its last
+    *  load. */
+   readonly steward = signal(false);
++  /** For a restricted user, the ids of the people the people list shows them (their crews' people and themselves), as
++   *  of the sheet's last load; null for any other user, who sees everyone. */
++  readonly visiblePeople = signal<number[] | null>(null);
+   /** The number of the active sheet's last bulk settle batch; null while there has been none. */
+   readonly lastSettleBatch = signal<number | null>(null);
+   /** Whether retired people are listed: off when the screen opens, and left as it is by loading a sheet. */
+@@ -212,6 +216,7 @@ export class Session {
+     this.archived.set(view.archived);
+     this.viewer.set(view.viewer);
+     this.steward.set(view.steward);
++    this.visiblePeople.set(view.visiblePeople);
+     this.lastSettleBatch.set(view.lastSettleBatch);
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index add19e723..a218de4b3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -989,10 +989,14 @@ export class People {
+ 
+   protected readonly grades = ['A', 'B', 'C'];
+   protected readonly people = signal<Person[]>([]);
+-  /** The people listed: the retired ones only while "show retired" is on. Totals still count everyone. */
+-  protected readonly listed = computed(() =>
+-    this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+-  );
++  /** The people listed: the retired ones only while "show retired" is on, and for a restricted user only the people
++   *  they may see. Totals still count everyone. */
++  protected readonly listed = computed(() => {
++    const visible = this.session.visiblePeople();
++    return this.people().filter(
++      (p) => (this.session.showRetired() || !p.retired) && (visible === null || visible.includes(p.id)),
++    );
++  });
+   protected readonly sortKeys: readonly SortKey[] = ['added', 'name', 'grade', 'due-total'];
+   /** What this screen sorts the people listed by; it changes only the order shown, never the list order. */
+   protected readonly sortBy = signal<SortKey>('added');
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 2c80fb21f..dadbc2659 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -64,11 +64,11 @@ interface DelegationView {
+ 
+ interface RoleView {
+   user: string;
+-  /** clerk, steward or viewer; a user name not listed is a clerk. */
++  /** clerk, steward, viewer or restricted; a user name not listed is a clerk. */
+   role: string;
+ }
+ 
+-const ROLES = ['clerk', 'steward', 'viewer'];
++const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
+ const GRADES = ['A', 'B', 'C'];
+ /** The actions the permission matrix decides. */
+ const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
+@@ -479,7 +479,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           [value]="roleUser()"
+           (input)="roleUser.set(value($event)); roleError.set(null)"
+         />
+-        <label for="role-form-role">Role (clerk, steward or viewer)</label>
++        <label for="role-form-role">Role (clerk, steward, viewer or restricted)</label>
+         <input
+           id="role-form-role"
+           data-testid="role-form-role"
+@@ -1160,7 +1160,7 @@ export class Settings {
+       return;
+     }
+     if (!ROLES.includes(role)) {
+-      this.roleError.set('A role is clerk, steward or viewer.');
++      this.roleError.set('A role is clerk, steward, viewer or restricted.');
+       return;
+     }
+     this.savingRole = true;
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index a8b3bb639..f5533d459 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -1,6 +1,8 @@
+ package net.officefloor.hq.app.crew;
+ 
++import java.util.HashSet;
+ import java.util.List;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.pool.PoolRepository;
+@@ -40,6 +42,27 @@ public class CrewService {
+         return crews.findBySheetIdOrderByIdAsc(sheetId);
+     }
+ 
++    /**
++     * The people a restricted user sees: the person with the user's name, and the lead and members of every crew that
++     * person leads or belongs to; none when the sheet has no person by that name.
++     */
++    @Transactional(readOnly = true)
++    public Set<Long> peopleOf(String sheetId, String user) {
++        Set<Long> ids = new HashSet<>();
++        people.findBySheetIdAndNameKey(sheetId, Person.key(user)).ifPresent(self -> {
++            ids.add(self.getId());
++            for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
++                if (crew.includes(self.getId())) {
++                    if (crew.getLeadId() != null) {
++                        ids.add(crew.getLeadId());
++                    }
++                    crew.getMembers().forEach(m -> ids.add(m.getPersonId()));
++                }
++            }
++        });
++        return ids;
++    }
++
+     /** Add a crew by its name (already trimmed, not blank) with its lead; refused when the sheet has a crew or a pool by that name. */
+     @Transactional
+     public Crew add(String sheetId, String user, String name, Long leadId) {
+diff --git a/src/main/java/net/officefloor/hq/app/role/Role.java b/src/main/java/net/officefloor/hq/app/role/Role.java
+index 89dc49d1b..3a2667425 100644
+--- a/src/main/java/net/officefloor/hq/app/role/Role.java
++++ b/src/main/java/net/officefloor/hq/app/role/Role.java
+@@ -1,8 +1,9 @@
+ package net.officefloor.hq.app.role;
+ 
+-/** A user's role on a sheet. Any user name without one is a clerk; a viewer may change nothing. */
++/** A user's role on a sheet. Any user name without one is a clerk; a viewer may change nothing;
++ * a restricted user sees on the people list only the people of their crews and themselves. */
+ public enum Role {
+-    CLERK, STEWARD, VIEWER;
++    CLERK, STEWARD, VIEWER, RESTRICTED;
+ 
+     /** The role as stored and shown: lower case. */
+     public String value() {
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index 288f1234a..c18831e4e 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -28,9 +28,9 @@ public class RoleController {
+         }
+     }
+ 
+-    /** A user name and its role: clerk, steward or viewer. */
++    /** A user name and its role: clerk, steward, viewer or restricted. */
+     public record RoleRequest(@NotBlank @Size(max = 100) String user,
+-            @NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer)\\s*") String role) {
++            @NotNull @Pattern(regexp = "\\s*(clerk|steward|viewer|restricted)\\s*") String role) {
+     }
+ 
+     private final RoleService service;
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 880bf0ea4..8188169ac 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -41,6 +41,11 @@ public class RoleService {
+         return roleOf(sheetId, user) == Role.VIEWER;
+     }
+ 
++    /** Whether the user is restricted on the sheet, who sees on the people list only their crews' people and themselves. */
++    public boolean isRestricted(String sheetId, String user) {
++        return roleOf(sheetId, user) == Role.RESTRICTED;
++    }
++
+     /** Whether the user is a steward on the sheet, in their own right or by a delegation covering its today. */
+     public boolean isSteward(String sheetId, String user) {
+         return roleOf(sheetId, user) == Role.STEWARD;
+diff --git a/src/main/java/net/officefloor/hq/app/role/SheetRole.java b/src/main/java/net/officefloor/hq/app/role/SheetRole.java
+index a9f4becfd..38b1e95ff 100644
+--- a/src/main/java/net/officefloor/hq/app/role/SheetRole.java
++++ b/src/main/java/net/officefloor/hq/app/role/SheetRole.java
+@@ -22,7 +22,7 @@ public class SheetRole {
+     @Column(name = "user_name", nullable = false)
+     private String userName;
+ 
+-    /** clerk, steward or viewer. */
++    /** clerk, steward, viewer or restricted. */
+     @Column(name = "role", nullable = false)
+     private String role;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 4ed3eeb60..47269f9a1 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
++import java.util.List;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -23,14 +24,15 @@ public class SheetController {
+     /**
+      * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, the
+      * number of its last bulk settle batch (null while there has been none), and whether the user is a steward of it
+-     * (in their own right or by a delegation covering its today).
++     * (in their own right or by a delegation covering its today), and, for a restricted user, the ids of the people
++     * the people list shows them (null: everyone).
+      */
+     public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch,
+-            boolean steward) {
++            boolean steward, List<Long> visiblePeople) {
+ 
+-        static SheetView of(Sheet sheet, boolean viewer, boolean steward) {
++        static SheetView of(Sheet sheet, boolean viewer, boolean steward, List<Long> visiblePeople) {
+             return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer,
+-                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), steward);
++                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), steward, visiblePeople);
+         }
+     }
+ 
+@@ -80,6 +82,7 @@ public class SheetController {
+     }
+ 
+     private SheetView view(Sheet sheet, String user) {
+-        return SheetView.of(sheet, service.isViewer(sheet.getId(), user), service.isSteward(sheet.getId(), user));
++        return SheetView.of(sheet, service.isViewer(sheet.getId(), user), service.isSteward(sheet.getId(), user),
++                service.visiblePeople(sheet.getId(), user));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 688162d15..0272b5796 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -10,6 +10,7 @@ import java.util.SortedSet;
+ import java.util.TreeSet;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.crew.CrewService;
+ import net.officefloor.hq.app.period.PeriodService;
+ import net.officefloor.hq.app.person.PersonSnapshot;
+ import net.officefloor.hq.app.person.PersonSnapshotRepository;
+@@ -35,9 +36,11 @@ public class SheetService {
+     private final Audit audit;
+     private final ClaimRepository claims;
+     private final PersonSnapshotRepository snapshots;
++    private final CrewService crews;
+ 
+     public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods, RoleService roles,
+-            Audit audit, ClaimRepository claims, PersonSnapshotRepository snapshots) {
++            Audit audit, ClaimRepository claims, PersonSnapshotRepository snapshots, CrewService crews) {
++        this.crews = crews;
+         this.snapshots = snapshots;
+         this.claims = claims;
+         this.sheets = sheets;
+@@ -56,6 +59,11 @@ public class SheetService {
+         return roles.isViewer(id, user);
+     }
+ 
++    /** The ids of the people the people list shows a restricted user, in id order; null for any other user (everyone). */
++    public List<Long> visiblePeople(String id, String user) {
++        return roles.isRestricted(id, user) ? crews.peopleOf(id, user).stream().sorted().toList() : null;
++    }
++
+     /** Whether the user is a steward of the sheet, in their own right or by a delegation covering its today. */
+     public boolean isSteward(String id, String user) {
+         return roles.isSteward(id, user);
+diff --git a/src/main/resources/db/migration/V109__role_restricted.sql b/src/main/resources/db/migration/V109__role_restricted.sql
+new file mode 100644
+index 000000000..b889e69c1
+--- /dev/null
++++ b/src/main/resources/db/migration/V109__role_restricted.sql
+@@ -0,0 +1,13 @@
++-- A fourth role, restricted: sees on the people list only the people of the crews led by or holding the person with
++-- the user's name, and that person.
++CREATE TABLE sheet_role_new (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(100) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('clerk', 'steward', 'viewer', 'restricted'))
++);
++INSERT INTO sheet_role_new (id, sheet_id, user_name, role) SELECT id, sheet_id, user_name, role FROM sheet_role;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_new RENAME TO sheet_role;
++ALTER TABLE sheet_role ALTER COLUMN id RESTART WITH (SELECT COALESCE(MAX(id), 0) + 1 FROM sheet_role);
++CREATE UNIQUE INDEX sheet_role_user ON sheet_role (sheet_id, user_name);
