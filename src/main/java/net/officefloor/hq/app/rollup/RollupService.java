@@ -149,7 +149,14 @@ public class RollupService {
      * grade, the due-totals of the people on it not retired (two decimals); and per status, how many claims have it.
      */
     public record Consolidated(int people, String dueTotal, String overdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts) {
+            Map<String, Integer> statusCounts, List<Member> members) {
+    }
+
+    /**
+     * A person of one of the sheets as that sheet shows them: their due-total (two decimals or n/a), their
+     * overdue-total (two decimals), and their name and aliases as names are compared.
+     */
+    public record Member(String dueTotal, String overdueTotal, List<String> names) {
     }
 
     /**
@@ -167,9 +174,19 @@ public class RollupService {
         BigDecimal overdue = zero();
         Map<String, BigDecimal> gradeDues = new TreeMap<>();
         Map<String, Integer> statuses = new TreeMap<>();
+        List<Member> members = new ArrayList<>();
         for (String id : sheetIds) {
             Snapshot figures = snapshot(id);
             count += figures.people().size();
+            Map<Long, List<String>> namesOf = new LinkedHashMap<>();
+            for (PersonAlias alias : aliases.findBySheetId(id)) {
+                namesOf.computeIfAbsent(alias.getPersonId(), p -> new ArrayList<>()).add(alias.getAliasKey());
+            }
+            figures.people().forEach((personId, theirs) -> {
+                List<String> names = new ArrayList<>(List.of(Person.key(theirs.name())));
+                names.addAll(namesOf.getOrDefault(personId, List.of()));
+                members.add(new Member(theirs.dueTotal(), theirs.overdueTotal(), names));
+            });
             due = due.add(new BigDecimal(figures.dueTotal()));
             overdue = overdue.add(new BigDecimal(figures.overdueTotal()));
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(id)) {
@@ -183,13 +200,14 @@ public class RollupService {
                 statuses.merge(claim.getStatus().name(), 1, Integer::sum);
             }
         }
-        return new Consolidated(count, shown(due), shown(overdue), shownAll(gradeDues), statuses);
+        return new Consolidated(count, shown(due), shown(overdue), shownAll(gradeDues), statuses, members);
     }
 
     /**
-     * The figures of the sheet and its descendants, each sheet's people, due-total and overdue-total as that sheet
-     * shows them, added up. While the request shows the sheet as of a date, every sheet of the tree is as it stood at
-     * the end of that date, with the date as its today.
+     * The figures of the sheet and its descendants: the people counted once over the tree (people whose names or
+     * aliases match, as names are compared, are one person); the due-total and overdue-total trimmed once over every
+     * person's figure of the tree; per grade and per status, each sheet's added up. While the request shows the sheet
+     * as of a date, every sheet of the tree is as it stood at the end of that date, with the date as its today.
      */
     public Consolidated consolidatedFigures(String sheetId) {
         Consolidated own = figuresOf(List.of(sheetId));
@@ -200,10 +218,42 @@ public class RollupService {
                 .forEach((grade, total) -> gradeDues.merge(grade, new BigDecimal(total), BigDecimal::add));
         Map<String, Integer> statuses = new TreeMap<>(own.statusCounts());
         descendants.statusCounts().forEach((status, n) -> statuses.merge(status, n, Integer::sum));
-        return new Consolidated(own.people() + descendants.people(),
-                shown(new BigDecimal(own.dueTotal()).add(new BigDecimal(descendants.dueTotal()))),
-                shown(new BigDecimal(own.overdueTotal()).add(new BigDecimal(descendants.overdueTotal()))),
-                shownAll(gradeDues), statuses);
+        List<Member> members = new ArrayList<>(own.members());
+        members.addAll(descendants.members());
+        List<BigDecimal> dues = members.stream().map(Member::dueTotal).filter(d -> !d.equals("n/a"))
+                .map(BigDecimal::new).toList();
+        List<BigDecimal> overdues = members.stream().map(Member::overdueTotal).map(BigDecimal::new).toList();
+        return new Consolidated(distinctPeople(members), shown(trimmedSum(dues)), shown(trimmedSum(overdues)),
+                shownAll(gradeDues), statuses, members);
+    }
+
+    /** How many people the members are, those whose names or aliases match (as names are compared) being one. */
+    private static int distinctPeople(List<Member> members) {
+        int[] parent = new int[members.size()];
+        Map<String, Integer> firstWith = new LinkedHashMap<>();
+        int count = members.size();
+        for (int i = 0; i < members.size(); i++) {
+            parent[i] = i;
+            for (String name : members.get(i).names()) {
+                Integer other = firstWith.putIfAbsent(name, i);
+                if (other != null) {
+                    int a = top(parent, i);
+                    int b = top(parent, other);
+                    if (a != b) {
+                        parent[a] = b;
+                        count--;
+                    }
+                }
+            }
+        }
+        return count;
+    }
+
+    private static int top(int[] parent, int i) {
+        while (parent[i] != i) {
+            i = parent[i];
+        }
+        return i;
     }
 
     /**

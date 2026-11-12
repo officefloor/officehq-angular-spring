@@ -89,6 +89,38 @@ interface DescendantFigures {
   overdueTotal: string;
   gradeDueTotals: Record<string, string>;
   statusCounts: Record<string, number>;
+  members: TreeMember[];
+}
+
+/** A person of a sheet as that sheet shows them: due-total, overdue-total, and name and aliases as names are compared. */
+interface TreeMember {
+  dueTotal: string;
+  overdueTotal: string;
+  names: string[];
+}
+
+/** How many people the members are, those whose names or aliases match (as names are compared) being one. */
+function distinctPeople(members: TreeMember[]): number {
+  const parent = members.map((_, i) => i);
+  const top = (i: number): number => (parent[i] === i ? i : top(parent[i]));
+  const firstWith = new Map<string, number>();
+  let count = members.length;
+  members.forEach((m, i) => {
+    for (const name of m.names) {
+      const other = firstWith.get(name);
+      if (other === undefined) {
+        firstWith.set(name, i);
+        continue;
+      }
+      const a = top(i);
+      const b = top(other);
+      if (a !== b) {
+        parent[a] = b;
+        count--;
+      }
+    }
+  });
+  return count;
 }
 
 /** A name as names are compared: trimmed, ignoring case. */
@@ -108,6 +140,7 @@ const NO_DESCENDANTS: DescendantFigures = {
   overdueTotal: '0.00',
   gradeDueTotals: {},
   statusCounts: {},
+  members: [],
 };
 
 /** What decides which of a person's open claims leave the live totals: their retirement date (a hold does not). */
@@ -1142,17 +1175,24 @@ export class People {
   });
   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
   private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
-  /** The sheet's people and its descendants' added up. */
-  protected readonly consolidatedPeople = computed(
-    () => this.people().length + this.descendantFigures().people,
-  );
-  /** The sheet's due-total as shown and its descendants' added up. */
+  /** Every person of the tree: the sheet's as its rows show them, then its descendants'. */
+  private readonly treeMembers = computed<TreeMember[]>(() => [
+    ...this.people().map((p) => ({
+      dueTotal: this.dueTotalOf(p),
+      overdueTotal: this.overdueTotalOf(p),
+      names: [p.name, ...p.aliases].map(nameKey),
+    })),
+    ...this.descendantFigures().members,
+  ]);
+  /** The people of the tree, each counted once: people whose names or aliases match are one. */
+  protected readonly consolidatedPeople = computed(() => distinctPeople(this.treeMembers()));
+  /** Every person's due-total over the tree added up, with three or more leaving out the highest and lowest. */
   protected readonly consolidatedDueTotal = computed(() =>
-    sumDues([this.dueTotal(), this.descendantFigures().dueTotal]),
+    trimmedSumDues(this.treeMembers().map((m) => m.dueTotal)),
   );
-  /** The sheet's overdue-total as shown and its descendants' added up. */
+  /** Every person's overdue-total over the tree added up, with three or more leaving out the highest and lowest. */
   protected readonly consolidatedOverdueTotal = computed(() =>
-    sumDues([this.overdueTotal(), this.descendantFigures().overdueTotal]),
+    trimmedSumDues(this.treeMembers().map((m) => m.overdueTotal)),
   );
   /** Per grade: the sheet's due-total of the people on it not retired, as the summary shows it, and its descendants'. */
   protected readonly consolidatedGrades = computed(() =>

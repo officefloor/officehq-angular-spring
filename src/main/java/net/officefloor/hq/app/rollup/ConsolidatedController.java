@@ -32,8 +32,9 @@ public class ConsolidatedController {
     }
 
     /**
-     * The people, due-total and overdue-total of the sheet and its descendants added up; in an as-of view, every sheet
-     * of the tree as it stood at the end of that date.
+     * The people of the sheet and its descendants, each counted once over the tree, and the due-total and
+     * overdue-total trimmed once over every person of the tree; in an as-of view, every sheet of the tree as it stood
+     * at the end of that date.
      */
     @GetMapping("/api/sheets/{sheetId}/consolidated/figures")
     public RollupService.Consolidated consolidated(@PathVariable @NotBlank @Size(max = 100) String sheetId,
