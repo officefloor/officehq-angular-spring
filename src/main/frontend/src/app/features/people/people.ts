@@ -1792,9 +1792,13 @@ export class People {
     );
   }
 
-  /** The person's score: their settled figures divided by 100, less 5 for each of their overdue claims that counts. */
+  /**
+   * The person's score: the dues of their SETTLED claims that correct nothing, divided by 100, less 5 for each of their
+   * overdue claims that counts.
+   */
   protected personScoreOf(person: Person): string {
-    return scoreOf(this.settledTotalOf(person), this.overdueOf(person).length);
+    const settled = this.liveDuesOf(person, (c) => c.status === 'SETTLED' && c.corrects === null);
+    return scoreOf(settled, this.overdueOf(person).length);
   }
 
   /**

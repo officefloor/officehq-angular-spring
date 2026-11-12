@@ -46,8 +46,8 @@ public class RollupService {
     /**
      * A person's figures as shown: claimed with two decimals, due-total (held down to the cap) with two decimals or
      * n/a, and overdue-total (the dues of their overdue claims) with two decimals; and the grade in force on the
-     * sheet's today, or null when the sheet has none; and the score: the dues of their settled claims divided by 100,
-     * less 5 for each of their overdue claims, rounded half to even to a whole number.
+     * sheet's today, or null when the sheet has none; and the score: the dues of their settled claims that correct
+     * nothing divided by 100, less 5 for each of their overdue claims, rounded half to even to a whole number.
      */
     public record Figures(String name, String claimed, String dueTotal, String overdueTotal, String grade, String score) {
     }
@@ -127,7 +127,8 @@ public class RollupService {
                 }
                 if (claimDue.isPresent()) {
                     due = due.add(claimDue.get());
-                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                    // A correction leaves the score's settled figure alone.
+                    if (claim.getStatus() == ClaimStatus.SETTLED && claim.getCorrects() == null) {
                         settled = settled.add(claimDue.get());
                     }
                     if (isOverdue(sheet, person, claim, today)) {
