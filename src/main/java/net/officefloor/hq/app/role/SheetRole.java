@@ -22,7 +22,7 @@ public class SheetRole {
     @Column(name = "user_name", nullable = false)
     private String userName;
 
-    /** clerk, steward or viewer. */
+    /** clerk, steward, viewer or restricted. */
     @Column(name = "role", nullable = false)
     private String role;
 

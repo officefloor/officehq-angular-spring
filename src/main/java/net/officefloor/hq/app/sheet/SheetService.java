@@ -10,6 +10,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.PersonSnapshot;
 import net.officefloor.hq.app.person.PersonSnapshotRepository;
@@ -35,9 +36,11 @@ public class SheetService {
     private final Audit audit;
     private final ClaimRepository claims;
     private final PersonSnapshotRepository snapshots;
+    private final CrewService crews;
 
     public SheetService(SheetRepository sheets, RollupService rollup, PeriodService periods, RoleService roles,
-            Audit audit, ClaimRepository claims, PersonSnapshotRepository snapshots) {
+            Audit audit, ClaimRepository claims, PersonSnapshotRepository snapshots, CrewService crews) {
+        this.crews = crews;
         this.snapshots = snapshots;
         this.claims = claims;
         this.sheets = sheets;
@@ -54,6 +57,11 @@ public class SheetService {
     /** Whether the user is a viewer of the sheet, who may change nothing. */
     public boolean isViewer(String id, String user) {
         return roles.isViewer(id, user);
+    }
+
+    /** The ids of the people the people list shows a restricted user, in id order; null for any other user (everyone). */
+    public List<Long> visiblePeople(String id, String user) {
+        return roles.isRestricted(id, user) ? crews.peopleOf(id, user).stream().sorted().toList() : null;
     }
 
     /** Whether the user is a steward of the sheet, in their own right or by a delegation covering its today. */

@@ -989,10 +989,14 @@ export class People {
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
-  /** The people listed: the retired ones only while "show retired" is on. Totals still count everyone. */
-  protected readonly listed = computed(() =>
-    this.session.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
-  );
+  /** The people listed: the retired ones only while "show retired" is on, and for a restricted user only the people
+   *  they may see. Totals still count everyone. */
+  protected readonly listed = computed(() => {
+    const visible = this.session.visiblePeople();
+    return this.people().filter(
+      (p) => (this.session.showRetired() || !p.retired) && (visible === null || visible.includes(p.id)),
+    );
+  });
   protected readonly sortKeys: readonly SortKey[] = ['added', 'name', 'grade', 'due-total'];
   /** What this screen sorts the people listed by; it changes only the order shown, never the list order. */
   protected readonly sortBy = signal<SortKey>('added');

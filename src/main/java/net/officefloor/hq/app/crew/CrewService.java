@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.crew;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.pool.PoolRepository;
@@ -38,6 +40,27 @@ public class CrewService {
     @Transactional(readOnly = true)
     public List<Crew> list(String sheetId) {
         return crews.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /**
+     * The people a restricted user sees: the person with the user's name, and the lead and members of every crew that
+     * person leads or belongs to; none when the sheet has no person by that name.
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> peopleOf(String sheetId, String user) {
+        Set<Long> ids = new HashSet<>();
+        people.findBySheetIdAndNameKey(sheetId, Person.key(user)).ifPresent(self -> {
+            ids.add(self.getId());
+            for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+                if (crew.includes(self.getId())) {
+                    if (crew.getLeadId() != null) {
+                        ids.add(crew.getLeadId());
+                    }
+                    crew.getMembers().forEach(m -> ids.add(m.getPersonId()));
+                }
+            }
+        });
+        return ids;
     }
 
     /** Add a crew by its name (already trimmed, not blank) with its lead; refused when the sheet has a crew or a pool by that name. */

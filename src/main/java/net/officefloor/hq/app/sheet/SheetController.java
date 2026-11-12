@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,14 +24,15 @@ public class SheetController {
     /**
      * The sheet as shown to the user: its today, whether it is archived, whether the user is a viewer of it, the
      * number of its last bulk settle batch (null while there has been none), and whether the user is a steward of it
-     * (in their own right or by a delegation covering its today).
+     * (in their own right or by a delegation covering its today), and, for a restricted user, the ids of the people
+     * the people list shows them (null: everyone).
      */
     public record SheetView(String id, LocalDate today, boolean archived, boolean viewer, Long lastSettleBatch,
-            boolean steward) {
+            boolean steward, List<Long> visiblePeople) {
 
-        static SheetView of(Sheet sheet, boolean viewer, boolean steward) {
+        static SheetView of(Sheet sheet, boolean viewer, boolean steward, List<Long> visiblePeople) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), viewer,
-                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), steward);
+                    sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(), steward, visiblePeople);
         }
     }
 
@@ -80,6 +82,7 @@ public class SheetController {
     }
 
     private SheetView view(Sheet sheet, String user) {
-        return SheetView.of(sheet, service.isViewer(sheet.getId(), user), service.isSteward(sheet.getId(), user));
+        return SheetView.of(sheet, service.isViewer(sheet.getId(), user), service.isSteward(sheet.getId(), user),
+                service.visiblePeople(sheet.getId(), user));
     }
 }

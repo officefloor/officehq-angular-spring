@@ -41,6 +41,11 @@ public class RoleService {
         return roleOf(sheetId, user) == Role.VIEWER;
     }
 
+    /** Whether the user is restricted on the sheet, who sees on the people list only their crews' people and themselves. */
+    public boolean isRestricted(String sheetId, String user) {
+        return roleOf(sheetId, user) == Role.RESTRICTED;
+    }
+
     /** Whether the user is a steward on the sheet, in their own right or by a delegation covering its today. */
     public boolean isSteward(String sheetId, String user) {
         return roleOf(sheetId, user) == Role.STEWARD;

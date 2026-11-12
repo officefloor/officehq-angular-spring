@@ -64,11 +64,11 @@ interface DelegationView {
 
 interface RoleView {
   user: string;
-  /** clerk, steward or viewer; a user name not listed is a clerk. */
+  /** clerk, steward, viewer or restricted; a user name not listed is a clerk. */
   role: string;
 }
 
-const ROLES = ['clerk', 'steward', 'viewer'];
+const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
 const GRADES = ['A', 'B', 'C'];
 /** The actions the permission matrix decides. */
 const ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'];
@@ -479,7 +479,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
           [value]="roleUser()"
           (input)="roleUser.set(value($event)); roleError.set(null)"
         />
-        <label for="role-form-role">Role (clerk, steward or viewer)</label>
+        <label for="role-form-role">Role (clerk, steward, viewer or restricted)</label>
         <input
           id="role-form-role"
           data-testid="role-form-role"
@@ -1160,7 +1160,7 @@ export class Settings {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.roleError.set('A role is clerk, steward or viewer.');
+      this.roleError.set('A role is clerk, steward, viewer or restricted.');
       return;
     }
     this.savingRole = true;
