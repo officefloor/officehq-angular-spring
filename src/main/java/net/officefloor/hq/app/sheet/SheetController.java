@@ -31,13 +31,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off).
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first).
      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
-            boolean archived, String noteThreshold, LocalDate entryDate) {
+            boolean archived, String noteThreshold, LocalDate entryDate, Integer lastSettleBatch) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -50,7 +50,7 @@ public class SheetController {
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
                     sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived(),
                     sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString(),
-                    sheet.getEntryDate());
+                    sheet.getEntryDate(), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch());
         }
     }
 

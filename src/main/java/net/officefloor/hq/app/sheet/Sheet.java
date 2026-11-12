@@ -65,6 +65,10 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
+    /** The number of the last bulk settle batch on the sheet; 0 before the first. */
+    @Column(name = "last_settle_batch", nullable = false)
+    private int lastSettleBatch;
+
     /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
      *  each grade's terms (terms-<grade>), each grade's grace days (grace-<grade>), the clerk limit, the cap, the proof threshold, each grade's proof
      *  threshold (proof-threshold-<grade>) and the note threshold. */
@@ -382,5 +386,14 @@ public class Sheet {
     /** Give out the sheet's next claim number. */
     public String nextClaimNumber() {
         return String.valueOf(++lastClaimNumber);
+    }
+
+    public int getLastSettleBatch() {
+        return lastSettleBatch;
+    }
+
+    /** Give out the sheet's next settle batch number. */
+    public int nextSettleBatch() {
+        return ++lastSettleBatch;
     }
 }

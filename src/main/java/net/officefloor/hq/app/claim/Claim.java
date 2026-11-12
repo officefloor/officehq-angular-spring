@@ -105,6 +105,10 @@ public class Claim {
     @Column(name = "split_from")
     private String splitFrom;
 
+    /** The number of the bulk settle batch that settled it; none when settled one at a time, or never. */
+    @Column(name = "settle_batch")
+    private Integer settleBatch;
+
     /** The user whose editor is open on it, locking it for every other user; none while unlocked. */
     @Column(name = "locked_by")
     private String lockedBy;
@@ -348,6 +352,14 @@ public class Claim {
 
     public void setSplitFrom(String splitFrom) {
         this.splitFrom = splitFrom;
+    }
+
+    public Integer getSettleBatch() {
+        return settleBatch;
+    }
+
+    public void setSettleBatch(Integer settleBatch) {
+        this.settleBatch = settleBatch;
     }
 
     public String getLockedBy() {

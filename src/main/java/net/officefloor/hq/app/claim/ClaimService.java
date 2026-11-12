@@ -401,7 +401,7 @@ public class ClaimService {
         return updated;
     }
 
-    /** Reject a PENDING claim with a reason: it goes back to OPEN, bound again by its person's last
+    /** Reject a PENDING claim with a reason: it goes back to OPEN, no longer in a settle batch, bound again by its person's last
      *  statement if that statement included it. Refused unless the claim is PENDING, the user is a
      *  steward and a reason is given. */
     @Transactional
@@ -421,6 +421,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         claim.setStatus(ClaimStatus.OPEN);
+        claim.setSettleBatch(null);
         logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
         audit("CLAIM_REJECTED", updated, person, user, updated.getNumber(), " reason=" + reason);
@@ -595,19 +596,21 @@ public class ClaimService {
         return new BulkOpened(opened.size(), chosen.size() - opened.size(), opened);
     }
 
-    /** What a bulk settle did: how many it settled (PENDING included) and refused, and the claims it changed. */
-    public record BulkSettled(int settled, int refused, List<Claim> claims) {
+    /** What a bulk settle did: how many it settled (PENDING included) and refused, the claims it changed, and
+     *  the number of the batch it made (none when it settled none). */
+    public record BulkSettled(int settled, int refused, List<Claim> claims, Integer batch) {
     }
 
     /** Settle the chosen claims together in list order (people in the order they were added, each person's
      *  claims newest first), each as a single settle by the user would: one a clerk puts PENDING counts as
      *  settled, and one that cannot be settled is left as it is and counted as refused, as is one not on
-     *  the sheet. */
+     *  the sheet. One that settles at least one is the sheet's next batch, each claim it settled taking its
+     *  number. */
     @Transactional
     public BulkSettled bulkSettle(String sheetId, String user, Collection<Long> claimIds) {
         Set<Long> chosen = new HashSet<>(claimIds);
         if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
-            return new BulkSettled(0, chosen.size(), List.of());
+            return new BulkSettled(0, chosen.size(), List.of(), null);
         }
         List<Claim> settled = new ArrayList<>();
         for (Claim claim : inListOrder(sheetId, chosen)) {
@@ -619,7 +622,15 @@ public class ClaimService {
                 // refused: left as it is
             }
         }
-        return new BulkSettled(settled.size(), chosen.size() - settled.size(), settled);
+        Integer batch = null;
+        if (!settled.isEmpty()) {
+            batch = sheets.nextSettleBatch(sheetId);
+            for (Claim claim : settled) {
+                claim.setSettleBatch(batch);
+            }
+            settled = claims.saveAllAndFlush(settled);
+        }
+        return new BulkSettled(settled.size(), chosen.size() - settled.size(), settled, batch);
     }
 
     /** What a bulk reassign did: how many it moved and refused, and the claims it moved, in the order moved. */

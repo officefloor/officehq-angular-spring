@@ -57,6 +57,8 @@ export interface Claim {
   voidReason: string | null;
   /** Its comments, in the order written. */
   comments: CommentLine[];
+  /** The number of the bulk settle batch that settled it; null when settled one at a time, or never. */
+  settleBatch: number | null;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (YYYY-MM-DD), and its text. */
@@ -618,7 +620,8 @@ export class Claims {
 
   /** Settle the chosen claims together, the server settling them in list order as a single settle would
    *  (one a clerk puts PENDING counts as settled) and leaving each that cannot be settled as it is; how
-   *  many were settled and refused, or an error message. */
+   *  many were settled and refused, or an error message. One that settles any is the sheet's next batch,
+   *  which becomes its last. */
   async bulkSettle(): Promise<{ settled: number; refused: number } | string> {
     const sid = this.session.sheetId();
     const user = this.session.user();
@@ -627,7 +630,7 @@ export class Claims {
     if (claimIds.length === 0) return 'Select the claims to settle.';
     try {
       const done = await firstValueFrom(
-        this.http.post<{ settled: number; refused: number; claims: Claim[] }>(
+        this.http.post<{ settled: number; refused: number; claims: Claim[]; batch: number | null }>(
           `${this.url(sid)}/claims/bulk-settle`,
           { claimIds },
           { headers: { 'X-User': user } },
@@ -637,6 +640,7 @@ export class Claims {
         const byId = new Map(done.claims.map((c) => [c.id, c]));
         this.claims.update((cs) => cs.map((c) => byId.get(c.id) ?? c));
         this.selected.set(new Set());
+        if (done.batch !== null) this.session.lastSettleBatch.set(done.batch);
       }
       return { settled: done.settled, refused: done.refused };
     } catch (e) {

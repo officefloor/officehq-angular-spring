@@ -51,7 +51,7 @@ public class ClaimController {
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry,
             String remindedOn, String ref, List<String> tags, String voidReason,
-            List<CommentLine> comments) {
+            List<CommentLine> comments, Integer settleBatch) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -66,7 +66,7 @@ public class ClaimController {
                     claim.isLateEntry(),
                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
-                    claim.getComments().stream().map(CommentLine::of).toList());
+                    claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch());
         }
     }
 
@@ -252,8 +252,9 @@ public class ClaimController {
         return new BulkOpenView(done.opened(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
     }
 
-    /** How many a bulk settle settled (PENDING included) and refused, and the claims it changed. */
-    public record BulkSettleView(int settled, int refused, List<ClaimView> claims) {
+    /** How many a bulk settle settled (PENDING included) and refused, the claims it changed, and the number of
+     *  the batch it made (none when it settled none). */
+    public record BulkSettleView(int settled, int refused, List<ClaimView> claims, Integer batch) {
     }
 
     /** Settle the chosen claims together, in list order; each that cannot be settled is left as it is. */
@@ -262,7 +263,8 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid BulkRequest request) {
         ClaimService.BulkSettled done = service.bulkSettle(sheetId.trim(), user.trim(), request.claimIds());
-        return new BulkSettleView(done.settled(), done.refused(), done.claims().stream().map(ClaimView::of).toList());
+        return new BulkSettleView(done.settled(), done.refused(), done.claims().stream().map(ClaimView::of).toList(),
+                done.batch());
     }
 
     /** The claims chosen to move together, and the person they are moved to. */

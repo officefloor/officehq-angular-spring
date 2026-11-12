@@ -38,6 +38,8 @@ export interface SheetView {
   /** The entry date (YYYY-MM-DD): the default date of a new claim in place of the sheet's today; null when
    *  off. */
   entryDate: string | null;
+  /** The number of the sheet's last bulk settle batch; null before the first. */
+  lastSettleBatch: number | null;
 }
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
@@ -134,6 +136,8 @@ export class Session {
   readonly entryDate = signal<string | null>(null);
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
+  /** The number of the sheet's last bulk settle batch; null before the first. */
+  readonly lastSettleBatch = signal<number | null>(null);
   /** The date (YYYY-MM-DD) this user's screen shows the sheet as of, while set: every figure as it stood at
    *  the end of that date, the date standing in for the sheet's today, and every change refused; null when
    *  the screen shows the sheet as it is. Kept for this screen only, across sheet loads. */
@@ -166,6 +170,7 @@ export class Session {
       this.graceDays.set(sheet.graceDays);
       this.entryDate.set(sheet.entryDate);
       this.archived.set(sheet.archived);
+      this.lastSettleBatch.set(sheet.lastSettleBatch);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';

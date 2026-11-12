@@ -265,6 +265,12 @@ public class SheetService {
         return sheet;
     }
 
+    /** The sheet's next settle batch number (1, 2, ...). None is ever given twice. */
+    @Transactional
+    public int nextSettleBatch(String id) {
+        return sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new).nextSettleBatch();
+    }
+
     /** The next number for a claim due by a date: while the sheet numbers by period, the next in the
      *  sequence of the period containing the date (<period name>-1, -2, ...), or of no period (X-1, ...);
      *  otherwise the sheet-wide one (1, 2, ...). None is ever given twice. */
