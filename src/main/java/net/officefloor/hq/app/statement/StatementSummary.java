@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * How many statements a person has had, and the due-total and date of the last one (null with none), with one line
- * per statement, oldest first by the date it was taken as of: the date, then the due-total.
+ * per statement, oldest first by the sheet's today it was made on: the date it was taken as of, then the due-total.
  */
 public record StatementSummary(int count, String lastDueTotal, LocalDate lastDate, List<Statement> statements) {
 
@@ -19,10 +19,13 @@ public record StatementSummary(int count, String lastDueTotal, LocalDate lastDat
         return new StatementSummary(count + 1, statement.getDueTotal(), statement.getTakenOn(), all);
     }
 
-    /** One line per statement, oldest first (statements of the same date in their order): date, then due-total. */
+    /**
+     * One line per statement, oldest first by the sheet's today it was made on (one made before that was kept first,
+     * statements of the same date in their order): the date it was taken as of, then the due-total.
+     */
     public List<String> lines() {
         return statements.stream()
-                .sorted(Comparator.comparing(Statement::getTakenOn))
+                .sorted(Comparator.comparing(Statement::getMadeOn, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .map(s -> s.getTakenOn() + " " + s.getDueTotal())
                 .toList();
     }

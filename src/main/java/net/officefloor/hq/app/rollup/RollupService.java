@@ -641,6 +641,30 @@ public class RollupService {
     }
 
     /**
+     * The due as shown now of each of the sheet's claims that counts in the live totals now, by claim id: an OPEN,
+     * PENDING or SETTLED one, not one their retirement leaves out nor one deferred on the sheet's today, skipping those
+     * with no due.
+     */
+    public Map<Long, BigDecimal> countingDues(String sheetId) {
+        Sheet sheet = sheets.findById(sheetId).orElse(null);
+        LocalDate today = sheet == null ? null : sheet.getToday();
+        List<List<Rate>> sheetRates = rateChain(sheetId);
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+            byId.put(person.getId(), person);
+        }
+        Map<Long, BigDecimal> dues = new LinkedHashMap<>();
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !person.countsAsOf(claim, claim.getStatus(), today)) {
+                continue;
+            }
+            dueOf(sheet, sheetRates, person, claim).ifPresent(due -> dues.put(claim.getId(), due));
+        }
+        return dues;
+    }
+
+    /**
      * Each person's carried figure for the period, by person id for every person on the sheet, as the screen shows it
      * while the period is open: the dues as shown now of their claims due by a date in one of the periods that ends
      * before it starts that were OPEN or PENDING at the end of its to-date by their status log and count then, skipping

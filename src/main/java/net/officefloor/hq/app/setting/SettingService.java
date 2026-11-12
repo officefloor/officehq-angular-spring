@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -43,23 +44,36 @@ public class SettingService {
         return sheets.findById(sheetId).orElseThrow(() -> new SheetNotFoundException(sheetId));
     }
 
-    /** A policy version with the number of the sheet's claims whose policy version it is. */
-    public record PolicyVersionCount(PolicyVersion version, long claims) {
+    /**
+     * A policy version with the number of the sheet's claims whose policy version it is, and the dues of those of them
+     * that count added up.
+     */
+    public record PolicyVersionCount(PolicyVersion version, long claims, BigDecimal dueTotal) {
     }
 
     /**
      * The sheet's policy versions, first made to last, each with the number of its claims whose policy version it is:
-     * the version in force on the claim's date.
+     * the version in force on the claim's date; and the dues as shown now of those of them counting in the live totals,
+     * added up (0.00 with none).
      */
     @Transactional(readOnly = true)
     public List<PolicyVersionCount> policyVersionCounts(String sheetId) {
         Sheet sheet = get(sheetId);
+        Map<Long, BigDecimal> dues = rollup.countingDues(sheetId);
         Map<Integer, Long> byVersion = new HashMap<>();
+        Map<Integer, BigDecimal> dueByVersion = new HashMap<>();
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            byVersion.merge(sheet.policyVersionOn(claim.getDate()), 1L, Long::sum);
+            int version = sheet.policyVersionOn(claim.getDate());
+            byVersion.merge(version, 1L, Long::sum);
+            BigDecimal due = dues.get(claim.getId());
+            if (due != null) {
+                dueByVersion.merge(version, due, BigDecimal::add);
+            }
         }
         return sheet.policyVersions().stream()
-                .map(v -> new PolicyVersionCount(v, byVersion.getOrDefault(v.getNumber(), 0L))).toList();
+                .map(v -> new PolicyVersionCount(v, byVersion.getOrDefault(v.getNumber(), 0L),
+                        dueByVersion.getOrDefault(v.getNumber(), BigDecimal.ZERO).setScale(2, RoundingMode.HALF_EVEN)))
+                .toList();
     }
 
     /**

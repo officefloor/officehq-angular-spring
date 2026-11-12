@@ -76,14 +76,15 @@ public class SettingController {
 
     /**
      * A policy version as listed: its number, the setting changed, the value given it (null: none), the date it is in
-     * force from (null: every date) and the number of claims whose policy version it is.
+     * force from (null: every date), the number of claims whose policy version it is, and the dues of those of them
+     * that count added up, two decimals.
      */
-    public record PolicyLineView(int number, String key, String value, LocalDate from, long claims) {
+    public record PolicyLineView(int number, String key, String value, LocalDate from, long claims, String dueTotal) {
 
         static PolicyLineView of(SettingService.PolicyVersionCount count) {
             PolicyVersion version = count.version();
             return new PolicyLineView(version.getNumber(), version.getKey(), version.getValue(),
-                    version.getFromDate(), count.claims());
+                    version.getFromDate(), count.claims(), count.dueTotal().toPlainString());
         }
     }
 
