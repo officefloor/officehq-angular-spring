@@ -1,0 +1,273 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 042802952..725cf42fa 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -32,6 +32,17 @@ export interface Claim {
+   /** A correction's (a negative amount): the number of the SETTLED claim of the same person it
+    *  corrects; null otherwise. */
+   corrects: string | null;
++  /** Its status log: one line per status it has had, oldest first. */
++  statusLog: StatusLine[];
++}
++
++/** A line of a claim's status log: the status it took, who changed it, the sheet's today then
++ *  (YYYY-MM-DD), and the due it had then, two decimals (null when n/a). */
++export interface StatusLine {
++  status: ClaimStatus;
++  by: string;
++  on: string;
++  due: string | null;
+ }
+ 
+ /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT, OPEN or PENDING -> VOID. A clerk settling a
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 347fd0fc8..96558480d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -70,6 +70,11 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
+           <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
++          <ol data-testid="claim-log" aria-label="Status log">
++            @for (l of c.statusLog; track $index) {
++              <li data-testid="claim-log-line">{{ l.status }} by {{ l.by }} on {{ l.on }} due={{ l.due ?? noRate }}</li>
++            }
++          </ol>
+           @if (editing() === c.id) {
+             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+           } @else {
+@@ -164,6 +169,7 @@ export class PersonClaims {
+   /** The reason typed to reject each claim, by claim id. */
+   protected readonly rejectReasons = signal<Record<number, string>>({});
+   protected readonly isOpen = isOpen;
++  protected readonly noRate = NO_RATE;
+   /** The id of the claim whose status change is under way. */
+   protected readonly acting = signal<number | null>(null);
+   /** The last refused status change, or edit of a claim that is no longer a DRAFT, shown on its claim
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 919afd4c2..2058c58dc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -1,15 +1,22 @@
+ package net.officefloor.hq.app.claim;
+ 
++import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
++import jakarta.persistence.ElementCollection;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EnumType;
+ import jakarta.persistence.Enumerated;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.OrderColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
+ 
+ /** A claim by a person on a sheet: an amount (two decimals), a date, a note, a status and, once opened,
+  *  a number and who opened it. A negative amount is a correction, naming the number of the claim it corrects. */
+@@ -73,6 +80,12 @@ public class Claim {
+     @Column(name = "stated_due")
+     private BigDecimal statedDue;
+ 
++    /** Its status log: one line per status it has had, oldest first. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "claim_status_log", joinColumns = @JoinColumn(name = "claim_id"))
++    @OrderColumn(name = "seq")
++    private List<StatusChange> statusLog = new ArrayList<>();
++
+     protected Claim() {
+     }
+ 
+@@ -204,4 +217,13 @@ public class Claim {
+         this.stated = stated;
+         this.statedDue = stated ? statedDue : null;
+     }
++
++    public List<StatusChange> getStatusLog() {
++        return List.copyOf(statusLog);
++    }
++
++    /** Add a line to its status log, for the status it has now. */
++    public void logStatus(String by, LocalDate on, BigDecimal due) {
++        statusLog.add(new StatusChange(status, by, on, due));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 1c3295d76..5bcd45d86 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -37,10 +37,10 @@ public class ClaimController {
+      *  the due fixed when it was settled (none while its due is live)
+      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
+      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
+-     *  otherwise). */
++     *  otherwise), and its status log, oldest first. */
+     public record ClaimView(long id, long personId, String amount, String date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+-            String statedDue, String corrects, String dueBy) {
++            String statedDue, String corrects, String dueBy, List<StatusLine> statusLog) {
+ 
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -48,7 +48,18 @@ public class ClaimController {
+                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+-                    claim.getCorrects(), claim.getDueBy().toString());
++                    claim.getCorrects(), claim.getDueBy().toString(),
++                    claim.getStatusLog().stream().map(StatusLine::of).toList());
++        }
++    }
++
++    /** A line of a claim's status log: the status, who changed it, the sheet's today then (YYYY-MM-DD), and
++     *  the due it had then, two decimals (none when n/a). */
++    public record StatusLine(ClaimStatus status, String by, String on, String due) {
++
++        static StatusLine of(StatusChange change) {
++            return new StatusLine(change.getStatus(), change.getBy(), change.getOn().toString(),
++                    change.getDue() == null ? null : change.getDue().toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 53f4cad2a..73300b640 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -83,6 +83,7 @@ public class ClaimService {
+                 .termsFor(person.gradeOn(on));
+         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, on.plusDays(terms), note, corrects);
+         claim.setListOrder(claims.maxListOrder(sheetId) + 1);
++        logStatus(claim, person, user);
+         claim = claims.saveAndFlush(claim);
+         audit("CLAIM_ADDED", claim, person, user);
+         rollup.recordChanges(sheetId, user, before);
+@@ -151,6 +152,7 @@ public class ClaimService {
+         }
+         claim.setStatus(to);
+         claim.setNumber(number);
++        logStatus(claim, person, user);
+         Claim updated = claims.saveAndFlush(claim);
+         String event = switch (to) {
+             case OPEN -> "CLAIM_OPENED";
+@@ -186,6 +188,7 @@ public class ClaimService {
+         BigDecimal figure = liveDue(claim, person);
+         claim.setSettledDue(figure == null ? null : charged(claim, figure));
+         claim.setStatus(ClaimStatus.SETTLED);
++        logStatus(claim, person, user);
+         Claim updated = claims.saveAndFlush(claim);
+         audit("CLAIM_APPROVED", updated, person, user, updated.getNumber(), dueField(updated));
+         rollup.recordChanges(sheetId, user, before);
+@@ -212,6 +215,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+         claim.setStatus(ClaimStatus.OPEN);
++        logStatus(claim, person, user);
+         Claim updated = claims.saveAndFlush(claim);
+         audit("CLAIM_REJECTED", updated, person, user, updated.getNumber(), " reason=" + reason);
+         rollup.recordChanges(sheetId, user, before);
+@@ -369,6 +373,22 @@ public class ClaimService {
+         return claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
+     }
+ 
++    /** Log the status a claim has just taken: by the user, on the sheet's today, with its due as the
++     *  screen shows it now. */
++    private void logStatus(Claim claim, Person person, String user) {
++        claim.logStatus(user, sheets.today(claim.getSheetId()), shownDue(claim, person));
++    }
++
++    /** A claim's due as the screen shows it: fixed when settled, else its figure (bound or live) with its
++     *  late charge on top; none when that is n/a. */
++    private BigDecimal shownDue(Claim claim, Person person) {
++        if (claim.getSettledDue() != null) {
++            return claim.getSettledDue();
++        }
++        BigDecimal figure = due(claim, person);
++        return figure == null ? null : charged(claim, figure);
++    }
++
+     /** A claim's figure with its late charge on the sheet's today on top while it is OPEN or PENDING. */
+     private BigDecimal charged(Claim claim, BigDecimal figure) {
+         return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, figure);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/StatusChange.java b/src/main/java/net/officefloor/hq/app/claim/StatusChange.java
+new file mode 100644
+index 000000000..ba8ef5d5f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/StatusChange.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A line of a claim's status log: the status it took, who made the change, the sheet's today then, and
++ *  the claim's due as it was computed at that moment (none when it was n/a). */
++@Embeddable
++public class StatusChange {
++
++    @Enumerated(EnumType.STRING)
++    @Column(name = "status", nullable = false)
++    private ClaimStatus status;
++
++    @Column(name = "by_user", nullable = false)
++    private String by;
++
++    @Column(name = "on_date", nullable = false)
++    private LocalDate on;
++
++    @Column(name = "due")
++    private BigDecimal due;
++
++    protected StatusChange() {
++    }
++
++    public StatusChange(ClaimStatus status, String by, LocalDate on, BigDecimal due) {
++        this.status = status;
++        this.by = by;
++        this.on = on;
++        this.due = due;
++    }
++
++    public ClaimStatus getStatus() {
++        return status;
++    }
++
++    public String getBy() {
++        return by;
++    }
++
++    public LocalDate getOn() {
++        return on;
++    }
++
++    public BigDecimal getDue() {
++        return due;
++    }
++}
+diff --git a/src/main/resources/db/migration/V31__claim_status_log.sql b/src/main/resources/db/migration/V31__claim_status_log.sql
+new file mode 100644
+index 000000000..4148ce743
+--- /dev/null
++++ b/src/main/resources/db/migration/V31__claim_status_log.sql
+@@ -0,0 +1,12 @@
++-- Each claim's status log: one line per status it has had, oldest first, with who made the change, the
++-- sheet's today then, and the claim's due as it was computed at that moment (none when it was n/a).
++-- Existing claims start with no lines.
++CREATE TABLE claim_status_log (
++    claim_id BIGINT       NOT NULL REFERENCES claim (id),
++    seq      INT          NOT NULL,
++    status   VARCHAR(20)  NOT NULL,
++    by_user  VARCHAR(200) NOT NULL,
++    on_date  DATE         NOT NULL,
++    due      DECIMAL(19, 2),
++    PRIMARY KEY (claim_id, seq)
++);

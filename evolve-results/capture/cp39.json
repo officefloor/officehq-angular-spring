@@ -1,0 +1,64 @@
+{
+  "checkpoint": 39,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp39_claim-log",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each claim its status log: one line per status it has had, oldest first, as\n<STATUS> by <user> on <date> due=<due>, where the date is the sheet's today when the change was\nmade and the due is the claim's due as it was computed at that moment (including the DRAFT line\nwritten when the claim was added).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each claim its status log: one line per status it has had, oldest first, as\n<STATUS> by <user> on <date> due=<due>, where the date is the sheet's today when the change was\nmade and the due is the claim's due as it was computed at that moment (including the DRAFT line\nwritten when the claim was added).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8973d8df5c97f21adedbd105be8b0c8d791b8798",
+  "reset_sha": "",
+  "preagent_sha": "e8c874e318ba92851c97b602293439702e0bff14",
+  "prev_sha": "e8c874e318ba92851c97b602293439702e0bff14",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8443391999999998,
+    "input_tokens": 34,
+    "output_tokens": 8258,
+    "cache_read_tokens": 823416,
+    "cache_creation_tokens": 64295,
+    "num_turns": 17,
+    "duration_ms": 243150,
+    "duration_api_ms": 79933,
+    "model": "claude-opus-5-5",
+    "session_id": "98772de1-2925-4d32-98fd-8f10a9832f97",
+    "stop_reason": "success",
+    "result_text": "Each claim now shows its status log, and `bin/e2e` passes all 4 tests in the spec.\n\n**What changed:**\n- **Stored data:** a new migration, `V31__claim_status_log.sql`, adds a `claim_status_log` table. Each line holds the status, who made the change, the sheet's today at the time, and the due then. The due is left empty when it was `n/a`.\n- **Server:**\n  - A claim now keeps its log lines oldest first (`Claim.java`, plus a new `StatusChange.java`).\n  - `ClaimService` writes a line on every status change: when a claim is added (DRAFT), opened (bulk opens included), settled, voided, made PENDING, approved or rejected.\n  - The due recorded is the one the claim shows at that moment, worked out the same way as the due on screen. A settled claim records its fixed due; any other claim records its figure plus any late charge.\n  - The claim data the server sends to the screen now includes the log.\n- **Front end:** each claim row lists its log lines as `<STATUS> by <user> on <date> due=<due>`, showing `n/a` when there was no due.\n\n**Limits:**\n- Claims already stored before this change start with an empty log; their earlier statuses aren't filled in.\n- Editing a draft or reassigning a claim doesn't change its status, so neither adds a line.\n- No new audit records were needed; the test doesn't expect any.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8443391999999998,
+        "num_turns": 17,
+        "duration_ms": 243150,
+        "duration_api_ms": 79933,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp39.agent.jsonl",
+  "agent_diff_file": "cp39.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
