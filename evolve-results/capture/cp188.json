@@ -1,0 +1,68 @@
+{
+  "checkpoint": 188,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp188_clone-source-rates",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    126
+  ],
+  "replaced_tests": [
+    "cp126_clone-sheet.spec.ts::clone sheet"
+  ],
+  "request": {
+    "spec": "When a grade has no rate in force on a date on a sheet nor on its parents, a sheet that was\ncloned uses the rate of the sheet it was cloned from (and so on up that sheet's parents and\nsource).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a grade has no rate in force on a date on a sheet nor on its parents, a sheet that was\ncloned uses the rate of the sheet it was cloned from (and so on up that sheet's parents and\nsource).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b961ec1a9798e3aac981349a472d247146dc0fd9",
+  "reset_sha": "",
+  "preagent_sha": "1229e58850c915de1419d1e3a2eb02b3d5fe1771",
+  "prev_sha": "1229e58850c915de1419d1e3a2eb02b3d5fe1771",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7030322000000001,
+    "input_tokens": 40,
+    "output_tokens": 7972,
+    "cache_read_tokens": 838601,
+    "cache_creation_tokens": 46964,
+    "num_turns": 20,
+    "duration_ms": 342518,
+    "duration_api_ms": 82501,
+    "model": "claude-opus-5-5",
+    "session_id": "af14da0f-725e-4eeb-804e-cf3999b9715c",
+    "stop_reason": "success",
+    "result_text": "A cloned sheet now falls back on the rates of the sheet it was cloned from. `bin/e2e` passes all 4 tests in `e2e/specs/acceptance.spec.ts`.\n\n**Lookup order for a grade's rate on a date:**\n1. The sheet's own rates.\n2. Its parents, up to the existing 3-level limit.\n3. If the sheet was cloned, the sheet it was cloned from, then that sheet's parents, then the sheet *it* was cloned from, and so on. Each sheet is checked only once, so a loop can't repeat.\n\n**Changes:**\n- **Stored data:** a new migration, `V104__sheet_source.sql`, adds a `source` column to `sheet`. `Sheet.java` gets a `source` field, and cloning sets it to the id of the sheet being cloned.\n- **Server:** `RollupService.rateChain` builds the longer lookup order above. Due amounts, rollups, totals, the rate preview and the rates list all use that method, so they all pick up the fallback. When viewing a sheet as of a past date, the source's rates are read as they stood on that date, the same way parents' rates already are.\n- **Past-date view:** `SheetSnapshotService` doesn't roll back `source` when showing a sheet as of a past date. It already treats `parent` that way, since both are links between sheets rather than part of the sheet's own state.\n- **Front end:** no change needed. The rates screen already works through every level the server sends, so the \"current rate\" display shows the inherited rate.\n\n**Choices I made where the request was open:**\n- **Only the clone's own source counts.** A parent that was itself cloned from another sheet doesn't add that sheet to the lookup.\n- **No new audit records.** Changing a rate on the source sheet doesn't write rollup lines for its clones, which is what the test expects.\n\nI also updated the doc comments in `RateController` and `RateService` to describe the new lookup order.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7030322000000001,
+        "num_turns": 20,
+        "duration_ms": 342518,
+        "duration_api_ms": 82501,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp188.agent.jsonl",
+  "agent_diff_file": "cp188.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

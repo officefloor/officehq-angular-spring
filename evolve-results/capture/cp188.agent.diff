@@ -1,0 +1,188 @@
+diff --git a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
+index ffb75b047..cc37f7bea 100644
+--- a/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
++++ b/src/main/java/net/officefloor/hq/app/asof/SheetSnapshotService.java
+@@ -118,13 +118,15 @@ public class SheetSnapshotService {
+ 
+     /**
+      * The sheet's own row as it was kept, or as a sheet just started has it when nothing was kept by then. Its parent
+-     * sheet is a link between sheets, not part of how the sheet stood: it stays as it is now.
++     * sheet and the sheet it was cloned from are links between sheets, not part of how the sheet stood: they stay as
++     * they are now.
+      */
+     private void restoreSheet(Table table, Map<String, Object> row, String sheetId, LocalDate asOf) {
+         List<String> sets = new ArrayList<>();
+         List<Object> args = new ArrayList<>();
+         for (String column : table.columns()) {
+-            if (column.equals("ID") || column.equals("CREATED_BY") || column.equals("TODAY") || column.equals("PARENT")) {
++            if (column.equals("ID") || column.equals("CREATED_BY") || column.equals("TODAY") || column.equals("PARENT")
++                    || column.equals("SOURCE")) {
+                 continue;
+             }
+             if (row == null) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 1d881563f..cfd425636 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -34,7 +34,7 @@ public class RateController {
+ 
+     /**
+      * A rate as shown: the percent with two decimals, and its from- and to-dates as yyyy-mm-dd (null when it has none);
+-     * how many versions it has had (the one shown being the newest, in force); and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on;
++     * how many versions it has had (the one shown being the newest, in force); and its level, 0 for the sheet's own, 1 for its parent sheet's, 2 for that sheet's parent's and so on, the sheet it was cloned from's (and that one's parents' and source's) further along;
+      * and, when it is forward-only, the highest claim id there was when it was saved (null otherwise), with its older
+      * versions, newest first, that a claim added before then falls back on.
+      */
+@@ -116,7 +116,8 @@ public class RateController {
+     /**
+      * The sheet's rates in grade order, then by from-date (the undated one first); a grade with no rate is left out.
+      * Then, likewise, the rates of its parent sheet, of that sheet's parent and so on up to three levels up, each
+-     * with its level.
++     * with its level; then, when the sheet was cloned, those of the sheet it was cloned from, its parents and its own
++     * source and so on.
+      */
+     @GetMapping
+     public List<RateView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 306b439d5..f85014e1c 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -40,7 +40,8 @@ public class RateService {
+ 
+     /**
+      * The sheet's rates, then each parent sheet's up to {@link RollupService#PARENT_LEVELS} levels up (nearest first),
+-     * each in grade order then by from-date.
++     * then, when the sheet was cloned, those of the sheet it was cloned from and so on up its parents and source; each
++     * in grade order then by from-date.
+      */
+     public List<List<Rate>> chain(String sheetId) {
+         return rollup.rateChain(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index f9a933dc9..b252c7b63 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -506,31 +506,48 @@ public class RollupService {
+ 
+     /**
+      * The sheet's rates, then its parent's, its parent's parent's and so on up to {@link #PARENT_LEVELS} levels up, in
+-     * grade order then by from-date: the rates a grade's rate on a date is looked for in, nearest first. While the
+-     * request shows the sheet as of a date, the parents' rates are as they stood then.
++     * grade order then by from-date; then, when the sheet was cloned, likewise those of the sheet it was cloned from and
++     * its parents, then of that sheet's source and so on: the rates a grade's rate on a date is looked for in, nearest
++     * first, each sheet once. While the request shows the sheet as of a date, the other sheets' rates are as they stood
++     * then.
+      */
+     public List<List<Rate>> rateChain(String sheetId) {
+         return rateChain(sheetId, AsOfContext.current());
+     }
+ 
+     /**
+-     * As {@link #rateChain(String)}, with the parents' rates as they stood at the end of {@code asOf} (null: as they
+-     * are now).
++     * As {@link #rateChain(String)}, with the other sheets' rates as they stood at the end of {@code asOf} (null: as
++     * they are now).
+      */
+     public List<List<Rate>> rateChain(String sheetId, LocalDate asOf) {
+         List<List<Rate>> chain = new ArrayList<>();
+         chain.add(withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId)));
+         List<String> seen = new ArrayList<>(List.of(sheetId));
+-        String parent = sheets.findById(sheetId).map(Sheet::getParent).orElse(null);
+-        while (parent != null && chain.size() <= PARENT_LEVELS && !seen.contains(parent)) {
+-            seen.add(parent);
+-            chain.add(asOf == null ? withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(parent))
+-                    : ratesAsOf(parent, asOf));
+-            parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
++        Sheet at = sheets.findById(sheetId).orElse(null);
++        while (at != null) {
++            String parent = at.getParent();
++            for (int levels = 0; parent != null && levels < PARENT_LEVELS && !seen.contains(parent); levels++) {
++                seen.add(parent);
++                chain.add(ratesOf(parent, asOf));
++                parent = sheets.findById(parent).map(Sheet::getParent).orElse(null);
++            }
++            String source = at.getSource();
++            if (source == null || seen.contains(source)) {
++                break;
++            }
++            seen.add(source);
++            chain.add(ratesOf(source, asOf));
++            at = sheets.findById(source).orElse(null);
+         }
+         return chain;
+     }
+ 
++    /** Another sheet's rates in the chain, as they stood at the end of {@code asOf} (null: as they are now). */
++    private List<Rate> ratesOf(String sheetId, LocalDate asOf) {
++        return asOf == null ? withOlder(rates.findBySheetIdOrderByGradeAscFromDateAscIdAsc(sheetId))
++                : ratesAsOf(sheetId, asOf);
++    }
++
+     /**
+      * The rates, each forward-only one with its older versions read with it, so a claim added before it was saved
+      * falls back on the version it saw.
+@@ -566,8 +583,8 @@ public class RollupService {
+     }
+ 
+     /**
+-     * The grade's rate in force on the date: the sheet's own, else the first in force of its parents' (nearest
+-     * first); empty when none is.
++     * The grade's rate in force on the date: the sheet's own, else the first in force further along its rate chain
++     * (its parents', then its source's; nearest first); empty when none is.
+      */
+     public static Optional<Rate> rateOn(List<List<Rate>> chain, String grade, LocalDate date) {
+         return rateOn(chain, grade, date, null);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index a030a4d48..352d98230 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -121,6 +121,13 @@ public class Sheet {
+     @Column(name = "parent")
+     private String parent;
+ 
++    /**
++     * The id of the sheet this one was cloned from, whose rates a grade with none in force here nor on the parents falls
++     * back on; null: not cloned. Not dated.
++     */
++    @Column(name = "source")
++    private String source;
++
+     /** The kinds of proof (comma separated) a claim above the proof threshold needs one of each of; null: none. Not dated. */
+     @Column(name = "proof_kinds")
+     private String proofKinds;
+@@ -144,7 +151,7 @@ public class Sheet {
+ 
+     /**
+      * A copy of the sheet under another id: its today, dated settings, permission matrix and other settings; not
+-     * archived, with no settle batch yet.
++     * archived, with no settle batch yet; cloned from this sheet.
+      */
+     public Sheet copyTo(String id, String createdBy) {
+         Sheet copy = new Sheet(id, createdBy, today);
+@@ -160,6 +167,7 @@ public class Sheet {
+         copy.pot = pot;
+         copy.alertThreshold = alertThreshold;
+         copy.parent = parent;
++        copy.source = this.id;
+         copy.proofKinds = proofKinds;
+         return copy;
+     }
+@@ -429,6 +437,10 @@ public class Sheet {
+         this.parent = parent;
+     }
+ 
++    public String getSource() {
++        return source;
++    }
++
+     public String getProofKinds() {
+         return proofKinds;
+     }
+diff --git a/src/main/resources/db/migration/V104__sheet_source.sql b/src/main/resources/db/migration/V104__sheet_source.sql
+new file mode 100644
+index 000000000..05d7a9fbc
+--- /dev/null
++++ b/src/main/resources/db/migration/V104__sheet_source.sql
+@@ -0,0 +1,3 @@
++-- The id of the sheet a sheet was cloned from, whose rates (and its parents' and source's) a grade with none in force
++-- on the sheet nor on its parents falls back on; null: the sheet was not cloned.
++ALTER TABLE sheet ADD COLUMN source VARCHAR(100);
