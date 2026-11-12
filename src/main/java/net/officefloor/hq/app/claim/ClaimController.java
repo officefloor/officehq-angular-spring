@@ -5,6 +5,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,25 +37,29 @@ public class ClaimController {
     /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD, no number unless opened,
      *  the due fixed when it was settled (none while its due is live)
      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
-     *  it bound (none while unbound, or when that was n/a). */
+     *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
+     *  otherwise). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
-            String statedDue) {
+            String statedDue, Integer corrects) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate().toString(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),
                     claim.getOpenedBy(), claim.isStated(),
-                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString());
+                    claim.getStatedDue() == null ? null : claim.getStatedDue().toPlainString(),
+                    claim.getCorrects());
         }
     }
 
-    /** A claim's fields; a missing date takes the sheet's today, a missing note is empty. */
+    /** A claim's fields; a missing date takes the sheet's today, a missing note is empty. A negative
+     *  amount (a correction) names the number of the claim it corrects. */
     public record ClaimRequest(
-            @NotNull @DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal amount,
+            @NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount,
             LocalDate date,
-            @Size(max = 1000) String note) {
+            @Size(max = 1000) String note,
+            @Positive Integer corrects) {
 
         String noteOrEmpty() {
             return note == null ? "" : note.trim();
@@ -95,7 +100,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.date(),
-                request.noteOrEmpty()));
+                request.noteOrEmpty(), request.corrects()));
     }
 
     /** Add a DRAFT claim dated the sheet's today for the person with the name, adding them first when
@@ -117,7 +122,7 @@ public class ClaimController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), user.trim(), claimId, request.amount(), request.date(),
-                request.noteOrEmpty()));
+                request.noteOrEmpty(), request.corrects()));
     }
 
     /** Open a DRAFT claim. */
@@ -177,6 +182,14 @@ public class ClaimController {
     @ExceptionHandler(ClaimNotDraftException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> notDraft(ClaimNotDraftException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A correction that names no settled claim of its person, or a claim that corrects but is not
+     *  negative, is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimCorrectionException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> correctionRefused(ClaimCorrectionException e) {
         return Map.of("message", e.getMessage());
     }
 

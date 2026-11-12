@@ -33,6 +33,14 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
         [value]="note()"
         (input)="note.set(value($event)); clearErrors()"
       />
+      <label [for]="fid('corrects')">Corrects claim no. (for a negative amount)</label>
+      <input
+        [id]="fid('corrects')"
+        data-testid="claim-form-corrects"
+        inputmode="numeric"
+        [value]="corrects()"
+        (input)="corrects.set(value($event)); clearErrors()"
+      />
       <button type="submit" data-testid="claim-form-submit" [disabled]="saving()">
         {{ editing() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -52,6 +60,7 @@ import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
           <span>Period <span data-testid="claim-period">{{ periods.of(c.date)?.name ?? '' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+          <span>Corrects <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           @if (editing() === c.id) {
@@ -91,6 +100,7 @@ export class PersonClaims {
   protected readonly amount = signal('');
   protected readonly date = signal('');
   protected readonly note = signal('');
+  protected readonly corrects = signal('');
   /** The id of the claim whose editor is open, or null when the form adds. */
   protected readonly editing = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -130,6 +140,7 @@ export class PersonClaims {
     this.amount.set(c.amount);
     this.date.set(c.date);
     this.note.set(c.note);
+    this.corrects.set(c.corrects === null ? '' : String(c.corrects));
     this.error.set(null);
   }
 
@@ -162,6 +173,7 @@ export class PersonClaims {
     this.amount.set('');
     this.date.set('');
     this.note.set('');
+    this.corrects.set('');
     this.error.set(null);
   }
 
@@ -171,7 +183,7 @@ export class PersonClaims {
     this.clearErrors();
     this.saving.set(true);
     try {
-      const f = { amount: this.amount(), date: this.date(), note: this.note() };
+      const f = { amount: this.amount(), date: this.date(), note: this.note(), corrects: this.corrects() };
       const id = this.editing();
       if (id === null) {
         const err = await this.claims.add(this.personId(), f);

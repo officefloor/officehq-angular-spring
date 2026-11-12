@@ -61,22 +61,27 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
+    /** Add a claim; a negative amount (a correction) must name a SETTLED claim of the person by number,
+     *  and a claim of 0.00 or more must name none. */
     @Transactional
-    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
+        refuseCorrection(sheetId, personId, amount, corrects);
         Rollup.Snapshot before = rollup.take(sheetId);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note));
+        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note, corrects));
         audit("CLAIM_ADDED", claim, person, user);
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }
 
-    /** Change a DRAFT claim; a claim in any other status is refused. */
+    /** Change a DRAFT claim; a claim in any other status is refused, and a correction as when added. */
     @Transactional
-    public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimNotDraftException(claim.getStatus());
@@ -86,10 +91,12 @@ public class ClaimService {
         refuseClosed(sheetId, on);
         refuseRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new), on);
+        refuseCorrection(sheetId, claim.getPersonId(), amount, corrects);
         Rollup.Snapshot before = rollup.take(sheetId);
         claim.setAmount(amount.setScale(2));
         claim.setDate(on);
         claim.setNote(note);
+        claim.setCorrects(corrects);
         Claim updated = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
@@ -201,6 +208,24 @@ public class ClaimService {
         }
     }
 
+    /** Refuse a negative amount that does not name a SETTLED claim of the person by number, and a claim of
+     *  0.00 or more that names one. */
+    private void refuseCorrection(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) {
+            if (corrects != null) {
+                throw new ClaimCorrectionException("Only a negative amount corrects a claim.");
+            }
+            return;
+        }
+        if (corrects == null) {
+            throw new ClaimCorrectionException(
+                    "A negative amount is a correction: name the number of the settled claim it corrects.");
+        }
+        if (!claims.existsBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects, ClaimStatus.SETTLED)) {
+            throw new ClaimCorrectionException("A correction must name a settled claim of the same person.");
+        }
+    }
+
     /** Refuse a claim dated after its person's retirement date. */
     private static void refuseRetired(Person person, LocalDate date) {
         if (person.retiredOn(date)) {
@@ -222,12 +247,12 @@ public class ClaimService {
         return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, figure);
     }
 
-    /** The claim's amount at the rate in force on its date of its person's grade in force then in force on its date, at least the sheet's floor;
-     *  none when no rate applies. */
+    /** The claim's amount at the rate in force on its date of its person's grade in force then in force on its date, at least the sheet's floor
+     *  (a correction has none); none when no rate applies. */
     private BigDecimal liveDue(Claim claim, Person person) {
         Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
-                .map(rate -> sheet.floored(due(claim.getAmount(), rate)))
+                .map(rate -> claim.isCorrection() ? due(claim.getAmount(), rate) : sheet.floored(due(claim.getAmount(), rate)))
                 .orElse(null);
     }
 

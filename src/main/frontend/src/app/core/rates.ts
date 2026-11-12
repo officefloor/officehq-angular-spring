@@ -43,11 +43,13 @@ export class Rates {
   }
 
   /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded half to
-   *  even to cents, and at least the sheet's floor; null when no rate of the grade applies then. */
+   *  even to cents, and at least the sheet's floor unless the amount is negative (a correction has no
+   *  floor); null when no rate of the grade applies then. */
   dueCents(amountCents: bigint, grade: string, date: string): bigint | null {
     const rate = this.inForce(grade, date);
     if (rate === undefined) return null;
     const due = halfEven(amountCents * hundredths(rate.rate), 10000n);
+    if (amountCents < 0n) return due;
     const floor = hundredths(this.session.floor());
     return due < floor ? floor : due;
   }
@@ -109,21 +111,24 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
   return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
 }
 
-/** A non-negative number divided by another, rounded half to even. */
+/** A number divided by a positive one, rounded half to even (a negative number as its opposite). */
 export function halfEven(n: bigint, d: bigint): bigint {
+  if (n < 0n) return -halfEven(-n, d);
   const q = n / d;
   const twice = (n % d) * 2n;
   return twice > d || (twice === d && q % 2n === 1n) ? q + 1n : q;
 }
 
-/** A number written with up to two decimals, in hundredths. */
+/** A number written with up to two decimals, perhaps negative, in hundredths. */
 export function hundredths(s: string): bigint {
+  if (s.startsWith('-')) return -hundredths(s.slice(1));
   const [whole, frac = ''] = s.split('.');
   return BigInt(whole) * 100n + BigInt((frac + '00').slice(0, 2));
 }
 
 /** Hundredths written with two decimals. */
 export function money(h: bigint): string {
+  if (h < 0n) return `-${money(-h)}`;
   return `${h / 100n}.${String(h % 100n).padStart(2, '0')}`;
 }
 

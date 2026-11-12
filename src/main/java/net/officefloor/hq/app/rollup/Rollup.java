@@ -85,7 +85,7 @@ public class Rollup {
                     BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                             .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
                                     .setScale(2, RoundingMode.HALF_EVEN))
-                            .map(d -> sheet.map(s -> s.floored(d)).orElse(d))
+                            .map(d -> floored(sheet, claim, d))
                             .orElse(null);
                     if (live != null) {
                         keptFigure = true;
@@ -134,7 +134,7 @@ public class Rollup {
                 due = person == null ? null : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                         .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
                                 .setScale(2, RoundingMode.HALF_EVEN))
-                        .map(d -> sheet.map(s -> s.floored(d)).orElse(d))
+                        .map(d -> floored(sheet, claim, d))
                         .orElse(null);
             }
             if (due != null) {
@@ -169,10 +169,16 @@ public class Rollup {
         return claim.getStatus().counts() && !(held && claim.getStatus() == ClaimStatus.OPEN);
     }
 
+    /** A live due as it counts: at least the sheet's floor, unless its claim is a correction. */
+    private static BigDecimal floored(Optional<Sheet> sheet, Claim claim, BigDecimal due) {
+        return claim.isCorrection() ? due : sheet.map(s -> s.floored(due)).orElse(due);
+    }
+
     /** A figure with its late charge on top while its claim is OPEN (only an OPEN claim is overdue); a
-     *  settled claim's due already holds the charge frozen in when it was settled. */
+     *  settled claim's due already holds the charge frozen in when it was settled. A correction has no
+     *  late charge. */
     public static BigDecimal charged(Optional<Sheet> sheet, Claim claim, BigDecimal figure) {
-        if (claim.getStatus() != ClaimStatus.OPEN) {
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
             return figure;
         }
         return figure.add(sheet.map(s -> s.lateCharge(figure, claim.getDate())).orElse(ZERO));

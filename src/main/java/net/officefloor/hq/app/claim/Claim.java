@@ -11,8 +11,8 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note, a status and, once opened,
- *  a number and who opened it. */
+/** A claim by a person on a sheet: an amount (two decimals), a date, a note, a status and, once opened,
+ *  a number and who opened it. A negative amount is a correction, naming the number of the claim it corrects. */
 @Entity
 @Table(name = "claim")
 public class Claim {
@@ -40,6 +40,10 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
+    /** A correction's: the number of the SETTLED claim of the same person it corrects; none otherwise. */
+    @Column(name = "corrects_number")
+    private Integer corrects;
+
     /** Given when the claim is opened; none while a draft or once voided. */
     @Column(name = "claim_number")
     private Integer number;
@@ -63,12 +67,13 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Integer corrects) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
         this.note = note;
+        this.corrects = corrects;
     }
 
     public Long getId() {
@@ -89,6 +94,19 @@ public class Claim {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public Integer getCorrects() {
+        return corrects;
+    }
+
+    public void setCorrects(Integer corrects) {
+        this.corrects = corrects;
+    }
+
+    /** A correction: its amount is negative. Its due has no floor and no late charge. */
+    public boolean isCorrection() {
+        return amount.signum() < 0;
     }
 
     public LocalDate getDate() {

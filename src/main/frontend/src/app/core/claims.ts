@@ -24,6 +24,9 @@ export interface Claim {
   stated: boolean;
   /** The figure the last statement bound, two decimals; null while unbound, or when that was n/a. */
   statedDue: string | null;
+  /** A correction's (a negative amount): the number of the SETTLED claim of the same person it
+   *  corrects; null otherwise. */
+  corrects: number | null;
 }
 
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT or OPEN -> VOID. */
@@ -42,6 +45,8 @@ export interface ClaimFields {
   /** Blank takes the sheet's today. */
   date: string;
   note: string;
+  /** The number of the settled claim a negative amount corrects; blank for any other claim. */
+  corrects: string;
 }
 
 // The people's claims on the active sheet, newest first, re-read from the server each time the
@@ -86,10 +91,10 @@ export class Claims {
 
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, the sheet's late
    *  percent of the figure for every full 30 days past its due-by, rounded half to even to cents; none
-   *  otherwise. Never bound by a statement; frozen into the due when settled. */
+   *  otherwise, and none on a correction. Never bound by a statement; frozen into the due when settled. */
   lateCents(c: Claim, figureCents: bigint): bigint {
     const today = this.session.today();
-    if (!this.overdue(c) || today === null) return 0n;
+    if (!this.overdue(c) || today === null || c.amount.startsWith('-')) return 0n;
     const periods = BigInt(Math.floor(daysBetween(this.dueBy(c), today) / 30));
     return halfEven(figureCents * hundredths(this.session.latePct()) * periods, 10000n);
   }
@@ -152,7 +157,7 @@ export class Claims {
   async quickAdd(name: string, amount: string): Promise<string | null> {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!name.trim()) return 'Enter a name.';
-    const refused = this.check({ amount, date: '', note: '' });
+    const refused = this.check({ amount, date: '', note: '', corrects: '' });
     if (refused) return refused;
     const sid = this.session.sheetId()!;
     try {
@@ -218,13 +223,24 @@ export class Claims {
 
   private check(f: ClaimFields): string | null {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
-    if (!/^\d+(\.\d{1,2})?$/.test(f.amount.trim())) return 'Enter an amount of 0.00 or more, with up to two decimals.';
+    if (!/^-?\d+(\.\d{1,2})?$/.test(f.amount.trim())) return 'Enter an amount with up to two decimals.';
     if (f.date.trim() && !isDate(f.date.trim())) return 'Enter a date as YYYY-MM-DD.';
+    const corrects = f.corrects.trim();
+    if (corrects && !/^[1-9]\d{0,8}$/.test(corrects)) return 'Enter the number of the claim it corrects.';
+    if (f.amount.trim().startsWith('-') && !corrects) {
+      return 'A negative amount is a correction: name the number of the settled claim it corrects.';
+    }
     return null;
   }
 
-  private body(f: ClaimFields): { amount: string; date: string | null; note: string } {
-    return { amount: f.amount.trim(), date: f.date.trim() || null, note: f.note.trim() };
+  private body(f: ClaimFields): { amount: string; date: string | null; note: string; corrects: number | null } {
+    const corrects = f.corrects.trim();
+    return {
+      amount: f.amount.trim(),
+      date: f.date.trim() || null,
+      note: f.note.trim(),
+      corrects: corrects ? Number(corrects) : null,
+    };
   }
 
   private url(sid: string): string {
@@ -232,14 +248,16 @@ export class Claims {
   }
 }
 
-/** An amount written with up to two decimals, in whole cents. */
+/** An amount written with up to two decimals, perhaps negative, in whole cents. */
 function cents(amount: string): number {
+  if (amount.startsWith('-')) return -cents(amount.slice(1));
   const [whole, frac = ''] = amount.split('.');
   return Number(whole) * 100 + Number((frac + '00').slice(0, 2));
 }
 
 /** Cents as an amount with two decimals. */
 function money(cents: number): string {
+  if (cents < 0) return `-${money(-cents)}`;
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
 }
 
@@ -258,6 +276,6 @@ function message(e: HttpErrorResponse): string | null {
 
 function failed(what: string, e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return message(e) ?? `Could not ${what} claim (409).`;
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more, with up to two decimals.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount with up to two decimals.';
   return e instanceof HttpErrorResponse ? `Could not ${what} claim (${e.status}).` : `Could not ${what} claim.`;
 }
