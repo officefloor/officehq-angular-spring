@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -25,10 +26,12 @@ public class ClaimService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final StatementRepository statements;
+    private final Rollup rollup;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            StatementRepository statements, Audit audit) {
+            StatementRepository statements, Rollup rollup, Audit audit) {
+        this.rollup = rollup;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -48,21 +51,26 @@ public class ClaimService {
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.today(sheetId);
+        Rollup.Snapshot before = rollup.take(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount.setScale(2), on, note));
         audit("CLAIM_ADDED", claim, person, user);
+        rollup.recordChanges(sheetId, user, before);
         return claim;
     }
 
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        Rollup.Snapshot before = rollup.take(sheetId);
         claim.setAmount(amount.setScale(2));
-        claim.setDate(date != null ? date : sheets.today(sheetId));
+        claim.setDate(on);
         claim.setNote(note);
         Claim updated = claims.saveAndFlush(claim);
         Person person = people.findByIdAndSheetId(updated.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         audit("CLAIM_EDITED", updated, person, user);
+        rollup.recordChanges(sheetId, user, before);
         return updated;
     }
 
@@ -79,6 +87,7 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ClaimSettlerException();
         }
+        Rollup.Snapshot before = rollup.take(sheetId);
         Integer number = claim.getNumber();
         if (to == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
@@ -101,6 +110,7 @@ public class ClaimService {
         audit(event, updated, person, user, number, to == ClaimStatus.SETTLED
                 ? " due=" + (updated.getSettledDue() == null ? "n/a" : updated.getSettledDue().toPlainString())
                 : "");
+        rollup.recordChanges(sheetId, user, before);
         return updated;
     }
 
@@ -115,6 +125,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate today = sheets.today(sheetId);
         List<Claim> theirs = claims.findForUpdateBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        Rollup.Snapshot before = rollup.take(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean figure = false;
         int counted = 0;
@@ -137,6 +148,7 @@ public class ClaimService {
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted);
+        rollup.recordChanges(sheetId, user, before);
         return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
     }
 

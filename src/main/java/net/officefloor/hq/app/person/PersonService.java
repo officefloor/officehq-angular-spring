@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,10 +21,12 @@ public class PersonService {
     private final PersonRepository people;
     private final SheetRepository sheets;
     private final StatementRepository statements;
+    private final Rollup rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
-            Audit audit) {
+            Rollup rollup, Audit audit) {
+        this.rollup = rollup;
         this.people = people;
         this.sheets = sheets;
         this.statements = statements;
@@ -53,8 +56,10 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade) {
         requireSheet(sheetId);
         requireFreeName(sheetId, name.trim(), null);
+        Rollup.Snapshot before = rollup.take(sheetId);
         Person person = saved(new Person(sheetId, name.trim(), grade));
         audit("PERSON_ADDED", person, user);
+        rollup.recordChanges(sheetId, user, before);
         return person;
     }
 
@@ -65,10 +70,12 @@ public class PersonService {
             throw new PersonVersionConflictException(person);
         }
         requireFreeName(sheetId, name.trim(), person.getId());
+        Rollup.Snapshot before = rollup.take(sheetId);
         person.setName(name.trim());
         person.setGrade(grade);
         Person updated = saved(person);
         audit("PERSON_EDITED", updated, user);
+        rollup.recordChanges(sheetId, user, before);
         return updated;
     }
 
