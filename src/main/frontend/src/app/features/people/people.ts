@@ -525,6 +525,14 @@ function csvField(value: string): string {
                 >
                   Cancel statement
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-export-statement"
+                  [attr.aria-label]="'Download the last statement of ' + p.name"
+                  (click)="exportStatement(p)"
+                >
+                  Export statement
+                </button>
                 <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
                 <input
                   [id]="'person-retire-date-' + p.id"
@@ -2553,6 +2561,28 @@ export class People {
       ),
     );
     this.download(lines, `claims-${this.session.sheet() ?? 'sheet'}.csv`);
+  }
+
+  /**
+   * Download the person's statement as a CSV file: each claim of theirs bound by their last statement, oldest first,
+   * with its number, date, amount, bound figure and status as the list shows them.
+   */
+  protected async exportStatement(p: Person): Promise<void> {
+    await this.session.settled('people', 'settings');
+    const person = this.people().find((q) => q.id === p.id) ?? p;
+    const lines = [['number', 'date', 'amount', 'figure', 'status']].concat(
+      [...this.claimsOf(person.id)]
+        .reverse()
+        .filter((c) => c.stated)
+        .map((c) => [
+          c.number ?? '',
+          c.date,
+          c.amount,
+          claimDue(c, this.rates(), person.grades, this.session),
+          c.status,
+        ]),
+    );
+    this.download(lines, `statement-${this.session.sheet() ?? 'sheet'}-${person.id}.csv`);
   }
 
   /** Save the lines of fields as a CSV file of the name, each line ended by a line feed. */
