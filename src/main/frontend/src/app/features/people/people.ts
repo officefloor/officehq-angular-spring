@@ -589,6 +589,14 @@ function csvField(value: string): string {
                 >
                   Export statement
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-export"
+                  [attr.aria-label]="'Download the row of ' + p.name"
+                  (click)="exportPerson(p)"
+                >
+                  Export row
+                </button>
                 <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
                 <input
                   [id]="'person-retire-date-' + p.id"
@@ -2964,6 +2972,26 @@ export class People {
         ]),
     );
     this.download(lines, `statement-${this.session.sheet() ?? 'sheet'}-${person.id}.csv`);
+  }
+
+  /** Download the person's row as a CSV file: each of its figures, one per line, as the row shows it. */
+  protected async exportPerson(p: Person): Promise<void> {
+    await this.session.settled('people', 'settings');
+    const person = this.people().find((q) => q.id === p.id) ?? p;
+    const cells: [string, unknown][] = [
+      ['person-name', this.shownName(person)],
+      ['person-grade', this.gradeOf(person)],
+      ['person-claimed', this.claimedBy(person.id)],
+      ['person-due-total', this.dueTotalOf(person)],
+      ['person-statement-count', person.statementCount],
+      ['person-overdue-total', this.overdueTotalOf(person)],
+      ['person-hold', person.held ? 'yes' : 'no'],
+      ['person-retired', person.retired ? 'yes' : 'no'],
+      ['person-aliases', person.aliases.join(', ')],
+      ['person-score', this.personScoreOf(person)],
+    ];
+    const lines = [['cell', 'value']].concat(cells.map(([cell, value]) => [cell, String(value ?? '')]));
+    this.download(lines, `person-${this.session.sheet() ?? 'sheet'}-${person.id}.csv`);
   }
 
   /** Save the lines of fields as a CSV file of the name, each line ended by a line feed. */
