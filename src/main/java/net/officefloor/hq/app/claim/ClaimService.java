@@ -290,7 +290,8 @@ public class ClaimService {
     /** Take a person's statement: record their due-total now (late charges included) and how many claims
      *  count, and bind each claim that counts to the figure it has now, under its late charge (the charge is
      *  never bound: it keeps following the sheet's today; a PENDING claim is bound only once it is back to
-     *  OPEN); a claim that does not count, or is OPEN or PENDING while its person is on hold, is left unbound. */
+     *  OPEN); a claim that does not count, or is OPEN or PENDING and dated within one of its person's holds, is
+     *  left unbound. */
     @Transactional
     public Stated statement(String sheetId, String user, long personId) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
@@ -301,7 +302,7 @@ public class ClaimService {
         boolean figure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.getStatus().counts() || (person.isHeld() && claim.getStatus().isOpen())) {
+            if (!claim.getStatus().counts() || (claim.getStatus().isOpen() && person.heldOn(claim.getDate()))) {
                 claim.setStated(false, null);
                 continue;
             }

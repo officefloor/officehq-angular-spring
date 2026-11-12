@@ -15,7 +15,7 @@ export class Figures {
   private readonly rates = inject(Rates);
   private readonly session = inject(Session);
 
-  /** The sum of the figures of a person's claims that count live (not OPEN while they are on hold): a settled claim's frozen due, else the
+  /** The sum of the figures of a person's claims that count live (not left out by a hold): a settled claim's frozen due, else the
    *  figure their last statement bound it to, else its live due at the rate in force on its date (a
    *  claim with no figure adds nothing). Null when the grade in force on the sheet's today has no rate
    *  there and no claim has a figure. */

@@ -4,13 +4,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -70,7 +68,7 @@ public class Rollup {
             BigDecimal due = ZERO;
             boolean keptFigure = false;
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person.isHeld())) {
+                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person)) {
                     continue;
                 }
                 claimed = claimed.add(claim.getAmount());
@@ -110,17 +108,11 @@ public class Rollup {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         Map<Long, Person> byId = new LinkedHashMap<>();
-        Set<Long> held = new HashSet<>();
-        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
-            byId.put(p.getId(), p);
-            if (p.isHeld()) {
-                held.add(p.getId());
-            }
-        });
+        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> byId.put(p.getId(), p));
         BigDecimal total = ZERO;
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
-            if (!countsLive(claim, held.contains(claim.getPersonId())) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            if (!countsLive(claim, byId.get(claim.getPersonId())) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
             BigDecimal due;
@@ -161,10 +153,15 @@ public class Rollup {
         }
     }
 
-    /** Whether a claim counts in the live totals: its status counts, and it is not OPEN or PENDING while
-     *  its person is on hold. */
-    private static boolean countsLive(Claim claim, boolean held) {
-        return claim.getStatus().counts() && !(held && claim.getStatus().isOpen());
+    /** Whether a claim counts in the live totals: its status counts, and it is not left out by a hold. */
+    private static boolean countsLive(Claim claim, Person person) {
+        return claim.getStatus().counts() && !heldOut(claim, person);
+    }
+
+    /** Whether a hold leaves a claim out of the live totals: it is OPEN or PENDING, bound by no statement,
+     *  and dated within one of its person's holds. */
+    public static boolean heldOut(Claim claim, Person person) {
+        return person != null && claim.getStatus().isOpen() && !claim.isBound() && person.heldOn(claim.getDate());
     }
 
     /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on

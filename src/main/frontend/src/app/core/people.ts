@@ -21,6 +21,18 @@ export function gradeOn(grades: GradeFrom[], date: string): string {
   return found ?? '';
 }
 
+/** A hold on a person: from a date (null for the beginning of time) to a date (null while it has no
+ *  end), both inclusive. */
+export interface Hold {
+  from: string | null;
+  to: string | null;
+}
+
+/** Whether one of the holds covers a date (YYYY-MM-DD). */
+export function heldOn(holds: Hold[], date: string): boolean {
+  return holds.some((h) => (h.from === null || h.from <= date) && (h.to === null || date <= h.to));
+}
+
 export interface Person {
   id: number;
   name: string;
@@ -40,8 +52,11 @@ export interface Person {
   retired: boolean;
   /** The date they are retired from (YYYY-MM-DD); null while not retired. */
   retiredFrom: string | null;
-  /** On hold: their OPEN and PENDING claims count in no live total; their SETTLED ones still do. */
+  /** Whether they have any hold at all. */
   held: boolean;
+  /** Their holds, by from-date: an OPEN or PENDING claim dated within one, and bound by no statement,
+   *  counts in no live total. */
+  holds: Hold[];
   /** The ids of the other people on the sheet they have named as their patrons. */
   patronIds: number[];
 }
@@ -176,14 +191,21 @@ export class People {
     }
   }
 
-  /** Put a person on hold, or take them off it; an error message when refused. */
-  async toggleHold(id: number): Promise<string | null> {
+  /** Put a person on hold from a date (blank takes the sheet's today) to a date (blank: no end); an
+   *  error message when refused. */
+  async hold(id: number, from: string, to: string): Promise<string | null> {
     const sid = this.session.sheetId();
     const user = this.session.user();
     if (!user || !sid) return 'Load a sheet first.';
+    const f = from.trim();
+    const t = to.trim();
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    if ((f && !date.test(f)) || (t && !date.test(t))) return 'Enter a date as YYYY-MM-DD.';
     try {
       const person = await firstValueFrom(
-        this.http.post<Person>(`${this.url(sid)}/${id}/hold`, null, { headers: { 'X-User': user } }),
+        this.http.post<Person>(`${this.url(sid)}/${id}/holds`, { from: f || null, to: t || null }, {
+          headers: { 'X-User': user },
+        }),
       );
       if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
       return null;

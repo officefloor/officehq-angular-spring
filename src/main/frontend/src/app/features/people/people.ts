@@ -109,7 +109,14 @@ import { PersonClaims } from '../claims/claims';
                 <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
               </td>
-              <td><span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span></td>
+              <td>
+                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                <ul class="holds">
+                  @for (h of p.holds; track $index) {
+                    <li data-testid="person-hold-line">{{ h.from ?? 'always' }} to {{ h.to ?? 'no end' }}</li>
+                  }
+                </ul>
+              </td>
               <td>
                 <span data-testid="person-patrons">{{ patrons(p) }}</span>
                 <label [for]="'person-patron-select-' + p.id">Add patron<span class="visually-hidden"> for {{ p.name }}</span></label>
@@ -166,13 +173,29 @@ import { PersonClaims } from '../claims/claims';
                 >
                   Retire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <label [for]="'person-hold-from-' + p.id">Hold from<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-hold-from-' + p.id"
+                  data-testid="person-hold-from"
+                  placeholder="YYYY-MM-DD"
+                  [value]="holdDates()[p.id]?.from"
+                  (input)="setHoldDate(p.id, 'from', value($event))"
+                />
+                <label [for]="'person-hold-to-' + p.id">to<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-hold-to-' + p.id"
+                  data-testid="person-hold-to"
+                  placeholder="YYYY-MM-DD"
+                  [value]="holdDates()[p.id]?.to"
+                  (input)="setHoldDate(p.id, 'to', value($event))"
+                />
                 <button
                   type="button"
                   data-testid="person-hold-toggle"
                   [disabled]="holding() === p.id"
-                  (click)="toggleHold(p)"
+                  (click)="hold(p)"
                 >
-                  {{ p.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> {{ p.name }}</span>
+                  Hold<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
                 @if (actionError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ actionError()?.message }}</p>
@@ -198,7 +221,9 @@ export class PeopleList {
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The id of the person being retired. */
   protected readonly retiring = signal<number | null>(null);
-  /** The id of the person being put on or taken off hold. */
+  /** The hold from- and to-dates typed on each person's row. */
+  protected readonly holdDates = signal<Record<number, { from: string; to: string }>>({});
+  /** The id of the person being put on hold. */
   protected readonly holding = signal<number | null>(null);
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = computed(() =>
@@ -361,12 +386,19 @@ export class PeopleList {
     }
   }
 
-  protected async toggleHold(p: Person): Promise<void> {
+  protected setHoldDate(id: number, which: 'from' | 'to', date: string): void {
+    this.clearActionError(id);
+    this.holdDates.update((ds) => ({ ...ds, [id]: { ...(ds[id] ?? { from: '', to: '' }), [which]: date } }));
+  }
+
+  protected async hold(p: Person): Promise<void> {
     this.clearActionError(p.id);
     this.holding.set(p.id);
     try {
-      const err = await this.people.toggleHold(p.id);
+      const dates = this.holdDates()[p.id] ?? { from: '', to: '' };
+      const err = await this.people.hold(p.id, dates.from, dates.to);
       if (err) this.actionError.set({ id: p.id, message: err });
+      else this.holdDates.update((ds) => ({ ...ds, [p.id]: { from: '', to: '' } }));
     } finally {
       this.holding.set(null);
     }

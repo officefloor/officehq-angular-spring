@@ -42,9 +42,11 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** On hold: their OPEN and PENDING claims count in no live total; their SETTLED ones still do. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** Their holds: an OPEN or PENDING claim dated within one, and bound by no statement, counts in no
+     *  live total; their other claims still do. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private List<PersonHold> holds = new ArrayList<>();
 
     /** Moved on by each save, so a save made from an older version is refused. */
     @Version
@@ -122,12 +124,27 @@ public class Person {
         return retiredFrom != null && date.isAfter(retiredFrom);
     }
 
+    /** Whether they have any hold at all. */
     public boolean isHeld() {
-        return held;
+        return !holds.isEmpty();
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    /** Their holds, the one from the beginning of time first, then by from-date. */
+    public List<PersonHold> getHolds() {
+        return holds.stream()
+                .sorted(Comparator.comparing(PersonHold::getFromDate, Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(PersonHold::getToDate, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+    }
+
+    /** Whether a hold of theirs covers a date. */
+    public boolean heldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    /** Put them on hold from a date, to a date when one is given. */
+    public void hold(LocalDate from, LocalDate to) {
+        holds.add(new PersonHold(from, to));
     }
 
     public long getVersion() {

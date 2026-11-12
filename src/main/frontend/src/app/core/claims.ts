@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { People, Person } from './people';
+import { People, Person, heldOn } from './people';
 import { hundredths, rounded } from './rates';
 import { Session, daysBetween, isDate } from './session';
 
@@ -57,8 +57,8 @@ export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING' || c.status === 'SETTLED';
 }
 
-/** Whether a claim is still open (OPEN or PENDING): it goes overdue, and a hold takes it out of the
- *  live totals. */
+/** Whether a claim is still open (OPEN or PENDING): it goes overdue, and a hold over its date takes it
+ *  out of the live totals unless a statement binds it. */
 export function isOpen(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING';
 }
@@ -92,11 +92,11 @@ export class Claims {
   readonly selected = signal<ReadonlySet<number>>(new Set());
   private loads = 0;
 
-  /** The claims that count in the live totals: those that count, less the OPEN and PENDING claims of a
-   *  person on hold. */
+  /** The claims that count in the live totals: those that count, less the OPEN and PENDING claims bound
+   *  by no statement and dated within one of their person's holds. */
   readonly live = computed(() => {
-    const held = new Set(this.people.people().filter((p) => p.held).map((p) => p.id));
-    return this.claims().filter((c) => counts(c) && !(isOpen(c) && held.has(c.personId)));
+    const holds = new Map(this.people.people().map((p) => [p.id, p.holds]));
+    return this.claims().filter((c) => counts(c) && !(isOpen(c) && !bound(c) && heldOn(holds.get(c.personId) ?? [], c.date)));
   });
 
   /** Each person's claimed, in cents, by person id. */

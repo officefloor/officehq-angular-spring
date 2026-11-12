@@ -35,7 +35,7 @@ public class PersonController {
      *  they were given, each with its from-date (YYYY-MM-DD, none for the first). */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
-            boolean held, List<Long> patronIds) {
+            boolean held, List<HoldView> holds, List<Long> patronIds) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds) {
             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
@@ -45,7 +45,7 @@ public class PersonController {
                     last == null ? null : last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString(),
                     last == null ? null : last.getTakenOn().toString(),
                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
-                    person.isHeld(), patronIds);
+                    person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds);
         }
     }
 
@@ -55,6 +55,20 @@ public class PersonController {
         static GradeView of(PersonGrade grade) {
             return new GradeView(grade.getGrade(), grade.getFromDate() == null ? null : grade.getFromDate().toString());
         }
+    }
+
+    /** A hold on a person: its from-date (none for the beginning of time) and its to-date (none while it
+     *  has no end), each YYYY-MM-DD. */
+    public record HoldView(String from, String to) {
+
+        static HoldView of(PersonHold hold) {
+            return new HoldView(hold.getFromDate() == null ? null : hold.getFromDate().toString(),
+                    hold.getToDate() == null ? null : hold.getToDate().toString());
+        }
+    }
+
+    /** The dates a hold covers: from a date (none takes the sheet's today) to a date (none: no end). */
+    public record HoldRequest(LocalDate from, LocalDate to) {
     }
 
     public record PersonRequest(
@@ -135,13 +149,21 @@ public class PersonController {
         return view(retired);
     }
 
-    /** Put a person on hold, or take them off it. */
-    @PostMapping("/{personId}/hold")
+    /** Put a person on hold from a date, to a date when one is given. */
+    @PostMapping("/{personId}/holds")
     public PersonView hold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long personId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        Person toggled = service.toggleHold(sheetId.trim(), user.trim(), personId);
-        return view(toggled);
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody HoldRequest request) {
+        Person held = service.hold(sheetId.trim(), user.trim(), personId, request.from(), request.to());
+        return view(held);
+    }
+
+    /** A hold that cannot be put on is refused with the reason, for the screen to show. */
+    @ExceptionHandler(HoldRefusedException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public Map<String, String> holdRefused(HoldRefusedException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** Name another person on the sheet as the person's patron. */

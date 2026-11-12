@@ -136,17 +136,22 @@ public class PersonService {
         return retired;
     }
 
-    /** Put a person on hold, or take them off it again. */
+    /** Put a person on hold from a date (the sheet's today when none is given) to a date when one is
+     *  given; a hold ending before it starts is refused. */
     @Transactional
-    public Person toggleHold(String sheetId, String user, long personId) {
+    public Person hold(String sheetId, String user, long personId, LocalDate from, LocalDate to) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        LocalDate on = from != null ? from : today(sheetId);
+        if (to != null && to.isBefore(on)) {
+            throw new HoldRefusedException("A hold cannot end before it starts.");
+        }
         Rollup.Snapshot before = rollup.take(sheetId);
-        person.setHeld(!person.isHeld());
-        Person toggled = saved(person);
-        audit.recordOnCommit((toggled.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
-                + " by=" + user + " name=" + toggled.getName());
+        person.hold(on, to);
+        Person held = saved(person);
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + held.getName()
+                + " from=" + on);
         rollup.recordChanges(sheetId, user, before);
-        return toggled;
+        return held;
     }
 
     /** The grade recorded is the one in force on the sheet's today. */
