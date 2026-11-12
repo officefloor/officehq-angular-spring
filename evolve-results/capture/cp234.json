@@ -1,0 +1,64 @@
+{
+  "checkpoint": 234,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp234_tree-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the people of the whole tree as a CSV file: a header line\nsheet,name,grade,due-total then one line per person, this sheet first in list order, then the\nother sheets of the tree by sheet id.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e8d47d1d3bb50bfa8357f6128084874f218bf266",
+  "reset_sha": "",
+  "preagent_sha": "0c4cbdd3b682a86245d9cdd4759733bb0e7bffa1",
+  "prev_sha": "0c4cbdd3b682a86245d9cdd4759733bb0e7bffa1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5702102,
+    "input_tokens": 38,
+    "output_tokens": 6658,
+    "cache_read_tokens": 612771,
+    "cache_creation_tokens": 39293,
+    "num_turns": 19,
+    "duration_ms": 267777,
+    "duration_api_ms": 67198,
+    "model": "claude-opus-5-5",
+    "session_id": "10bba13e-ed4e-4937-a769-5d058b2bdd0f",
+    "stop_reason": "success",
+    "result_text": "I added an \"Export the tree's people (CSV)\" button (`export-tree`) that downloads every person in the sheet's tree. All 4 tests in `bin/e2e` pass: the tree export test and the three existing scenarios.\n\n**What the file contains:** the header `sheet,name,grade,due-total`, then this sheet's people in list order, then the people of the other sheets in the tree, sorted by sheet id. The tree is the sheet's topmost parent and everything below it, so exporting from a child sheet also includes its parent and sibling sheets.\n\n**Server** (`rollup/RollupService.java`, `rollup/ConsolidatedController.java`):\n- New endpoint `GET /api/sheets/{sheetId}/tree/people`, which returns one row per person.\n- The grade is the one in force on that sheet's today, and is left blank if there isn't one.\n- The due-total is shown the same way that sheet shows it, including `n/a`.\n- The code that works out which sheets are in the tree and in what order already existed inside the tree search. I moved it into a shared helper, `treeOrder`, so the search and the export use the same rules.\n\n**Front end** (`features/tree-search/tree-search.ts`):\n- The button sits in the tree-search panel and builds the CSV in the browser, the same way the existing people and pools exports do.\n- If the request fails it shows an error (`export-tree-error`), which is cleared the next time you press the button or load a sheet.\n\nNothing is stored and nothing is written to the audit file, because the export doesn't change anything.\n\nOne limit: the export always shows the sheets as they are now. Unlike the totals of child sheets, it doesn't follow an as-of date if one is set.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5702102,
+        "num_turns": 19,
+        "duration_ms": 267777,
+        "duration_api_ms": 67198,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp234.agent.jsonl",
+  "agent_diff_file": "cp234.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

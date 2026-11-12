@@ -1,0 +1,166 @@
+diff --git a/src/main/frontend/src/app/features/tree-search/tree-search.ts b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+index 2bf9972d8..3af36bd01 100644
+--- a/src/main/frontend/src/app/features/tree-search/tree-search.ts
++++ b/src/main/frontend/src/app/features/tree-search/tree-search.ts
+@@ -4,9 +4,15 @@ import { Component, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
++/** A CSV field: quoted, with its quotes doubled, when it holds a comma, a quote or a line break. */
++function csvField(value: string): string {
++  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
++}
++
+ // Tree search: every person on this sheet and the other sheets of its tree whose name or an alias contains the typed
+ // text (case ignored), one line each as <sheet id> <name> <due-total>; this sheet's people first in list order, then
+-// the other sheets' by sheet id. It records nothing.
++// the other sheets' by sheet id. It records nothing. And a button that downloads every person of the tree as a CSV
++// file, in the same order: their sheet id, name, grade and due-total.
+ @Component({
+   selector: 'app-tree-search',
+   imports: [FigurePipe],
+@@ -32,6 +38,10 @@ import { Session } from '../../core/session';
+           <li data-testid="search-line">{{ line | fig }}</li>
+         }
+       </ol>
++      <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people (CSV)</button>
++      @if (exportError(); as message) {
++        <p role="alert" data-testid="export-tree-error">{{ message | fig }}</p>
++      }
+     </section>
+   `,
+ })
+@@ -44,6 +54,7 @@ export class TreeSearch {
+   /** How many lines the last search found; null while a search runs and before the first. */
+   protected readonly count = signal<number | null>(null);
+   protected readonly error = signal<string | null>(null);
++  protected readonly exportError = signal<string | null>(null);
+   private reads = 0;
+ 
+   constructor() {
+@@ -55,6 +66,7 @@ export class TreeSearch {
+         this.lines.set([]);
+         this.count.set(null);
+         this.error.set(null);
++        this.exportError.set(null);
+       });
+     });
+   }
+@@ -87,4 +99,29 @@ export class TreeSearch {
+       if (read === this.reads) this.error.set('The sheet tree could not be searched.');
+     }
+   }
++
++  /**
++   * Download every person of the sheet tree as a CSV file: a header line, then one line each with their sheet id, name,
++   * grade and due-total; this sheet's people first in list order, then the other sheets' by sheet id.
++   */
++  protected async exportTree(): Promise<void> {
++    this.exportError.set(null);
++    const sheet = this.session.sheet();
++    if (!sheet) return;
++    try {
++      const rows = await firstValueFrom(
++        this.http.get<string[][]>(`/api/sheets/${encodeURIComponent(sheet)}/tree/people`, this.session.headers()),
++      );
++      const lines = [['sheet', 'name', 'grade', 'due-total'], ...rows];
++      const text = lines.map((fields) => fields.map(csvField).join(',') + '\n').join('');
++      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
++      const link = document.createElement('a');
++      link.href = url;
++      link.download = `tree-${sheet}.csv`;
++      link.click();
++      setTimeout(() => URL.revokeObjectURL(url));
++    } catch {
++      this.exportError.set('The sheet tree could not be exported.');
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+index a40bcd316..5c87e8e48 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -53,6 +53,16 @@ public class ConsolidatedController {
+         return rollups.search(sheetId.trim(), name);
+     }
+ 
++    /**
++     * The people of the sheet and the other sheets of its tree, one row each: {@code [<sheet id>, <name>, <grade>,
++     * <due-total>]}, this sheet's first in list order, then the other sheets' by sheet id. It changes nothing.
++     */
++    @GetMapping("/api/sheets/{sheetId}/tree/people")
++    public List<List<String>> treePeople(@PathVariable @NotBlank @Size(max = 100) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
++        return rollups.treePeople(sheetId.trim());
++    }
++
+     /**
+      * This sheet compared with another, one line per grade: {@code <grade> <this sheet's due-total> <the other's>};
+      * no lines when the other sheet does not exist. It changes nothing.
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index d50d75203..d1c3275be 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -373,21 +373,8 @@ public class RollupService {
+      */
+     public List<String> search(String sheetId, String text) {
+         String wanted = text.toLowerCase(Locale.ROOT);
+-        List<String> others = new ArrayList<>();
+-        String root = root(sheetId);
+-        if (!root.equals(sheetId)) {
+-            others.add(root);
+-        }
+-        for (String id : descendants(root)) {
+-            if (!id.equals(sheetId)) {
+-                others.add(id);
+-            }
+-        }
+-        others.sort(null);
+-        List<String> order = new ArrayList<>(List.of(sheetId));
+-        order.addAll(others);
+         List<String> lines = new ArrayList<>();
+-        for (String id : order) {
++        for (String id : treeOrder(sheetId)) {
+             Map<Long, List<String>> aliasesOf = new LinkedHashMap<>();
+             for (PersonAlias alias : aliases.findBySheetId(id)) {
+                 aliasesOf.computeIfAbsent(alias.getPersonId(), p -> new ArrayList<>()).add(alias.getAlias());
+@@ -406,6 +393,39 @@ public class RollupService {
+         return lines;
+     }
+ 
++    /**
++     * Every person on the sheet and the other sheets of its tree, each as {@code [<sheet id>, <name>, <grade>,
++     * <due-total>]} with the grade in force on that sheet's today (empty when none) and the due-total as that sheet
++     * shows it: the sheet's people first in list order, then the other sheets' by sheet id. It changes nothing.
++     */
++    public List<List<String>> treePeople(String sheetId) {
++        List<List<String>> rows = new ArrayList<>();
++        for (String id : treeOrder(sheetId)) {
++            for (Figures person : snapshot(id).people().values()) {
++                rows.add(List.of(id, person.name(), person.grade() == null ? "" : person.grade(), person.dueTotal()));
++            }
++        }
++        return rows;
++    }
++
++    /** The sheet, then the other sheets of its tree (its topmost ancestor and all that one's descendants) by sheet id. */
++    private List<String> treeOrder(String sheetId) {
++        List<String> others = new ArrayList<>();
++        String root = root(sheetId);
++        if (!root.equals(sheetId)) {
++            others.add(root);
++        }
++        for (String id : descendants(root)) {
++            if (!id.equals(sheetId)) {
++                others.add(id);
++            }
++        }
++        others.sort(null);
++        List<String> order = new ArrayList<>(List.of(sheetId));
++        order.addAll(others);
++        return order;
++    }
++
+     /** The person's name as the screen shows it: with the grade in force on the sheet's today, when there is one. */
+     private static String named(Figures person) {
+         return person.grade() == null ? person.name() : person.name() + " (" + person.grade() + ")";
