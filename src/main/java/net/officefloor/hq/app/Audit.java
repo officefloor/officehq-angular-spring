@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -82,6 +83,18 @@ public class Audit {
             }
         }
         return " for=" + steward;
+    }
+
+    /** Every record the file holds now, in the order written (none when there is no file yet). */
+    public synchronized List<String> lines() {
+        try {
+            if (!Files.exists(file)) {
+                return List.of();
+            }
+            return Files.readAllLines(file, StandardCharsets.UTF_8).stream().filter(l -> !l.isEmpty()).toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** Truncate the audit file. */

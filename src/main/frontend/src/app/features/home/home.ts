@@ -7,6 +7,7 @@ import { Rates } from '../../core/rates';
 import { Roles } from '../../core/roles';
 import { Session, isDate } from '../../core/session';
 import { VoidReasons } from '../../core/void-reasons';
+import { AuditPanel } from '../audit/audit';
 import { BulkOpen } from '../claims/bulk-open';
 import { BulkReassign } from '../claims/bulk-reassign';
 import { BulkSettle } from '../claims/bulk-settle';
@@ -23,7 +24,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [BulkOpen, BulkReassign, BulkSettle, HeaderCounters, HolidaysPanel, PasteClaims, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [AuditPanel, BulkOpen, BulkReassign, BulkSettle, HeaderCounters, HolidaysPanel, PasteClaims, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -93,6 +94,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-bulk-settle />
         <app-bulk-reassign />
         <app-summary />
+        <app-audit />
       }
     } @else {
       <form aria-label="Sign in" (submit)="signIn($event)">
