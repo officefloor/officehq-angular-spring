@@ -62,7 +62,8 @@ public class ClaimService {
         return updated;
     }
 
-    /** Move a claim to another status; refused when its current status does not allow it. Settling fixes the
+    /** Move a claim to another status; refused when its current status does not allow it,
+     *  or when the user settling it is the one who opened it. Settling fixes the
      *  claim's due at its grade's rate in force on its date; with no rate then, its due stays live. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to) {
@@ -70,9 +71,13 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(to)) {
             throw new ClaimStatusException(claim.getStatus(), to);
         }
+        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ClaimSettlerException();
+        }
         Integer number = claim.getNumber();
         if (to == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
+            claim.setOpenedBy(user);
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);

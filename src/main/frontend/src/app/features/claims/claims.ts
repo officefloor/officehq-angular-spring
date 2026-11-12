@@ -46,6 +46,7 @@ import { Rates } from '../../core/rates';
           <span data-testid="claim-note">{{ c.note }}</span>
           <span>Due <span data-testid="claim-due">{{ c.settledDue ?? rates.due(c.amount, grade(), c.date) }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+          <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           @if (editing() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>

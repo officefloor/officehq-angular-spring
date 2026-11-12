@@ -16,6 +16,8 @@ export interface Claim {
   /** The due fixed when it was settled, two decimals; null while its due is live (not settled, or
    *  settled while its grade had no rate). */
   settledDue: string | null;
+  /** The user who opened it; null while a draft. That user cannot settle it. */
+  openedBy: string | null;
 }
 
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT or OPEN -> VOID. */

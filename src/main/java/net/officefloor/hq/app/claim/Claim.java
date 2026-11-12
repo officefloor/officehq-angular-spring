@@ -11,7 +11,8 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note, a status and, once opened, a number. */
+/** A claim by a person on a sheet: an amount (0.00 or more, two decimals), a date, a note, a status and, once opened,
+ *  a number and who opened it. */
 @Entity
 @Table(name = "claim")
 public class Claim {
@@ -46,6 +47,10 @@ public class Claim {
     /** Fixed when the claim is settled, if its grade had a rate then; none otherwise. */
     @Column(name = "settled_due")
     private BigDecimal settledDue;
+
+    /** The user who opened the claim; none while a draft. */
+    @Column(name = "opened_by")
+    private String openedBy;
 
     protected Claim() {
     }
@@ -116,5 +121,13 @@ public class Claim {
 
     public void setSettledDue(BigDecimal settledDue) {
         this.settledDue = settledDue;
+    }
+
+    public String getOpenedBy() {
+        return openedBy;
+    }
+
+    public void setOpenedBy(String openedBy) {
+        this.openedBy = openedBy;
     }
 }
