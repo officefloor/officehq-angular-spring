@@ -1,0 +1,64 @@
+{
+  "checkpoint": 91,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp91_claim-comments",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be commented (a text entry and a button on the claim; an empty comment is refused\nwith an error on the claim). Each comment is kept with the user who wrote it and the sheet's today\nwhen it was written, shown on the claim in order as <user> on <date>: <text>, and written as\nCOMMENT_ADDED, naming the claim like every claim line and ending text=<text>. A viewer, an archived\nsheet and the as-of view refuse it like any change.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be commented (a text entry and a button on the claim; an empty comment is refused\nwith an error on the claim). Each comment is kept with the user who wrote it and the sheet's today\nwhen it was written, shown on the claim in order as <user> on <date>: <text>, and written as\nCOMMENT_ADDED, naming the claim like every claim line and ending text=<text>. A viewer, an archived\nsheet and the as-of view refuse it like any change.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f0323d81c9e98bd0cfe42a11a089a17268e88f68",
+  "reset_sha": "",
+  "preagent_sha": "ca90fbf5591e42b657bbcd51e812f07e6306f6f5",
+  "prev_sha": "ca90fbf5591e42b657bbcd51e812f07e6306f6f5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9862154000000001,
+    "input_tokens": 42,
+    "output_tokens": 9369,
+    "cache_read_tokens": 1075177,
+    "cache_creation_tokens": 72954,
+    "num_turns": 22,
+    "duration_ms": 300608,
+    "duration_api_ms": 93506,
+    "model": "claude-opus-5-5",
+    "session_id": "2f61f4f2-dcc5-4701-aa09-5bb32ba0026d",
+    "stop_reason": "success",
+    "result_text": "Claims can now be commented, and `bin/e2e` passes all 4 tests in the spec (the main comments test and the three scenario tests).\n\n**What it does**\n- Each claim has a comment box (`claim-comment-text`) and an \"Add comment\" button (`claim-comment-add`).\n- Comments are listed on the claim in the order they were written, each as `<user> on <date>: <text>` (`claim-comments-line`). The date is the sheet's today at the time of writing.\n- An empty or whitespace-only comment is refused with `claim-error` on the claim. The front end refuses it before sending, and the server refuses it too.\n- Each comment writes `COMMENT_ADDED` with the usual claim fields (person, amount, date, and number once the claim is opened), ending `text=<text>`.\n- A viewer, an archived sheet and the as-of view are refused by the guards the app already has for every change, so nothing new was needed there. The test only checks the viewer refusal; the archived and as-of refusals rely on those guards.\n\n**Changes**\n- **Stored data:** a new migration `V57__claim_comment.sql` adds a `claim_comment` table, kept on each claim the same way as its status log.\n- **Server:** a new `ClaimComment` class, a `comments` list on `Claim`, `ClaimService.comment(...)`, and a new endpoint `POST /api/sheets/{sheetId}/claims/{claimId}/comments`. Claims sent to the screen now include their comments.\n- **Front end:** `Claims.comment()` in `core/claims.ts`, plus the comment list, box and button in each claim row in `features/claims/claims.ts`. The box is emptied after a comment is added.\n\n**One judgement call:** after adding a comment, `ClaimService.comment` explicitly saves the claim's state for the as-of view. I wasn't sure the history listener fires when only a claim's comments change, so I added this to be safe. If it does fire as well, the same state is saved twice, which does no harm. I haven't checked whether the extra save is actually needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9862154000000001,
+        "num_turns": 22,
+        "duration_ms": 300608,
+        "duration_api_ms": 93506,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp91.agent.jsonl",
+  "agent_diff_file": "cp91.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
