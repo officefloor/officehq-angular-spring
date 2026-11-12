@@ -203,6 +203,19 @@ public class Rollup {
                 + " name=" + figures.name() + " due-total=" + show(figures.dueTotal())));
     }
 
+    /** Record, once the change commits, a ROLLUP line of every person's figures in the list order, then the
+     *  TOTALS line, whether or not they moved. */
+    public void recordAll(String sheetId, String user) {
+        Snapshot now = take(sheetId);
+        String prefix = " sheet=" + sheetId + " by=" + user;
+        now.people().values().forEach(figures -> audit.recordOnCommit("ROLLUP" + prefix + " person=" + figures.name()
+                + " claimed=" + figures.claimed().toPlainString() + " due-total=" + show(figures.dueTotal())
+                + " overdue-total=" + figures.overdueTotal().toPlainString()));
+        audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + now.claimedTotal().toPlainString()
+                + " due-total=" + now.dueTotal().toPlainString()
+                + " overdue-total=" + now.overdueTotal().toPlainString());
+    }
+
     /** Record, once the change commits, the lines for every figure that moved since {@code before}. */
     public void recordChanges(String sheetId, String user, Snapshot before) {
         Snapshot after = take(sheetId);

@@ -257,6 +257,25 @@ export class Session {
     }
   }
 
+  /** Clone the sheet to another id never used (a steward only); an error message when refused. */
+  async cloneSheet(to: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const t = to.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!t) return 'Enter the id of the sheet to clone to.';
+    try {
+      await firstValueFrom(
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/clone`, { to: t }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not clone the sheet (${e.status}).` : 'Could not clone the sheet.';
+    }
+  }
+
   /** Record the sheet's clerk limit (blank: no limit) from a date (blank: the sheet's today); an error message when refused. */
   async setClerkLimit(limit: string, from = ''): Promise<string | null> {
     const user = this.user();

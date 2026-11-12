@@ -67,6 +67,17 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
           </form>
           <p>Archived: <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong></p>
           <button type="button" data-testid="sheet-archive" [disabled]="archiving()" (click)="archive()">Archive sheet</button>
+          <form (submit)="cloneSheet($event)">
+            <label for="sheet-clone-to">Clone to sheet id</label>
+            <input
+              id="sheet-clone-to"
+              data-testid="sheet-clone-to"
+              [value]="cloneInput()"
+              (input)="cloneInput.set(value($event)); todayError.set(null)"
+            />
+            <button type="submit" data-testid="sheet-clone" [disabled]="cloning()">Clone sheet</button>
+          </form>
+          <p>Cloned to: <strong data-testid="sheet-cloned-to">{{ clonedTo() ?? '' }}</strong></p>
           @if (todayError(); as err) {
             <p role="alert" data-testid="sheet-error">{{ err }}</p>
           }
@@ -144,6 +155,10 @@ export class Home {
   protected readonly todayError = signal<string | null>(null);
   protected readonly savingToday = signal(false);
   protected readonly archiving = signal(false);
+  protected readonly cloneInput = signal('');
+  protected readonly cloning = signal(false);
+  /** The id of the sheet the last clone made; cleared while a clone runs and when it is refused. */
+  protected readonly clonedTo = signal<string | null>(null);
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal<string | null>(null);
 
@@ -216,6 +231,22 @@ export class Home {
       this.todayError.set(await this.session.archive());
     } finally {
       this.archiving.set(false);
+    }
+  }
+
+  protected async cloneSheet(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.cloning()) return; // a second submit before the first has answered
+    this.todayError.set(null);
+    this.clonedTo.set(null);
+    this.cloning.set(true);
+    try {
+      const to = this.cloneInput().trim();
+      const err = await this.session.cloneSheet(to);
+      if (err === null) this.clonedTo.set(to);
+      this.todayError.set(err);
+    } finally {
+      this.cloning.set(false);
     }
   }
 
