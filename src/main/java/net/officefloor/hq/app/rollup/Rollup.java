@@ -83,8 +83,7 @@ public class Rollup {
                 } else if (!claim.isStated()) {
                     // a claim priced at the grade in force on its date keeps a figure too
                     BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
-                            .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
-                                    .setScale(2, RoundingMode.HALF_EVEN))
+                            .map(rate -> rated(sheet, claim, sheetClaims, rate))
                             .map(d -> floored(sheet, claim, d))
                             .orElse(null);
                     if (live != null) {
@@ -120,7 +119,8 @@ public class Rollup {
             }
         });
         BigDecimal total = ZERO;
-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        for (Claim claim : sheetClaims) {
             if (!countsLive(claim, held.contains(claim.getPersonId())) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
                 continue;
             }
@@ -132,8 +132,7 @@ public class Rollup {
             } else {
                 Person person = byId.get(claim.getPersonId());
                 due = person == null ? null : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
-                        .map(rate -> claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
-                                .setScale(2, RoundingMode.HALF_EVEN))
+                        .map(rate -> rated(sheet, claim, sheetClaims, rate))
                         .map(d -> floored(sheet, claim, d))
                         .orElse(null);
             }
@@ -167,6 +166,25 @@ public class Rollup {
      *  person is on hold. */
     private static boolean countsLive(Claim claim, boolean held) {
         return claim.getStatus().counts() && !(held && claim.getStatus() == ClaimStatus.OPEN);
+    }
+
+    /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on
+     *  the sheet (half to even with no sheet). */
+    private static BigDecimal rated(Optional<Sheet> sheet, Claim claim, List<Claim> sheetClaims, Rate rate) {
+        LocalDate on = roundingDate(claim, sheetClaims);
+        return claim.getAmount().multiply(rate.getRate()).movePointLeft(2)
+                .setScale(2, sheet.map(s -> s.rounding(on)).orElse(RoundingMode.HALF_EVEN));
+    }
+
+    /** The date a claim's figures round by: its own, or for a correction the date of the claim it
+     *  corrects (the claim of the same person with that number), its own when that is not found. */
+    public static LocalDate roundingDate(Claim claim, List<Claim> sheetClaims) {
+        if (!claim.isCorrection()) {
+            return claim.getDate();
+        }
+        return sheetClaims.stream()
+                .filter(c -> c.getPersonId().equals(claim.getPersonId()) && claim.getCorrects().equals(c.getNumber()))
+                .findFirst().map(Claim::getDate).orElse(claim.getDate());
     }
 
     /** A live due as it counts: at least the sheet's floor, unless its claim is a correction. */

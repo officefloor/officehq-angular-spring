@@ -13,6 +13,8 @@ export interface SheetView {
   terms: number;
   /** The percent of its figure an overdue claim's due gains for every full 30 days, two decimals. */
   latePct: string;
+  /** The policy date (YYYY-MM-DD); null when it is the sheet's today. */
+  policyDate: string | null;
 }
 
 // The signed-in user (a typed name, no password) and the active sheet. Every request to the
@@ -34,6 +36,9 @@ export class Session {
   /** The sheet's late percent (two decimals): what an overdue claim's due gains of its figure for every
    *  full 30 days it is overdue. */
   readonly latePct = signal<string>('0.00');
+  /** The sheet's policy date (YYYY-MM-DD); null when it is the sheet's today. A claim dated before it
+   *  rounds half up, one dated on or after it half to even. */
+  readonly policyDate = signal<string | null>(null);
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -59,6 +64,7 @@ export class Session {
       this.floor.set(sheet.floor);
       this.terms.set(sheet.terms);
       this.latePct.set(sheet.latePct);
+      this.policyDate.set(sheet.policyDate);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -138,6 +144,33 @@ export class Session {
         }),
       );
       if (this.sheetId() === sheet.id) this.terms.set(sheet.terms);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Whether a claim dated on a date rounds half up: it is before the policy date (the sheet's today when
+   *  there is none); otherwise it rounds half to even. */
+  roundsHalfUp(date: string): boolean {
+    const policy = this.policyDate() ?? this.today();
+    return policy !== null && date < policy;
+  }
+
+  /** Change the sheet's policy date (blank: the sheet's today); an error message when refused. */
+  async setPolicyDate(date: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const d = date.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (d && !isDate(d)) return 'Enter a policy date as YYYY-MM-DD, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/policy-date`, { policyDate: d || null }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.policyDate.set(sheet.policyDate);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

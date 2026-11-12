@@ -40,7 +40,7 @@ export class Figures {
     if (c.settledDue !== null) return hundredths(c.settledDue);
     const f = c.stated
       ? (c.statedDue === null ? 0n : hundredths(c.statedDue))
-      : (this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date) ?? 0n);
+      : (this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c)) ?? 0n);
     return f + this.claims.lateCents(c, f);
   }
 
@@ -65,7 +65,7 @@ export class Figures {
       else if (c.stated) due = c.statedDue === null ? null : hundredths(c.statedDue);
       else {
         const grade = grades.get(c.personId);
-        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date);
+        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date, this.claims.roundingDate(c));
       }
       if (due !== null && c.settledDue === null) due += this.claims.lateCents(c, due);
       sums.set(period.id, (sums.get(period.id) ?? 0n) + (due ?? 0n));

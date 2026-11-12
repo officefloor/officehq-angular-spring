@@ -97,6 +97,18 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's policy date (none: the sheet's today), recording the figures it moves. */
+    @Transactional
+    public Sheet setPolicyDate(String id, String user, LocalDate policyDate) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(id);
+        sheet.setPolicyDate(policyDate);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=policy-date value="
+                + (policyDate == null ? "" : policyDate.toString()));
+        rollup.recordChanges(id, user, before);
+        return sheet;
+    }
+
     /** The sheet's next claim number: 1 for the first, then 2, and so on, never given twice. */
     @Transactional
     public int nextClaimNumber(String id) {

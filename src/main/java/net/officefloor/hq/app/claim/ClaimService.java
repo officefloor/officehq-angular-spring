@@ -251,14 +251,25 @@ public class ClaimService {
      *  (a correction has none); none when no rate applies. */
     private BigDecimal liveDue(Claim claim, Person person) {
         Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
+        RoundingMode rounding = sheet.rounding(roundingDate(claim));
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
-                .map(rate -> claim.isCorrection() ? due(claim.getAmount(), rate) : sheet.floored(due(claim.getAmount(), rate)))
+                .map(rate -> claim.isCorrection() ? due(claim.getAmount(), rate, rounding)
+                        : sheet.floored(due(claim.getAmount(), rate, rounding)))
                 .orElse(null);
     }
 
-    /** An amount times a rate, divided by 100, rounded half to even to cents. */
-    private static BigDecimal due(BigDecimal amount, Rate rate) {
-        return amount.multiply(rate.getRate()).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+    /** The date a claim's figures round by: its own, or for a correction the date of the claim it corrects. */
+    private LocalDate roundingDate(Claim claim) {
+        if (!claim.isCorrection()) {
+            return claim.getDate();
+        }
+        return claims.findBySheetIdAndPersonIdAndNumber(claim.getSheetId(), claim.getPersonId(), claim.getCorrects())
+                .map(Claim::getDate).orElse(claim.getDate());
+    }
+
+    /** An amount times a rate, divided by 100, rounded to cents. */
+    private static BigDecimal due(BigDecimal amount, Rate rate, RoundingMode rounding) {
+        return amount.multiply(rate.getRate()).movePointLeft(2).setScale(2, rounding);
     }
 
     /** The amount as the screen shows it (two decimals), the date YYYY-MM-DD. */

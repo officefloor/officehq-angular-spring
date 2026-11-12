@@ -16,6 +16,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, Integer number,
             ClaimStatus status);
 
+    /** A person's claim by its number. */
+    Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, Integer number);
+
     /** The claim, locked until the transaction ends, so two users' changes to it go one after the other. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Claim> findForUpdateByIdAndSheetId(Long id, String sheetId);

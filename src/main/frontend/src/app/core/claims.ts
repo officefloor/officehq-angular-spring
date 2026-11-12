@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { People, Person } from './people';
-import { halfEven, hundredths } from './rates';
+import { hundredths, rounded } from './rates';
 import { Session, addDays, daysBetween, isDate } from './session';
 
 export interface Claim {
@@ -90,13 +90,20 @@ export class Claims {
   }
 
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, the sheet's late
-   *  percent of the figure for every full 30 days past its due-by, rounded half to even to cents; none
+   *  percent of the figure for every full 30 days past its due-by, rounded to cents as its date rounds; none
    *  otherwise, and none on a correction. Never bound by a statement; frozen into the due when settled. */
   lateCents(c: Claim, figureCents: bigint): bigint {
     const today = this.session.today();
     if (!this.overdue(c) || today === null || c.amount.startsWith('-')) return 0n;
     const periods = BigInt(Math.floor(daysBetween(this.dueBy(c), today) / 30));
-    return halfEven(figureCents * hundredths(this.session.latePct()) * periods, 10000n);
+    return rounded(figureCents * hundredths(this.session.latePct()) * periods, 10000n, this.session.roundsHalfUp(c.date));
+  }
+
+  /** The date a claim's figures round by: its own, or for a correction the date of the claim of the same
+   *  person it corrects (its own when that is not found). */
+  roundingDate(c: Claim): string {
+    if (c.corrects === null) return c.date;
+    return this.claims().find((o) => o.personId === c.personId && o.number === c.corrects)?.date ?? c.date;
   }
 
   /** A person's claims, newest first. */

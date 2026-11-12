@@ -49,6 +49,11 @@ public class Sheet {
     @Column(name = "late_pct", nullable = false)
     private BigDecimal latePct = new BigDecimal("0.00");
 
+    /** The policy date: a claim dated before it rounds half up, on or after it half to even; none means
+     *  the sheet's today. */
+    @Column(name = "policy_date")
+    private LocalDate policyDate;
+
     protected Sheet() {
     }
 
@@ -111,8 +116,23 @@ public class Sheet {
         this.latePct = latePct;
     }
 
+    public LocalDate getPolicyDate() {
+        return policyDate;
+    }
+
+    public void setPolicyDate(LocalDate policyDate) {
+        this.policyDate = policyDate;
+    }
+
+    /** How a claim dated on a date rounds its figures: half up before the policy date (the sheet's today
+     *  when it has none), half to even on or after it. */
+    public RoundingMode rounding(LocalDate date) {
+        LocalDate policy = policyDate == null ? today : policyDate;
+        return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+    }
+
     /** The late charge on an overdue claim's figure: the late percent of it for every full 30 days past its
-     *  due-by (its date plus the terms) on the sheet's today, rounded half to even to cents; 0.00 for no
+     *  due-by (its date plus the terms) on the sheet's today, rounded to cents as its date rounds; 0.00 for no
      *  figure (n/a). Only an OPEN claim is overdue, so the caller asks only for those. */
     public BigDecimal lateCharge(BigDecimal figure, LocalDate date) {
         long late = ChronoUnit.DAYS.between(date.plusDays(terms), today);
@@ -120,7 +140,7 @@ public class Sheet {
             return BigDecimal.ZERO.setScale(2);
         }
         return figure.multiply(latePct).multiply(BigDecimal.valueOf(late / 30)).movePointLeft(2)
-                .setScale(2, RoundingMode.HALF_EVEN);
+                .setScale(2, rounding(date));
     }
 
     /** A live due as it counts: at least the floor; none (n/a) stays none. */

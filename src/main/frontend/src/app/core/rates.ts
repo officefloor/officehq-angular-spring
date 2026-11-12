@@ -42,13 +42,13 @@ export class Rates {
     return (today ? this.inForce(grade, today)?.rate : undefined) ?? NO_RATE;
   }
 
-  /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded half to
-   *  even to cents, and at least the sheet's floor unless the amount is negative (a correction has no
+  /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded to cents as
+   *  a claim dated `roundOn` rounds (half up before the policy date, else half to even), and at least the sheet's floor unless the amount is negative (a correction has no
    *  floor); null when no rate of the grade applies then. */
-  dueCents(amountCents: bigint, grade: string, date: string): bigint | null {
+  dueCents(amountCents: bigint, grade: string, date: string, roundOn: string = date): bigint | null {
     const rate = this.inForce(grade, date);
     if (rate === undefined) return null;
-    const due = halfEven(amountCents * hundredths(rate.rate), 10000n);
+    const due = rounded(amountCents * hundredths(rate.rate), 10000n, this.session.roundsHalfUp(roundOn));
     if (amountCents < 0n) return due;
     const floor = hundredths(this.session.floor());
     return due < floor ? floor : due;
@@ -117,6 +117,14 @@ export function halfEven(n: bigint, d: bigint): bigint {
   const q = n / d;
   const twice = (n % d) * 2n;
   return twice > d || (twice === d && q % 2n === 1n) ? q + 1n : q;
+}
+
+/** A number divided by a positive one, rounded half up (away from zero) or half to even. */
+export function rounded(n: bigint, d: bigint, halfUp: boolean): bigint {
+  if (!halfUp) return halfEven(n, d);
+  if (n < 0n) return -rounded(-n, d, true);
+  const q = n / d;
+  return (n % d) * 2n >= d ? q + 1n : q;
 }
 
 /** A number written with up to two decimals, perhaps negative, in hundredths. */

@@ -122,7 +122,7 @@ export class PersonClaims {
     if (c.settledDue !== null) return c.settledDue;
     const f = c.stated
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
-      : this.rates.dueCents(hundredths(c.amount), gradeOn(this.grades(), c.date), c.date);
+      : this.rates.dueCents(hundredths(c.amount), gradeOn(this.grades(), c.date), c.date, this.claims.roundingDate(c));
     return f === null ? NO_RATE : money(f + this.claims.lateCents(c, f));
   }
 
