@@ -25,13 +25,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class ClaimController {
 
-    /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD, no number unless opened. */
+    /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD, no number unless opened,
+     *  and the due fixed when it was settled (none while its due is live). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
-            ClaimStatus status, Integer number) {
+            ClaimStatus status, Integer number, String settledDue) {
 
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate().toString(), claim.getNote(), claim.getStatus(), claim.getNumber());
+                    claim.getDate().toString(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+                    claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString());
         }
     }
 

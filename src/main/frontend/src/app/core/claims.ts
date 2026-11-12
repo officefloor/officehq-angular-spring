@@ -13,6 +13,9 @@ export interface Claim {
   status: ClaimStatus;
   /** Given when opened, the next on the sheet; null while a draft or once voided. */
   number: number | null;
+  /** The due fixed when it was settled, two decimals; null while its due is live (not settled, or
+   *  settled while its grade had no rate). */
+  settledDue: string | null;
 }
 
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT or OPEN -> VOID. */
