@@ -43,7 +43,7 @@ import { PersonClaims } from '../claims/claims';
             (input)="gradeFrom.set(value($event)); error.set(null)"
           />
         }
-        <label for="person-form-terms">Terms (days; blank for none)</label>
+        <label for="person-form-terms">Terms (business days; blank for none)</label>
         <input
           id="person-form-terms"
           data-testid="person-form-terms"

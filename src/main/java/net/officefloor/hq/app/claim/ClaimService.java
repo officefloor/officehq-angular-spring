@@ -90,7 +90,7 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
         int terms = person.getTerms() != null ? person.getTerms()
                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
-        LocalDate dueBy = holidays.pastHolidays(sheetId, on.plusDays(terms));
+        LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
         refuseCorrection(sheetId, personId, amount, corrects);
@@ -452,8 +452,8 @@ public class ClaimService {
 
     /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any figure a
      *  statement bound it to; a new OPEN claim of the person with the amount split off, the same date and
-     *  note, the next number, opened by the user and due by its date plus the terms in force on it (moved past
-     *  the sheet's holidays), is
+     *  note, the next number, opened by the user and due by the terms-th business day after its date (by the terms in
+     *  force on it and the sheet's holidays), is
      *  listed as the sheet's newest, naming the original's number as split from. Refused unless the user's
      *  role may open a claim, the claim is OPEN and not deferred, and the amount is above 0.00 and below the
      *  claim's; and for a claim in a closed period. */
@@ -483,7 +483,7 @@ public class ClaimService {
                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
                         .termsFor(person.gradeOn(claim.getDate()), claim.getDate());
         Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(),
-                holidays.pastHolidays(sheetId, claim.getDate().plusDays(terms)),
+                holidays.businessDaysAfter(sheetId, claim.getDate(), terms),
                 claim.getNote(), null);
         split.setListOrder(claims.maxListOrder(sheetId) + 1);
         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));

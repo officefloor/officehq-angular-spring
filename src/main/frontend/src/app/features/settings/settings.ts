@@ -8,7 +8,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
 // floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
 // the one in force on its date needs a proof to be settled or approved; blank for none), the note threshold (a claim whose due
-// is above the one in force on its date cannot be opened with an empty note; blank for none), the terms (the days after a claim's date it is due by, fixed
+// is above the one in force on its date cannot be opened with an empty note; blank for none), the terms (the business days after a claim's date it is due by, fixed
 // when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), the
 // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
 // date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), the
@@ -115,7 +115,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('note-threshold', value($event))"
         />
         <p>In force: <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
-        <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
+        <label for="setting-terms">Terms (business days after a claim's date it is due by)</label>
         <input
           id="setting-terms"
           data-testid="setting-terms"

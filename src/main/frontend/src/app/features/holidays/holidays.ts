@@ -2,7 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { Holidays } from '../../core/holidays';
 
 // The sheet's holidays: a form adds a date (one already on the list is refused), and the list shows them,
-// earliest first. A claim's due-by, fixed when it is added, is moved past the holidays listed then.
+// earliest first. A claim's due-by, fixed when it is added, counts business days past the weekends and the
+// holidays listed then.
 @Component({
   selector: 'app-holidays',
   template: `

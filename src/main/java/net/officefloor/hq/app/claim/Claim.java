@@ -48,7 +48,8 @@ public class Claim {
     private LocalDate date;
 
     /** The day it is due by: fixed when it is added, from the terms of its person's grade in force on its
-     *  date then, moved past the sheet's holidays listed then; it does not follow later changes to the terms,
+     *  date then, counted as that many business days after its date (skipping weekends and the sheet's
+     *  holidays listed then); it does not follow later changes to the terms,
      *  the holidays or its date. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
