@@ -931,6 +931,7 @@ function csvField(value: string): string {
       </p>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+      <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | fig }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() | fig }}</strong></p>
       <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | fig }}</strong></p>
@@ -2778,6 +2779,21 @@ export class People {
       ),
     );
     this.download(lines, `claims-${this.session.sheet() ?? 'sheet'}.csv`);
+  }
+
+  /**
+   * Download each person's period figures as a CSV file, people in list order and periods in the order they were
+   * added: the person's name, the period's name, and their due-total and carried figure for it as the row shows them.
+   */
+  protected async exportPeriods(): Promise<void> {
+    await this.session.settled('people', 'settings');
+    const periods = [...this.periods()].sort((a, b) => a.id - b.id);
+    const lines = [['person', 'period', 'figure', 'carried']].concat(
+      this.people().flatMap((p) =>
+        periods.map((per) => [p.name, per.name, this.periodDueTotalOf(p, per), this.carriedOf(p, per)]),
+      ),
+    );
+    this.download(lines, `periods-${this.session.sheet() ?? 'sheet'}.csv`);
   }
 
   /**
