@@ -76,6 +76,8 @@ export interface Person {
   /** Whether their name or an alias is used on another sheet of the sheet's tree: every save of the person
    *  form is refused until a rename leaves them clashing with no one. */
   clashing: boolean;
+  /** The sheet they were transferred from; null for anyone added on this sheet. */
+  origin: string | null;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */

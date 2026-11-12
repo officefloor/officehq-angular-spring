@@ -65,6 +65,10 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonAlias> aliases = new ArrayList<>();
 
+    /** The sheet they were transferred from; null for anyone added on this sheet. */
+    @Column(name = "origin_sheet")
+    private String originSheet;
+
     /** Their place in the sheet's list; set when they are first saved, next after everyone on the sheet. */
     @Column(name = "list_position", nullable = false)
     private Long position;
@@ -134,6 +138,10 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    public String getOriginSheet() {
+        return originSheet;
     }
 
     public String getContact() {
@@ -210,6 +218,7 @@ public class Person {
         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFromDate())));
         copy.terms = terms;
         copy.contact = contact;
+        copy.originSheet = sheetId;
         aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias())));
         return copy;
     }
