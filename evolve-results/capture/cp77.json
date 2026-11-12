@@ -1,0 +1,64 @@
+{
+  "checkpoint": 77,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp77_note-required",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2802451a6f7845db2fe8ae663dab2ecb41813628",
+  "reset_sha": "",
+  "preagent_sha": "83dff6660c737c6a76c724b1c35961cb08da3ee5",
+  "prev_sha": "83dff6660c737c6a76c724b1c35961cb08da3ee5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.84759,
+    "input_tokens": 36,
+    "output_tokens": 9859,
+    "cache_read_tokens": 847410,
+    "cache_creation_tokens": 60098,
+    "num_turns": 19,
+    "duration_ms": 220588,
+    "duration_api_ms": 91493,
+    "model": "claude-opus-5-5",
+    "session_id": "a3cfb81a-0974-4300-9ad7-1f89047fdf85",
+    "stop_reason": "success",
+    "result_text": "The note threshold is in, and all 4 acceptance tests pass with `bin/e2e`.\n\n**Server**\n- **Storing the setting:** the threshold is saved with the sheet's other dated settings under the key `note-threshold`. `Sheet.noteThresholdOn(date)` looks up the value in force on a date. Saving goes through the new `PUT /api/sheets/{id}/settings/note-threshold`, which writes `SETTING_CHANGED ... key=note-threshold value=<amount>` (plus ` from=<date>` when a date is given). A blank value means no threshold.\n- **The open check:** in `ClaimService.changeStatus`, opening a claim is refused when its due is above the threshold in force on the claim's date and its note is empty or only spaces. The due here is the one the screen shows, so the floor counts: a 10.00 claim at 10% shows 2.00 because of the 2.00 floor, and is refused above a 1.50 threshold. The refusal is a new `ClaimNoteException` (HTTP 409) that carries a message for the claim's error element. The check runs before a claim number is given out, so a refusal writes nothing to the store or the audit file.\n- **Bulk open:** it counts these refusals as refused and carries on with the other claims.\n- **Same rules as the proof threshold:** if no rate applies, so the due is n/a, or no threshold is in force on the claim's date, a note isn't required.\n- `SheetView` also returns `noteThreshold`, added at the end of the record.\n\n**Front end**\n- The settings panel has three new fields: `setting-note-threshold`, `setting-note-threshold-from` and `setting-note-threshold-current`. They work the same way as the proof-threshold fields, including saving a blank to clear it.\n- `Session` gains `noteThreshold` and `setNoteThreshold`.\n- The claim screens didn't need changes, since they already show the server's refusal message.\n\nThere's no database migration: the existing settings table already holds keys of this length.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.84759,
+        "num_turns": 19,
+        "duration_ms": 220588,
+        "duration_api_ms": 91493,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp77.agent.jsonl",
+  "agent_diff_file": "cp77.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
