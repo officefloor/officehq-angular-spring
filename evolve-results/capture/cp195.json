@@ -1,0 +1,64 @@
+{
+  "checkpoint": 195,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp195_statement-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8f86d1040d5aa9abd20be07fe298649851ed9395",
+  "reset_sha": "",
+  "preagent_sha": "0502712831dd9713c804e56c3f96231a55465e14",
+  "prev_sha": "0502712831dd9713c804e56c3f96231a55465e14",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2163871999999996,
+    "input_tokens": 72,
+    "output_tokens": 11814,
+    "cache_read_tokens": 1927856,
+    "cache_creation_tokens": 74281,
+    "num_turns": 36,
+    "duration_ms": 611162,
+    "duration_api_ms": 133662,
+    "model": "claude-opus-5-5",
+    "session_id": "b5fbb25e-54fe-450f-9241-9b9fbf70c483",
+    "stop_reason": "success",
+    "result_text": "I added the statement export, and the main test plus scenarios 1 and 2 pass. Scenario 3 still fails with the real clock, at a check that has nothing to do with the export.\n\n**What I changed** (front end only, `src/main/frontend/src/app/features/people/people.ts`):\n- Each person's row has a new **Export statement** button (`data-testid=\"person-export-statement\"`), next to \"Cancel statement\".\n- It downloads `statement-<sheet>-<personId>.csv`. The file starts with the line `number,date,amount,figure,status`, then has one line per claim bound by the person's last statement, oldest first. The figure uses the same calculation as the claim row's displayed due.\n- It reuses the existing \"export claims\" CSV code and the claim data already on the page, so no server or database change was needed.\n\n**Test results with `bin/e2e`:**\n- \"statement export\": passes.\n- Scenario 1: passes.\n- Scenario 2: passes.\n- Scenario 3: fails at line 1530. The rate calendar shows `n/a` for April where the test expects `12.50`, in a view of the sheet as it stood on 2026-03-20. Scenario 3 never uses the export.\n\n**Why scenario 3 fails:** a new sheet takes its first today from the real clock (`SheetService.java:217`). Here that is 2026-11-12. The parent sheet's rates are therefore logged as set on 2026-11-12, so a view of the sheet as of 2026-03-20 can't see them. The scenarios assume a clock somewhere between 2026-03-10 and 2026-03-20:\n- Scenario 1 expects the parent's rates to be hidden as of 2026-03-09.\n- Scenario 3 expects them to be visible as of 2026-03-20.\n\nI checked this by temporarily fixing that start date at 2026-01-01. Scenario 3 then passed and scenario 1 failed at line 226. I put the line back to `LocalDate.now()` afterwards.\n\nI didn't change the app to suit one particular clock date: that would rewrite existing behaviour unrelated to this request. Scenario 3 should pass when the clock reads between those dates. Otherwise the spec or how the app gets its start date needs deciding, which isn't part of this change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2163871999999996,
+        "num_turns": 36,
+        "duration_ms": 611162,
+        "duration_api_ms": 133662,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp195.agent.jsonl",
+  "agent_diff_file": "cp195.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
