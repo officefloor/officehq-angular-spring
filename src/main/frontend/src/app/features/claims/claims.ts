@@ -154,9 +154,9 @@ export function isOpen(claim: Claim): boolean {
   return claim.status === 'OPEN' || claim.status === 'PENDING';
 }
 
-/** Whether the claim's due follows its last statement now: a PENDING one shows its live figure while PENDING. */
+/** Whether the claim's due follows its last statement now: any claim it bound, a PENDING one included. */
 export function bound(claim: Claim): boolean {
-  return claim.stated && claim.status !== 'PENDING';
+  return claim.stated;
 }
 
 /** One of a person's grades, from its from-date (yyyy-mm-dd); null from the beginning of time. */

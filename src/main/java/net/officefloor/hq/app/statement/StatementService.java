@@ -159,7 +159,7 @@ public class StatementService {
         int counted = 0;
         for (Claim claim : theirs) {
             ClaimStatus status = statusAsOf(claim, asOf);
-            boolean bound = bindingsStood && claim.isStated() && status != ClaimStatus.PENDING;
+            boolean bound = bindingsStood && claim.isStated();
             boolean counts = status != null && status.counts()
                     && !(status.isOpen() && !bound
                             && (person.heldAsOf(claim.getDate(), asOf) || person.retiredAsOf(asOf)))

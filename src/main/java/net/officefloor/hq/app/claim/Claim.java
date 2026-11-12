@@ -287,11 +287,11 @@ public class Claim {
     }
 
     /**
-     * Whether the claim's due follows its statement binding now: a PENDING claim is not bound while PENDING (it shows
-     * its live figure), but keeps its binding for when it is rejected back to OPEN.
+     * Whether the claim's due follows its statement binding now: any claim its person's last statement bound, a PENDING
+     * one included (it shows and totals the bound figure).
      */
     public boolean isBound() {
-        return stated && status != ClaimStatus.PENDING;
+        return stated;
     }
 
     /** The due the claim is bound to now; null when it is not bound, or bound with none (n/a). */

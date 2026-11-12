@@ -554,7 +554,7 @@ public class ClaimService {
 
     /**
      * A steward other than its opener or last editor approves a PENDING claim: it becomes SETTLED, its due frozen at that moment from
-     * its live figure.
+     * its figure (the one its statement bound it to, else its live one).
      */
     @Transactional
     public Claim approve(String sheetId, String user, Long id) {
