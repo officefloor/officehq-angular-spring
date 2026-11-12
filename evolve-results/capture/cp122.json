@@ -1,0 +1,64 @@
+{
+  "checkpoint": 122,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp122_pool-membership-dated",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "efba481211c5faffadfa9688faaa6d38d7b26b85",
+  "reset_sha": "",
+  "preagent_sha": "5884fa4dbf8633639399904a175ebb308db4b448",
+  "prev_sha": "5884fa4dbf8633639399904a175ebb308db4b448",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6799646,
+    "input_tokens": 34,
+    "output_tokens": 8933,
+    "cache_read_tokens": 644403,
+    "cache_creation_tokens": 46536,
+    "num_turns": 17,
+    "duration_ms": 268898,
+    "duration_api_ms": 82085,
+    "model": "claude-opus-5-5",
+    "session_id": "af54764e-402c-4232-82f1-cc3481592408",
+    "stop_reason": "success",
+    "result_text": "Pool memberships can now have an optional from-date and to-date, and all 4 acceptance tests pass with `bin/e2e`.\n\n**What it does:**\n- **Saving the dates:** a new migration, `V71__pool_member_dates.sql`, adds two nullable date columns to pool memberships.\n- **Refusing bad dates:** adding a member with a to-date before its from-date shows the pool's error message and writes nothing to the store or the audit file. The screen checks this first and the server checks it again.\n- **Who counts:** if a member's dates don't include the sheet's today, that member is left out completely. Their share doesn't count toward the pool's total or whether it adds up to 100, and they get no cut. Their share still shows on their row, with the cut left blank. A pool inside another pool works the same way: if its own membership is out of date, it gets no cut, so its members get nothing either.\n- **Audit:** `POOL_MEMBER_ADDED` adds `from=<date>` and/or `to=<date>` at the end of the line, only when those dates were given.\n- **Screen:** each pool's add-member form has From and To boxes (`pool-member-from`, `pool-member-to`). Member rows also show their dates and a \"not current\" label when they're out of range. Those two labels have test ids, but the test doesn't check them.\n\n**A choice you might want to change:** a blank from-date means the membership has no start date. I didn't make it default to the sheet's today, which AGENTS.md says blank from-dates normally do. I did this so the audit line only carries `from=` when someone typed one, as the request says, and the test expects. The difference: a membership with only a to-date that's already in the past is accepted (it just never counts), rather than being refused because it ends before today.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6799646,
+        "num_turns": 17,
+        "duration_ms": 268898,
+        "duration_api_ms": 82085,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp122.agent.jsonl",
+  "agent_diff_file": "cp122.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
