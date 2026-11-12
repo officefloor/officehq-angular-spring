@@ -1,0 +1,307 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 94dc55699..fc5bdd2b4 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -222,6 +222,29 @@ export class Claims {
+     }
+   }
+ 
++  /** Add a DRAFT claim for each pasted line of name,amount,date,note, in order, for the person on the
++   *  sheet with the name; how many were added, or an error message when any line is refused (then the
++   *  server adds none). */
++  async paste(text: string): Promise<number | string> {
++    const sid = this.session.sheetId();
++    const user = this.session.user();
++    if (!user || !sid) return 'Load a sheet first.';
++    if (!text.trim()) return 'Paste at least one line of name,amount,date,note.';
++    try {
++      const done = await firstValueFrom(
++        this.http.post<{ added: number; claims: Claim[] }>(
++          `${this.url(sid)}/claims/paste`,
++          { text },
++          { headers: { 'X-User': user } },
++        ),
++      );
++      if (this.session.sheetId() === sid) this.claims.update((cs) => [...[...done.claims].reverse(), ...cs]);
++      return done.added;
++    } catch (e) {
++      return failed('add', e).replace(' claim', ' claims');
++    }
++  }
++
+   /** Change a DRAFT claim's amount, date and note; when refused, the reason and whether it is the
+    *  claim itself that refused it (it is no longer a DRAFT) rather than the fields typed. */
+   async update(id: number, f: ClaimFields): Promise<{ message: string; onClaim: boolean } | null> {
+diff --git a/src/main/frontend/src/app/features/claims/paste-claims.ts b/src/main/frontend/src/app/features/claims/paste-claims.ts
+new file mode 100644
+index 000000000..79201a971
+--- /dev/null
++++ b/src/main/frontend/src/app/features/claims/paste-claims.ts
+@@ -0,0 +1,56 @@
++import { Component, inject, signal } from '@angular/core';
++import { Claims } from '../../core/claims';
++
++// A paste box of name,amount,date,note lines, each a DRAFT claim for the named person; reports how many
++// were added, or why the paste was refused (then nothing is added).
++@Component({
++  selector: 'app-paste-claims',
++  template: `
++    <form (submit)="paste($event)" aria-label="Paste claims">
++      <label for="paste-claims">Paste claims (one per line: name,amount,date,note)</label>
++      <textarea
++        id="paste-claims"
++        data-testid="paste-claims"
++        rows="4"
++        [value]="text()"
++        (input)="text.set(value($event)); error.set(null)"
++      ></textarea>
++      <button type="submit" data-testid="paste-submit" [disabled]="running()">Add pasted claims</button>
++      @if (added() !== null) {
++        <p>Added <span data-testid="paste-added">{{ added() }}</span></p>
++      }
++      @if (error(); as err) {
++        <p role="alert" data-testid="paste-error">{{ err }}</p>
++      }
++    </form>
++  `,
++})
++export class PasteClaims {
++  private readonly claims = inject(Claims);
++  protected readonly text = signal('');
++  protected readonly running = signal(false);
++  protected readonly added = signal<number | null>(null);
++  protected readonly error = signal<string | null>(null);
++
++  protected async paste(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.running()) return; // a second submit before the first has answered
++    this.added.set(null);
++    this.error.set(null);
++    this.running.set(true);
++    try {
++      const done = await this.claims.paste(this.text());
++      if (typeof done === 'string') this.error.set(done);
++      else {
++        this.added.set(done);
++        this.text.set('');
++      }
++    } finally {
++      this.running.set(false);
++    }
++  }
++
++  protected value(e: Event): string {
++    return (e.target as HTMLTextAreaElement).value;
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 8c310e091..0773937df 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -7,6 +7,7 @@ import { Roles } from '../../core/roles';
+ import { Session } from '../../core/session';
+ import { BulkOpen } from '../claims/bulk-open';
+ import { BulkSettle } from '../claims/bulk-settle';
++import { PasteClaims } from '../claims/paste-claims';
+ import { HeaderCounters } from '../header/header';
+ import { PeopleList } from '../people/people';
+ import { PeriodsPanel } from '../periods/periods';
+@@ -17,7 +18,7 @@ import { SummaryPanel } from '../summary/summary';
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
+-  imports: [BulkOpen, BulkSettle, HeaderCounters, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
++  imports: [BulkOpen, BulkSettle, HeaderCounters, PasteClaims, PeopleList, PeriodsPanel, RatesPanel, SettingsPanel, SummaryPanel],
+   template: `
+     @if (session.user(); as user) {
+       @if (session.sheetId()) {
+@@ -62,6 +63,7 @@ import { SummaryPanel } from '../summary/summary';
+         <app-rates />
+         <app-periods />
+         <app-people />
++        <app-paste-claims />
+         <app-bulk-open />
+         <app-bulk-settle />
+         <app-summary />
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index ff4e74f8e..43be6c83c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -91,13 +91,23 @@ public class ClaimController {
+     public record QuickAddView(PersonView person, boolean personAdded, ClaimView claim) {
+     }
+ 
++    /** The paste box's lines of name,amount,date,note. */
++    public record PasteRequest(@NotNull @Size(max = 1000000) String text) {
++    }
++
++    /** How many a paste added, and the claims it added, in the order of their lines. */
++    public record PasteView(int added, List<ClaimView> claims) {
++    }
++
+     private final ClaimService service;
+     private final QuickAddService quickAdd;
++    private final PasteService paste;
+     private final PersonService people;
+ 
+-    public ClaimController(ClaimService service, QuickAddService quickAdd, PersonService people) {
++    public ClaimController(ClaimService service, QuickAddService quickAdd, PasteService paste, PersonService people) {
+         this.service = service;
+         this.quickAdd = quickAdd;
++        this.paste = paste;
+         this.people = people;
+     }
+ 
+@@ -130,6 +140,15 @@ public class ClaimController {
+                 added.personAdded(), ClaimView.of(added.claim()));
+     }
+ 
++    /** Add a DRAFT claim for each pasted line, in order; one refused line refuses them all. */
++    @PostMapping("/claims/paste")
++    public PasteView paste(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid PasteRequest request) {
++        List<Claim> added = paste.paste(sheetId.trim(), user.trim(), request.text());
++        return new PasteView(added.size(), added.stream().map(ClaimView::of).toList());
++    }
++
+     /** Change a DRAFT claim's amount, date and note. */
+     @PutMapping("/claims/{claimId}")
+     public ClaimView update(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+@@ -266,6 +285,13 @@ public class ClaimController {
+         return Map.of("message", e.getMessage());
+     }
+ 
++    /** A paste with a refused line is refused with the reason, for the screen to show. */
++    @ExceptionHandler(ClaimPasteException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> pasteRefused(ClaimPasteException e) {
++        return Map.of("message", e.getMessage());
++    }
++
+     /** An edit of a claim that is not a DRAFT is refused with the reason, for the screen to show. */
+     @ExceptionHandler(ClaimNotDraftException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimPasteException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteException.java
+new file mode 100644
+index 000000000..7949021a4
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimPasteException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A paste with a line the claim form would refuse, or naming no one on the sheet: nothing is added. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimPasteException extends RuntimeException {
++
++    public ClaimPasteException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/PasteService.java b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+new file mode 100644
+index 000000000..4b0f6be64
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/PasteService.java
+@@ -0,0 +1,98 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeFormatter;
++import java.time.format.DateTimeParseException;
++import java.time.format.ResolverStyle;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.regex.Pattern;
++import net.officefloor.hq.app.period.PeriodClosedException;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonRetiredException;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * The paste box: lines of name,amount,date,note (the note may hold commas and may be absent; a blank date
++ * takes the sheet's today), each a DRAFT claim for the person on the sheet with the name (ignoring case),
++ * added in order. Blank lines are skipped. One change: every line is checked with the claim form's rules,
++ * and a refused line refuses the paste, adding nothing and writing nothing.
++ */
++@Service
++public class PasteService {
++
++    private static final Pattern AMOUNT = Pattern.compile("-?\\d{1,13}(\\.\\d{1,2})?");
++    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("uuuu-MM-dd")
++            .withResolverStyle(ResolverStyle.STRICT);
++
++    private final PersonRepository people;
++    private final ClaimService claims;
++
++    public PasteService(PersonRepository people, ClaimService claims) {
++        this.people = people;
++        this.claims = claims;
++    }
++
++    private record Line(int number, Person person, BigDecimal amount, LocalDate date, String note) {
++    }
++
++    /** The claims added, in the order of their lines. */
++    @Transactional
++    public List<Claim> paste(String sheetId, String user, String text) {
++        List<Line> lines = new ArrayList<>();
++        String[] raw = text == null ? new String[0] : text.split("\\r?\\n");
++        for (int i = 0; i < raw.length; i++) {
++            if (!raw[i].isBlank()) {
++                lines.add(parse(sheetId, i + 1, raw[i]));
++            }
++        }
++        if (lines.isEmpty()) {
++            throw new ClaimPasteException("Paste at least one line of name,amount,date,note.");
++        }
++        List<Claim> added = new ArrayList<>();
++        for (Line line : lines) {
++            try {
++                added.add(claims.add(sheetId, user, line.person().getId(), line.amount(), line.date(), line.note(),
++                        null));
++            } catch (PeriodClosedException | PersonRetiredException | ClaimCorrectionException e) {
++                throw new ClaimPasteException("Line " + line.number() + ": " + e.getMessage());
++            }
++        }
++        return added;
++    }
++
++    private Line parse(String sheetId, int number, String raw) {
++        String[] f = raw.split(",", 4);
++        String name = f[0].trim();
++        if (name.isEmpty() || name.length() > 200) {
++            throw refused(number, "enter a name.");
++        }
++        Person person = people.findByName(sheetId, name)
++                .orElseThrow(() -> refused(number, "no one on the sheet is named " + name + "."));
++        String amount = f.length > 1 ? f[1].trim() : "";
++        if (!AMOUNT.matcher(amount).matches()) {
++            throw refused(number, "enter an amount with up to two decimals.");
++        }
++        String date = f.length > 2 ? f[2].trim() : "";
++        LocalDate on = null;
++        if (!date.isEmpty()) {
++            try {
++                on = LocalDate.parse(date, DATE);
++            } catch (DateTimeParseException e) {
++                throw refused(number, "enter a date as YYYY-MM-DD.");
++            }
++        }
++        String note = f.length > 3 ? f[3].trim() : "";
++        if (note.length() > 1000) {
++            throw refused(number, "the note is too long.");
++        }
++        return new Line(number, person, new BigDecimal(amount), on, note);
++    }
++
++    private static ClaimPasteException refused(int number, String why) {
++        return new ClaimPasteException("Line " + number + ": " + why);
++    }
++}

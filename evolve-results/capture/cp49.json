@@ -1,0 +1,64 @@
+{
+  "checkpoint": 49,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp49_paste-claims",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A paste box takes lines of name,amount,date,note (the note may hold commas; the date may be\nblank for the sheet's today; the note may be absent) and adds a DRAFT claim per line, in order,\nfor the named person (the name must be on the sheet, matched as names are compared). Every line is\nchecked first with exactly the claim form's rules: if any line fails, an error shows on the box\nand nothing is added; otherwise every claim is added and written as CLAIM_ADDED. Show how many\nwere added.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA paste box takes lines of name,amount,date,note (the note may hold commas; the date may be\nblank for the sheet's today; the note may be absent) and adds a DRAFT claim per line, in order,\nfor the named person (the name must be on the sheet, matched as names are compared). Every line is\nchecked first with exactly the claim form's rules: if any line fails, an error shows on the box\nand nothing is added; otherwise every claim is added and written as CLAIM_ADDED. Show how many\nwere added.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "bb5b306778e246a84687a4e89a6d080c8d5b8a87",
+  "reset_sha": "",
+  "preagent_sha": "a68e47cef2715c3cbeb6410020e3544f09909581",
+  "prev_sha": "a68e47cef2715c3cbeb6410020e3544f09909581",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7726442,
+    "input_tokens": 36,
+    "output_tokens": 9492,
+    "cache_read_tokens": 761021,
+    "cache_creation_tokens": 53807,
+    "num_turns": 19,
+    "duration_ms": 250324,
+    "duration_api_ms": 90377,
+    "model": "claude-opus-5-5",
+    "session_id": "1f854d1f-e3ff-4f58-81ba-8660e8eccc05",
+    "stop_reason": "success",
+    "result_text": "The paste box is in place, and `bin/e2e` passes all 4 acceptance tests.\n\n**How it works:**\n- **The box:** a text area below the people list where you paste lines of `name,amount,date,note`. After you press the button, it shows how many claims were added.\n- **Parsing:** each line is split at its first three commas, so the note can contain commas. A blank date means the sheet's today, and the note can be left off. Names are matched ignoring case and surrounding spaces, the same way names are compared elsewhere.\n- **All or nothing:** every line goes through the same checks as the claim form: amount format, date format, note length, closed periods, the retirement date, and the rule that a negative amount must say which settled claim it corrects (a paste can't, so negative amounts are refused). If any line fails, the error names the line number and nothing is added \u2014 no claims and no audit lines. Otherwise each line becomes a DRAFT claim, added in order, with a `CLAIM_ADDED` audit record.\n- **Errors and counts:** an empty paste is refused. The count is cleared when you press the button again, and the error is cleared when you change the text.\n\n**One choice of mine:** blank lines inside a paste are skipped rather than refused, so a trailing newline doesn't make a paste fail.\n\n**Files:**\n- **Server:** a new `claim/PasteService.java` and `claim/ClaimPasteException.java`, plus a new `POST /api/sheets/{id}/claims/paste` endpoint in `ClaimController.java`.\n- **Front end:** a new `features/claims/paste-claims.ts` component, `Claims.paste()` in `core/claims.ts`, and the box added to `features/home/home.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7726442,
+        "num_turns": 19,
+        "duration_ms": 250324,
+        "duration_api_ms": 90377,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp49.agent.jsonl",
+  "agent_diff_file": "cp49.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
