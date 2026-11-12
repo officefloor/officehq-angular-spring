@@ -4,7 +4,8 @@ import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
 
 // One pool's row: its members with their shares, its total share and whether it is balanced (exactly
 // 100.00; a retired member counts 0.00), each member's cut of the pool's pot while balanced (the sheet's pot, or
-// its cut in the pool it is a member of), and a form adding a person or another pool (pool:<name>) with a share.
+// its cut in the pool it is a member of), and a form adding a person or another pool (pool:<name>) with a share,
+// from and to a date when given. A member whose dates do not include the sheet's today is left out entirely.
 @Component({
   selector: 'app-pool-row',
   template: `
@@ -20,6 +21,12 @@ import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
           <span data-testid="pool-member-name">{{ m.name }}</span>
           <span data-testid="pool-share">{{ m.share }}</span>
           <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
+          @if (m.from || m.to) {
+            <span data-testid="pool-member-dates">{{ m.from ?? '' }}–{{ m.to ?? '' }}</span>
+          }
+          @if (!m.active) {
+            <span data-testid="pool-member-inactive">not current</span>
+          }
           @if (m.retired) {
             <span data-testid="pool-member-retired">retired</span>
           }
@@ -49,6 +56,22 @@ import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
         [value]="share()"
         (input)="share.set(value($event)); error.set(null)"
       />
+      <label [for]="'pool-member-from-' + p.id">From</label>
+      <input
+        [id]="'pool-member-from-' + p.id"
+        data-testid="pool-member-from"
+        placeholder="YYYY-MM-DD"
+        [value]="from()"
+        (input)="from.set(value($event)); error.set(null)"
+      />
+      <label [for]="'pool-member-to-' + p.id">To</label>
+      <input
+        [id]="'pool-member-to-' + p.id"
+        data-testid="pool-member-to"
+        placeholder="YYYY-MM-DD"
+        [value]="to()"
+        (input)="to.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="pool-member-add" [disabled]="saving()">Add member</button>
       @if (error(); as err) {
         <p role="alert" data-testid="pool-error">{{ err }}</p>
@@ -63,6 +86,8 @@ export class PoolRow {
   /** The chosen member: person:<id>, pool:<id>, or blank for none. */
   protected readonly member = signal('');
   protected readonly share = signal('');
+  protected readonly from = signal('');
+  protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
 
@@ -91,11 +116,13 @@ export class PoolRow {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const err = await this.pools.addMember(this.pool().id, this.choice(), this.share());
+      const err = await this.pools.addMember(this.pool().id, this.choice(), this.share(), this.from(), this.to());
       if (err) this.error.set(err);
       else {
         this.member.set('');
         this.share.set('');
+        this.from.set('');
+        this.to.set('');
       }
     } finally {
       this.saving.set(false);

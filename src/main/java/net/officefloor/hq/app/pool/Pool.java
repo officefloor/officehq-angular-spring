@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -70,12 +71,14 @@ public class Pool {
         return members.stream().anyMatch(m -> Objects.equals(m.getMemberPoolId(), poolId));
     }
 
-    public void addMember(long personId, BigDecimal share) {
-        members.add(new PoolMember(personId, null, share));
+    /** Add a person with a share, from and to a date when given. */
+    public void addMember(long personId, BigDecimal share, LocalDate from, LocalDate to) {
+        members.add(new PoolMember(personId, null, share, from, to));
     }
 
-    public void addMemberPool(long poolId, BigDecimal share) {
-        members.add(new PoolMember(null, poolId, share));
+    /** Add another pool with a share, from and to a date when given. */
+    public void addMemberPool(long poolId, BigDecimal share, LocalDate from, LocalDate to) {
+        members.add(new PoolMember(null, poolId, share, from, to));
     }
 
     /** Drop a person's membership. */

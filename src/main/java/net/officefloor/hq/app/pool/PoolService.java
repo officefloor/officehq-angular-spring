@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,10 +56,10 @@ public class PoolService {
     /** Add a member to a pool with a share percent: a person of the sheet, or another of its pools (poolId).
      *  Refused: a share not more than 0.00 and at most 100.00 in two decimals; a person already in it; a pool
      *  that would contain itself through any chain, that is already a member of a pool, or that would make a
-     *  chain of pools more than three deep. */
+     *  chain of pools more than three deep; a to-date before the from-date (both optional). */
     @Transactional
     public Pool addMember(String sheetId, String user, long poolId, Long personId, Long memberPoolId,
-            BigDecimal share) {
+            BigDecimal share, LocalDate from, LocalDate to) {
         Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
                 .orElseThrow(() -> new PoolRefusedException("No such pool."));
         Person person = personId == null ? null : people.findByIdAndSheetId(personId, sheetId).orElse(null);
@@ -70,22 +71,26 @@ public class PoolService {
                 || share.compareTo(HUNDRED) > 0) {
             throw new PoolRefusedException("Enter a share more than 0.00 and at most 100.00, in two decimals.");
         }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new PoolRefusedException("A membership cannot end before it starts.");
+        }
         BigDecimal s = share.setScale(2);
         String name;
         if (person != null) {
             if (pool.hasMember(person.getId())) {
                 throw new PoolRefusedException(person.getName() + " is already in " + pool.getName() + ".");
             }
-            pool.addMember(person.getId(), s);
+            pool.addMember(person.getId(), s, from, to);
             name = person.getName();
         } else {
             refuseMemberPool(sheetId, pool, member);
-            pool.addMemberPool(member.getId(), s);
+            pool.addMemberPool(member.getId(), s, from, to);
             name = member.getName();
         }
         Pool saved = pools.saveAndFlush(pool);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + name + " share=" + s.toPlainString());
+                + " name=" + name + " share=" + s.toPlainString() + (from == null ? "" : " from=" + from)
+                + (to == null ? "" : " to=" + to));
         return saved;
     }
 

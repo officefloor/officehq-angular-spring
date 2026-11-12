@@ -16,6 +16,11 @@ export interface PoolMemberView {
    *  share spread over the others with a cut); null when the pool is unbalanced or
    *  has no pot. A pool in another has its cut there as its pot; one in none has the sheet's pot. */
   cut: string | null;
+  /** The membership's first and last day, YYYY-MM-DD; null when open-ended. */
+  from: string | null;
+  to: string | null;
+  /** Whether its dates include the sheet's today; one that is not is left out of the pool entirely. */
+  active: boolean;
 }
 
 /** A pool: its members, their total share, and whether that is exactly 100.00. */
@@ -31,6 +36,7 @@ export interface PoolView {
 }
 
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The active sheet's pools, re-read from the server each time the sheet is loaded.
 @Injectable({ providedIn: 'root' })
@@ -80,15 +86,30 @@ export class Pools {
   }
 
   /** Add a person or another pool to a pool with a share; an error message when refused (already in it, a
-   *  bad share, or a pool that would contain itself, is already in one, or would make a chain too deep). The
-   *  pools are re-read after: a pool in another takes its pot from its cut there. */
-  async addMember(poolId: number, member: PoolMemberChoice | null, share: string): Promise<string | null> {
+   *  bad share, a to-date before the from-date, or a pool that would contain itself, is already in one, or
+   *  would make a chain too deep). The dates are optional. The pools are re-read after: a pool in another
+   *  takes its pot from its cut there. */
+  async addMember(
+    poolId: number,
+    member: PoolMemberChoice | null,
+    share: string,
+    from = '',
+    to = '',
+  ): Promise<string | null> {
     const s = share.trim();
+    const f = from.trim();
+    const t = to.trim();
     if (member === null) return 'Choose a person or a pool.';
     if (!SHARE.test(s) || Number(s) <= 0 || Number(s) > 100) {
       return 'Enter a share more than 0.00 and at most 100.00, in two decimals.';
     }
-    const err = await this.post(`/${poolId}/members`, { ...member, share: s }, 'add pool member');
+    if ((f && !DATE.test(f)) || (t && !DATE.test(t))) return 'Enter dates as YYYY-MM-DD.';
+    if (f && t && t < f) return 'A membership cannot end before it starts.';
+    const err = await this.post(
+      `/${poolId}/members`,
+      { ...member, share: s, from: f || null, to: t || null },
+      'add pool member',
+    );
     if (!err) await this.reread();
     return err;
   }
