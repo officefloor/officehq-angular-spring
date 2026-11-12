@@ -1,0 +1,64 @@
+{
+  "checkpoint": 209,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp209_score",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their score: their settled figures (the due of their SETTLED claims that\ncount) divided by 100, minus 5 for every overdue claim of theirs that counts, rounded half to even\nto a whole number (shown with no decimals, a minus sign when negative).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their score: their settled figures (the due of their SETTLED claims that\ncount) divided by 100, minus 5 for every overdue claim of theirs that counts, rounded half to even\nto a whole number (shown with no decimals, a minus sign when negative).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "61abeede7911236db334669416ed3d182885511f",
+  "reset_sha": "",
+  "preagent_sha": "ff4476978376a5cd0c4804d0d7b9ea4d00ea99d7",
+  "prev_sha": "ff4476978376a5cd0c4804d0d7b9ea4d00ea99d7",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9739779999999999,
+    "input_tokens": 70,
+    "output_tokens": 9937,
+    "cache_read_tokens": 1619950,
+    "cache_creation_tokens": 56371,
+    "num_turns": 35,
+    "duration_ms": 921888,
+    "duration_api_ms": 116946,
+    "model": "claude-opus-5-5",
+    "session_id": "2213671e-619d-438e-850a-f1803e4eddf6",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows a score, and all 4 tests in `bin/e2e` pass.\n\n**The score.** It's a new \"Score\" column (`person-score`) on the people list. It's the person's settled total divided by 100, minus 5 for each of their overdue claims, rounded half to even and shown as a whole number. A negative score gets a minus sign, but a score that rounds to zero shows as `0`, not `-0`. It reuses the \"settled\" and \"overdue\" figures the row already shows, so it applies the same rules about which claims count (retirement, deferral, and so on). It's calculated on screen only: nothing is stored and no audit records are written, and the spec doesn't expect any.\n- The calculation is a new `scoreOf` in `src/main/frontend/src/app/features/rates/rates.ts`, done in exact whole-number maths like the other money helpers there.\n- The cell and `personScoreOf` are in `src/main/frontend/src/app/features/people/people.ts`.\n\n**A second fix that scenario 3 needed.** In scenario 3, a \"restricted\" user (who only sees their crews' people and themselves) quick-adds a claim for a new person, \"Dot\". The test expects Dot's row to appear straight away and to disappear once the sheet is re-loaded. The app hid Dot immediately, so the test failed at that step. I ran it with my score change removed and it failed the same way, so the problem was already in the app. Now a successful quick-add keeps that claim's person visible to the restricted user until the sheet is next loaded (`quickAdd` in `people.ts`). Nothing changes for other users.\n\nThe ordinary \"add person\" form doesn't do this: a restricted user who adds someone through it still won't see them. The tests don't cover that case, so I left it alone; making it match is a small change if you want it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9739779999999999,
+        "num_turns": 35,
+        "duration_ms": 921888,
+        "duration_api_ms": 116946,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp209.agent.jsonl",
+  "agent_diff_file": "cp209.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
