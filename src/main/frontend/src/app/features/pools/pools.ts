@@ -34,11 +34,15 @@ interface Figures {
 
 const NO_INPUT: MemberInput = { member: '', share: '', from: '', to: '' };
 
-/** A pool on the sheet, with its members in the order they were added. */
+/**
+ * A pool on the sheet, with its members in the order they were added. A crew is a pool too (crew true): its lead and
+ * members at equal shares; members are added to it as a crew, not here.
+ */
 interface PoolView {
   id: number;
   name: string;
   members: PoolMemberView[];
+  crew: boolean;
 }
 
 /** A hold from its from-date to its to-date (yyyy-mm-dd), both inclusive; to null: it does not end. */
@@ -152,51 +156,53 @@ function csvField(value: string): string {
               </li>
             }
           </ul>
-          <form (submit)="addMember($event, p.id)" [attr.aria-label]="'Add a member to ' + p.name">
-            <label [for]="'pool-member-select-' + p.id">Member</label>
-            <select
-              [id]="'pool-member-select-' + p.id"
-              data-testid="pool-member-select"
-              (change)="setInput(p.id, 'member', value($event))"
-            >
-              <option value="" [selected]="!inputOf(p.id).member">Choose a person or pool</option>
-              @for (o of people(); track o.id) {
-                <option [value]="'person:' + o.id" [selected]="inputOf(p.id).member === 'person:' + o.id">
-                  {{ o.name }}
-                </option>
+          @if (!p.crew) {
+            <form (submit)="addMember($event, p.id)" [attr.aria-label]="'Add a member to ' + p.name">
+              <label [for]="'pool-member-select-' + p.id">Member</label>
+              <select
+                [id]="'pool-member-select-' + p.id"
+                data-testid="pool-member-select"
+                (change)="setInput(p.id, 'member', value($event))"
+              >
+                <option value="" [selected]="!inputOf(p.id).member">Choose a person or pool</option>
+                @for (o of people(); track o.id) {
+                  <option [value]="'person:' + o.id" [selected]="inputOf(p.id).member === 'person:' + o.id">
+                    {{ o.name }}
+                  </option>
+                }
+                @for (o of memberPools(); track o.id) {
+                  <option [value]="'pool:' + o.id" [selected]="inputOf(p.id).member === 'pool:' + o.id">pool:{{ o.name }}</option>
+                }
+              </select>
+              <label [for]="'pool-member-share-' + p.id">Share %</label>
+              <input
+                [id]="'pool-member-share-' + p.id"
+                data-testid="pool-member-share"
+                [value]="inputOf(p.id).share"
+                (input)="setInput(p.id, 'share', value($event))"
+              />
+              <label [for]="'pool-member-from-' + p.id">From</label>
+              <input
+                [id]="'pool-member-from-' + p.id"
+                type="date"
+                data-testid="pool-member-from"
+                [value]="inputOf(p.id).from"
+                (input)="setInput(p.id, 'from', value($event))"
+              />
+              <label [for]="'pool-member-to-' + p.id">To</label>
+              <input
+                [id]="'pool-member-to-' + p.id"
+                type="date"
+                data-testid="pool-member-to"
+                [value]="inputOf(p.id).to"
+                (input)="setInput(p.id, 'to', value($event))"
+              />
+              <button type="submit" data-testid="pool-member-add">Add member</button>
+              @if (memberErrors()[p.id]; as message) {
+                <p role="alert" data-testid="pool-error">{{ message | fig }}</p>
               }
-              @for (o of pools(); track o.id) {
-                <option [value]="'pool:' + o.id" [selected]="inputOf(p.id).member === 'pool:' + o.id">pool:{{ o.name }}</option>
-              }
-            </select>
-            <label [for]="'pool-member-share-' + p.id">Share %</label>
-            <input
-              [id]="'pool-member-share-' + p.id"
-              data-testid="pool-member-share"
-              [value]="inputOf(p.id).share"
-              (input)="setInput(p.id, 'share', value($event))"
-            />
-            <label [for]="'pool-member-from-' + p.id">From</label>
-            <input
-              [id]="'pool-member-from-' + p.id"
-              type="date"
-              data-testid="pool-member-from"
-              [value]="inputOf(p.id).from"
-              (input)="setInput(p.id, 'from', value($event))"
-            />
-            <label [for]="'pool-member-to-' + p.id">To</label>
-            <input
-              [id]="'pool-member-to-' + p.id"
-              type="date"
-              data-testid="pool-member-to"
-              [value]="inputOf(p.id).to"
-              (input)="setInput(p.id, 'to', value($event))"
-            />
-            <button type="submit" data-testid="pool-member-add">Add member</button>
-            @if (memberErrors()[p.id]; as message) {
-              <p role="alert" data-testid="pool-error">{{ message | fig }}</p>
-            }
-          </form>
+            </form>
+          }
         </div>
       }
     </section>
@@ -303,6 +309,7 @@ export class Pools {
       return {
         id: pool.id,
         name: pool.name,
+        crew: pool.crew,
         members: pool.members.map((m, i) => {
           const person = m.personId !== null ? byId.get(m.personId) : undefined;
           const member = m.poolId !== null ? poolsById.get(m.poolId) : undefined;
@@ -320,8 +327,17 @@ export class Pools {
     });
   });
 
+  /** The pools another pool may take as a member: not the crews. */
+  protected readonly memberPools = computed(() => this.pools().filter((p) => !p.crew));
+
   private adding = false;
   private reads = 0;
+
+  /** Read the pools again (a crew, which is a pool too, was added or changed). */
+  reread(): void {
+    const sheet = this.session.sheet();
+    if (sheet) void this.read(sheet);
+  }
 
   /**
    * Download the pools as a CSV file, pools in the order added and each pool's members in the order added: the pool's

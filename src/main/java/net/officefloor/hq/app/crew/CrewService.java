@@ -3,6 +3,7 @@ package net.officefloor.hq.app.crew;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -13,18 +14,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Keeps the crews of a sheet, each name at most once, each with a lead from the sheet's people, and their members: a
- * person is in a crew at most once, and never as both its lead and a member. A person may be in several crews.
+ * person is in a crew at most once, and never as both its lead and a member. A person may be in several crews. A crew
+ * is also a pool under its name, so no crew takes a pool's name.
  */
 @Service
 public class CrewService {
 
     private final CrewRepository crews;
+    private final PoolRepository pools;
     private final PersonRepository people;
     private final SheetRepository sheets;
     private final Audit audit;
 
-    public CrewService(CrewRepository crews, PersonRepository people, SheetRepository sheets, Audit audit) {
+    public CrewService(CrewRepository crews, PoolRepository pools, PersonRepository people, SheetRepository sheets,
+            Audit audit) {
         this.crews = crews;
+        this.pools = pools;
         this.people = people;
         this.sheets = sheets;
         this.audit = audit;
@@ -35,7 +40,7 @@ public class CrewService {
         return crews.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a crew by its name (already trimmed, not blank) with its lead; refused when the sheet has one by that name. */
+    /** Add a crew by its name (already trimmed, not blank) with its lead; refused when the sheet has a crew or a pool by that name. */
     @Transactional
     public Crew add(String sheetId, String user, String name, Long leadId) {
         if (!sheets.existsById(sheetId)) {
@@ -45,6 +50,9 @@ public class CrewService {
                 .orElseThrow(() -> new PersonNotFoundException(sheetId, leadId));
         if (crews.existsBySheetIdAndName(sheetId, name)) {
             throw new CrewRefusedException(name + " is already a crew on sheet " + sheetId);
+        }
+        if (pools.existsBySheetIdAndName(sheetId, name)) {
+            throw new CrewRefusedException(name + " is already a pool on sheet " + sheetId);
         }
         Crew saved;
         try {

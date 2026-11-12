@@ -8,7 +8,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.person.PersonService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,11 +41,27 @@ public class PoolController {
         }
     }
 
-    /** A pool as shown, with its members in the order they were added. */
-    public record PoolView(Long id, String name, List<PoolMemberView> members) {
+    /**
+     * A pool as shown, with its members in the order they were added. A crew is shown as a pool too ({@code crew}
+     * true, its id the crew's id negated): its lead and then its members, at the shares patrons get.
+     */
+    public record PoolView(Long id, String name, List<PoolMemberView> members, boolean crew) {
 
         static PoolView of(Pool p) {
-            return new PoolView(p.getId(), p.getName(), p.getMembers().stream().map(PoolMemberView::of).toList());
+            return new PoolView(p.getId(), p.getName(), p.getMembers().stream().map(PoolMemberView::of).toList(),
+                    false);
+        }
+
+        static PoolView of(Crew c) {
+            List<Long> people = new ArrayList<>();
+            people.add(c.getLeadId());
+            c.getMembers().forEach(m -> people.add(m.getPersonId()));
+            List<BigDecimal> shares = PersonService.patronShares(people.size());
+            List<PoolMemberView> members = new ArrayList<>();
+            for (int i = 0; i < people.size(); i++) {
+                members.add(new PoolMemberView(people.get(i), null, shares.get(i).toPlainString(), null, null));
+            }
+            return new PoolView(-c.getId(), c.getName(), members, true);
         }
     }
 
@@ -75,11 +94,13 @@ public class PoolController {
         this.service = service;
     }
 
-    /** The sheet's pools, in the order they were added. */
+    /** The sheet's pools, in the order they were added, and then its crews as pools, in the order they were added. */
     @GetMapping
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 100) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId.trim()).stream().map(PoolView::of).toList();
+        List<PoolView> views = new ArrayList<>(service.list(sheetId.trim()).stream().map(PoolView::of).toList());
+        service.crews(sheetId.trim()).forEach(c -> views.add(PoolView.of(c)));
+        return views;
     }
 
     @PostMapping

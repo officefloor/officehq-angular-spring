@@ -808,8 +808,13 @@ function csvField(value: string): string {
     </section>
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
-    <app-pools [people]="people()" />
-    <app-crews [people]="people()" [dueTotals]="personDueTotals()" (totals)="crewTotals.set($event)" />
+    <app-pools #poolsView [people]="people()" />
+    <app-crews
+      [people]="people()"
+      [dueTotals]="personDueTotals()"
+      (totals)="crewTotals.set($event)"
+      (changed)="poolsView.reread()"
+    />
   `,
 })
 export class People {

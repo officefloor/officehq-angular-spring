@@ -95,6 +95,8 @@ export class Crews {
   readonly dueTotals = input<Map<number, string>>(new Map());
   /** Each crew's lead and due-total, emitted whenever they change. */
   readonly totals = output<CrewTotal[]>();
+  /** Emitted once a crew or a crew member is added (a crew is a pool too). */
+  readonly changed = output<void>();
 
   protected readonly crews = signal<CrewView[]>([]);
   protected readonly name = signal('');
@@ -193,6 +195,7 @@ export class Crews {
         this.http.post<CrewView>(this.base(sheet), { name, leadId: Number(this.lead()) }, this.session.headers()),
       );
       if (this.session.sheet() === sheet) this.crews.update((list) => [...list, saved]);
+      this.changed.emit();
       this.name.set('');
       this.lead.set('');
     } catch {
@@ -230,6 +233,7 @@ export class Crews {
         this.http.post<CrewView>(`${this.base(sheet)}/${crewId}/members`, { personId }, this.session.headers()),
       );
       if (this.session.sheet() === sheet) this.crews.update((list) => list.map((c) => (c.id === saved.id ? saved : c)));
+      this.changed.emit();
       this.choices.update((all) => ({ ...all, [crewId]: '' }));
     } catch {
       this.memberError(crewId, 'The member could not be added.');

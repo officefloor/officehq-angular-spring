@@ -6,6 +6,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -29,12 +31,15 @@ public class PoolService {
     static final int MAX_DEPTH = 3;
 
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final PersonRepository people;
     private final SheetRepository sheets;
     private final Audit audit;
 
-    public PoolService(PoolRepository pools, PersonRepository people, SheetRepository sheets, Audit audit) {
+    public PoolService(PoolRepository pools, CrewRepository crews, PersonRepository people, SheetRepository sheets,
+            Audit audit) {
         this.pools = pools;
+        this.crews = crews;
         this.people = people;
         this.sheets = sheets;
         this.audit = audit;
@@ -45,7 +50,13 @@ public class PoolService {
         return pools.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a pool by its name (already trimmed, not blank); refused when the sheet has one by that name. */
+    /** The sheet's crews, in the order they were added: each is also a pool, under its name. */
+    @Transactional(readOnly = true)
+    public List<Crew> crews(String sheetId) {
+        return crews.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** Add a pool by its name (already trimmed, not blank); refused when the sheet has a pool or a crew by that name. */
     @Transactional
     public Pool add(String sheetId, String user, String name) {
         if (!sheets.existsById(sheetId)) {
@@ -53,6 +64,9 @@ public class PoolService {
         }
         if (pools.existsBySheetIdAndName(sheetId, name)) {
             throw new PoolRefusedException(name + " is already a pool on sheet " + sheetId);
+        }
+        if (crews.existsBySheetIdAndName(sheetId, name)) {
+            throw new PoolRefusedException(name + " is a crew, and so a pool, on sheet " + sheetId);
         }
         Pool saved;
         try {
