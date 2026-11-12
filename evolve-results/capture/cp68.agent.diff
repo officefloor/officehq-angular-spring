@@ -1,0 +1,39 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 8d066dd8b..a3c0250fb 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -112,6 +112,18 @@ export class Figures {
+     return this.claims.live().some((c) => c.personId === p.id && isOpen(c) && c.date >= from && c.date <= today);
+   }
+ 
++  /** A person's settled figure: the frozen dues of their SETTLED claims dated within the 90 days up to
++   *  and including the sheet's today, added up; 0 with none. */
++  recentSettledCents(p: Person): bigint {
++    const today = this.session.today();
++    if (!today) return 0n;
++    const from = addDays(today, -89);
++    return this.claims
++      .claims()
++      .filter((c) => c.personId === p.id && c.status === 'SETTLED' && c.settledDue !== null && c.date >= from && c.date <= today)
++      .reduce((sum, c) => sum + hundredths(c.settledDue as string), 0n);
++  }
++
+   /** The grade in force on the sheet's today, the one the list shows. */
+   gradeToday(p: Person): string {
+     const today = this.session.today();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9637cd57a..a5923ed0d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -343,9 +343,9 @@ export class PeopleList {
+     return this.patronsOf(p).map((o) => o.name).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(', ');
+   }
+ 
+-  /** A person's patrons' due-totals added up, skipping those that are n/a; 0.00 with no patrons. */
++  /** A person's patrons' recent settled figures added up; 0.00 with no patrons. */
+   protected backing(p: Person): string {
+-    return money(this.patronsOf(p).reduce((sum, o) => sum + (this.dueCents(o) ?? 0n), 0n));
++    return money(this.patronsOf(p).reduce((sum, o) => sum + this.figures.recentSettledCents(o), 0n));
+   }
+ 
+   protected setPatronChoice(id: number, choice: string): void {
