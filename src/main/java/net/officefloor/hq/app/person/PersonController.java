@@ -321,6 +321,14 @@ public class PersonController {
         return view(transfers.transfer(sheetId.trim(), user.trim(), id, request.to()), user.trim());
     }
 
+    /** Undo the transfer that brought the person here (a steward only, on the day they arrived): they go back. */
+    @PostMapping("/{id}/transfer-undo")
+    public PersonView transferUndo(@PathVariable @NotBlank @Size(max = 100) String sheetId,
+            @PathVariable Long id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 100) String user) {
+        return view(transfers.undo(sheetId.trim(), user.trim(), id), user.trim());
+    }
+
     /** Start or stop watching the person as the signed-in user. */
     @PutMapping("/{id}/watch")
     public PersonView watch(@PathVariable @NotBlank @Size(max = 100) String sheetId,

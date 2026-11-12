@@ -159,6 +159,7 @@ public class TransferService {
             personService.noteTags(to, SheetTag.parse(from.getTags()));
             arrived.setAddedOn(toSheet.getToday());
             arrived.setOriginSheet(sheetId);
+            arrived.setTransferredOn(toSheet.getToday());
             arrived.setPosition(people.maxPosition(to) + 1);
             saved = people.saveAndFlush(arrived);
             theirAliases.forEach(a -> aliases.save(
@@ -238,6 +239,35 @@ public class TransferService {
         }
         rollup.recordChanges(to, user, beforeThere);
         return saved;
+    }
+
+    /**
+     * Undo the transfer that brought the person to this sheet (a steward only, on the sheet's today they arrived, and
+     * only a person who arrived by a transfer): they are transferred back to the sheet they came from, by the rules
+     * and records of a transfer, and this sheet records PERSON_TRANSFER_UNDONE.
+     */
+    @Transactional
+    public Person undo(String sheetId, String user, Long id) {
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new PersonNotFoundException(sheetId, id));
+        if (roles.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PersonTransferRefusedException("Only a steward can undo a transfer");
+        }
+        if (person.getOriginSheet() == null || person.getTransferredOn() == null) {
+            throw new PersonTransferRefusedException(person.getName() + " did not arrive by a transfer");
+        }
+        if (!person.getTransferredOn().equals(sheets.today(sheetId))) {
+            throw new PersonTransferRefusedException("The transfer of " + person.getName()
+                    + " can only be undone on the day they arrived");
+        }
+        String back = person.getOriginSheet();
+        String name = person.getName();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person returned = transfer(sheetId, user, id, back);
+        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user
+                + " name=" + name + " to=" + back);
+        rollup.recordChanges(sheetId, user, before);
+        return returned;
     }
 
     /** The sheet's today when the claim was opened: its first log line past DRAFT, else its date. */

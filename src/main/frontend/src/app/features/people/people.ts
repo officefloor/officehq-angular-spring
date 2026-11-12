@@ -579,6 +579,14 @@ function csvField(value: string): string {
                 >
                   Transfer
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-transfer-undo"
+                  [attr.aria-label]="'Undo the transfer that brought ' + p.name + ' here'"
+                  (click)="transferUndo(p)"
+                >
+                  Undo transfer
+                </button>
                 <ul class="holds">
                   @for (h of p.holds; track $index) {
                     <li data-testid="person-hold-line">Held {{ h.from }} to {{ h.to ?? 'open' }}</li>
@@ -1367,6 +1375,27 @@ export class People {
       }
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be transferred to ${to}.` });
+    }
+  }
+
+  /**
+   * Undo the transfer that brought the person here (a steward only, on the day they arrived): the person goes back to
+   * the sheet they came from and leaves the list, then re-read so every total shows what the store holds.
+   */
+  protected async transferUndo(person: Person): Promise<void> {
+    this.rowError.set(null);
+    this.patronError.set(null);
+    const sheet = this.session.sheet();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/transfer-undo`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, {}, this.session.headers()));
+      if (this.session.sheet() === sheet) {
+        this.people.update((list) => list.filter((p) => p.id !== person.id));
+        void this.read(sheet);
+      }
+    } catch {
+      this.rowError.set({ id: person.id, message: `The transfer of ${person.name} could not be undone.` });
     }
   }
 

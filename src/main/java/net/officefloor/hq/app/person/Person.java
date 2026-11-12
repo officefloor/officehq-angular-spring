@@ -87,6 +87,10 @@ public class Person {
     @Column(name = "origin_sheet")
     private String originSheet;
 
+    /** The sheet's today when the person arrived here by a transfer; null when they did not arrive by one. */
+    @Column(name = "transferred_on")
+    private LocalDate transferredOn;
+
     /** Where the person stands in the list: listed by it, then by id. */
     @Column(name = "position", nullable = false)
     private long position;
@@ -242,6 +246,14 @@ public class Person {
 
     public void setOriginSheet(String originSheet) {
         this.originSheet = originSheet;
+    }
+
+    public LocalDate getTransferredOn() {
+        return transferredOn;
+    }
+
+    public void setTransferredOn(LocalDate transferredOn) {
+        this.transferredOn = transferredOn;
     }
 
     public long getPosition() {
