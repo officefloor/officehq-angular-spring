@@ -9,7 +9,7 @@ import { Rate, Rates, capped, changeFrom, excessOver, rateOn, sumDues, sumShared
 import { ClassicPeriodSummary, ClassicSummary, GradeSummary, PeriodSummary, StatusSummary, Summary, VoidReasonSummary } from '../summary/summary';
 import { VoidReasons } from '../../core/void-reasons';
 import { Header } from '../header/header';
-import { Crews } from '../crews/crews';
+import { CrewTotal, Crews } from '../crews/crews';
 import { Pools } from '../pools/pools';
 import { PersonPlans } from '../plans/plans';
 import { Plans } from '../../core/plans';
@@ -149,6 +149,7 @@ function csvField(value: string): string {
       [overdueTotal]="overdueTotal()"
       [myDueTotal]="myDueTotal()"
       [myOverdueTotal]="myOverdueTotal()"
+      [myCrewDueTotal]="myCrewDueTotal()"
     />
     <section aria-labelledby="consolidated-heading">
       <h2 id="consolidated-heading">Consolidated (this sheet and its descendants)</h2>
@@ -808,7 +809,7 @@ function csvField(value: string): string {
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" [voidReasons]="voidReasonSummary()" />
     <app-classic-summary [periods]="classicPeriodSummary()" [dueTotal]="classicDueTotal()" />
     <app-pools [people]="people()" />
-    <app-crews [people]="people()" [dueTotals]="personDueTotals()" />
+    <app-crews [people]="people()" [dueTotals]="personDueTotals()" (totals)="crewTotals.set($event)" />
   `,
 })
 export class People {
@@ -971,6 +972,14 @@ export class People {
   protected readonly myOverdueTotal = computed(() => {
     const me = this.me();
     return me ? this.overdueTotalOf(me) : '';
+  });
+  /** Each crew's lead and due-total, as the crews show them. */
+  protected readonly crewTotals = signal<CrewTotal[]>([]);
+  /** The due-totals of the crews the signed-in user leads, added up; blank when they lead none. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    const led = me ? this.crewTotals().filter((c) => c.leadId === me.id) : [];
+    return led.length ? sumDues(led.map((c) => c.dueTotal)) : '';
   });
   /** The figures of the sheet's descendants added up, each as that sheet shows them; none until read. */
   private readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);

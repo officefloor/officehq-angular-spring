@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { FigurePipe } from '../../core/locale';
 import { Session } from '../../core/session';
@@ -11,6 +11,12 @@ interface CrewView {
   name: string;
   leadId: number;
   memberIds: number[];
+}
+
+/** A crew's lead and its due-total, as the crew's row shows it. */
+export interface CrewTotal {
+  leadId: number;
+  dueTotal: string;
 }
 
 /** What a crew needs to know of a person: their name. */
@@ -87,6 +93,8 @@ export class Crews {
   readonly people = input<CrewPerson[]>([]);
   /** Each person's due-total as shown on their row (two decimals, or n/a), by person id. */
   readonly dueTotals = input<Map<number, string>>(new Map());
+  /** Each crew's lead and due-total, emitted whenever they change. */
+  readonly totals = output<CrewTotal[]>();
 
   protected readonly crews = signal<CrewView[]>([]);
   protected readonly name = signal('');
@@ -105,6 +113,7 @@ export class Crews {
     return this.crews().map((crew) => ({
       id: crew.id,
       name: crew.name,
+      leadId: crew.leadId,
       lead: byId.get(crew.leadId)?.name ?? '',
       members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
       dueTotal: sumDues([crew.leadId, ...crew.memberIds].map((id) => dues.get(id) ?? 'n/a')),
@@ -115,6 +124,10 @@ export class Crews {
   private reads = 0;
 
   constructor() {
+    effect(() => {
+      const totals = this.shown().map((c) => ({ leadId: c.leadId, dueTotal: c.dueTotal }));
+      untracked(() => this.totals.emit(totals));
+    });
     effect(() => {
       const sheet = this.session.sheet();
       this.session.loaded();
