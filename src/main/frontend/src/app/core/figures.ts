@@ -1,7 +1,7 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { Claim, Claims, bound } from './claims';
 import { People, Person, gradeOn } from './people';
-import { Periods } from './periods';
+import { Period, Periods } from './periods';
 import { Rates, hundredths, money } from './rates';
 import { Session } from './session';
 
@@ -98,13 +98,13 @@ export class Figures {
     return today ? gradeOn(p.grades, today) : p.grade;
   }
 
-  /** Each open period's live due-total, by period id: the figures of the claims that count live
-   *  whose date falls in it — a settled claim's frozen due, else as its person's last statement bound
-   *  it, else its live due, an overdue claim's late charge on top (a claim with no figure adds
-   *  nothing). */
-  readonly periodDueTotals = computed(() => {
+  /** Each period's live due-total for each person, in cents, by period id then person id: the figures
+   *  of the person's claims that count live whose date falls in it — a settled claim's frozen due, else
+   *  as its person's last statement bound it, else its live due, an overdue claim's late charge on top
+   *  (a claim with no figure adds nothing). */
+  private readonly livePersonPeriodCents = computed(() => {
     const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
-    const sums = new Map<number, bigint>();
+    const sums = new Map<number, Map<number, bigint>>();
     for (const c of this.claims.live()) {
       const period = this.periods.of(c.date);
       if (!period) continue;
@@ -116,8 +116,26 @@ export class Figures {
         due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date, this.claims.roundingDate(c));
       }
       if (due !== null && c.settledDue === null) due += this.claims.lateCents(c, due);
-      sums.set(period.id, (sums.get(period.id) ?? 0n) + (due ?? 0n));
+      const byPerson = sums.get(period.id) ?? new Map<number, bigint>();
+      byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0n) + (due ?? 0n));
+      sums.set(period.id, byPerson);
     }
-    return new Map([...sums].map(([id, sum]) => [id, money(sum)]));
+    return sums;
+  });
+
+  /** A person's due-total for a period: fixed when it was closed (0.00 for a person added since), else
+   *  live. */
+  personPeriodDue(period: Period, personId: number): string {
+    if (period.closed) return period.closedPersonTotals?.[personId] ?? '0.00';
+    return money(this.livePersonPeriodCents().get(period.id)?.get(personId) ?? 0n);
+  }
+
+  /** Each open period's live due-total, by period id: the sum of the people's live figures for it. */
+  readonly periodDueTotals = computed(() => {
+    const totals = new Map<number, string>();
+    for (const [id, byPerson] of this.livePersonPeriodCents()) {
+      totals.set(id, money([...byPerson.values()].reduce((sum, d) => sum + d, 0n)));
+    }
+    return totals;
   });
 }

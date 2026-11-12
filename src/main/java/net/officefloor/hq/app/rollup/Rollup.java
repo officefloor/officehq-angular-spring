@@ -112,19 +112,25 @@ public class Rollup {
         return new Snapshot(figures, claimedTotal, dueTotal, overdueTotal);
     }
 
-    /** The due-total of the claims that count dated from one date to another, both inclusive, as the
-     *  screen shows a period's: each claim's settled due, else the figure its statement bound, else its
-     *  live due, at least the floor, an overdue claim's late charge on top (a claim with no figure adds
-     *  nothing). */
-    public BigDecimal dueBetween(String sheetId, LocalDate from, LocalDate to) {
+    /** Each person's due-total of their claims that count dated from one date to another, both
+     *  inclusive, by person id, every person on the sheet in the order they were added, as the screen
+     *  shows a person's for a period: each claim's settled due, else the figure its statement bound,
+     *  else its live due, at least the floor, an overdue claim's late charge on top (a claim with no
+     *  figure adds nothing). */
+    public Map<Long, BigDecimal> dueBetweenByPerson(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         Map<Long, Person> byId = new LinkedHashMap<>();
-        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> byId.put(p.getId(), p));
-        BigDecimal total = ZERO;
+        Map<Long, BigDecimal> totals = new LinkedHashMap<>();
+        people.findBySheetIdOrderByIdAsc(sheetId).forEach(p -> {
+            byId.put(p.getId(), p);
+            totals.put(p.getId(), ZERO);
+        });
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         for (Claim claim : sheetClaims) {
-            if (!countsLive(claim, byId.get(claim.getPersonId())) || claim.getDate().isBefore(from) || claim.getDate().isAfter(to)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !countsLive(claim, person) || claim.getDate().isBefore(from)
+                    || claim.getDate().isAfter(to)) {
                 continue;
             }
             BigDecimal due;
@@ -133,17 +139,16 @@ public class Rollup {
             } else if (claim.isBound()) {
                 due = claim.getStatedDue();
             } else {
-                Person person = byId.get(claim.getPersonId());
-                due = person == null ? null : inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
+                due = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
                         .map(rate -> rated(sheet, claim, sheetClaims, rate))
                         .map(d -> floored(sheet, claim, d))
                         .orElse(null);
             }
             if (due != null) {
-                total = total.add(charged(sheet, claim, due));
+                totals.merge(person.getId(), charged(sheet, claim, due), BigDecimal::add);
             }
         }
-        return total;
+        return totals;
     }
 
     /** Record, once the change commits, the lines for every figure that moved since {@code before}. */

@@ -14,6 +14,9 @@ export interface Period {
   closed: boolean;
   /** The due-total fixed when it was closed, two decimals; null while open. */
   closedTotal: string | null;
+  /** Each person's due-total for it fixed when it was closed, two decimals, by person id; empty while
+   *  open. A person missing here (added after it closed) has 0.00. */
+  closedPersonTotals: Record<number, string>;
 }
 
 export interface PeriodFields {

@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { Claim, Claims } from '../../core/claims';
 import { Figures } from '../../core/figures';
 import { GRADES, People, Person } from '../../core/people';
+import { Periods } from '../../core/periods';
 import { NO_RATE, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
 
@@ -89,7 +90,7 @@ import { PersonClaims } from '../claims/claims';
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -98,6 +99,12 @@ import { PersonClaims } from '../claims/claims';
               <td data-testid="person-grade">{{ gradeToday(p) }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
+              <td>
+                @for (period of periods.periods(); track period.id) {
+                  <span class="person-period">{{ period.name }}:
+                    <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ figures.personPeriodDue(period, p.id) }}</span></span>
+                }
+              </td>
               <td data-testid="person-excess">{{ excess(p) }}</td>
               <td data-testid="person-overdue-count">{{ overdue(p).length }}</td>
               <td data-testid="person-overdue-total">{{ overdueDue(p) }}</td>
@@ -212,7 +219,8 @@ import { PersonClaims } from '../claims/claims';
 export class PeopleList {
   protected readonly people = inject(People);
   protected readonly claims = inject(Claims);
-  private readonly figures = inject(Figures);
+  protected readonly figures = inject(Figures);
+  protected readonly periods = inject(Periods);
   protected readonly grades = GRADES;
   /** The people the list shows: everyone, or only those not retired unless show retired is on. */
   protected readonly shown = computed(() =>
