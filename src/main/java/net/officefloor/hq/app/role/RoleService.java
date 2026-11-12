@@ -8,7 +8,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the role each sheet gives a user name: clerk (any name with none) or steward. */
+/** Keeps the role each sheet gives a user name: clerk (any name with none), steward or viewer. */
 @Service
 public class RoleService {
 
@@ -55,10 +55,28 @@ public class RoleService {
                 .orElse(false);
     }
 
+    /** Whether the sheet makes the user name a viewer, who sees the sheet and changes nothing. */
+    @Transactional(readOnly = true)
+    public boolean isViewer(String sheetId, String name) {
+        return roles.findBySheetIdAndUserName(sheetId, name)
+                .map(r -> SheetRole.VIEWER.equals(r.getRole()))
+                .orElse(false);
+    }
+
+    /** Refuse any change by a viewer. */
+    public void requireNotViewer(String sheetId, String name) {
+        if (isViewer(sheetId, name)) {
+            throw new ActionNotAllowedException("change anything");
+        }
+    }
+
     /** Whether the user's role on the sheet may take an action, by the sheet's permission matrix (an action
      *  with no roles set keeps the standing rule). */
     @Transactional(readOnly = true)
     public boolean allows(String sheetId, String name, String action) {
+        if (isViewer(sheetId, name)) {
+            return false;
+        }
         String role = isSteward(sheetId, name) ? SheetRole.STEWARD : SheetRole.CLERK;
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).allows(action, role);
     }

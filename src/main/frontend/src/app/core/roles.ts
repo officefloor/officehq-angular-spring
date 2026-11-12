@@ -9,10 +9,11 @@ export interface RoleView {
 }
 
 /** The roles a sheet can give a user name; a name given none is a clerk. */
-export const ROLES = ['clerk', 'steward'] as const;
+export const ROLES = ['clerk', 'steward', 'viewer'] as const;
 
 // The roles the active sheet gives user names, re-read from the server each time the sheet is loaded.
-// A steward settles any claim; a clerk only one whose due is within the sheet's clerk limit.
+// A steward settles any claim; a clerk only one whose due is within the sheet's clerk limit; a viewer
+// sees the sheet and changes nothing.
 @Injectable({ providedIn: 'root' })
 export class Roles {
   private readonly http = inject(HttpClient);

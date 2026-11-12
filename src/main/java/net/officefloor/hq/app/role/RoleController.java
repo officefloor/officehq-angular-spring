@@ -28,7 +28,7 @@ public class RoleController {
     }
 
     public record RoleRequest(@NotBlank @Size(max = 200) String user,
-            @NotBlank @Pattern(regexp = "clerk|steward") String role) {
+            @NotBlank @Pattern(regexp = "clerk|steward|viewer") String role) {
     }
 
     private final RoleService service;
@@ -44,7 +44,7 @@ public class RoleController {
         return service.list(sheetId.trim()).stream().map(RoleView::of).toList();
     }
 
-    /** Give a user name a role: clerk or steward. */
+    /** Give a user name a role: clerk, steward or viewer. */
     @PutMapping
     public RoleView set(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,

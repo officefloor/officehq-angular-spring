@@ -14,6 +14,7 @@ public class SheetRole {
 
     public static final String CLERK = "clerk";
     public static final String STEWARD = "steward";
+    public static final String VIEWER = "viewer";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
