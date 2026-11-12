@@ -132,7 +132,8 @@ export class Home {
     this.todayError.set(null);
     this.savingToday.set(true);
     try {
-      this.todayError.set(await this.session.setToday(this.todayInput()));
+      // A today change may close periods past their grace days, so the periods are re-read.
+      this.todayError.set((await this.session.setToday(this.todayInput())) ?? (await this.periods.load()));
     } finally {
       this.savingToday.set(false);
     }

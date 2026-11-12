@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.Rollup;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -18,14 +19,16 @@ public class SheetService {
     private final SheetRepository sheets;
     private final ClaimSequenceRepository sequences;
     private final PeriodRepository periods;
+    private final PeriodService periodService;
     private final Rollup rollup;
     private final Audit audit;
 
     public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences, PeriodRepository periods,
-            Rollup rollup, Audit audit) {
+            PeriodService periodService, Rollup rollup, Audit audit) {
         this.sheets = sheets;
         this.sequences = sequences;
         this.periods = periods;
+        this.periodService = periodService;
         this.rollup = rollup;
         this.audit = audit;
     }
@@ -48,12 +51,15 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseThrow(SheetNotFoundException::new);
     }
 
-    /** Change the sheet's today, recording the figures it moves. */
+    /** Change the sheet's today, closing the periods past their grace days and recording the figures it
+     *  moves. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
-        Sheet sheet = sheets.findById(id).orElseThrow(SheetNotFoundException::new);
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
         Rollup.Snapshot before = rollup.take(id);
         sheet.setToday(today);
+        sheets.saveAndFlush(sheet);
+        periodService.closeOverdue(id, user, today, sheet.getGraceDays());
         rollup.recordChanges(id, user, before);
         return sheet;
     }
@@ -146,6 +152,16 @@ public class SheetService {
         sheet.setPermission(action, value);
         sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=perm-" + action + " value=" + value);
+        return sheet;
+    }
+
+    /** Change the sheet's grace days (none: off). Not dated. */
+    @Transactional
+    public Sheet setGraceDays(String id, String user, Integer graceDays) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setGraceDays(graceDays);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=grace-days value="
+                + (graceDays == null ? "" : graceDays.toString()));
         return sheet;
     }
 

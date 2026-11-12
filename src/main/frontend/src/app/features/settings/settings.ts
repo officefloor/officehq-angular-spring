@@ -12,7 +12,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
 // date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), the
 // period numbering from-date (while the sheet's today is on or after it, a claim opened is numbered within its
-// period; blank for off), the permission matrix (for each action, the roles that may take it, comma separated;
+// period; blank for off), the grace days (a today change closes each open period whose to-date plus these days
+// is before the new today; blank for off; not dated), the permission matrix (for each action, the roles that may take it, comma separated;
 // blank keeps the standing rule; not dated), and
 // the role each user name has on the sheet (clerk unless given another).
 @Component({
@@ -167,6 +168,18 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="numberingFromTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-period-numbering-from-current">{{ session.periodNumberingFrom() ?? '' }}</strong></p>
+        <label for="setting-grace-days">Grace days (a today change closes periods ended more than this many days before; blank for off)</label>
+        <input
+          id="setting-grace-days"
+          data-testid="setting-grace-days"
+          inputmode="numeric"
+          [value]="graceDays()"
+          (input)="graceDays.set(value($event)); graceDaysTouched.set(true); error.set(null)"
+          (focus)="focused.set('grace-days')"
+          (keydown.delete)="graceDaysTouched.set(true); error.set(null)"
+          (keydown.backspace)="graceDaysTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-grace-days-current">{{ session.graceDays() ?? '' }}</strong></p>
         @for (a of actions; track a) {
           <label [for]="'setting-perm-' + a">Roles that may {{ a }} (comma separated; blank for the standing rule)</label>
           <input
@@ -253,6 +266,8 @@ export class SettingsPanel {
   protected readonly policyDateTouched = signal(false);
   protected readonly numberingFrom = signal('');
   protected readonly numberingFromTouched = signal(false);
+  protected readonly graceDays = signal('');
+  protected readonly graceDaysTouched = signal(false);
   /** The setting that may be blank whose field was focused last: an untouched save (a blank typed into a
    *  blank field fires no input) saves that one. */
   protected readonly focused = signal<string | null>(null);
@@ -309,6 +324,7 @@ export class SettingsPanel {
       const untouched = !this.limitTouched() && !this.floorTouched() && !this.capTouched() && !this.proofThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
+        && !this.graceDaysTouched()
         && this.gradeTermsTouched().size === 0 && this.permsTouched().size === 0;
       const pick = untouched ? this.focused() : null;
       if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
@@ -325,7 +341,10 @@ export class SettingsPanel {
         || (guess && this.policyDate().trim() !== (this.session.policyDate() ?? ''));
       const numberingFrom = this.numberingFromTouched() || pick === 'period-numbering-from'
         || (guess && this.numberingFrom().trim() !== (this.session.periodNumberingFrom() ?? ''));
-      const limit = this.limitTouched() || pick === 'limit' || (guess && !cap && !proofThreshold && !policyDate && !numberingFrom)
+      const graceDays = this.graceDaysTouched() || pick === 'grace-days'
+        || (guess && this.graceDays().trim() !== (this.session.graceDays()?.toString() ?? ''));
+      const limit = this.limitTouched() || pick === 'limit'
+        || (guess && !cap && !proofThreshold && !policyDate && !numberingFrom && !graceDays)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
@@ -338,7 +357,8 @@ export class SettingsPanel {
         ?? (await this.savePerms())
         ?? (latePct ? await this.session.setLatePct(this.latePct(), this.fromOf('late-pct')) : null)
         ?? (policyDate ? await this.session.setPolicyDate(this.policyDate()) : null)
-        ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null);
+        ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null)
+        ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null);
       if (err) this.error.set(err);
       else {
         this.limit.set('');
@@ -362,6 +382,8 @@ export class SettingsPanel {
         this.policyDateTouched.set(false);
         this.numberingFrom.set('');
         this.numberingFromTouched.set(false);
+        this.graceDays.set('');
+        this.graceDaysTouched.set(false);
         this.focused.set(null);
       }
     } finally {

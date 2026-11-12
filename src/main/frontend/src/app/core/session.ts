@@ -28,6 +28,9 @@ export interface SheetView {
   /** The permission matrix: the roles typed for an action (comma separated); one not here keeps the
    *  standing rule. */
   permissions: Record<string, string>;
+  /** The grace days: a today change closes each open period whose to-date plus these days is before it;
+   *  null when off. */
+  graceDays: number | null;
 }
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
@@ -92,6 +95,9 @@ export class Session {
   /** The permission matrix: the roles typed for each action (comma separated); an action not here keeps the
    *  standing rule. */
   readonly permissions = signal<Record<string, string>>({});
+  /** The sheet's grace days; null when off. A today change closes each open period whose to-date plus these
+   *  days is before the new today. */
+  readonly graceDays = signal<number | null>(null);
 
   signIn(name: string): boolean {
     const n = name.trim();
@@ -117,6 +123,7 @@ export class Session {
       this.policyDate.set(sheet.policyDate);
       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
       this.permissions.set(sheet.permissions);
+      this.graceDays.set(sheet.graceDays);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not load sheet (${e.status}).` : 'Could not load sheet.';
@@ -350,6 +357,25 @@ export class Session {
           { roles: r }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.permissions.set(sheet.permissions);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's grace days (blank: off); an error message when refused. */
+  async setGraceDays(days: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const d = days.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (d && !/^\d{1,5}$/.test(d)) return 'Enter the grace days as a whole number, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/grace-days`,
+          { graceDays: d ? Number(d) : null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.graceDays.set(sheet.graceDays);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

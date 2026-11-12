@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.role.RoleService;
@@ -76,11 +77,29 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodRefusedException("The period is already closed.");
         }
+        return closeNow(sheetId, user, period, false);
+    }
+
+    /** Close, in order of their to-dates, every open period whose to-date plus the grace days is before the
+     *  sheet's (new) today, each as a close by hand would; none when the grace days are off. The caller holds
+     *  the sheet's lock. */
+    @Transactional
+    public void closeOverdue(String sheetId, String user, LocalDate today, Integer graceDays) {
+        if (graceDays == null) {
+            return;
+        }
+        periods.findBySheetIdOrderByFromDateAsc(sheetId).stream()
+                .filter(p -> !p.isClosed() && p.getToDate().plusDays(graceDays).isBefore(today))
+                .sorted(Comparator.comparing(Period::getToDate))
+                .forEach(p -> closeNow(sheetId, user, p, true));
+    }
+
+    private Period closeNow(String sheetId, String user, Period period, boolean auto) {
         period.close(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()));
         periods.saveAndFlush(period);
         BigDecimal total = period.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
-                + " period=" + period.getName() + " total=" + total.toPlainString());
+                + " period=" + period.getName() + " total=" + total.toPlainString() + (auto ? " auto=yes" : ""));
         return period;
     }
 
