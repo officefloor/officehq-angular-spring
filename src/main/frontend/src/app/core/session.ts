@@ -25,6 +25,8 @@ export interface SheetView {
   settings: DatedSetting[];
   /** The due above which a claim needs a proof to be settled or approved, two decimals; null for none. */
   proofThreshold: string | null;
+  /** The due above which a claim cannot be opened with an empty note, two decimals; null for none. */
+  noteThreshold: string | null;
   /** The permission matrix: the roles typed for an action (comma separated); one not here keeps the
    *  standing rule. */
   permissions: Record<string, string>;
@@ -39,7 +41,7 @@ export interface SheetView {
  *  clerk and steward; reassign and reopen by steward. */
 export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 
-/** A value a dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit, cap or proof-threshold) takes from a date
+/** A value a dated setting (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold or note-threshold) takes from a date
  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
 export interface DatedSetting {
   key: string;
@@ -72,6 +74,9 @@ export class Session {
   /** The sheet's proof threshold (two decimals) in force on its today: a claim dated then whose due is above
    *  it needs a proof to be settled or approved; null when there is none. */
   readonly proofThreshold = computed(() => this.onToday('proof-threshold'));
+  /** The sheet's note threshold (two decimals) in force on its today: a claim dated then whose due is above
+   *  it cannot be opened with an empty note; null when there is none. */
+  readonly noteThreshold = computed(() => this.onToday('note-threshold'));
   /** The sheet's terms in force on its today: the number of days after a claim's date it is due by. */
   readonly terms = computed(() => Number(this.onToday('terms') ?? STARTING['terms']));
   /** The terms of each grade that has its own in force on the sheet's today (a claim added for it is due
@@ -259,6 +264,33 @@ export class Session {
         this.http.put<SheetView>(
           `/api/sheets/${encodeURIComponent(sid)}/settings/proof-threshold`,
           { proofThreshold: t || null, from: d || null },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Record the sheet's note threshold (blank: none) from a date (blank: the sheet's today); an error message
+   *  when refused. */
+  async setNoteThreshold(threshold: string, from = ''): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const t = threshold.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+    if (t && !/^\d+(\.\d{1,2})?$/.test(t)) {
+      return 'Enter a note threshold of 0.00 or more, with up to two decimals, or leave it blank.';
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(
+          `/api/sheets/${encodeURIComponent(sid)}/settings/note-threshold`,
+          { noteThreshold: t || null, from: d || null },
           { headers: { 'X-User': user } },
         ),
       );

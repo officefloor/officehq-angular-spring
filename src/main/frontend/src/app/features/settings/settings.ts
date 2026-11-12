@@ -3,11 +3,12 @@ import { GRADES } from '../../core/people';
 import { ROLES, Roles } from '../../core/roles';
 import { PERMISSION_ACTIONS, Session } from '../../core/session';
 
-// The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the proof threshold, the terms, each grade's
+// The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the proof threshold, the note threshold, the terms, each grade's
 // terms and the late percent) are saved from a from-date (blank for the sheet's today), keeping the values
 // already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
 // floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
-// the one in force on its date needs a proof to be settled or approved; blank for none), the terms (the days after a claim's date it is due by, fixed
+// the one in force on its date needs a proof to be settled or approved; blank for none), the note threshold (a claim whose due
+// is above the one in force on its date cannot be opened with an empty note; blank for none), the terms (the days after a claim's date it is due by, fixed
 // when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), the
 // late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
 // date (a claim dated before it rounds half up, on or after it half to even; blank for the sheet's today), the
@@ -94,6 +95,25 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('proof-threshold', value($event))"
         />
         <p>In force: <strong data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</strong></p>
+        <label for="setting-note-threshold">Note threshold (a claim due above it needs a note to be opened; blank for none)</label>
+        <input
+          id="setting-note-threshold"
+          data-testid="setting-note-threshold"
+          inputmode="decimal"
+          [value]="noteThreshold()"
+          (input)="noteThreshold.set(value($event)); noteThresholdTouched.set(true); error.set(null)"
+          (focus)="focused.set('note-threshold')"
+          (keydown.delete)="noteThresholdTouched.set(true); error.set(null)"
+          (keydown.backspace)="noteThresholdTouched.set(true); error.set(null)"
+        />
+        <label for="setting-note-threshold-from">Note threshold from (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="setting-note-threshold-from"
+          data-testid="setting-note-threshold-from"
+          [value]="fromOf('note-threshold')"
+          (input)="setFrom('note-threshold', value($event))"
+        />
+        <p>In force: <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
         <label for="setting-terms">Terms (days after a claim's date it is due by)</label>
         <input
           id="setting-terms"
@@ -282,6 +302,8 @@ export class SettingsPanel {
   protected readonly capTouched = signal(false);
   protected readonly proofThreshold = signal('');
   protected readonly proofThresholdTouched = signal(false);
+  protected readonly noteThreshold = signal('');
+  protected readonly noteThresholdTouched = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTouched = signal(false);
   protected readonly grades = GRADES;
@@ -361,6 +383,7 @@ export class SettingsPanel {
       // saved; with none focused, those that differ from the value in force (a blank field clears one), else
       // the clerk limit.
       const untouched = !this.limitTouched() && !this.floorTouched() && !this.capTouched() && !this.proofThresholdTouched()
+        && !this.noteThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
         && !this.graceDaysTouched()
@@ -374,6 +397,8 @@ export class SettingsPanel {
         || (guess && this.cap().trim() !== (this.session.cap() ?? ''));
       const proofThreshold = this.proofThresholdTouched() || pick === 'proof-threshold'
         || (guess && this.proofThreshold().trim() !== (this.session.proofThreshold() ?? ''));
+      const noteThreshold = this.noteThresholdTouched() || pick === 'note-threshold'
+        || (guess && this.noteThreshold().trim() !== (this.session.noteThreshold() ?? ''));
       const terms = this.termsTouched();
       const latePct = this.latePctTouched();
       const policyDate = this.policyDateTouched() || pick === 'policy-date'
@@ -383,13 +408,16 @@ export class SettingsPanel {
       const graceDays = this.graceDaysTouched() || pick === 'grace-days'
         || (guess && this.graceDays().trim() !== (this.session.graceDays()?.toString() ?? ''));
       const limit = this.limitTouched() || pick === 'limit'
-        || (guess && !cap && !proofThreshold && !policyDate && !numberingFrom && !graceDays)
+        || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
         ?? (cap ? await this.session.setCap(this.cap(), this.fromOf('cap')) : null)
         ?? (proofThreshold
           ? await this.session.setProofThreshold(this.proofThreshold(), this.fromOf('proof-threshold'))
+          : null)
+        ?? (noteThreshold
+          ? await this.session.setNoteThreshold(this.noteThreshold(), this.fromOf('note-threshold'))
           : null)
         ?? (terms ? await this.session.setTerms(this.terms(), this.fromOf('terms')) : null)
         ?? (await this.saveGradeTerms())
@@ -408,6 +436,8 @@ export class SettingsPanel {
         this.capTouched.set(false);
         this.proofThreshold.set('');
         this.proofThresholdTouched.set(false);
+        this.noteThreshold.set('');
+        this.noteThresholdTouched.set(false);
         this.terms.set('');
         this.termsTouched.set(false);
         this.gradeTerms.set({});

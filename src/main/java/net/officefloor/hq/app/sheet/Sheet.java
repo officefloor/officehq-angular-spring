@@ -37,6 +37,7 @@ public class Sheet {
     public static final String CLERK_LIMIT = "clerk-limit";
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    public static final String NOTE_THRESHOLD = "note-threshold";
     /** The actions the permission matrix covers, and the roles that may take each by the standing rule. */
     public static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
             "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
@@ -64,7 +65,7 @@ public class Sheet {
     private int lastClaimNumber;
 
     /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
-     *  each grade's terms (terms-<grade>), the clerk limit, the cap and the proof threshold. */
+     *  each grade's terms (terms-<grade>), the clerk limit, the cap, the proof threshold and the note threshold. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<SheetSetting> settings = new ArrayList<>();
@@ -181,6 +182,17 @@ public class Sheet {
     /** The proof threshold in force on the sheet's today; none when there is no threshold. */
     public BigDecimal getProofThreshold() {
         return proofThresholdOn(today);
+    }
+
+    /** The note threshold in force on a date: a claim dated then whose due is above it cannot be opened with
+     *  an empty note; none when there is no threshold. */
+    public BigDecimal noteThresholdOn(LocalDate date) {
+        return decimalOn(NOTE_THRESHOLD, date, null);
+    }
+
+    /** The note threshold in force on the sheet's today; none when there is no threshold. */
+    public BigDecimal getNoteThreshold() {
+        return noteThresholdOn(today);
     }
 
     /** A person's due-total as it counts: at most the cap; none (n/a) stays none. */

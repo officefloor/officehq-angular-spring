@@ -466,6 +466,14 @@ public class ClaimController {
         return Map.of("message", e.getMessage());
     }
 
+    /** An open of a claim with an empty note above the note threshold is refused with the reason, for the
+     *  screen to show. */
+    @ExceptionHandler(ClaimNoteException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> noteRefused(ClaimNoteException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     /** A split that is not allowed is refused with the reason, for the screen to show. */
     @ExceptionHandler(ClaimSplitException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

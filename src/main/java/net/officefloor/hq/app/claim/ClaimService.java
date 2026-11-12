@@ -189,14 +189,17 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
             throw new ClaimDeferException("The claim is deferred until " + claim.getDeferredUntil() + ".");
         }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        if (to == ClaimStatus.OPEN) {
+            refuseNoteless(claim, shownDue(claim, person));
+        }
         Rollup.Snapshot before = rollup.take(sheetId);
         String number = claim.getNumber();
         if (to == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId, claim.getDate());
             claim.setOpenedBy(user);
         }
-        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
-                .orElseThrow(PersonNotFoundException::new);
         if (to == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
             BigDecimal due = figure == null ? null : charged(claim, figure);
@@ -490,7 +493,7 @@ public class ClaimService {
             try {
                 opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
             } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException
-                    | ActionNotAllowedException e) {
+                    | ActionNotAllowedException | ClaimNoteException e) {
                 // refused: left as it is
             }
         }
@@ -708,6 +711,17 @@ public class ClaimService {
                 .proofThresholdOn(claim.getDate());
         if (threshold != null && due != null && due.compareTo(threshold) > 0 && claim.getProofs() == 0) {
             throw new ClaimProofException("The claim's due is above the proof threshold: add a proof first.");
+        }
+    }
+
+    /** Refuse opening a claim with an empty note whose due is above the note threshold in force on its date;
+     *  a due of n/a, or no threshold then, needs none. */
+    private void refuseNoteless(Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new)
+                .noteThresholdOn(claim.getDate());
+        if (threshold != null && due != null && due.compareTo(threshold) > 0
+                && (claim.getNote() == null || claim.getNote().isBlank())) {
+            throw new ClaimNoteException("The claim's due is above the note threshold: give it a note first.");
         }
     }
 

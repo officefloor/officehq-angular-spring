@@ -31,13 +31,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived.
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived.
      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
-            boolean archived) {
+            boolean archived, String noteThreshold) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -48,11 +48,12 @@ public class SheetController {
                     sheet.getCap() == null ? null : sheet.getCap().toPlainString(),
                     sheet.getSettings().stream().map(SettingView::of).toList(),
                     sheet.getProofThreshold() == null ? null : sheet.getProofThreshold().toPlainString(),
-                    sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived());
+                    sheet.getPermissions(), sheet.getGraceDays(), sheet.isArchived(),
+                    sheet.getNoteThreshold() == null ? null : sheet.getNoteThreshold().toPlainString());
         }
     }
 
-    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, clerk-limit, cap or proof-threshold)
+    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold or note-threshold)
      *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
     public record SettingView(String key, LocalDate from, String value) {
 
@@ -79,6 +80,11 @@ public class SheetController {
 
     /** The sheet's proof threshold from a date (missing: the sheet's today); a missing one means none. */
     public record ProofThresholdRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal proofThreshold,
+            LocalDate from) {
+    }
+
+    /** The sheet's note threshold from a date (missing: the sheet's today); a missing one means none. */
+    public record NoteThresholdRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal noteThreshold,
             LocalDate from) {
     }
 
@@ -181,6 +187,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ProofThresholdRequest request) {
         return SheetView.of(service.setProofThreshold(id.trim(), user.trim(), request.proofThreshold(), request.from()));
+    }
+
+    /** Change the sheet's note threshold. */
+    @PutMapping("/{id}/settings/note-threshold")
+    public SheetView setNoteThreshold(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid NoteThresholdRequest request) {
+        return SheetView.of(service.setNoteThreshold(id.trim(), user.trim(), request.noteThreshold(), request.from()));
     }
 
     /** Change the sheet's terms. */
