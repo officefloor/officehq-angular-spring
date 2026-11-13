@@ -1,5 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { Claim, Claims } from '../../core/claims';
+import { Claim, Claims, bound } from '../../core/claims';
 import { download } from '../../core/csv';
 import { Figures } from '../../core/figures';
 import { GRADES, People, Person } from '../../core/people';
@@ -451,6 +451,9 @@ function compareKeys(a: string, b: string): number {
                   (click)="statement(p)"
                 >
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+                <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)">
+                  Export statement (CSV)<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
                 <button
                   type="button"
@@ -928,6 +931,17 @@ export class PeopleList {
       }
     }
     download(lines, 'claims.csv');
+  }
+
+  /** Download the person's statement as CSV: their claims bound by their last statement, oldest
+   *  first, with the bound figure as the claim shows it. */
+  protected async exportStatement(p: Person): Promise<void> {
+    await this.session.loaded();
+    const lines = [['number', 'date', 'amount', 'figure', 'status']];
+    for (const c of [...this.claims.of(p.id)].reverse()) {
+      if (bound(c)) lines.push([c.number ?? '', c.date, c.amount, this.figures.claimDue(c, p), c.status]);
+    }
+    download(lines, 'statement.csv');
   }
 
   protected async statement(p: Person): Promise<void> {
