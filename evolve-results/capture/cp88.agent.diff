@@ -1,0 +1,47 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 6eea84b9b..f0043ba1a 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -134,7 +134,8 @@ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | nul
+ /** A claim's due in cents: the due fixed when it was settled; otherwise the greater of the sheet's floor
+  *  in force on its date (none for a correction) and its figure plus its late charge: for every full 30
+  *  days an OPEN or PENDING claim is overdue, the late percent in force on that boundary (its due-by plus
+- *  30, 60, 90 ... days) of the figure, rounded like a due, the charges added up (a statement never binds
++ *  30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding), rounded
++ *  like a due, the charges added up (a statement never binds
+  *  the charge; settling freezes the due; a correction has none); null when it has no figure. */
+ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string) => number, late: Late): number | null {
+   if (claim.settledDue !== null) return cents(claim.settledDue);
+@@ -147,7 +148,7 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
+   let charge = 0;
+   for (let boundary = 1; boundary <= periods; boundary++) {
+     const pct = late.pct(plusDays(claim.dueBy, grace + 30 * boundary));
+-    if (cents(pct) !== 0) charge += dueCents(figure, pct, halfUp);
++    if (cents(pct) !== 0) charge += dueCents(figure + charge, pct, halfUp);
+   }
+   return Math.max(figure + charge, floor(claim.date));
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 7beb0d246..b6e40826c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -660,8 +660,8 @@ public class ClaimService {
+     /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by
+      *  plus its grace, see overdueFrom, is before the sheet's today) or a correction, else the late percent of
+      *  the figure for every 30-day boundary it is overdue past (its due-by plus its grace plus 30, 60, 90 ...
+-     *  days), the late percent in force on that
+-     *  boundary date of the figure, rounded to two decimals as the claim's date decides (see roundingOf), the
++     *  days), compounding: the late percent in force on that boundary date of the figure plus the charges
++     *  of the boundaries before it, rounded to two decimals as the claim's date decides (see roundingOf), the
+      *  charges added up. Never bound by a statement: it follows the
+      *  sheet's today. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
+      *  claim as if it were still OPEN. */
+@@ -681,7 +681,7 @@ public class ClaimService {
+         for (long boundary = 1; boundary <= days / 30; boundary++) {
+             BigDecimal pct = settings.latePct(sheetId, from.plusDays(30 * boundary), asOf);
+             if (pct.signum() != 0) {
+-                charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
++                charge = charge.add(figure.add(charge).multiply(pct).movePointLeft(2).setScale(2, rounding));
+             }
+         }
+         return charge;
