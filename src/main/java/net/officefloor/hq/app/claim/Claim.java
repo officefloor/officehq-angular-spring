@@ -134,6 +134,10 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether it is on hold: while OPEN or PENDING and bound by no statement, it counts in no live total. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** Its external reference, unique on its sheet without regard to case; none when not given. */
     @Column(name = "ref")
     private String ref;
@@ -199,6 +203,7 @@ public class Claim {
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
         copy.waived = waived;
+        copy.held = held;
         copy.voidReason = voidReason;
         copy.tags = tags;
         statusLog.forEach(l -> copy.statusLog.add(new StatusChange(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
@@ -462,6 +467,14 @@ public class Claim {
 
     public void setWaived(boolean waived) {
         this.waived = waived;
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
     }
 
     public List<StatusChange> getStatusLog() {

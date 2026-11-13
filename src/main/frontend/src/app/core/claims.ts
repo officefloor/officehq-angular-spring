@@ -70,6 +70,8 @@ export interface Claim {
   lines: ClaimLine[];
   /** Whether a steward waived its late charge: from then on it bears none, whatever its overdue state. */
   waived: boolean;
+  /** Whether it is on hold: while OPEN or PENDING and bound by no statement, it counts in no live total. */
+  held: boolean;
 }
 
 /** A line of a claim: its label, a whole quantity of at least 1 and a unit amount, two decimals. */
@@ -186,15 +188,15 @@ export class Claims {
   });
 
   /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound
-   *  by no statement, and dated within one of its person's holds or its person's retirement date is
-   *  reached on the sheet's today. */
+   *  by no statement, and held itself, or dated within one of its person's holds, or its person's
+   *  retirement date is reached on the sheet's today. */
   private readonly leftOut = computed(() => {
     const today = this.session.today();
     const byId = new Map(this.people.people().map((p) => [p.id, p]));
     return (c: Claim): boolean => {
       const p = byId.get(c.personId);
       return isOpen(c) && !bound(c) && p !== undefined
-        && (heldOn(p.holds, c.date) || retiredBy(p, today));
+        && (c.held || heldOn(p.holds, c.date) || retiredBy(p, today));
     };
   });
 
@@ -562,6 +564,22 @@ export class Claims {
       return null;
     } catch (e) {
       return failed('waive', e);
+    }
+  }
+
+  /** Hold an OPEN or PENDING claim, or release it when held; an error message when refused. */
+  async toggleHold(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/hold`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('hold', e);
     }
   }
 

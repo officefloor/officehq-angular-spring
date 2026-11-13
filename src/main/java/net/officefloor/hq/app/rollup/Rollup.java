@@ -378,11 +378,11 @@ public class Rollup {
     }
 
     /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by
-     *  no statement, and dated within one of its person's holds or its person's retirement date is reached on
-     *  the sheet's today. */
+     *  no statement, and held itself, or dated within one of its person's holds, or its person's retirement
+     *  date is reached on the sheet's today. */
     public static boolean heldOut(Claim claim, Person person, LocalDate today) {
         return person != null && claim.getStatus().isOpen() && !claim.isBound()
-                && (person.heldOn(claim.getDate()) || person.retiredBy(today));
+                && (claim.isHeld() || person.heldOn(claim.getDate()) || person.retiredBy(today));
     }
 
     /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on

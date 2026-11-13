@@ -49,13 +49,13 @@ public class ClaimController {
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count and how many of them are receipts and photos,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
-     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived. */
+     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, int proofReceipts, int proofPhotos, String splitFrom, String lockedBy, boolean lateEntry,
             String remindedOn, String ref, List<String> tags, String voidReason,
-            List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived) {
+            List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived, boolean held) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -72,7 +72,7 @@ public class ClaimController {
                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch(),
-                    claim.getLines().stream().map(LineView::of).toList(), claim.isWaived());
+                    claim.getLines().stream().map(LineView::of).toList(), claim.isWaived(), claim.isHeld());
         }
     }
 
@@ -732,6 +732,21 @@ public class ClaimController {
     }
 
     /** A reminder that is not allowed is refused with the reason, for the screen to show. */
+    /** Hold an OPEN or PENDING claim, or release it when held. */
+    @PostMapping("/claims/{claimId}/hold")
+    public ClaimView hold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.toggleHold(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** A hold or release of a claim in any status but OPEN or PENDING is refused with the reason. */
+    @ExceptionHandler(ClaimHoldException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> holdRefused(ClaimHoldException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     @ExceptionHandler(ClaimRemindException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> remindRefused(ClaimRemindException e) {

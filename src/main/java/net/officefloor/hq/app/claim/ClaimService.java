@@ -492,6 +492,24 @@ public class ClaimService {
         return updated;
     }
 
+    /** Hold an OPEN or PENDING claim, or release it when held: while held it leaves the live totals as a
+     *  held person's claims do; write CLAIM_HELD or CLAIM_RELEASED. Refused for a claim in any other status. */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!claim.getStatus().isOpen()) {
+            throw new ClaimHoldException("Only an OPEN or PENDING claim can be held or released.");
+        }
+        Rollup.Snapshot before = rollup.take(sheetId);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setHeld(!claim.isHeld());
+        Claim updated = claims.saveAndFlush(claim);
+        audit(updated.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", updated, person, user);
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
     /** Comment on a claim: keep the text with the user and the sheet's today, and write COMMENT_ADDED.
      *  Refused for an empty comment. */
     @Transactional

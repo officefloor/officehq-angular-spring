@@ -210,13 +210,13 @@ public class SheetCloneService {
             long newId = insert("INSERT INTO claim (sheet_id, person_id, list_order, amount, claim_date, due_by, terms,"
                     + " note, status, corrects_number, settled_due, opened_by, edited_by, stated, stated_due,"
                     + " deferred_until, proofs, split_from, settle_batch, late_entry, reminded_on, ref, void_reason,"
-                    + " tags, escalated, waived, proof_photos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    + " tags, escalated, waived, proof_photos, held) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     target, personIds.get(oldPerson), c.get("list_order"), c.get("amount"), c.get("claim_date"),
                     c.get("due_by"), c.get("terms"), c.get("note"), c.get("status"), c.get("corrects_number"),
                     c.get("settled_due"), c.get("opened_by"), c.get("edited_by"), c.get("deferred_until"),
                     c.get("proofs"), c.get("split_from"), c.get("settle_batch"), c.get("late_entry"),
                     c.get("reminded_on"), c.get("ref"), c.get("void_reason"), c.get("tags"),
-                    c.get("escalated"), c.get("waived"), c.get("proof_photos"));
+                    c.get("escalated"), c.get("waived"), c.get("proof_photos"), c.get("held"));
             copied.add(new long[] { oldId, newId });
             jdbc.update("INSERT INTO claim_status_log (claim_id, seq, status, by_user, on_date, due)"
                     + " SELECT ?, seq, status, by_user, on_date, due FROM claim_status_log WHERE claim_id = ?",
