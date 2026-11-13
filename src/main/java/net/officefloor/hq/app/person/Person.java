@@ -84,6 +84,10 @@ public class Person {
     @Column(name = "origin_sheet")
     private String originSheet;
 
+    /** The sheet's today on which they arrived by transfer; null for anyone who did not. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     /** Their place in the sheet's list; set when they are first saved, next after everyone on the sheet. */
     @Column(name = "list_position", nullable = false)
     private Long position;
@@ -196,6 +200,10 @@ public class Person {
         return originSheet;
     }
 
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
+    }
+
     public String getContact() {
         return contact;
     }
@@ -291,8 +299,9 @@ public class Person {
     }
 
     /** A copy of them for another sheet: every grade they were given (with its from-date), their terms
-     *  (each with its from-date), contact, tags and aliases; not their holds. */
-    public Person copyTo(String otherSheetId) {
+     *  (each with its from-date), contact, tags and aliases; not their holds. They arrive on that sheet's
+     *  today given. */
+    public Person copyTo(String otherSheetId, LocalDate arrivedOn) {
         Person copy = new Person();
         copy.sheetId = otherSheetId;
         copy.name = name;
@@ -302,6 +311,7 @@ public class Person {
         copy.contact = contact;
         copy.tags = tags;
         copy.originSheet = sheetId;
+        copy.arrivedOn = arrivedOn;
         aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias(), a.getAliasCopy())));
         return copy;
     }

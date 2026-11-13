@@ -422,6 +422,15 @@ public class PersonController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Undo the transfer that brought a person to this sheet: they go back to the sheet they came from. */
+    @PostMapping("/{personId}/transfer-undo")
+    public ResponseEntity<Void> undoTransfer(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        service.undoTransfer(sheetId.trim(), user.trim(), personId);
+        return ResponseEntity.noContent().build();
+    }
+
     /** A transfer that is not allowed is refused with the reason, for the screen to show. */
     @ExceptionHandler(TransferRefusedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

@@ -555,6 +555,14 @@ function compareKeys(a: string, b: string): number {
                 >
                   Transfer<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-transfer-undo"
+                  [disabled]="transferring() === p.id"
+                  (click)="undoTransfer(p)"
+                >
+                  Undo transfer<span class="visually-hidden"> of {{ p.name }}</span>
+                </button>
                 @if (actionError()?.id === p.id) {
                   <p role="alert" data-testid="person-error">{{ actionError()?.message }}</p>
                 }
@@ -1022,6 +1030,23 @@ export class PeopleList {
         return;
       }
       this.transferTargets.update((ts) => ({ ...ts, [p.id]: '' }));
+      await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.crews.load(), this.periods.load()]);
+    } finally {
+      this.transferring.set(null);
+    }
+  }
+
+  /** Undo the transfer that brought a person here: they go back to the sheet they came from, so everything on
+   *  the sheet is re-read as after a transfer. */
+  protected async undoTransfer(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.transferring.set(p.id);
+    try {
+      const err = await this.people.undoTransfer(p.id);
+      if (err) {
+        this.actionError.set({ id: p.id, message: err });
+        return;
+      }
       await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.crews.load(), this.periods.load()]);
     } finally {
       this.transferring.set(null);

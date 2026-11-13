@@ -511,6 +511,21 @@ export class People {
     }
   }
 
+  /** Undo the transfer that brought a person to this sheet; an error message when refused. */
+  async undoTransfer(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      await firstValueFrom(
+        this.http.post<void>(`${this.url(sid)}/${id}/transfer-undo`, null, { headers: { 'X-User': user } }),
+      );
+      return null;
+    } catch (e) {
+      return failed('transfer undo', e);
+    }
+  }
+
   /** Start (on) or stop watching a person as the signed-in user; an error message when refused. */
   async watch(id: number, on: boolean): Promise<string | null> {
     const sid = this.session.sheetId();

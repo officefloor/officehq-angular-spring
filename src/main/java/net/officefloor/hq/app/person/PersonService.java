@@ -584,7 +584,7 @@ public class PersonService {
 
         Rollup.Snapshot beforeHere = rollup.take(sheetId);
         Rollup.Snapshot beforeThere = rollup.take(to);
-        Person arrived = into != null ? into : saved(from.copyTo(to));
+        Person arrived = into != null ? into : saved(from.copyTo(to, target.getToday()));
         List<Claim> leaving = new ArrayList<>(
                 claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, from.getId()));
         List<Claim> listed = new ArrayList<>(leaving);
@@ -657,6 +657,32 @@ public class PersonService {
         }
         rollup.recordChanges(to, user, beforeThere);
         return arrived;
+    }
+
+    /** On the sheet a transfer brought a person to, a steward undoes it on the same sheet's today they arrived:
+     *  they are transferred back to the sheet they came from, by exactly the rules of a transfer. Refused on a
+     *  later day, for anyone but a steward and for a person who did not arrive by transfer. */
+    @Transactional
+    public Person undoTransfer(String sheetId, String user, long personId) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new TransferRefusedException("Only a steward may undo a transfer.");
+        }
+        if (person.getOriginSheet() == null || person.getArrivedOn() == null) {
+            throw new TransferRefusedException(person.getName() + " did not arrive by transfer.");
+        }
+        if (!person.getArrivedOn().equals(today(sheetId))) {
+            throw new TransferRefusedException("The transfer of " + person.getName()
+                    + " can only be undone on the day they arrived.");
+        }
+        String name = person.getName();
+        String back = person.getOriginSheet();
+        Rollup.Snapshot before = rollup.take(sheetId);
+        Person returned = transfer(sheetId, user, personId, back);
+        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user + " name=" + name
+                + " to=" + back);
+        rollup.recordChanges(sheetId, user, before);
+        return returned;
     }
 
     /** Carry a person's statements to whom they merge into or arrive as (on that person's sheet), ahead of
