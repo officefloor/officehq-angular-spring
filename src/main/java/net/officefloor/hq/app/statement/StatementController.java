@@ -47,7 +47,8 @@ public class StatementController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         List<ClaimView> claims = rollups.track(sheet, by, () -> service.take(sheet, by, personId)).stream()
-                .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim))).toList();
+                .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim),
+                        claimService.logOf(claim.getId()))).toList();
         return new StatementTaken(service.summary(sheet, personId), claims);
     }
 

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.period.PeriodClosedException;
@@ -38,17 +39,17 @@ public class ClaimController {
      *  corrects is the number of the claim a correction corrects (null when it is not one); roundsBy
      *  is the date its live figures round by against the sheet's policy date (its own date, or for a
      *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was
-     *  added. */
+     *  added; log is its status log, oldest first, one line per status it has had. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy) {
-        public static ClaimView of(Claim claim, LocalDate roundsBy) {
+            String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log) {
+        public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
-                    claim.getCorrects(), roundsBy, claim.getDueBy());
+                    claim.getCorrects(), roundsBy, claim.getDueBy(), log);
         }
     }
 
@@ -93,7 +94,10 @@ public class ClaimController {
     @GetMapping("/claims")
     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
         String sheet = sheetId.trim();
-        return service.list(sheet).stream().map(claim -> view(sheet, claim)).toList();
+        Map<Long, List<String>> logs = service.logsOf(sheet);
+        return service.list(sheet).stream()
+                .map(claim -> ClaimView.of(claim, service.roundsBy(sheet, claim), logs.getOrDefault(claim.getId(), List.of())))
+                .toList();
     }
 
     /** Add a claim for a person. */
@@ -187,7 +191,7 @@ public class ClaimController {
     }
 
     private ClaimView view(String sheet, Claim claim) {
-        return ClaimView.of(claim, service.roundsBy(sheet, claim));
+        return ClaimView.of(claim, service.roundsBy(sheet, claim), service.logOf(claim.getId()));
     }
 
     /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,

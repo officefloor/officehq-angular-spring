@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.NameInUseException;
@@ -50,14 +51,16 @@ public class QuickAddController {
     private final PersonService people;
     private final PersonGradeService grades;
     private final SheetService sheets;
+    private final ClaimService claims;
 
     public QuickAddController(QuickAddService service, StatementService statements, PersonService people,
-            PersonGradeService grades, SheetService sheets) {
+            PersonGradeService grades, SheetService sheets, ClaimService claims) {
         this.service = service;
         this.statements = statements;
         this.people = people;
         this.grades = grades;
         this.sheets = sheets;
+        this.claims = claims;
     }
 
     /** Add a DRAFT claim for the named person, adding them first when the name is not on the sheet. */
@@ -71,7 +74,8 @@ public class QuickAddController {
         Long personId = added.person().getId();
         return new QuickAddView(PersonView.of(added.person(), grades.of(personId), sheets.today(sheet),
                 statements.summary(sheet, personId), people.patronIds(personId)),
-                ClaimView.of(added.claim(), added.claim().getDate())); // never a correction: rounds by its own date
+                ClaimView.of(added.claim(), added.claim().getDate(),
+                        claims.logOf(added.claim().getId()))); // never a correction: rounds by its own date
     }
 
     /** A claim dated in a closed period or after its person retired, or a name taken at the same moment, is refused. */

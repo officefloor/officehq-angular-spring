@@ -41,6 +41,9 @@ export interface Claim {
   /** The date the claim is due by (yyyy-mm-dd), fixed when it was added: its date plus the terms of
    *  its person's grade in force on that date. */
   dueBy: string;
+  /** The claim's status log, oldest first: one line per status it has had, as
+   *  <STATUS> by <user> on <date> due=<due>. */
+  log: string[];
 }
 
 /** Whether a claim is a correction: its amount is negative. */
@@ -199,6 +202,11 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
+          <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim ' + c.id">
+            @for (line of c.log; track $index) {
+              <li data-testid="claim-log-line">{{ line }}</li>
+            }
+          </ol>
           <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
             Open
           </button>

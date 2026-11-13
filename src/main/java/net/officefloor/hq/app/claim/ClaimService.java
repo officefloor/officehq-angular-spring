@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
@@ -33,6 +35,7 @@ public class ClaimService {
     private static final String NO_PERIOD = "X";
 
     private final ClaimRepository claims;
+    private final ClaimLogRepository logs;
     private final PersonRepository people;
     private final RateService rates;
     private final PersonGradeService grades;
@@ -41,11 +44,12 @@ public class ClaimService {
     private final SettingService settings;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates,
+    public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, Audit audit) {
         this.periods = periods;
         this.settings = settings;
         this.claims = claims;
+        this.logs = logs;
         this.people = people;
         this.rates = rates;
         this.grades = grades;
@@ -73,6 +77,7 @@ public class ClaimService {
         LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, grades.gradeOn(personId, on)));
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, dueBy, noteOf(note),
                 corrects));
+        log(sheetId, user, person, added);
         record("CLAIM_ADDED", sheetId, user, person, added);
         return added;
     }
@@ -136,6 +141,7 @@ public class ClaimService {
             claim.setSettledDue(due);
         }
         Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
             case PENDING -> "CLAIM_PENDING";
@@ -163,6 +169,7 @@ public class ClaimService {
         claim.setSettledDue(dueOf(sheetId, person, claim));
         claim.setStatus(ClaimStatus.SETTLED);
         Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
         audit.recordOnCommit(line("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber())
                 + " due=" + settledDueText(saved));
         return saved;
@@ -177,6 +184,7 @@ public class ClaimService {
         Claim claim = pending(sheetId, user, personId, id, ClaimStatus.OPEN);
         claim.setStatus(ClaimStatus.OPEN);
         Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
         audit.recordOnCommit(line("CLAIM_REJECTED", sheetId, user, person, saved, saved.getNumber())
                 + " reason=" + reason.trim());
         return saved;
@@ -214,6 +222,25 @@ public class ClaimService {
         audit.recordOnCommit(line("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber())
                 + " from=" + from.getName() + " to=" + to.getName());
         return saved;
+    }
+
+    /** A claim's status log, oldest first: one line per status it has had. */
+    public List<String> logOf(Long claimId) {
+        return logs.findByClaimIdOrderByIdAsc(claimId).stream().map(ClaimLogEntry::text).toList();
+    }
+
+    /** The status logs of the sheet's claims by claim id, each oldest first. */
+    public Map<Long, List<String>> logsOf(String sheetId) {
+        return logs.findBySheetIdOrderByIdAsc(sheetId).stream().collect(Collectors.groupingBy(
+                ClaimLogEntry::getClaimId, Collectors.mapping(ClaimLogEntry::text, Collectors.toList())));
+    }
+
+    /** Log the status a claim has just moved to (or been added in): by whom, on the sheet's today, and
+     *  its due as it is now. */
+    private void log(String sheetId, String user, Person person, Claim claim) {
+        BigDecimal due = dueOf(sheetId, person, claim);
+        logs.save(new ClaimLogEntry(sheetId, claim.getId(), claim.getStatus(), user, sheets.today(sheetId),
+                due != null ? due.toPlainString() : NO_RATE));
     }
 
     /** The PENDING claim a steward approves or rejects; refused when it is not PENDING, dated in a
