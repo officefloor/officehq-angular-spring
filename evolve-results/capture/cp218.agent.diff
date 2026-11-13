@@ -1,0 +1,334 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 75161ac5e..8c0a3fc8c 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -74,6 +74,8 @@ export interface Claim {
+   held: boolean;
+   /** Its shares, in the order shared: the other people holding a part of its due. */
+   shares: ClaimShare[];
++  /** The user a steward assigned its review to; null when never assigned. */
++  reviewAssignee: string | null;
+ }
+ 
+ /** A share of a claim: the person holding it and their percent, two decimals. */
+@@ -616,6 +618,28 @@ export class Claims {
+     }
+   }
+ 
++  /** Assign a REVIEW claim's review to a user; an error message when refused (a blank user, a claim in any
++   *  other status, or a user who is not a steward). */
++  async assignReview(id: number, assignee: string): Promise<string | null> {
++    const sid = this.session.sheetId();
++    const user = this.session.user();
++    if (!user || !sid) return 'Load a sheet first.';
++    if (!assignee.trim()) return 'Enter the user to assign the review to.';
++    try {
++      const claim = await firstValueFrom(
++        this.http.post<Claim>(
++          `${this.url(sid)}/claims/${id}/review-assignee`,
++          { user: assignee.trim() },
++          { headers: { 'X-User': user } },
++        ),
++      );
++      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
++      return null;
++    } catch (e) {
++      return failed('assign', e);
++    }
++  }
++
+   /** Share a percent of a claim's due with another person on the sheet; an error message when refused (no
+    *  person chosen, a share not above 0.00 or of more than two decimals, the claim's own person, a person
+    *  already holding a share, shares adding up to more than 100.00, or a SETTLED, VOID or DELETED claim). */
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 9619558e0..e0bb8a1fe 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -223,6 +223,15 @@ export class Figures {
+     };
+   });
+ 
++  /** How many of the sheet's REVIEW claims are assigned to the signed-in user, names compared trimmed and
++   *  without regard to case. */
++  readonly myReviewsCount = computed(() => {
++    const user = this.session.user()?.trim().toLowerCase();
++    if (!user) return 0;
++    return this.claims.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssignee?.trim().toLowerCase() === user)
++      .length;
++  });
++
+   /** A crew's due-total: the lead's and the members' due-totals as the people list shows them, added up,
+    *  n/a skipped. */
+   crewDueCents(c: CrewView): bigint {
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index edca9b092..056472ed7 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -101,6 +101,7 @@ import { VoidReasons } from '../../core/void-reasons';
+           <span>Period <span data-testid="claim-period">{{ periods.of(c.dueBy)?.name ?? '' }}</span></span>
+           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
++          <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span></span>
+           <span>Shared with <span data-testid="claim-shares">{{ sharesShown(c) }}</span></span>
+           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+@@ -240,6 +241,16 @@ import { VoidReasons } from '../../core/void-reasons';
+           <button type="button" data-testid="claim-hold" [disabled]="acting() === c.id" (click)="toggleHold(c)">
+             {{ c.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+           </button>
++          <label [for]="'claim-review-user-' + c.id">Assign review to</label>
++          <input
++            [id]="'claim-review-user-' + c.id"
++            data-testid="claim-review-user"
++            [value]="reviewUsers()[c.id] ?? ''"
++            (input)="setReviewUser(c.id, value($event))"
++          />
++          <button type="button" data-testid="claim-review-assign" [disabled]="acting() === c.id" (click)="assignReview(c)">
++            Assign review<span class="visually-hidden"> of claim {{ c.amount }} on {{ c.date }}</span>
++          </button>
+           <label [for]="'claim-share-select-' + c.id">Share with</label>
+           <select
+             [id]="'claim-share-select-' + c.id"
+@@ -373,6 +384,7 @@ export class PersonClaims {
+   /** Everyone on the sheet, whom a claim can be shared with (the server refuses the claim's own person). */
+   protected readonly everyone = computed(() => this.people.people());
+   /** The person chosen and the percent typed to share each claim with, by claim id. */
++  protected readonly reviewUsers = signal<Record<number, string>>({});
+   protected readonly shareFields = signal<Record<number, { personId?: string; share?: string }>>({});
+   /** The person chosen to move each claim to, by claim id. */
+   protected readonly reassignTo = signal<Record<number, number>>({});
+@@ -613,6 +625,23 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected setReviewUser(id: number, text: string): void {
++    this.clearActionError(id);
++    this.reviewUsers.update((f) => ({ ...f, [id]: text }));
++  }
++
++  /** Assign the claim's review to the user typed. */
++  protected async assignReview(c: Claim): Promise<void> {
++    this.clearActionError(c.id);
++    this.acting.set(c.id);
++    try {
++      const err = await this.claims.assignReview(c.id, this.reviewUsers()[c.id] ?? '');
++      if (err) this.actionError.set({ id: c.id, message: err });
++    } finally {
++      this.acting.set(null);
++    }
++  }
++
+   /** A claim's holders as its row shows them: <name> <share>, comma and space separated, in the order shared. */
+   protected sharesShown(c: Claim): string {
+     const names = new Map(this.people.people().map((p) => [p.id, p.name]));
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index c566439e5..2713440aa 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -38,7 +38,7 @@ function overTree(members: TreeMember[]) {
+ // sheet as of a date, every sheet of the tree as it stood at the end of that date. Likewise per grade the due-totals of
+ // the people on it (retired people left out), and per status the number of claims in it. And the signed-in user's own due- and overdue-totals, when a
+ // person on the sheet has their name or an alias equal to it; blank otherwise. And the user's crew total: the due-totals of
+-// the crews that person leads, added up; blank when they lead none. And, for a steward, a dashboard: the
++// the crews that person leads, added up; blank when they lead none. And the REVIEW claims assigned to the user, counted. And, for a steward, a dashboard: the
+ // sheet's PENDING and REVIEW claims and its overdue claims that count, counted; blank for anyone else.
+ @Component({
+   selector: 'app-header',
+@@ -54,6 +54,7 @@ function overTree(members: TreeMember[]) {
+         <div><dt>My due total</dt><dd data-testid="my-due-total">{{ figures.mine()?.dueTotal }}</dd></div>
+         <div><dt>My overdue total</dt><dd data-testid="my-overdue-total">{{ figures.mine()?.overdueTotal }}</dd></div>
+         <div><dt>My crew due total</dt><dd data-testid="my-crew-due-total">{{ figures.myCrewDueTotal() }}</dd></div>
++        <div><dt>My reviews</dt><dd data-testid="my-reviews-count">{{ figures.myReviewsCount() }}</dd></div>
+       </dl>
+       <dl aria-label="Steward dashboard">
+         <div><dt>Pending to approve</dt><dd data-testid="dash-pending-count">{{ figures.dashboard()?.pending }}</dd></div>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 2256bcebc..5f61f3cde 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -140,6 +140,10 @@ public class Claim {
+     @Column(name = "held", nullable = false)
+     private boolean held;
+ 
++    /** The user a steward assigned its review to; none when never assigned. */
++    @Column(name = "review_assignee")
++    private String reviewAssignee;
++
+     /** Its external reference, unique on its sheet without regard to case; none when not given. */
+     @Column(name = "ref")
+     private String ref;
+@@ -212,6 +216,7 @@ public class Claim {
+         copy.escalated = escalated;
+         copy.waived = waived;
+         copy.held = held;
++        copy.reviewAssignee = reviewAssignee;
+         copy.voidReason = voidReason;
+         copy.tags = tags;
+         statusLog.forEach(l -> copy.statusLog.add(new StatusChange(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
+@@ -485,6 +490,14 @@ public class Claim {
+         this.held = held;
+     }
+ 
++    public String getReviewAssignee() {
++        return reviewAssignee;
++    }
++
++    public void setReviewAssignee(String reviewAssignee) {
++        this.reviewAssignee = reviewAssignee;
++    }
++
+     public List<StatusChange> getStatusLog() {
+         return List.copyOf(statusLog);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimAssignException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimAssignException.java
+new file mode 100644
+index 000000000..5e103f948
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimAssignException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** An assignment of a claim's review that is not allowed. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimAssignException extends RuntimeException {
++
++    public ClaimAssignException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index f2894d6fa..ea7672687 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -49,14 +49,14 @@ public class ClaimController {
+      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count and how many of them are receipts and photos,
+      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
+      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
+-     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held, and its shares, in the order shared. */
++     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held, and its shares, in the order shared, and the user its review is assigned to (none when never assigned). */
+     public record ClaimView(long id, long personId, String amount, String date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
+             int proofs, int proofReceipts, int proofPhotos, String splitFrom, String lockedBy, boolean lateEntry,
+             String remindedOn, String ref, List<String> tags, String voidReason,
+             List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived, boolean held,
+-            List<ShareView> shares) {
++            List<ShareView> shares, String reviewAssignee) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -74,7 +74,7 @@ public class ClaimController {
+                     claim.getTags(), claim.getVoidReason(),
+                     claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch(),
+                     claim.getLines().stream().map(LineView::of).toList(), claim.isWaived(), claim.isHeld(),
+-                    claim.getShares().stream().map(ShareView::of).toList());
++                    claim.getShares().stream().map(ShareView::of).toList(), claim.getReviewAssignee());
+         }
+     }
+ 
+@@ -818,6 +818,26 @@ public class ClaimController {
+         return ClaimView.of(service.toggleHold(sheetId.trim(), user.trim(), claimId));
+     }
+ 
++    /** The user to assign a claim's review to. */
++    public record AssignReviewRequest(@Size(max = 200) String user) {
++    }
++
++    /** Assign a REVIEW claim's review to a user. */
++    @PostMapping("/claims/{claimId}/review-assignee")
++    public ClaimView assignReview(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid AssignReviewRequest request) {
++        return ClaimView.of(service.assignReview(sheetId.trim(), user.trim(), claimId, request.user()));
++    }
++
++    /** An assignment that is not allowed is refused with the reason, for the screen to show. */
++    @ExceptionHandler(ClaimAssignException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> assignRefused(ClaimAssignException e) {
++        return Map.of("message", e.getMessage());
++    }
++
+     /** A hold or release of a claim in any status but OPEN or PENDING is refused with the reason. */
+     @ExceptionHandler(ClaimHoldException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 37ec9f894..86e847956 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -549,6 +549,30 @@ public class ClaimService {
+         return updated;
+     }
+ 
++    /** Assign a REVIEW claim's review to a user name (trimmed); it stays assigned once the claim leaves REVIEW;
++     *  write REVIEW_ASSIGNED ending user=<user>. Refused for a blank user, a claim in any other status, and
++     *  anyone but a steward. */
++    @Transactional
++    public Claim assignReview(String sheetId, String user, long claimId, String assignee) {
++        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (!roles.isSteward(sheetId, user)) {
++            throw new ClaimAssignException("Only a steward can assign a review.");
++        }
++        if (claim.getStatus() != ClaimStatus.REVIEW) {
++            throw new ClaimAssignException("Only a REVIEW claim can be assigned.");
++        }
++        if (assignee == null || assignee.isBlank()) {
++            throw new ClaimAssignException("Enter the user to assign the review to.");
++        }
++        String name = assignee.trim();
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(PersonNotFoundException::new);
++        claim.setReviewAssignee(name);
++        Claim updated = claims.saveAndFlush(claim);
++        audit("REVIEW_ASSIGNED", updated, person, user, updated.getNumber(), " user=" + name);
++        return updated;
++    }
++
+     /** Hold an OPEN or PENDING claim, or release it when held: a hold no longer leaves the live totals;
+      *  write CLAIM_HELD or CLAIM_RELEASED. Refused for a claim in any other status. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 7524099dd..d520b68f1 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
+ import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.Table;
++import jakarta.persistence.Version;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.HashMap;
+@@ -46,6 +47,11 @@ public class Period {
+     @Column(name = "closed", nullable = false)
+     private boolean closed;
+ 
++    /** Moved on by each save, a change to its openings too, so the history keeps each change. */
++    @Version
++    @Column(name = "version", nullable = false)
++    private long version;
++
+     @Column(name = "soft_closed", nullable = false)
+     private boolean softClosed;
+ 
+diff --git a/src/main/resources/db/migration/V116__claim_review_assignee.sql b/src/main/resources/db/migration/V116__claim_review_assignee.sql
+new file mode 100644
+index 000000000..ea060ad60
+--- /dev/null
++++ b/src/main/resources/db/migration/V116__claim_review_assignee.sql
+@@ -0,0 +1,2 @@
++-- The user a steward assigned a REVIEW claim to; none when never assigned. It stays once the claim leaves REVIEW.
++ALTER TABLE claim ADD COLUMN review_assignee VARCHAR(200);
+diff --git a/src/main/resources/db/migration/V117__period_version.sql b/src/main/resources/db/migration/V117__period_version.sql
+new file mode 100644
+index 000000000..33276bd3d
+--- /dev/null
++++ b/src/main/resources/db/migration/V117__period_version.sql
+@@ -0,0 +1,3 @@
++-- A version moved on by each save of a period makes a change to its openings (or other per-person figures) a
++-- change of the period itself, so the history (entity_version) keeps it and it reads back as of a date.
++ALTER TABLE period ADD COLUMN version BIGINT DEFAULT 0 NOT NULL;
