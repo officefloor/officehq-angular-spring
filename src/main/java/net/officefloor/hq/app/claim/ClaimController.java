@@ -50,12 +50,13 @@ public class ClaimController {
      *  the user whose open editor locks it (null when no one's does); lateEntry is whether it was
      *  added while its period was soft-closed; remindedOn is the last day a reminder was written for it
      *  (null when none was); ref is its external reference (null when it has none); tags are its tags,
-     *  sorted (empty when it has none). */
+     *  sorted (empty when it has none); voidReason is the reason it was voided with (null when none
+     *  was given). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            LocalDate remindedOn, String ref, List<String> tags) {
+            LocalDate remindedOn, String ref, List<String> tags, String voidReason) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -64,7 +65,8 @@ public class ClaimController {
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn(), claim.getRef(), claim.getTags());
+                    claim.getRemindedOn(), claim.getRef(), claim.getTags(),
+                    claim.getVoidReason());
         }
     }
 
@@ -83,6 +85,10 @@ public class ClaimController {
 
     /** The date an OPEN claim is deferred until. */
     public record DeferRequest(@NotNull LocalDate until) {
+    }
+
+    /** The reason a claim is voided with, chosen from the sheet's list; blank or absent for none. */
+    public record VoidRequest(@Size(max = 255) String reason) {
     }
 
     /** Why a steward rejects a PENDING claim. */
@@ -320,11 +326,17 @@ public class ClaimController {
         return view(sheet, service.addProof(sheet, by, personId, id));
     }
 
-    /** Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED one. */
+    /** Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED
+     *  one; while the sheet's list of void reasons is not empty, with a reason chosen from it. */
     @PostMapping("/people/{personId}/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
-            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
-        return changeStatus(sheetId, user, personId, id, ClaimStatus.VOID);
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody(required = false) @Validated VoidRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        String reason = request == null ? null : request.reason();
+        return view(sheet, rollups.track(sheet, by,
+                () -> service.changeStatus(sheet, by, personId, id, ClaimStatus.VOID, reason)));
     }
 
     private ClaimView changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
@@ -344,6 +356,7 @@ public class ClaimController {
      *  approving a claim above the proof threshold with no proofs, or opening a claim above the note
      *  threshold with an empty note, or a split the claim or amount does
      *  not allow, or a void of a SETTLED claim by anyone but a steward or after its void window, or a
+     *  void without a reason from the sheet's list while it has one, or a
      *  re-date of a claim that is not OPEN or PENDING, or opening or saving the editor of a claim
      *  another user's editor locks, or a reminder of a claim that is not OPEN or PENDING or was already
      *  reminded on the sheet's today, is refused. */

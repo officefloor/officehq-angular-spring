@@ -30,6 +30,7 @@ import net.officefloor.hq.app.setting.Permission;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.voidreason.VoidReasonService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,12 +57,14 @@ public class ClaimService {
     private final SettingService settings;
     private final PersonWatchRepository watches;
     private final HolidayService holidays;
+    private final VoidReasonService voidReasons;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
-            HolidayService holidays, Audit audit) {
+            HolidayService holidays, VoidReasonService voidReasons, Audit audit) {
         this.holidays = holidays;
+        this.voidReasons = voidReasons;
         this.periods = periods;
         this.watches = watches;
         this.settings = settings;
@@ -215,6 +218,14 @@ public class ClaimService {
      *  leaves it PENDING a steward's approval instead. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
+        return changeStatus(sheetId, user, personId, id, to, null);
+    }
+
+    /** Move a claim to a new status, as above; a void, while the sheet's list of void reasons is not
+     *  empty, needs a reason chosen from it, which the claim keeps and the audit line ends with. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
+            String voidReason) {
         Person person = person(sheetId, personId);
         // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
         // read below is its latest state.
@@ -235,6 +246,10 @@ public class ClaimService {
             refuseLateOrUnstewardedVoid(sheetId, user, claim);
         } else if (!claim.getStatus().canMoveTo(to)) {
             throw new StatusChangeRefusedException(claim.getStatus(), to);
+        }
+        String reason = voidReason == null || voidReason.isBlank() ? null : voidReason.trim();
+        if (to == ClaimStatus.VOID) {
+            refuseUnreasonedVoid(sheetId, reason);
         }
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new OwnClaimSettleRefusedException(user);
@@ -260,6 +275,8 @@ public class ClaimService {
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(due);
+        } else if (to == ClaimStatus.VOID) {
+            claim.setVoidReason(reason);
         }
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
@@ -275,6 +292,9 @@ public class ClaimService {
             line += " due=" + settledDueText(saved);
         } else if (reversing) {
             line += " reversed=" + settledDueText(saved);
+        }
+        if (to == ClaimStatus.VOID && reason != null) {
+            line += " reason=" + reason;
         }
         audit.recordOnCommit(line);
         if (to == ClaimStatus.SETTLED) {
@@ -551,6 +571,14 @@ public class ClaimService {
 
     /** A SETTLED claim is voided only by a steward, and only while the sheet's today is within
      *  {@value #VOID_WINDOW_DAYS} days of the date its status log last records it SETTLED. */
+    /** While the sheet's list of void reasons is not empty, a void needs a reason from it; a reason
+     *  not on the list is refused whatever the list holds. */
+    private void refuseUnreasonedVoid(String sheetId, String reason) {
+        if (reason == null ? !voidReasons.list(sheetId).isEmpty() : !voidReasons.listed(sheetId, reason)) {
+            throw new VoidRefusedException("A void needs a reason from the sheet's list");
+        }
+    }
+
     private void refuseLateOrUnstewardedVoid(String sheetId, String user, Claim claim) {
         if (settings.roleOf(sheetId, user) != Role.STEWARD) {
             throw new VoidRefusedException(user + " is not a steward: only a steward voids a settled claim");

@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, gradeOn, rateOn } from '../rates/rates';
+import { VoidReasonStore } from '../void-reasons/void-reasons';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; an OPEN claim a clerk settles above
  *  the clerk limit is PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
@@ -61,6 +62,8 @@ export interface Claim {
   ref: string | null;
   /** The claim's tags, lower case and sorted; empty when it has none. */
   tags: string[];
+  /** The reason on the sheet's list the claim was voided with; null when it was given none. */
+  voidReason: string | null;
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -346,6 +349,17 @@ const NUMBER = /^\S+$/;
           <button type="button" data-testid="claim-proof" [attr.aria-label]="'Add a proof to claim ' + c.id" (click)="addProof(c)">
             Add proof
           </button>
+          <label [for]="'claim-void-reason-' + c.id">Void reason</label>
+          <select
+            [id]="'claim-void-reason-' + c.id"
+            data-testid="claim-void-reason"
+            (change)="setVoidReason(c.id, value($event))"
+          >
+            <option value="" [selected]="!voidReasonChoice()[c.id]">Choose a reason</option>
+            @for (r of voidReasons.reasons(); track r.id) {
+              <option [value]="r.reason" [selected]="voidReasonChoice()[c.id] === r.reason">{{ r.reason }}</option>
+            }
+          </select>
           <button type="button" data-testid="claim-void" [attr.aria-label]="'Void claim ' + c.id" (click)="act(c, 'void')">
             Void
           </button>
@@ -407,6 +421,7 @@ export class PersonClaims {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   private readonly periods = inject(PeriodStore);
+  protected readonly voidReasons = inject(VoidReasonStore);
   private readonly rates = inject(RateStore);
 
   readonly personId = input.required<number>();
@@ -447,6 +462,9 @@ export class PersonClaims {
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** The reject reason typed on each claim's row, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+
+  /** The void reason chosen on each claim's row, by claim id (a reason on the sheet's list, or blank). */
+  protected readonly voidReasonChoice = signal<Record<number, string>>({});
 
   /** The defer-until date typed on each claim's row, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
@@ -618,6 +636,11 @@ export class PersonClaims {
 
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((reasons) => ({ ...reasons, [id]: reason }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setVoidReason(id: number, reason: string): void {
+    this.voidReasonChoice.update((chosen) => ({ ...chosen, [id]: reason }));
     if (this.rowError()?.id === id) this.rowError.set(null);
   }
 
@@ -868,10 +891,19 @@ export class PersonClaims {
       this.rowError.set({ id: claim.id, message: 'Type the reason the claim is rejected.' });
       return;
     }
+    const voidReason = this.voidReasonChoice()[claim.id] ?? '';
+    if (action === 'void' && voidReason === '' && this.voidReasons.reasons().length > 0) {
+      this.rowError.set({ id: claim.id, message: 'Choose the reason the claim is voided.' });
+      return;
+    }
     const url =
       `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/${action}`;
     try {
-      const saved = await firstValueFrom(this.http.post<Claim>(url, action === 'reject' ? { reason } : null));
+      const saved = await firstValueFrom(this.http.post<Claim>(
+          url,
+          action === 'reject' ? { reason } : action === 'void' ? { reason: voidReason || null } : null,
+        ),
+      );
       if (this.session.sheetId() !== sheet) return;
       if (action === 'reject') this.setRejectReason(claim.id, '');
       this.saved.emit(saved);
@@ -888,6 +920,8 @@ export class PersonClaims {
               ? 'The claim could not be opened: one due above the note threshold needs a note first, and its status and period must allow it.'
             : forbidden && action === 'resettle'
               ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
+              : !forbidden && action === 'void' && this.voidReasons.reasons().length > 0
+                ? 'The claim could not be voided: choose a reason from the list, and its status must allow it.'
               : !forbidden && action === 'void' && claim.status === 'SETTLED'
                 ? 'The claim could not be voided: only a steward voids a settled claim, within 7 days of its settlement and outside a closed period.'
               : forbidden

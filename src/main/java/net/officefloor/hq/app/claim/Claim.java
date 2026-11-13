@@ -122,6 +122,10 @@ public class Claim {
     @Column(name = "tags")
     private String tags;
 
+    /** The reason on the sheet's list the claim was voided with; null when it was given none. */
+    @Column(name = "void_reason")
+    private String voidReason;
+
     protected Claim() {
     }
 
@@ -252,6 +256,15 @@ public class Claim {
     /** Give the claim its tags (already trimmed, lower case and without repeats), or none (empty). */
     public void setTags(Collection<String> tags) {
         this.tags = tags.isEmpty() ? null : String.join(",", new TreeSet<>(tags));
+    }
+
+    /** The reason the claim was voided with; null when it was given none. */
+    public String getVoidReason() {
+        return voidReason;
+    }
+
+    public void setVoidReason(String voidReason) {
+        this.voidReason = voidReason;
     }
 
     /** A reference as it is compared on the sheet, without regard to case; null for none. */

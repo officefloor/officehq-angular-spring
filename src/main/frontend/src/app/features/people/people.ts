@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, statusAsOf } from '../claims/claims';
 import { Holidays } from '../holidays/holidays';
+import { VoidReasonStore, VoidReasons } from '../void-reasons/void-reasons';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -58,7 +59,7 @@ interface StatementTaken {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [Counters, Holidays, PersonClaims, Periods, Rates, Settings, Summary],
+  imports: [Counters, Holidays, PersonClaims, Periods, Rates, Settings, Summary, VoidReasons],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -70,7 +71,13 @@ interface StatementTaken {
     <app-rates />
     <app-periods [dueTotals]="periodDueTotals()" />
     <app-holidays />
-    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
+    <app-void-reasons />
+    <app-summary
+      [grades]="gradeSummary()"
+      [periods]="periodSummary()"
+      [statuses]="statusSummary()"
+      [voids]="voidReasonSummary()"
+    />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
@@ -448,6 +455,7 @@ export class People {
   private readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
   protected readonly periods = inject(PeriodStore);
+  private readonly voidReasons = inject(VoidReasonStore);
   protected readonly money = money;
   protected readonly settings = inject(SettingStore);
   /** Whether the signed-in user is a viewer on the sheet. */
@@ -657,6 +665,14 @@ export class People {
     return ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({
       status,
       count: claims.filter((c) => c.status === status).length,
+    }));
+  });
+  /** Per reason on the sheet's list: how many of its VOID claims were voided with it. */
+  protected readonly voidReasonSummary = computed(() => {
+    const voided = this.claims().filter((c) => c.status === 'VOID');
+    return this.voidReasons.reasons().map((r) => ({
+      reason: r.reason,
+      count: voided.filter((c) => c.voidReason === r.reason).length,
     }));
   });
   protected readonly name = signal('');
