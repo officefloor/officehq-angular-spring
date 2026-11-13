@@ -27,6 +27,8 @@ export interface Period {
   openings: Record<number, string>;
   /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
   cap: number | null;
+  /** Locked by a steward: it cannot be reopened until a steward unlocks it. */
+  locked: boolean;
 }
 
 export interface PeriodFields {
@@ -232,8 +234,29 @@ export class Periods {
       return null;
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not reopen a period.';
-      if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is not closed.';
+      if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is not closed, or is locked.';
       return e instanceof HttpErrorResponse ? `Could not reopen period (${e.status}).` : 'Could not reopen period.';
+    }
+  }
+
+  /** Lock a period so it cannot be reopened, or unlock it (a steward only); an error message when refused. */
+  async lock(id: number, locked: boolean): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const action = locked ? 'lock' : 'unlock';
+    try {
+      const period = await firstValueFrom(
+        this.http.post<Period>(`${this.url(sid)}/${id}/${action}`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.periods.update((ps) => ps.map((p) => (p.id === id ? period : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return `Only a steward may ${action} a period.`;
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        return locked ? 'The period is already locked.' : 'The period is not locked.';
+      }
+      return e instanceof HttpErrorResponse ? `Could not ${action} period (${e.status}).` : `Could not ${action} period.`;
     }
   }
 

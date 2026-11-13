@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.role.ActionNotAllowedException;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -182,9 +183,31 @@ public class PeriodService {
         if (!period.isClosed() && !period.isSoftClosed()) {
             throw new PeriodRefusedException("The period is not closed.");
         }
+        if (period.isLocked()) {
+            throw new PeriodRefusedException("The period is locked.");
+        }
         period.reopen();
         periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + period.getName());
+        return period;
+    }
+
+    /** Lock or unlock a period; by a steward only, and refused when it is already locked (or unlocked). */
+    @Transactional
+    public Period lock(String sheetId, String user, long periodId, boolean locked) {
+        // Locking the sheet makes the lock and any reopen on the sheet go one after the other.
+        sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
+        Period period = periods.findByIdAndSheetId(periodId, sheetId).orElseThrow(PeriodNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ActionNotAllowedException(locked ? "lock a period" : "unlock a period");
+        }
+        if (period.isLocked() == locked) {
+            throw new PeriodRefusedException(locked ? "The period is already locked." : "The period is not locked.");
+        }
+        period.setLocked(locked);
+        periods.saveAndFlush(period);
+        audit.recordOnCommit((locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + user
+                + " period=" + period.getName());
         return period;
     }
 }
