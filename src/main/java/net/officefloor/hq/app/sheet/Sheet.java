@@ -249,7 +249,7 @@ public class Sheet {
         settings.removeIf(s -> s.getKey().equals(key) && s.getFromDate().equals(from));
         settings.add(new SheetSetting(key, from, value));
         if (POLICY_KEYS.contains(key)) {
-            policyVersions.add(new PolicyVersion(key, from));
+            policyVersions.add(new PolicyVersion(key, from, value));
         }
     }
 

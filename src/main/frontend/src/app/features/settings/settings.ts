@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { Claims } from '../../core/claims';
 import { Pools } from '../../core/pools';
 import { Rates } from '../../core/rates';
 import { ROLES, Roles } from '../../core/roles';
@@ -24,7 +25,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // place of the sheet's today; blank for off; not dated), the fiscal start month (the month, 1 to 12, a fiscal year
 // starts in; 1 unless set; not dated), and
 // the policy version (every change to the rounding mode, the floor, the cap, the terms, the late percent or the
-// clerk limit makes a new one, numbered from 1), and
+// clerk limit makes a new one, numbered from 1) and, once shown, the versions oldest first, each as
+// <version> <from-date or start> <key>=<value> <count of the sheet's claims whose policy version it is>, and
 // the role each user name has on the sheet (clerk unless given another), and the delegations of the steward role
 // (a steward gives a user the role from a date to a date, inclusive, by the sheet's today).
 @Component({
@@ -33,6 +35,14 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
     <section aria-label="Settings" data-testid="settings">
       <h2>Settings</h2>
       <p>Policy version: <strong data-testid="policy-version">{{ session.policyVersion() }}</strong></p>
+      <button type="button" data-testid="policy-show" (click)="policyShown.set(true)">Show policy versions</button>
+      @if (policyShown()) {
+        <ol aria-label="Policy versions" data-testid="policy-lines">
+          @for (line of policyLines(); track $index) {
+            <li data-testid="policy-line">{{ line }}</li>
+          }
+        </ol>
+      }
       <form (submit)="save($event)" data-testid="settings-form">
         <label for="setting-clerk-limit">Clerk limit (blank for none)</label>
         <input
@@ -565,6 +575,20 @@ export class SettingsPanel {
   protected readonly roles = inject(Roles);
   private readonly pools = inject(Pools);
   private readonly rates = inject(Rates);
+  private readonly claims = inject(Claims);
+  /** Whether the policy versions are listed. */
+  protected readonly policyShown = signal(false);
+  /** The policy versions, oldest first, each with the number of the sheet's claims whose policy version it is. */
+  protected readonly policyLines = computed(() => {
+    const counts = new Map<number, number>();
+    for (const c of this.claims.claims()) {
+      const n = this.session.policyVersionOn(c.date);
+      counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+    return this.session
+      .policyVersions()
+      .map((v, i) => `${i + 1} ${v.from ?? 'start'} ${v.key}=${v.value ?? ''} ${counts.get(i + 1) ?? 0}`);
+  });
   protected readonly roleNames = ROLES.join(' or ');
   protected readonly limit = signal('');
   protected readonly limitTouched = signal(false);

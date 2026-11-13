@@ -81,8 +81,16 @@ export interface SheetView {
   fiscalStartMonth: number;
   /** The alert threshold, two decimals; null when off. */
   alertThreshold: string | null;
-  /** The policy versions' from-dates (YYYY-MM-DD) in the order made; null for one that counts always. */
-  policyVersions: (string | null)[];
+  /** The policy versions in the order made. */
+  policyVersions: PolicyVersion[];
+}
+
+/** A policy version: the policy setting its change set, the value it set (null: none) and its from-date
+ *  (YYYY-MM-DD; null: counts always). */
+export interface PolicyVersion {
+  key: string;
+  value: string | null;
+  from: string | null;
 }
 
 /** The figures of a sheet's descendants (its children, their children and so on), each sheet's as that
@@ -168,9 +176,9 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** Every value recorded for the sheet's dated settings, each from a date. */
   readonly settings = signal<DatedSetting[]>([]);
-  /** The from-dates (YYYY-MM-DD; null: counts always) of the sheet's policy versions in the order made: every
-   *  change to the rounding mode, the floor, the cap, the terms, the late percent or the clerk limit is one. */
-  readonly policyVersions = signal<(string | null)[]>([]);
+  /** The sheet's policy versions in the order made: every change to the rounding mode, the floor, the cap,
+   *  the terms, the late percent or the clerk limit is one. */
+  readonly policyVersions = signal<PolicyVersion[]>([]);
   /** The sheet's current policy version: the number of versions made; 0 before the first. */
   readonly policyVersion = computed(() => this.policyVersions().length);
   /** The sheet's clerk limit (two decimals) in force on its today; null when there is none. */
@@ -761,7 +769,7 @@ export class Session {
   /** The policy version in force on a date: the number of versions whose from-date is on or before it (one
    *  with none counts always). */
   policyVersionOn(date: string): number {
-    return this.policyVersions().filter((from) => from === null || from <= date).length;
+    return this.policyVersions().filter((v) => v.from === null || v.from <= date).length;
   }
 
   /** A grade's grace days in force on a date; 0 when it has none then. */
