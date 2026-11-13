@@ -9,7 +9,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,11 +23,11 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
-    private final RateRepository rates;
+    private final RateService rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
             Audit audit) {
         this.claims = claims;
         this.people = people;
@@ -83,7 +83,7 @@ public class ClaimService {
         if (to == ClaimStatus.OPEN) {
             claim.setNumber(number);
         } else if (to == ClaimStatus.SETTLED) {
-            claim.setSettledDue(dueOf(sheetId, person, claim.getAmount()));
+            claim.setSettledDue(dueOf(sheetId, person, claim));
         } else if (to == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
@@ -102,10 +102,11 @@ public class ClaimService {
         return saved;
     }
 
-    /** The due on an amount at the rate for the person's grade now: amount times rate divided by 100,
-     *  rounded half up to two decimals; null when the grade has no rate. */
-    private BigDecimal dueOf(String sheetId, Person person, BigDecimal amount) {
-        return rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+    /** The due on a claim at the person's grade rate in force on the claim's date: amount times rate
+     *  divided by 100, rounded half up to two decimals; null when no rate applies. */
+    private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+        BigDecimal amount = claim.getAmount();
+        return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getRate)
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
                 .orElse(null);

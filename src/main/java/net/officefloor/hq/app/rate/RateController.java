@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -28,15 +29,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/rates")
 public class RateController {
 
-    /** A grade's rate as the screen shows it; the rate is a percent string with two decimals. */
-    public record RateView(String grade, String rate) {
+    /** A grade's rate as the screen shows it; the rate is a percent string with two decimals, the
+     *  from-date null when the rate applies from the beginning of time. */
+    public record RateView(String grade, String rate, LocalDate from) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getRate().toPlainString());
+            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFrom());
         }
     }
 
-    /** A rate: a percent of 0.00 or more with up to two decimals. */
-    public record RateRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 5, fraction = 2) BigDecimal rate) {
+    /** A rate: a percent of 0.00 or more with up to two decimals, and the date it applies from
+     *  (blank: from the beginning of time). */
+    public record RateRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 5, fraction = 2) BigDecimal rate,
+            LocalDate from) {
     }
 
     private final RateService service;
@@ -45,27 +49,28 @@ public class RateController {
         this.service = service;
     }
 
-    /** The sheet's rates by grade; a grade with no rate is not listed. */
+    /** The sheet's rates by grade, each grade's from the earliest; a grade with no rate is not listed. */
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
         return service.list(sheetId.trim()).stream().map(RateView::of).toList();
     }
 
-    /** Set the rate for a grade (A, B or C). */
+    /** Set the rate for a grade (A, B or C) from a date, replacing the one it had from that date. */
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated RateRequest request) {
-        return RateView.of(service.set(sheetId.trim(), SignedInUser.decode(user), grade, request.rate()));
+        return RateView.of(service.set(sheetId.trim(), SignedInUser.decode(user), grade, request.from(),
+                request.rate()));
     }
 
-    /** A rate that is not a number is refused. */
+    /** A rate that is not a number or a from-date that is not a real date is refused. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
     }
 
-    /** The grade's rate was first set concurrently; caught by the unique index. */
+    /** The grade's rate from that date was first set concurrently; caught by the unique index. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public void conflict() {

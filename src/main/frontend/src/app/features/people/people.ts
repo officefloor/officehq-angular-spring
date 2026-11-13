@@ -75,7 +75,7 @@ interface Person {
                 <app-person-claims
                   [personId]="p.id"
                   [claims]="claimsOf(p.id)"
-                  [rate]="rates.byGrade().get(p.grade) ?? null"
+                  [rates]="rates.of(p.grade)"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -162,14 +162,15 @@ export class People {
     return money(this.countedOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
   }
 
-  /** What a person has claimed times their grade's rate, or n/a when the grade has no rate. */
+  /** What a person has claimed times their grade's rate in force on the sheet's today, or n/a when
+   *  none is. */
   protected dueBy(person: Person): string {
     const due = this.dueCentsBy(person);
     return due === null ? NO_RATE : money(due);
   }
 
   private dueCentsBy(person: Person): number | null {
-    const rate = this.rates.byGrade().get(person.grade);
+    const rate = this.rates.current().get(person.grade);
     if (rate === undefined) return null;
     return dueCents(this.countedOf(person.id).reduce((sum, c) => sum + cents(c.amount), 0), rate);
   }

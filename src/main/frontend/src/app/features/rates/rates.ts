@@ -7,6 +7,8 @@ export interface Rate {
   grade: string;
   /** A percent with two decimals, e.g. "12.50". */
   rate: string;
+  /** The date the rate applies from (yyyy-mm-dd); null when it applies from the beginning of time. */
+  from: string | null;
 }
 
 export const GRADES = ['A', 'B', 'C'];
@@ -21,17 +23,55 @@ export function dueCents(amountCents: number, rate: string): number {
   return Number((BigInt(amountCents) * hundredths + 5000n) / 10000n);
 }
 
+/** The rate in force on a date among a grade's rates: the one whose from-date is the latest on or
+ *  before the date (no from-date applies from the beginning of time); null when none applies. */
+export function rateOn(rates: Rate[], date: string): string | null {
+  let best: Rate | null = null;
+  for (const r of rates) {
+    if (r.from !== null && r.from > date) continue;
+    if (best === null || (best.from ?? '') < (r.from ?? '')) best = r;
+  }
+  return best?.rate ?? null;
+}
+
+/** Rates in the order they are listed: by grade, then from the earliest. */
+function byGradeAndFrom(a: Rate, b: Rate): number {
+  return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
+}
+
 const PERCENT = /^\d{1,5}(\.\d{1,2})?$/;
 
-// The active sheet's rate for each grade, re-read whenever a sheet is loaded.
+// The active sheet's rates for each grade, each from its from-date, re-read whenever a sheet is
+// loaded.
 @Injectable({ providedIn: 'root' })
 export class RateStore {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
 
+  /** The sheet's rates by grade, each grade's from the earliest. */
   readonly rates = signal<Rate[]>([]);
-  /** Each grade's rate by grade; a grade with no rate is absent. */
-  readonly byGrade = computed(() => new Map(this.rates().map((r) => [r.grade, r.rate])));
+  /** Each grade's rates by grade; a grade with no rate is absent. */
+  readonly byGrade = computed(() => {
+    const map = new Map<string, Rate[]>();
+    for (const r of this.rates()) map.set(r.grade, [...(map.get(r.grade) ?? []), r]);
+    return map;
+  });
+  /** Each grade's rate in force on the sheet's today; a grade with none is absent. */
+  readonly current = computed(() => {
+    const today = this.session.today();
+    const map = new Map<string, string>();
+    if (!today) return map;
+    for (const [grade, rates] of this.byGrade()) {
+      const rate = rateOn(rates, today);
+      if (rate !== null) map.set(grade, rate);
+    }
+    return map;
+  });
+
+  /** A grade's rates; none when the grade has no rate. */
+  of(grade: string): Rate[] {
+    return this.byGrade().get(grade) ?? [];
+  }
 
   constructor() {
     effect(() => {
@@ -42,15 +82,18 @@ export class RateStore {
     });
   }
 
-  /** Set a grade's rate on the active sheet. */
-  async set(grade: string, rate: string): Promise<void> {
+  /** Set a grade's rate from a date (null: from the beginning of time) on the active sheet,
+   *  replacing the one the grade had from that date. */
+  async set(grade: string, rate: string, from: string | null): Promise<void> {
     const sheet = this.session.sheetId();
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
-      this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { rate }),
+      this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { rate, from }),
     );
     if (this.session.sheetId() !== sheet) return;
-    this.rates.update((list) => [...list.filter((r) => r.grade !== saved.grade), saved]);
+    this.rates.update((list) =>
+      [...list.filter((r) => r.grade !== saved.grade || r.from !== saved.from), saved].sort(byGradeAndFrom),
+    );
   }
 
   private async read(sheet: string, load: number): Promise<void> {
@@ -62,7 +105,8 @@ export class RateStore {
   }
 }
 
-// The sheet's rate for each grade, and the form that sets one.
+// The sheet's rate in force today for each grade, every rate with its from-date, and the form that
+// sets one.
 @Component({
   selector: 'app-rates',
   template: `
@@ -88,12 +132,21 @@ export class RateStore {
           [value]="pct()"
           (input)="pct.set(value($event)); error.set(null)"
         />
+        <label for="rate-form-from">From (blank: always)</label>
+        <input
+          id="rate-form-from"
+          type="date"
+          data-testid="rate-form-from"
+          [value]="from()"
+          (input)="from.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
       </form>
       @if (error(); as message) {
         <p role="alert" data-testid="rate-form-error">{{ message }}</p>
       }
       <table>
+        <caption>In force today</caption>
         <thead>
           <tr>
             <th scope="col">Grade</th>
@@ -102,15 +155,28 @@ export class RateStore {
         </thead>
         <tbody>
           @for (g of grades; track g) {
-            <tr [attr.data-testid]="store.byGrade().has(g) ? 'rate-row-' + g + '-start' : null">
+            <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">
-                @if (store.byGrade().get(g); as rate) {
-                  <span data-testid="rate-pct">{{ rate }}</span>
-                } @else {
-                  {{ noRate }}
-                }
-              </td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ store.current().get(g) ?? noRate }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>All rates</caption>
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            <th scope="col">From</th>
+            <th scope="col">Rate (%)</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of store.rates(); track r.grade + '-' + (r.from ?? 'start')) {
+            <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
+              <th scope="row">{{ r.grade }}</th>
+              <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
+              <td data-testid="rate-pct">{{ r.rate }}</td>
             </tr>
           }
         </tbody>
@@ -124,6 +190,7 @@ export class Rates {
   protected readonly noRate = NO_RATE;
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
+  protected readonly from = signal('');
   protected readonly error = signal<string | null>(null);
 
   protected value(event: Event): string {
@@ -139,7 +206,7 @@ export class Rates {
       return;
     }
     try {
-      await this.store.set(this.grade(), pct);
+      await this.store.set(this.grade(), pct, this.from().trim() || null);
     } catch {
       this.error.set('The rate could not be set.');
     }

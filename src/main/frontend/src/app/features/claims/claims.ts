@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { NO_RATE, dueCents } from '../rates/rates';
+import { NO_RATE, Rate, dueCents, rateOn } from '../rates/rates';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -120,8 +120,8 @@ export class PersonClaims {
 
   readonly personId = input.required<number>();
   readonly claims = input.required<Claim[]>();
-  /** The rate for the person's grade, or null when the grade has no rate. */
-  readonly rate = input.required<string | null>();
+  /** The rates for the person's grade; none when the grade has no rate. */
+  readonly rates = input.required<Rate[]>();
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -136,11 +136,11 @@ export class PersonClaims {
     return (event.target as HTMLInputElement).value;
   }
 
-  /** The due fixed when the claim was settled; otherwise the claim's amount times the rate, or n/a
-   *  when there is no rate. */
+  /** The due fixed when the claim was settled; otherwise the claim's amount times the rate in force
+   *  on the claim's date, or n/a when no rate applies. */
   protected dueOf(claim: Claim): string {
     if (claim.settledDue !== null) return claim.settledDue;
-    const rate = this.rate();
+    const rate = rateOn(this.rates(), claim.date);
     return rate === null ? NO_RATE : money(dueCents(cents(claim.amount), rate));
   }
 
