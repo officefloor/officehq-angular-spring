@@ -19,6 +19,9 @@ export interface Period {
   /** Each person's due-total for it fixed when it was closed, two decimals, by person id; empty while
    *  open. A person missing here (added after it closed) has 0.00. */
   closedPersonTotals: Record<number, string>;
+  /** Each person's carried figure for it fixed when it was closed or soft-closed, two decimals, by person id;
+   *  empty while open. A person missing here has 0.00. */
+  closedPersonCarried: Record<number, string>;
   /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
   cap: number | null;
 }

@@ -311,8 +311,10 @@ export class Figures {
     return sums;
   });
 
-  /** A person's carried figure for a period, 0.00 with nothing carried. */
+  /** A person's carried figure for a period: fixed when it was closed or soft-closed (0.00 for a person added
+   *  since), else live; 0.00 with nothing carried. */
   personPeriodCarried(period: Period, personId: number): string {
+    if (period.closed || period.soft) return period.closedPersonCarried?.[personId] ?? '0.00';
     return money(this.carriedCents().get(period.id)?.get(personId) ?? 0n);
   }
 

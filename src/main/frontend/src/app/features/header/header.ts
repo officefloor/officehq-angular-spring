@@ -7,8 +7,8 @@ import { Session } from '../../core/session';
 // The sheet's counters, always in view: everyone on it (retired people included), the claims in
 // each status, and the sheet's due- and overdue-totals — the same figures the summary and the
 // people list show. Then the same figures consolidated over the sheet and all its descendants: each
-// descendant's as that sheet shows them, added to this sheet's own (as it is now, even while the
-// screen shows the sheet as of a date). And the signed-in user's own due- and overdue-totals, when a
+// descendant's as that sheet shows them, added to this sheet's own; while the screen shows the sheet as
+// of a date, every sheet of the tree as it stood at the end of that date. And the signed-in user's own due- and overdue-totals, when a
 // person on the sheet has their name or an alias equal to it; blank otherwise.
 @Component({
   selector: 'app-header',

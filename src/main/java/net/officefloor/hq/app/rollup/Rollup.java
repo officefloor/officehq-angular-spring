@@ -17,6 +17,8 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.StatusChange;
+import net.officefloor.hq.app.history.AsOf;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -55,28 +57,41 @@ public class Rollup {
     private final ClaimRepository claims;
     private final RateRepository rates;
     private final SheetRepository sheets;
+    private final AsOf asOf;
     private final Audit audit;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            Audit audit) {
+            AsOf asOf, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
         this.sheets = sheets;
+        this.asOf = asOf;
         this.audit = audit;
     }
 
     /** The sheet's figures now. */
     public Snapshot take(String sheetId) {
-        Optional<Sheet> sheet = sheets.findById(sheetId);
+        return take(sheets.findById(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+                claims.findBySheetIdOrderByIdDesc(sheetId), rates.findWithAncestors(sheetId, sheets.ancestors(sheetId)));
+    }
+
+    /** The sheet's figures as it stood at the end of a date, that date its today: its rows, and its ancestors'
+     *  rates, each as of the date. */
+    public Snapshot take(String sheetId, LocalDate date) {
+        List<Rate> sheetRates = new ArrayList<>(asOf.rates(sheetId, date));
+        sheets.ancestors(sheetId).forEach(a -> sheetRates.addAll(asOf.rates(a, date)));
+        return take(Optional.of(asOf.sheet(sheetId, date)), asOf.people(sheetId, date), asOf.claims(sheetId, date),
+                sheetRates);
+    }
+
+    private Snapshot take(Optional<Sheet> sheet, List<Person> sheetPeople, List<Claim> sheetClaims, List<Rate> sheetRates) {
         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
-        List<Rate> sheetRates = rates.findWithAncestors(sheetId, sheets.ancestors(sheetId));
-        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
-        for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
+        for (Person person : sheetPeople) {
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
@@ -127,6 +142,12 @@ public class Rollup {
     /** The figures of every descendant of a sheet (its children, their children and so on; the sheet itself
      *  left out), each sheet's due- and overdue-total as that sheet shows it, added up. */
     public Consolidated descendants(String sheetId) {
+        return descendants(sheetId, null);
+    }
+
+    /** The figures of every descendant of a sheet, as {@link #descendants(String)}, each sheet as it stood at the
+     *  end of a date, that date its today; as they are now with no date. */
+    public Consolidated descendants(String sheetId, LocalDate date) {
         Set<String> seen = new LinkedHashSet<>(List.of(sheetId));
         List<String> todo = new ArrayList<>(List.of(sheetId));
         int peopleCount = 0;
@@ -138,7 +159,7 @@ public class Rollup {
                     continue;
                 }
                 todo.add(child.getId());
-                Snapshot snapshot = take(child.getId());
+                Snapshot snapshot = date == null ? take(child.getId()) : take(child.getId(), date);
                 peopleCount += snapshot.people().size();
                 due = due.add(snapshot.dueTotal());
                 overdue = overdue.add(snapshot.overdueTotal());
@@ -197,6 +218,52 @@ public class Rollup {
             }
         }
         return totals;
+    }
+
+    /** Each person's carried figure for a period, by person id, every person on the sheet in list order, as the
+     *  screen shows it while the period is open: the due (as {@link #dueBetweenByPerson} counts it) of their
+     *  claims not left out now by a hold or a deferral whose due-by falls in one of the sheet's periods ending
+     *  before this one starts, and that were still OPEN or PENDING at the end of this period's last day, as
+     *  their status log records it. */
+    public Map<Long, BigDecimal> carriedByPerson(String sheetId, Period period, List<Period> sheetPeriods) {
+        Optional<Sheet> sheet = sheets.findById(sheetId);
+        LocalDate today = sheet.map(Sheet::getToday).orElse(null);
+        List<Rate> sheetRates = rates.findWithAncestors(sheetId, sheets.ancestors(sheetId));
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        Map<Long, BigDecimal> carried = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> {
+            byId.put(p.getId(), p);
+            carried.put(p.getId(), ZERO);
+        });
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        for (Claim claim : sheetClaims) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || claim.getDueBy() == null || heldOut(claim, person, today) || claim.deferredOn(today)) {
+                continue;
+            }
+            Optional<Period> own = sheetPeriods.stream().filter(p -> p.contains(claim.getDueBy())).findFirst();
+            if (own.isEmpty() || !own.get().getToDate().isBefore(period.getFromDate())) {
+                continue;
+            }
+            ClaimStatus status = statusAt(claim, period.getToDate());
+            if (status == null || !status.isOpen()) {
+                continue;
+            }
+            BigDecimal due;
+            if (claim.getSettledDue() != null) {
+                due = claim.getSettledDue();
+            } else if (claim.isBound()) {
+                due = claim.getStatedDue();
+            } else {
+                due = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate(), claim)
+                        .map(rate -> rated(sheet, claim, sheetClaims, rate))
+                        .orElse(null);
+            }
+            if (due != null) {
+                carried.merge(person.getId(), charged(sheet, claim, person, due), BigDecimal::add);
+            }
+        }
+        return carried;
     }
 
     /** Record, once the change commits, a SNAPSHOT line of each person's due-total in a snapshot, in the
@@ -275,9 +342,16 @@ public class Rollup {
      *  its latest line dated on or before it; not when it was added after it. A claim with no log counts
      *  by its status now. */
     private static boolean countsAt(Claim claim, LocalDate day) {
+        ClaimStatus status = statusAt(claim, day);
+        return status != null && status.counts();
+    }
+
+    /** The status a claim had at the end of a day, as its status log records it: its latest line dated on or
+     *  before it; none when it was added after it. A claim with no log has its status now. */
+    private static ClaimStatus statusAt(Claim claim, LocalDate day) {
         List<StatusChange> log = claim.getStatusLog();
         if (log.isEmpty()) {
-            return claim.getStatus().counts();
+            return claim.getStatus();
         }
         ClaimStatus status = null;
         for (StatusChange change : log) {
@@ -285,7 +359,7 @@ public class Rollup {
                 status = change.getStatus();
             }
         }
-        return status != null && status.counts();
+        return status;
     }
 
     /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by plus the grace days of its

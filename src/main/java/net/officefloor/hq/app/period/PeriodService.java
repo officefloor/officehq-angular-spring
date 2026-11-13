@@ -113,7 +113,7 @@ public class PeriodService {
         return generate(sheetId, user, first, first.plusYears(1).minusDays(1));
     }
 
-    /** Close a period, fixing each person's due-total for it and its own as it is now; refused when the user's role may not
+    /** Close a period, fixing each person's due-total and carried figure for it and its own as it is now; refused when the user's role may not
      *  close it, or it is already closed. A soft-closed period can be closed, fixing its figures afresh. */
     @Transactional
     public Period close(String sheetId, String user, long periodId) {
@@ -127,7 +127,7 @@ public class PeriodService {
         return closeNow(sheetId, user, period, false);
     }
 
-    /** Soft-close a period, fixing each person's due-total for it and its own as it is now while its claims
+    /** Soft-close a period, fixing each person's due-total and carried figure for it and its own as it is now while its claims
      *  can still change; refused when the user's role may not close it, or it is already closed or
      *  soft-closed. */
     @Transactional
@@ -139,7 +139,8 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new PeriodRefusedException("The period is already closed.");
         }
-        period.softClose(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()));
+        period.softClose(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()),
+                rollup.carriedByPerson(sheetId, period, periods.findBySheetIdOrderByFromDateAsc(sheetId)));
         periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + period.getClosedTotal().toPlainString());
@@ -161,7 +162,8 @@ public class PeriodService {
     }
 
     private Period closeNow(String sheetId, String user, Period period, boolean auto) {
-        period.close(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()));
+        period.close(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()),
+                rollup.carriedByPerson(sheetId, period, periods.findBySheetIdOrderByFromDateAsc(sheetId)));
         periods.saveAndFlush(period);
         BigDecimal total = period.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
@@ -169,7 +171,7 @@ public class PeriodService {
         return period;
     }
 
-    /** Reopen a closed or soft-closed period, making its due-total live again; by a role the sheet allows (a steward
+    /** Reopen a closed or soft-closed period, making its due-total and each person's carried figure live again; by a role the sheet allows (a steward
      *  by the standing rule), and refused when it is open. */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {

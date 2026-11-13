@@ -55,14 +55,15 @@ export interface SheetView {
 }
 
 /** The figures of a sheet's descendants (its children, their children and so on), each sheet's as that
- *  sheet shows them, added up. */
+ *  sheet shows them, added up; each as it stood at the end of the as-of date while the screen shows one. */
 export interface DescendantFigures {
   peopleCount: number;
   /** Two decimals. */
   dueTotal: string;
   /** Two decimals. */
   overdueTotal: string;
-  /** The sheet's own figures as they are now, which a screen showing the sheet as of a date consolidates. */
+  /** The sheet's own figures (as of the as-of date while one is set), which a screen showing the sheet as of a
+   *  date consolidates. */
   ownPeopleCount: number;
   ownDueTotal: string;
   ownOverdueTotal: string;
