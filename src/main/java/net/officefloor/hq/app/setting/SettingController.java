@@ -38,8 +38,8 @@ public class SettingController {
     }
 
     /** The sheet's settings: the roles assigned, the clerk limit (two decimals; null for none) and
-     *  the floor (two decimals) and the terms (whole days). */
-    public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, int terms) {
+     *  the floor (two decimals), the terms (whole days) and the late percent (two decimals). */
+    public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, int terms, String latePct) {
     }
 
     /** A role for a user name: clerk or steward. */
@@ -56,6 +56,10 @@ public class SettingController {
 
     /** Terms of 0 or more whole days. */
     public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer value) {
+    }
+
+    /** A late percent of 0.00 or more with up to two decimals. */
+    public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
     }
 
     private final SettingService service;
@@ -103,20 +107,33 @@ public class SettingController {
         return view(sheet);
     }
 
-    /** Change the sheet's terms. */
+    /** Change the sheet's terms; the late charges it moves are followed in the audit. */
     @PutMapping("/terms")
     public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated TermsRequest request) {
         String sheet = sheetId.trim();
-        service.setTerms(sheet, SignedInUser.decode(user), request.value());
+        String by = SignedInUser.decode(user);
+        rollups.track(sheet, by, () -> service.setTerms(sheet, by, request.value()));
+        return view(sheet);
+    }
+
+    /** Change the sheet's late percent; the figures it moves are followed in the audit. */
+    @PutMapping("/late-pct")
+    public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated LatePctRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        rollups.track(sheet, by, () -> service.setLatePct(sheet, by, request.value()));
         return view(sheet);
     }
 
     private SettingsView view(String sheet) {
         BigDecimal limit = service.clerkLimit(sheet);
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
-                limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString(), service.terms(sheet));
+                limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString(), service.terms(sheet),
+                service.latePct(sheet).toPlainString());
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

@@ -43,14 +43,38 @@ export function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
-/** A claim's due in cents: the due fixed when it was settled; otherwise the figure a statement
+/** What a late charge works from: the sheet's late percent (two decimals), its terms in days and
+ *  its today. */
+export interface Late {
+  pct: string;
+  terms: number;
+  today: string | null;
+}
+
+/** A claim's figure in cents: the due fixed when it was settled; otherwise the figure a statement
  *  bound it to; otherwise its amount times the rate in force on its date among its grade's rates,
  *  raised to the sheet's floor (in cents); null when it has no figure. */
-export function claimDueCents(claim: Claim, rates: Rate[], floor: number): number | null {
+function figureCents(claim: Claim, rates: Rate[], floor: number): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateOn(rates, claim.date);
   return rate === null ? null : Math.max(dueCents(cents(claim.amount), rate), floor);
+}
+
+/** A claim's due in cents: its figure plus its late charge, the late percent of the figure for
+ *  every full 30 days an OPEN claim is overdue, rounded like a due (a statement never binds the
+ *  charge; settling freezes it into the settled due); null when it has no figure. */
+export function claimDueCents(claim: Claim, rates: Rate[], floor: number, late: Late): number | null {
+  const figure = figureCents(claim, rates, floor);
+  if (figure === null) return null;
+  const periods = Math.floor(daysOverdue(claim, late) / 30);
+  return periods > 0 ? figure + dueCents(figure * periods, late.pct) : figure;
+}
+
+/** How many days an OPEN claim is past its due-by on the sheet's today; 0 when it is not overdue. */
+function daysOverdue(claim: Claim, late: Late): number {
+  if (!overdue(claim, late.terms, late.today) || late.today === null) return 0;
+  return Math.round((Date.parse(late.today) - Date.parse(dueByOf(claim, late.terms))) / 86_400_000);
 }
 
 /** The date a claim is due by (yyyy-mm-dd): its date plus the terms in days. */
@@ -162,6 +186,8 @@ export class PersonClaims {
   readonly floor = input.required<number>();
   /** The sheet's terms in days: a claim is due by its date plus them. */
   readonly terms = input.required<number>();
+  /** The sheet's late percent (two decimals). */
+  readonly latePct = input.required<string>();
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -180,7 +206,8 @@ export class PersonClaims {
 
   /** The claim's due (see claimDueCents), or n/a when it has no figure. */
   protected dueOf(claim: Claim): string {
-    const due = claimDueCents(claim, this.rates(), this.floor());
+    const late = { pct: this.latePct(), terms: this.terms(), today: this.session.today() };
+    const due = claimDueCents(claim, this.rates(), this.floor(), late);
     return due === null ? NO_RATE : money(due);
   }
 

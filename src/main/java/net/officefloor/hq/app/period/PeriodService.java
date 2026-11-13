@@ -82,9 +82,9 @@ public class PeriodService {
             if (person == null || !claim.countsLive(person.isHeld()) || !period.contains(claim.getDate())) {
                 continue;
             }
-            BigDecimal figure = claimService.figureOf(sheetId, person, claim);
-            if (figure != null) {
-                total = total.add(figure);
+            BigDecimal due = claimService.dueOf(sheetId, person, claim);
+            if (due != null) {
+                total = total.add(due);
             }
         }
         period.close(total);

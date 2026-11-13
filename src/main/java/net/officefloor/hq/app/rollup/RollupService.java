@@ -112,7 +112,7 @@ public class RollupService {
         boolean anyFigure = false;
         for (Claim claim : counted) {
             claimed = claimed.add(claim.getAmount());
-            BigDecimal figure = claimService.figureOf(sheetId, person, claim);
+            BigDecimal figure = claimService.dueOf(sheetId, person, claim);
             if (figure != null) {
                 due = due.add(figure);
             }

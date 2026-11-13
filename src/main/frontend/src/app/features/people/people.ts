@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, claimDueCents, counts, money, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, money, overdue } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, RateStore, Rates } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -151,6 +151,7 @@ interface StatementTaken {
                   [rates]="rates.of(p.grade)"
                   [floor]="floor()"
                   [terms]="settings.terms()"
+                  [latePct]="settings.latePct()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -216,6 +217,12 @@ export class People {
   protected readonly settings = inject(SettingStore);
   /** The sheet's floor in cents. */
   protected readonly floor = computed(() => cents(this.settings.floor()));
+  /** What late charges work from: the sheet's late percent, terms and today. */
+  private readonly late = computed<Late>(() => ({
+    pct: this.settings.latePct(),
+    terms: this.settings.terms(),
+    today: this.session.today(),
+  }));
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -287,7 +294,7 @@ export class People {
       const period = periodOf(periods, c.date);
       const grade = grades.get(c.personId);
       if (period === null || grade === undefined) continue;
-      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, this.rates.of(grade), this.floor()) ?? 0));
+      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, this.rates.of(grade), this.floor(), this.late()) ?? 0));
     }
     return new Map([...totals].map(([id, due]) => [id, money(due)]));
   });
@@ -400,7 +407,8 @@ export class People {
     }
     const rates = this.rates.of(person.grade);
     const floor = this.floor();
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
+    const late = this.late();
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor, late) ?? 0), 0);
   }
 
   protected overdueOf(personId: number): Claim[] {
@@ -415,7 +423,8 @@ export class People {
   private overdueCentsOf(person: Person): number {
     const rates = this.rates.of(person.grade);
     const floor = this.floor();
-    return this.overdueOf(person.id).reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
+    const late = this.late();
+    return this.overdueOf(person.id).reduce((sum, c) => sum + (claimDueCents(c, rates, floor, late) ?? 0), 0);
   }
 
   /** A claim added (listed first) or saved in place. */

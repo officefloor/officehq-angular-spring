@@ -10,7 +10,8 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor and its terms. */
+/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its terms and
+ *  its late percent. */
 @Service
 public class SettingService {
 
@@ -50,6 +51,12 @@ public class SettingService {
     /** The sheet's terms in days: a claim is due by its date plus them. */
     public int terms(String sheetId) {
         return sheets.load(sheetId).getTerms();
+    }
+
+    /** The sheet's late percent: an overdue claim's due gains it of its figure for every full 30 days
+     *  it is overdue. */
+    public BigDecimal latePct(String sheetId) {
+        return sheets.load(sheetId).getLatePct();
     }
 
     /** Assign a user name a role on the sheet. */
@@ -101,6 +108,19 @@ public class SettingService {
         sheet.setTerms(terms);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
+        return saved;
+    }
+
+    /** Change the sheet's late percent. */
+    @Transactional
+    public Sheet setLatePct(String sheetId, String by, BigDecimal latePct) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        BigDecimal scaled = latePct.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setLatePct(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=late-pct value="
+                + scaled.toPlainString());
         return saved;
     }
 }

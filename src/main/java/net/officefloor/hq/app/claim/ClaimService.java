@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.Audit;
@@ -103,15 +104,18 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new OwnClaimSettleRefusedException(user);
         }
+        // Taken while the claim is still OPEN, so a settled due freezes in the late charge it has
+        // gathered by then.
+        BigDecimal due = to == ClaimStatus.SETTLED ? dueOf(sheetId, person, claim) : null;
         if (to == ClaimStatus.SETTLED) {
-            refuseOverClerkLimit(sheetId, user, figureOf(sheetId, person, claim));
+            refuseOverClerkLimit(sheetId, user, due);
         }
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
-            claim.setSettledDue(figureOf(sheetId, person, claim));
+            claim.setSettledDue(due);
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (to) {
@@ -134,13 +138,37 @@ public class ClaimService {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return claim.isStated() ? claim.getStatedDue() : dueOf(sheetId, person, claim);
+        return claim.isStated() ? claim.getStatedDue() : liveFigureOf(sheetId, person, claim);
+    }
+
+    /** The due a claim shows: its figure plus its late charge; null when it has no figure. */
+    public BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+        BigDecimal figure = figureOf(sheetId, person, claim);
+        return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure));
+    }
+
+    /** The late charge on a claim with a figure: none unless it is OPEN and overdue (its date plus the
+     *  terms is before the sheet's today), else the late percent of the figure for every full 30 days
+     *  it is overdue, rounded half to even to two decimals. Never bound by a statement: it follows the
+     *  sheet's today. */
+    private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure) {
+        BigDecimal none = BigDecimal.ZERO.setScale(2);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            return none;
+        }
+        LocalDate dueBy = claim.getDate().plusDays(settings.terms(sheetId));
+        long days = ChronoUnit.DAYS.between(dueBy, sheets.today(sheetId));
+        if (days < 30) {
+            return none;
+        }
+        return figure.multiply(settings.latePct(sheetId)).multiply(BigDecimal.valueOf(days / 30))
+                .movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /** The due on a claim at the person's grade rate in force on the claim's date: amount times rate
      *  divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when
      *  no rate applies. */
-    private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+    private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim) {
         BigDecimal amount = claim.getAmount();
         return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getRate)

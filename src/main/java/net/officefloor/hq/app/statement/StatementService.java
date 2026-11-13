@@ -68,13 +68,14 @@ public class StatementService {
         boolean anyFigure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.counts()) {
+            if (!claim.countsLive(person.isHeld())) {
                 claim.unbind();
                 continue;
             }
+            // The statement binds the figure; the late charge on top keeps following the sheet's today.
             BigDecimal figure = claimService.figureOf(sheetId, person, claim);
             if (figure != null) {
-                total = total.add(figure);
+                total = total.add(claimService.dueOf(sheetId, person, claim));
                 anyFigure |= claim.getSettledDue() != null || claim.isStated();
             }
             claim.bind(figure);

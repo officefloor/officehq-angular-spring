@@ -18,6 +18,9 @@ interface SettingsView {
   floor: string;
   /** The terms in whole days: a claim is due by its date plus them. */
   terms: number;
+  /** The late percent (two decimals): an overdue claim's due gains it of its figure for every full
+   *  30 days it is overdue. */
+  latePct: string;
 }
 
 /** The floor a sheet starts with. */
@@ -25,6 +28,9 @@ const FLOOR = '1.00';
 
 /** The terms a sheet starts with, in days. */
 const TERMS = 14;
+
+/** The late percent a sheet starts with. */
+const LATE_PCT = '0.00';
 
 /** Terms of 0 or more whole days. */
 const DAYS = /^\d{1,5}$/;
@@ -41,6 +47,7 @@ export class SettingStore {
   readonly clerkLimit = signal<string | null>(null);
   readonly floor = signal(FLOOR);
   readonly terms = signal(TERMS);
+  readonly latePct = signal(LATE_PCT);
 
   constructor() {
     effect(() => {
@@ -50,6 +57,7 @@ export class SettingStore {
       this.clerkLimit.set(null);
       this.floor.set(FLOOR);
       this.terms.set(TERMS);
+      this.latePct.set(LATE_PCT);
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -100,6 +108,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's late percent. */
+  async setLatePct(value: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/late-pct`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const settings = await firstValueFrom(
       this.http.get<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings`),
@@ -113,13 +132,16 @@ export class SettingStore {
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
     this.terms.set(settings.terms);
+    this.latePct.set(settings.latePct);
   }
 }
 
 // The sheet's settings: the role given each user name (clerk, the default, or steward) and the
 // clerk limit, the highest due a clerk can settle, the floor, the least a claim's live due can be,
-// and the terms, the days after its date a claim is due by.
-// Saving sends only the settings typed into since the last save.
+// the terms, the days after its date a claim is due by, and the late percent, what an overdue claim's
+// due gains of its figure for every full 30 days it is overdue.
+// Saving sends only the settings typed into since the last save; the clerk limit counts as typed
+// into once focused, as a blank one (none) is a value of its own.
 @Component({
   selector: 'app-settings',
   template: `
@@ -175,6 +197,7 @@ export class SettingStore {
           data-testid="setting-clerk-limit"
           inputmode="decimal"
           [value]="clerkLimit()"
+          (focus)="clerkLimitTyped.set(true)"
           (input)="clerkLimit.set(value($event)); clerkLimitTyped.set(true); settingsError.set(null)"
         />
         <label for="setting-floor">Floor</label>
@@ -192,6 +215,14 @@ export class SettingStore {
           inputmode="numeric"
           [value]="terms()"
           (input)="terms.set(value($event)); termsTyped.set(true); settingsError.set(null)"
+        />
+        <label for="setting-late-pct">Late percent</label>
+        <input
+          id="setting-late-pct"
+          data-testid="setting-late-pct"
+          inputmode="decimal"
+          [value]="latePct()"
+          (input)="latePct.set(value($event)); latePctTyped.set(true); settingsError.set(null)"
         />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
@@ -213,6 +244,10 @@ export class SettingStore {
         Terms in force:
         <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days
       </p>
+      <p>
+        Late percent in force:
+        <strong data-testid="setting-late-pct-current">{{ store.latePct() }}</strong>
+      </p>
     </section>
   `,
 })
@@ -229,6 +264,8 @@ export class Settings {
   protected readonly floorTyped = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTyped = signal(false);
+  protected readonly latePct = signal('');
+  protected readonly latePctTyped = signal(false);
   protected readonly settingsError = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -271,6 +308,8 @@ export class Settings {
     const saveFloor = this.floorTyped();
     const terms = this.terms().trim();
     const saveTerms = this.termsTyped();
+    const latePct = this.latePct().trim();
+    const saveLatePct = this.latePctTyped();
     if (saveLimit && limit !== '' && !AMOUNT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
@@ -281,6 +320,10 @@ export class Settings {
     }
     if (saveTerms && !DAYS.test(terms)) {
       this.settingsError.set('Type terms of 0 or more whole days.');
+      return;
+    }
+    if (saveLatePct && !AMOUNT.test(latePct)) {
+      this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
       return;
     }
     this.busy.set(true);
@@ -296,6 +339,10 @@ export class Settings {
       if (saveTerms) {
         await this.store.setTerms(Number(terms));
         this.termsTyped.set(false);
+      }
+      if (saveLatePct) {
+        await this.store.setLatePct(latePct);
+        this.latePctTyped.set(false);
       }
     } catch {
       this.settingsError.set('The settings could not be saved.');
