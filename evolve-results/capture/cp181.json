@@ -1,0 +1,64 @@
+{
+  "checkpoint": 181,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp181_sheet-notes",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has notes: a text and an add button (NOTE_ADDED text=<text>; a blank note is refused with\nan error beside the entry). Show the notes newest first as <sheet's today when added> <user>:\n<text>. Under an as-of date the list shows the notes added while the sheet's today was on or before\nthat date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7d1a8642aab8183b347fa67d2a7f072fef983b91",
+  "reset_sha": "",
+  "preagent_sha": "fbd6167d7bf485e2a5355a2600893df1900d5f70",
+  "prev_sha": "fbd6167d7bf485e2a5355a2600893df1900d5f70",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7557516,
+    "input_tokens": 36,
+    "output_tokens": 9529,
+    "cache_read_tokens": 703418,
+    "cache_creation_tokens": 53043,
+    "num_turns": 18,
+    "duration_ms": 322390,
+    "duration_api_ms": 85135,
+    "model": "claude-opus-5-5",
+    "session_id": "60827aec-7e81-4af8-967c-906e0f3e5aaf",
+    "stop_reason": "success",
+    "result_text": "I added notes to the sheet, and all 4 acceptance tests pass in `bin/e2e`.\n\n**What it does**\n- A Notes panel has a text box and an \"Add note\" button. A blank note is refused, with the error shown beside the entry.\n- Notes are listed newest first, each as `<sheet's today when added> <user>: <text>`, for example `2026-03-11 uma: third`.\n- Adding a note writes `NOTE_ADDED sheet=<id> by=<user> text=<text>` to the audit file. When the user is acting for a steward who delegated to them, the line ends with `for=<steward>` as other changes do.\n- The rules the app already applies to every change also cover notes, with no new code: viewers, archived sheets and screens set to an as-of date can't add notes.\n- With an as-of date set, the list shows only the notes added while the sheet's today was on or before that date.\n\n**How it's built**\n- **Data:** a new table `sheet_note` in `V100__sheet_note.sql`. Each note stores the sheet's today at the moment it was added, and the as-of filter uses that date.\n- **Server:** a new `note` package with the entity, repository, service and controller, at `/api/sheets/{sheetId}/notes`.\n- **Front end:** `core/notes.ts` and `features/notes/notes.ts`. The panel sits after Holidays in `home.ts`, and its notes reload with the rest of the sheet.\n\nCloning a sheet doesn't copy its notes. The request didn't ask for it, so I left cloning as it was.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7557516,
+        "num_turns": 18,
+        "duration_ms": 322390,
+        "duration_api_ms": 85135,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp181.agent.jsonl",
+  "agent_diff_file": "cp181.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
