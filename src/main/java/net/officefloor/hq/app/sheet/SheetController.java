@@ -31,14 +31,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off).
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date).
      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
             boolean archived, String noteThreshold, LocalDate entryDate, Integer lastSettleBatch, String pot,
-            String parent, int fiscalStartMonth, String alertThreshold) {
+            String parent, int fiscalStartMonth, String alertThreshold, String rounding) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -54,11 +54,12 @@ public class SheetController {
                     sheet.getEntryDate(), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParent(),
                     sheet.getFiscalStartMonth(),
-                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString());
+                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
+                    sheet.getRoundingMode());
         }
     }
 
-    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade> or note-threshold)
+    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding)
      *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
     public record SettingView(String key, LocalDate from, String value) {
 
@@ -117,6 +118,11 @@ public class SheetController {
      *  its figure for every full 30 days. */
     public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 7, fraction = 2) BigDecimal latePct,
             LocalDate from) {
+    }
+
+    /** The sheet's rounding mode from a date (missing: the sheet's today): half-up or half-even; a missing or
+     *  blank one means none (a claim rounds by the policy date). */
+    public record RoundingRequest(@Pattern(regexp = "|half-up|half-even") String rounding, LocalDate from) {
     }
 
     /** The sheet's policy date; a missing one means the sheet's today. */
@@ -289,6 +295,15 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid LatePctRequest request) {
         return SheetView.of(service.setLatePct(id.trim(), user.trim(), request.latePct(), request.from()));
+    }
+
+    /** Change the sheet's rounding mode. */
+    @PutMapping("/{id}/settings/rounding")
+    public SheetView setRounding(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid RoundingRequest request) {
+        String mode = request.rounding() == null || request.rounding().isEmpty() ? null : request.rounding();
+        return SheetView.of(service.setRounding(id.trim(), user.trim(), mode, request.from()));
     }
 
     /** Change the sheet's policy date. */

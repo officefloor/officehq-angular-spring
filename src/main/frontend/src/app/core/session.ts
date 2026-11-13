@@ -15,6 +15,8 @@ export interface SheetView {
   latePct: string;
   /** The policy date (YYYY-MM-DD); null when it is the sheet's today. */
   policyDate: string | null;
+  /** The rounding mode (half-up or half-even) in force on the sheet's today; null when none. */
+  rounding: string | null;
   /** The period numbering from-date (YYYY-MM-DD); null when off. */
   periodNumberingFrom: string | null;
   /** The terms of each grade that has its own; a grade without uses the sheet's terms. */
@@ -77,7 +79,7 @@ const NO_DESCENDANTS: DescendantFigures = {
  *  clerk and steward; reassign and reopen by steward. */
 export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 
-/** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade> or note-threshold) takes from a date
+/** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding) takes from a date
  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
 export interface DatedSetting {
   key: string;
@@ -113,6 +115,9 @@ export class Session {
   /** The sheet's note threshold (two decimals) in force on its today: a claim dated then whose due is above
    *  it cannot be opened with an empty note; null when there is none. */
   readonly noteThreshold = computed(() => this.onToday('note-threshold'));
+  /** The sheet's rounding mode (half-up or half-even) in force on its today; null when there is none (a
+   *  claim rounds by the policy date). */
+  readonly rounding = computed(() => this.onToday('rounding'));
   /** The sheet's terms in force on its today: the number of days after a claim's date it is due by. */
   readonly terms = computed(() => Number(this.onToday('terms') ?? STARTING['terms']));
   /** The terms of each grade that has its own in force on the sheet's today (a claim added for it is due
@@ -332,6 +337,29 @@ export class Session {
     }
   }
 
+  /** Record the sheet's rounding mode (half-up or half-even; blank: none) from a date (blank: the sheet's
+   *  today); an error message when refused. */
+  async setRounding(rounding: string, from = ''): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const r = rounding.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+    if (r && r !== 'half-up' && r !== 'half-even') return 'Enter a rounding mode of half-up or half-even, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/rounding`, { rounding: r || null, from: d || null }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
   /** Record the sheet's cap (blank: no cap) from a date (blank: the sheet's today); an error message when refused. */
   async setCap(cap: string, from = ''): Promise<string | null> {
     const user = this.user();
@@ -536,9 +564,12 @@ export class Session {
     return today === null ? null : this.valueOn(key, today);
   }
 
-  /** Whether a claim dated on a date rounds half up: it is before the policy date (the sheet's today when
-   *  there is none); otherwise it rounds half to even. */
+  /** Whether a claim dated on a date rounds half up: by the rounding mode in force on that date; with none,
+   *  it is before the policy date (the sheet's today when there is none); otherwise it rounds half to even. */
   roundsHalfUp(date: string): boolean {
+    const mode = this.valueOn('rounding', date);
+    if (mode === 'half-up') return true;
+    if (mode === 'half-even') return false;
     const policy = this.policyDate() ?? this.today();
     return policy !== null && date < policy;
   }

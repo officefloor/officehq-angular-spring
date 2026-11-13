@@ -6,9 +6,10 @@ import { ROLES, Roles } from '../../core/roles';
 import { PERMISSION_ACTIONS, Session } from '../../core/session';
 
 // The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the proof threshold, each grade's proof threshold, the note threshold, the terms, each grade's
-// terms and the late percent) are saved from a from-date (blank for the sheet's today), keeping the values
+// terms, the late percent and the rounding mode) are saved from a from-date (blank for the sheet's today), keeping the values
 // already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
-// floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
+// floor (the least a claim's live due can be), the rounding mode (half-up or half-even: how a claim dated while it is in force rounds every
+// live figure; blank for none, rounding by the policy date), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
 // the one in force on its date needs a proof to be settled or approved; blank for none), the note threshold (a claim whose due
 // is above the one in force on its date cannot be opened with an empty note; blank for none), the terms (the business days after a claim's date it is due by, fixed
 // when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), each grade's
@@ -62,6 +63,24 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('floor', value($event))"
         />
         <p>In force: <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
+        <label for="setting-rounding">Rounding mode (half-up or half-even; blank for none: by the policy date)</label>
+        <input
+          id="setting-rounding"
+          data-testid="setting-rounding"
+          [value]="rounding()"
+          (input)="rounding.set(value($event)); roundingTouched.set(true); error.set(null)"
+          (focus)="focused.set('rounding')"
+          (keydown.delete)="roundingTouched.set(true); error.set(null)"
+          (keydown.backspace)="roundingTouched.set(true); error.set(null)"
+        />
+        <label for="setting-rounding-from">Rounding mode from (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="setting-rounding-from"
+          data-testid="setting-rounding-from"
+          [value]="fromOf('rounding')"
+          (input)="setFrom('rounding', value($event))"
+        />
+        <p>In force: <strong data-testid="setting-rounding-current">{{ session.rounding() ?? '' }}</strong></p>
         <label for="setting-cap">Cap (the most a person's due-total can be; blank for none)</label>
         <input
           id="setting-cap"
@@ -402,6 +421,8 @@ export class SettingsPanel {
   protected readonly limitTouched = signal(false);
   protected readonly floor = signal('');
   protected readonly floorTouched = signal(false);
+  protected readonly rounding = signal('');
+  protected readonly roundingTouched = signal(false);
   protected readonly cap = signal('');
   protected readonly capTouched = signal(false);
   protected readonly proofThreshold = signal('');
@@ -522,7 +543,7 @@ export class SettingsPanel {
       // counts: it saves the blank). With none, the setting that may be blank whose field was focused last is
       // saved; with none focused, those that differ from the value in force (a blank field clears one), else
       // the clerk limit.
-      const untouched = !this.limitTouched() && !this.floorTouched() && !this.capTouched() && !this.proofThresholdTouched()
+      const untouched = !this.limitTouched() && !this.floorTouched() && !this.roundingTouched() && !this.capTouched() && !this.proofThresholdTouched()
         && !this.noteThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
@@ -540,6 +561,7 @@ export class SettingsPanel {
       if (proofGrade) this.touchGradeProofThreshold(proofGrade);
       const guess = untouched && pick === null;
       const floor = this.floorTouched();
+      const rounding = this.roundingTouched() || pick === 'rounding' || (guess && this.fromOf('rounding').trim() !== '');
       const cap = this.capTouched() || pick === 'cap'
         || (guess && this.cap().trim() !== (this.session.cap() ?? ''));
       const proofThreshold = this.proofThresholdTouched() || pick === 'proof-threshold'
@@ -564,11 +586,12 @@ export class SettingsPanel {
         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
       const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
-        || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
+        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
           && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
+        ?? (rounding ? await this.session.setRounding(this.rounding(), this.fromOf('rounding')) : null)
         ?? (cap ? await this.session.setCap(this.cap(), this.fromOf('cap')) : null)
         ?? (proofThreshold
           ? await this.session.setProofThreshold(this.proofThreshold(), this.fromOf('proof-threshold'))
@@ -596,6 +619,8 @@ export class SettingsPanel {
         this.limitTouched.set(false);
         this.floor.set('');
         this.floorTouched.set(false);
+        this.rounding.set('');
+        this.roundingTouched.set(false);
         this.cap.set('');
         this.capTouched.set(false);
         this.proofThreshold.set('');

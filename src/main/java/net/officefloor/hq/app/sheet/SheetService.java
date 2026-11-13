@@ -208,6 +208,13 @@ public class SheetService {
         return setDated(id, user, Sheet.GRACE + "-" + grade, days == null ? null : days.toString(), from, true);
     }
 
+    /** Record the sheet's rounding mode (half-up or half-even; none: rounding by the policy date) from a date
+     *  (none: the sheet's today), recording the figures it moves. */
+    @Transactional
+    public Sheet setRounding(String id, String user, String mode, LocalDate from) {
+        return setDated(id, user, Sheet.ROUNDING, mode, from, true);
+    }
+
     /** Record the sheet's late percent from a date (none: the sheet's today), recording the figures it
      *  moves. */
     @Transactional
