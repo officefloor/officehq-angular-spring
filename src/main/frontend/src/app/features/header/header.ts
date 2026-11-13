@@ -8,7 +8,8 @@ import { Session } from '../../core/session';
 // each status, and the sheet's due- and overdue-totals — the same figures the summary and the
 // people list show. Then the same figures consolidated over the sheet and all its descendants: each
 // descendant's as that sheet shows them, added to this sheet's own (as it is now, even while the
-// screen shows the sheet as of a date).
+// screen shows the sheet as of a date). And the signed-in user's own due- and overdue-totals, when a
+// person on the sheet has their name or an alias equal to it; blank otherwise.
 @Component({
   selector: 'app-header',
   template: `
@@ -20,6 +21,8 @@ import { Session } from '../../core/session';
         }
         <div><dt>Due total</dt><dd data-testid="header-due-total">{{ figures.dueTotal() }}</dd></div>
         <div><dt>Overdue total</dt><dd data-testid="header-overdue-total">{{ figures.overdueTotal() }}</dd></div>
+        <div><dt>My due total</dt><dd data-testid="my-due-total">{{ figures.mine()?.dueTotal }}</dd></div>
+        <div><dt>My overdue total</dt><dd data-testid="my-overdue-total">{{ figures.mine()?.overdueTotal }}</dd></div>
       </dl>
       <dl aria-label="Consolidated with descendant sheets">
         <div><dt>Consolidated people</dt><dd data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</dd></div>

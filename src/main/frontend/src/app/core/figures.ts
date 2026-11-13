@@ -2,7 +2,7 @@ import { Injectable, computed, inject } from '@angular/core';
 import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
 import { People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
-import { Rates, hundredths, money, rounded } from './rates';
+import { NO_RATE, Rates, hundredths, money, rounded } from './rates';
 import { Session, addDays } from './session';
 
 /** The statuses claims are counted by, in the order the screen shows them. */
@@ -100,6 +100,20 @@ export class Figures {
   readonly overdueTotal = computed(() =>
     money(trimmed(this.people.people().map((p) => this.overdueCents(p)))),
   );
+
+  /** The signed-in user's own figures: the due-total (n/a when it has none) and overdue-total of the
+   *  person whose name or an alias is the user's name, compared as names are (trimmed, ignoring case);
+   *  null when no one on the sheet has it. */
+  readonly mine = computed(() => {
+    const user = this.session.user()?.trim().toLowerCase();
+    if (!user) return null;
+    const p = this.people
+      .people()
+      .find((p) => p.name.trim().toLowerCase() === user || p.aliases.some((a) => a.trim().toLowerCase() === user));
+    if (!p) return null;
+    const due = this.dueCents(p);
+    return { dueTotal: due === null ? NO_RATE : money(due), overdueTotal: money(this.overdueCents(p)) };
+  });
 
   /** Each tag ever used on the sheet, sorted, with the due of the claims that count live and carry it
    *  (a claim with two tags counts in both), not capped or trimmed. */
