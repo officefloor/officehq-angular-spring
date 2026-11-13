@@ -8,6 +8,8 @@ import { Period, Periods } from '../../core/periods';
 // whether it is closed or soft-closed, with buttons to close it, soft-close it and reopen it (by the roles the sheet allows), and whether it is locked, with buttons for a
 // steward to lock and unlock it.
 // A paste box adds opening balances, lines of name,period,amount, to people's carried figures for periods.
+// A steward rolls a fiscal year over: the next one's periods are generated and each person's open figure at the old year's end
+// is carried into the new year's first period.
 @Component({
   selector: 'app-periods',
   template: `
@@ -99,6 +101,24 @@ import { Period, Periods } from '../../core/periods';
       @if (genError(); as err) {
         <p role="alert" data-testid="period-generate-error">{{ err }}</p>
       }
+      <form (submit)="rollover($event)" data-testid="rollover-form">
+        <label for="rollover-year">Roll fiscal year over (YYYY)</label>
+        <input
+          id="rollover-year"
+          data-testid="rollover-year"
+          inputmode="numeric"
+          placeholder="YYYY"
+          [value]="rolloverYear()"
+          (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
+        />
+        <button type="submit" data-testid="rollover" [disabled]="rolling()">Roll year over</button>
+      </form>
+      @if (rolloverMade() !== null) {
+        <p>Rolled over: made <span data-testid="rollover-made">{{ rolloverMade() }}</span> period(s)</p>
+      }
+      @if (rolloverError(); as err) {
+        <p role="alert" data-testid="rollover-error">{{ err }}</p>
+      }
       <form (submit)="importOpenings($event)" data-testid="opening-import-form">
         <label for="opening-import">Opening balances (one line each: name,period,amount)</label>
         <textarea
@@ -176,6 +196,11 @@ export class PeriodsPanel {
   protected readonly fyYear = signal('');
   /** The calendar year typed for the quarters generator, which shares the count and refusal above. */
   protected readonly quartersYear = signal('');
+  /** The year end rollover (a steward only): the fiscal year typed, how many periods it last made, and its refusal. */
+  protected readonly rolloverYear = signal('');
+  protected readonly rolling = signal(false);
+  protected readonly rolloverMade = signal<number | null>(null);
+  protected readonly rolloverError = signal<string | null>(null);
   /** The opening balances paste: its text, how many lines it last added, and its refusal. */
   protected readonly openingText = signal('');
   protected readonly importing = signal(false);
@@ -233,6 +258,21 @@ export class PeriodsPanel {
       else this.openingsDone.set(done);
     } finally {
       this.importing.set(false);
+    }
+  }
+
+  protected async rollover(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.rolling()) return;
+    this.rolloverMade.set(null);
+    this.rolloverError.set(null);
+    this.rolling.set(true);
+    try {
+      const made = await this.periods.rollover(this.rolloverYear());
+      if (typeof made === 'string') this.rolloverError.set(made);
+      else this.rolloverMade.set(made);
+    } finally {
+      this.rolling.set(false);
     }
   }
 

@@ -63,6 +63,10 @@ public class PeriodController {
     public record GenerateFiscalYearRequest(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** The fiscal year to roll over, by the calendar year its first day falls in; the next one is generated. */
+    public record RolloverRequest(@NotNull @Min(1) @Max(9997) Integer year) {
+    }
+
     /** The calendar year to generate the four quarters of. */
     public record GenerateQuartersRequest(@NotNull @Min(1) @Max(9999) Integer year) {
     }
@@ -77,11 +81,13 @@ public class PeriodController {
 
     private final PeriodService service;
     private final OpeningService openings;
+    private final RolloverService rollovers;
     private final AsOf asOf;
 
-    public PeriodController(PeriodService service, OpeningService openings, AsOf asOf) {
+    public PeriodController(PeriodService service, OpeningService openings, RolloverService rollovers, AsOf asOf) {
         this.service = service;
         this.openings = openings;
+        this.rollovers = rollovers;
         this.asOf = asOf;
     }
 
@@ -122,6 +128,17 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GenerateFiscalYearRequest request) {
         return service.generateFiscalYear(sheetId.trim(), user.trim(), request.year()).stream()
+                .map(PeriodView::of).toList();
+    }
+
+    /** Roll a fiscal year over: generate the next one's periods and carry each person's open figure at the old
+     *  year's end into the new year's first period; by a steward only, and refused when the year has no periods.
+     *  The periods made. */
+    @PostMapping("/rollover")
+    public List<PeriodView> rollover(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid RolloverRequest request) {
+        return rollovers.rollover(sheetId.trim(), user.trim(), request.year()).stream()
                 .map(PeriodView::of).toList();
     }
 

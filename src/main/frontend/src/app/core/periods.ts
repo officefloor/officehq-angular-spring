@@ -151,6 +151,29 @@ export class Periods {
     }
   }
 
+  /** Roll a fiscal year (named by the calendar year its first day falls in) over, a steward only: generate the
+   *  next one's periods and carry each person's open figure at the old year's end into the new year's first
+   *  period: how many periods were made, or an error message when refused. The periods are re-read after it. */
+  async rollover(year: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const y = year.trim();
+    if (!/^\d{4}$/.test(y) || Number(y) < 1 || Number(y) > 9997) return 'Enter the fiscal year as YYYY.';
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(`${this.url(sid)}/rollover`, { year: Number(y) }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) await this.load();
+      return made.length;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may roll the year over.';
+      if (e instanceof HttpErrorResponse && e.status === 409) return 'That fiscal year has no periods.';
+      if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the fiscal year as YYYY.';
+      return e instanceof HttpErrorResponse ? `Could not roll the year over (${e.status}).` : 'Could not roll the year over.';
+    }
+  }
+
   /** Generate the four calendar quarters of a year, named <yyyy>-Q1 to <yyyy>-Q4, leaving out any quarter
    *  whose name is taken or that overlaps a period: how many were made, or an error message when refused. */
   async generateQuarters(year: string): Promise<number | string> {

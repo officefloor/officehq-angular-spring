@@ -324,6 +324,48 @@ public class Rollup {
         return carried;
     }
 
+    /** Each person's open figure at the end of a day, by person id, every person on the sheet in list order: the
+     *  due (as {@link #carriedByPerson} counts it) of their claims not left out now by a hold or a deferral whose
+     *  due-by falls in one of the given periods, and that were OPEN or PENDING at the end of the day, as their
+     *  status log records it. */
+    public Map<Long, BigDecimal> openByPerson(String sheetId, List<Period> inPeriods, LocalDate day) {
+        Optional<Sheet> sheet = sheets.findById(sheetId);
+        LocalDate today = sheet.map(Sheet::getToday).orElse(null);
+        List<Rate> sheetRates = rates.findWithAncestors(sheetId, sheets.ancestors(sheetId));
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        Map<Long, BigDecimal> open = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> {
+            byId.put(p.getId(), p);
+            open.put(p.getId(), ZERO);
+        });
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        for (Claim claim : sheetClaims) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || claim.getDueBy() == null || heldOut(claim, person, today) || claim.deferredOn(today)
+                    || inPeriods.stream().noneMatch(p -> p.contains(claim.getDueBy()))) {
+                continue;
+            }
+            ClaimStatus status = statusAt(claim, day);
+            if (status == null || !status.isOpen()) {
+                continue;
+            }
+            BigDecimal due;
+            if (claim.getSettledDue() != null) {
+                due = claim.getSettledDue();
+            } else if (claim.isBound()) {
+                due = claim.getStatedDue();
+            } else {
+                due = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate(), claim)
+                        .map(rate -> rated(sheet, claim, sheetClaims, rate))
+                        .orElse(null);
+            }
+            if (due != null) {
+                open.merge(person.getId(), charged(sheet, claim, person, due), BigDecimal::add);
+            }
+        }
+        return open;
+    }
+
     /** Record, once the change commits, a SNAPSHOT line of each person's due-total in a snapshot, in the
      *  list order. */
     public void recordSnapshot(String sheetId, String user, Snapshot snapshot) {
