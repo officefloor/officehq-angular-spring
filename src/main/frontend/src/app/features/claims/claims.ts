@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
@@ -23,6 +23,8 @@ export interface Claim {
   /** The due fixed when the claim was settled (two decimals); null until then, or when its grade
    *  had no rate to work from. */
   settledDue: string | null;
+  /** The user who opened the claim; null for a claim never opened. */
+  openedBy: string | null;
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
@@ -97,6 +99,7 @@ const AMOUNT = /^\d+(\.\d{1,2})?$/;
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
+          <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
             Open
           </button>
@@ -167,7 +170,8 @@ export class PersonClaims {
     this.error.set(null);
   }
 
-  /** Open, settle or void a claim; a change its status does not allow is refused on the row. */
+  /** Open, settle or void a claim; a change its status does not allow, or the user who opened it
+   *  settling it, is refused on the row. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.rowError.set(null);
     const sheet = this.session.sheetId();
@@ -178,8 +182,14 @@ export class PersonClaims {
       const saved = await firstValueFrom(this.http.post<Claim>(url, null));
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(saved);
-    } catch {
-      this.rowError.set({ id: claim.id, message: `The claim could not be ${PAST[action]}.` });
+    } catch (e) {
+      const own = action === 'settle' && e instanceof HttpErrorResponse && e.status === 403;
+      this.rowError.set({
+        id: claim.id,
+        message: own
+          ? 'The claim could not be settled: whoever opened it cannot settle it.'
+          : `The claim could not be ${PAST[action]}.`,
+      });
     }
   }
 

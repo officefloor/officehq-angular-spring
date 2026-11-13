@@ -66,7 +66,8 @@ public class ClaimService {
         return saved;
     }
 
-    /** Move a claim to a new status; a change its status does not allow is refused. */
+    /** Move a claim to a new status; a change its status does not allow is refused, as is the user
+     *  who opened a claim settling it. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
         Person person = person(sheetId, personId);
@@ -78,10 +79,14 @@ public class ClaimService {
         if (!claim.getStatus().canMoveTo(to)) {
             throw new StatusChangeRefusedException(claim.getStatus(), to);
         }
+        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new OwnClaimSettleRefusedException(user);
+        }
         Long had = claim.getNumber();
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
             claim.setNumber(number);
+            claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(dueOf(sheetId, person, claim));
         } else if (to == ClaimStatus.VOID) {

@@ -30,13 +30,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as the screen shows it; the amount and the due fixed on settling (null when none
-     *  was) are strings with two decimals. */
+     *  was) are strings with two decimals; openedBy is null for a claim never opened. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Long number, String settledDue) {
+            ClaimStatus status, Long number, String settledDue, String openedBy) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
-                    claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null);
+                    claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
+                    claim.getOpenedBy());
         }
     }
 
@@ -85,7 +86,7 @@ public class ClaimController {
         return changeStatus(sheetId, user, personId, id, ClaimStatus.OPEN);
     }
 
-    /** Settle an OPEN claim. */
+    /** Settle an OPEN claim; the user who opened it cannot. */
     @PostMapping("/people/{personId}/claims/{id}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
@@ -107,6 +108,12 @@ public class ClaimController {
     @ExceptionHandler(StatusChangeRefusedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
+    }
+
+    /** The user who opened a claim cannot settle it. */
+    @ExceptionHandler(OwnClaimSettleRefusedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public void ownClaim() {
     }
 
     @ExceptionHandler(NoSuchElementException.class)
