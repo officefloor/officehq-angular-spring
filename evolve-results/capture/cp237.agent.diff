@@ -1,0 +1,61 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 49ab210e1..438db8799 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -138,7 +138,7 @@ const NO_DESCENDANTS: DescendantFigures = {
+ 
+ /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
+  *  clerk and steward; reassign and reopen by steward. */
+-export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
++export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
+ 
+ /** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, clerk-limit-<grade>, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding) takes from a date
+  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index fd2ab7f24..873fd8ea0 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -48,7 +48,8 @@ public class Sheet {
+     public static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
+             "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
+             "void", List.of("clerk", "steward"), "close", List.of("clerk", "steward"),
+-            "reassign", List.of("steward"), "reopen", List.of("steward"));
++            "reassign", List.of("steward"), "reopen", List.of("steward"),
++            "today", List.of("clerk", "steward"));
+     private static final BigDecimal START_FLOOR = new BigDecimal("1.00");
+     private static final BigDecimal START_LATE_PCT = new BigDecimal("0.00");
+     private static final int START_TERMS = 14;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 2642da5d1..08af331f2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -402,7 +402,7 @@ public class SheetController {
+     /** Change the roles that may take an action. */
+     @PutMapping("/{id}/settings/permissions/{action}")
+     public SheetView setPermission(@PathVariable @NotBlank @Size(max = 200) String id,
+-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
++            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PermissionRequest request) {
+         return SheetView.of(service.setPermission(id.trim(), user.trim(), action, request.roles()));
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index d7381a595..e6955e9ba 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -123,6 +123,7 @@ public class SheetService {
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
++        roles.require(id, user, "today");
+         Rollup.Snapshot before = rollup.take(id);
+         if (!today.equals(sheet.getToday())) {
+             if (sheet.isScoreLog()) {
+@@ -270,7 +271,7 @@ public class SheetService {
+         return sheet;
+     }
+ 
+-    /** Set the roles that may take an action (open, settle, void, reassign, close or reopen), comma
++    /** Set the roles that may take an action (open, settle, void, reassign, close, reopen or today), comma
+      *  separated; blank keeps the standing rule. Not dated. */
+     @Transactional
+     public Sheet setPermission(String id, String user, String action, String roles) {
