@@ -1,0 +1,133 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 82353ef48..839581154 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -19,7 +19,8 @@ export interface Claim {
+   date: string;
+   note: string;
+   status: ClaimStatus;
+-  /** The claim's number on the sheet, given when it is opened; null for a draft or a void claim. */
++  /** The claim's number on the sheet, given when it is opened and kept when it is voided; null for a
++   *  claim never opened. */
+   number: number | null;
+   /** The due fixed when the claim was settled (two decimals); null until then, or when its grade
+    *  had no rate to work from. */
+@@ -171,8 +172,14 @@ export class PersonClaims {
+     return periodOf(this.periods.periods(), claim.date)?.name ?? '';
+   }
+ 
++  /** Open the editor on a DRAFT claim; any other claim cannot be edited (an OPEN one is voided and
++   *  added again), which is refused on the row. */
+   protected edit(claim: Claim): void {
+     this.rowError.set(null);
++    if (claim.status !== 'DRAFT') {
++      this.rowError.set({ id: claim.id, message: `A ${claim.status} claim cannot be edited; only a draft can.` });
++      return;
++    }
+     this.editingId.set(claim.id);
+     this.amount.set(claim.amount);
+     this.date.set(claim.date);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index dbe2e1a4c..d6c6bcd7b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -40,7 +40,8 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The claim's number on its sheet, given when it is opened; null for a draft or a void claim. */
++    /** The claim's number on its sheet, given when it is opened and kept when it is
++     *  voided (never reused); null for a claim never opened. */
+     @Column(name = "claim_number")
+     private Long number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 263c1a533..1daf75e38 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -79,7 +79,7 @@ public class ClaimController {
+                 request.date(), request.note())));
+     }
+ 
+-    /** Change a claim's amount, date and note. */
++    /** Change a DRAFT claim's amount, date and note. */
+     @PutMapping("/people/{personId}/claims/{id}")
+     public ClaimView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+@@ -117,9 +117,10 @@ public class ClaimController {
+         return ClaimView.of(rollups.track(sheet, by, () -> service.changeStatus(sheet, by, personId, id, to)));
+     }
+ 
+-    /** A status change the claim's status does not allow, or any change to a claim dated in a
+-     *  closed period, is refused. */
+-    @ExceptionHandler({StatusChangeRefusedException.class, PeriodClosedException.class})
++    /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,
++     *  or any change to a claim dated in a closed period, is refused. */
++    @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class,
++            PeriodClosedException.class})
+     @ResponseStatus(HttpStatus.CONFLICT)
+     public void refused() {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimNotEditableException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimNotEditableException.java
+new file mode 100644
+index 000000000..382fe039b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimNotEditableException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.claim;
++
++/** Only a DRAFT claim can be edited; an OPEN one is voided and added again instead. */
++public class ClaimNotEditableException extends RuntimeException {
++
++    public ClaimNotEditableException(ClaimStatus status) {
++        super("A " + status + " claim cannot be edited");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0d74bbe9e..adce32d02 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -56,13 +56,17 @@ public class ClaimService {
+         return added;
+     }
+ 
+-    /** Change a claim's amount, date and note; a missing date takes the sheet's today. */
++    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's today. Any
++     *  other claim is refused: an OPEN one is changed by voiding it and adding a new one. */
+     @Transactional
+     public Claim update(String sheetId, String user, Long personId, Long id, BigDecimal amount, LocalDate date,
+             String note) {
+         Person person = person(sheetId, personId);
+         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
+                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ClaimNotEditableException(claim.getStatus());
++        }
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+         refuseClosed(sheetId, claim.getDate());
+         refuseClosed(sheetId, on);
+@@ -91,15 +95,12 @@ public class ClaimService {
+         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+             throw new OwnClaimSettleRefusedException(user);
+         }
+-        Long had = claim.getNumber();
+         claim.setStatus(to);
+         if (to == ClaimStatus.OPEN) {
+             claim.setNumber(number);
+             claim.setOpenedBy(user);
+         } else if (to == ClaimStatus.SETTLED) {
+             claim.setSettledDue(figureOf(sheetId, person, claim));
+-        } else if (to == ClaimStatus.VOID) {
+-            claim.setNumber(null);
+         }
+         Claim saved = claims.saveAndFlush(claim);
+         String event = switch (to) {
+@@ -108,7 +109,7 @@ public class ClaimService {
+             case VOID -> "CLAIM_VOIDED";
+             case DRAFT -> throw new IllegalStateException("A claim never returns to DRAFT");
+         };
+-        String line = line(event, sheetId, user, person, saved, had != null ? had : saved.getNumber());
++        String line = line(event, sheetId, user, person, saved, saved.getNumber());
+         if (to == ClaimStatus.SETTLED) {
+             line += " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE);
+         }
