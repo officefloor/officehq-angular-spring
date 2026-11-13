@@ -222,7 +222,7 @@ interface StatementTaken {
                   [claims]="claimsOf(p.id)"
                   [grades]="p.grades"
                   [floor]="floor()"
-                  [latePct]="settings.latePct()"
+                  [latePct]="settings.latePctOn()"
                   [policyDate]="settings.policyDate()"
                   [selectedIds]="selectedClaims()"
                   [people]="people()"
@@ -328,17 +328,20 @@ export class People {
   protected readonly periods = inject(PeriodStore);
   protected readonly money = money;
   protected readonly settings = inject(SettingStore);
-  /** The sheet's floor in cents. */
-  protected readonly floor = computed(() => cents(this.settings.floor()));
-  /** The sheet's cap in cents; null when there is none. */
+  /** The sheet's floor in cents in force on a date. */
+  protected readonly floor = computed(() => {
+    const floorOn = this.settings.floorOn();
+    return (date: string) => cents(floorOn(date));
+  });
+  /** The sheet's cap in cents in force on its today; null when there is none. */
   private readonly cap = computed(() => {
     const cap = this.settings.cap();
     return cap === null ? null : cents(cap);
   });
-  /** What late charges work from: the sheet's late percent and today; and the policy date
+  /** What late charges work from: the sheet's late percent in force on a claim's date and today; and the policy date
    *  figures round by. */
   private readonly late = computed<Late>(() => ({
-    pct: this.settings.latePct(),
+    pct: this.settings.latePctOn(),
     today: this.session.today(),
     policyDate: this.settings.policyDate(),
   }));

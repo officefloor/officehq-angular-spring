@@ -63,7 +63,7 @@ public class ClaimService {
     }
 
     /** Add a claim for a person; a missing date takes the sheet's today. Its due-by is fixed now: its
-     *  date plus the terms of the person's grade in force on that date. A negative amount is a
+     *  date plus the terms in force on that date for the person's grade then. A negative amount is a
      *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
@@ -74,7 +74,7 @@ public class ClaimService {
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
-        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, grades.gradeOn(personId, on)));
+        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, grades.gradeOn(personId, on), on));
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, dueBy, noteOf(note),
                 corrects));
         log(sheetId, user, person, added);
@@ -329,7 +329,7 @@ public class ClaimService {
 
     /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by is
      *  before the sheet's today) or a correction, else the late percent of the figure for every full 30 days
-     *  it is overdue, rounded to two decimals as the claim's date decides (see roundingOf). Never bound by a statement: it follows the
+     *  it is overdue (the late percent in force on the claim's date), rounded to two decimals as the claim's date decides (see roundingOf). Never bound by a statement: it follows the
      *  sheet's today. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
      *  claim as if it were still OPEN. */
     private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure, boolean open) {
@@ -341,13 +341,13 @@ public class ClaimService {
         if (days < 30) {
             return none;
         }
-        return figure.multiply(settings.latePct(sheetId)).multiply(BigDecimal.valueOf(days / 30))
+        return figure.multiply(settings.latePct(sheetId, claim.getDate())).multiply(BigDecimal.valueOf(days / 30))
                 .movePointLeft(2).setScale(2, roundingOf(sheetId, claim));
     }
 
     /** The due on a claim at the rate in force on the claim's date for the person's grade in force
      *  on the claim's date: amount times rate
-     *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf), and at least the sheet's floor unless it
+     *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf), and at least the sheet's floor in force on its date unless it
      *  is a correction; null when no rate applies. */
     private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim) {
         BigDecimal amount = claim.getAmount();
@@ -355,7 +355,7 @@ public class ClaimService {
         return rates.rateOn(sheetId, grades.gradeOn(person.getId(), claim.getDate()), claim.getDate())
                 .map(Rate::getRate)
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, rounding))
-                .map(due -> claim.isCorrection() ? due : due.max(settings.floor(sheetId)))
+                .map(due -> claim.isCorrection() ? due : due.max(settings.floor(sheetId, claim.getDate())))
                 .orElse(null);
     }
 

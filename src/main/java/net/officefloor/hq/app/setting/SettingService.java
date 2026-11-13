@@ -3,9 +3,12 @@ package net.officefloor.hq.app.setting;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -14,22 +17,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its cap, its terms
- *  (and any grade's own terms) and its late percent, its policy date and its period numbering from. */
+ *  (and any grade's own terms) and its late percent, its policy date and its period numbering from. The
+ *  settings that carry a figure are dated: each value recorded is in force from its from-date. A claim's
+ *  floor, late percent and terms are those in force on its date; the clerk limit and the cap those in
+ *  force on the sheet's today. */
 @Service
 public class SettingService {
+
+    /** The key prefix of a grade's own terms: terms-A, terms-B, terms-C. */
+    private static final String GRADE_TERMS = "terms-";
 
     private final SheetService sheets;
     private final SheetRepository sheetRepository;
     private final SheetRoleRepository roles;
-    private final GradeTermsRepository gradeTerms;
+    private final SettingValueRepository values;
     private final Audit audit;
 
     public SettingService(SheetService sheets, SheetRepository sheetRepository, SheetRoleRepository roles,
-            GradeTermsRepository gradeTerms, Audit audit) {
+            SettingValueRepository values, Audit audit) {
         this.sheets = sheets;
         this.sheetRepository = sheetRepository;
         this.roles = roles;
-        this.gradeTerms = gradeTerms;
+        this.values = values;
         this.audit = audit;
     }
 
@@ -43,19 +52,42 @@ public class SettingService {
         return roles.findBySheetIdAndUser(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
     }
 
-    /** The sheet's clerk limit; null when there is none. */
+    /** The floor a sheet starts with: in force before the first from-date recorded for it. */
+    public static final BigDecimal START_FLOOR = new BigDecimal("1.00");
+
+    /** The late percent a sheet starts with. */
+    public static final BigDecimal START_LATE_PCT = new BigDecimal("0.00");
+
+    /** The terms a sheet starts with, in days. */
+    public static final int START_TERMS = 14;
+
+    /** The values recorded for the sheet's dated settings, by key, each list by from-date. */
+    public Map<String, List<SettingValue>> dated(String sheetId) {
+        Map<String, List<SettingValue>> byKey = new TreeMap<>();
+        values.findBySheetIdOrderByKeyAscFromAsc(sheetId)
+                .forEach(v -> byKey.computeIfAbsent(v.getKey(), k -> new ArrayList<>()).add(v));
+        return byKey;
+    }
+
+    /** The value recorded for a dated setting that is in force on a date: the one with the latest
+     *  from-date on or before it; empty before every from-date (the sheet's starting value applies). */
+    private Optional<SettingValue> inForce(String sheetId, String key, LocalDate on) {
+        return values.findFirstBySheetIdAndKeyAndFromLessThanEqualOrderByFromDesc(sheetId, key, on);
+    }
+
+    /** The sheet's clerk limit in force on its today; null when there is none. */
     public BigDecimal clerkLimit(String sheetId) {
-        return sheets.load(sheetId).getClerkLimit();
+        return inForce(sheetId, "clerk-limit", sheets.today(sheetId)).map(SettingValue::getValue).orElse(null);
     }
 
-    /** The sheet's floor: the least a claim's live due can be. */
-    public BigDecimal floor(String sheetId) {
-        return sheets.load(sheetId).getFloor();
+    /** The sheet's floor in force on a date: the least the live due of a claim of that date can be. */
+    public BigDecimal floor(String sheetId, LocalDate on) {
+        return inForce(sheetId, "floor", on).map(SettingValue::getValue).orElse(START_FLOOR);
     }
 
-    /** The sheet's cap: the most a person's due-total can be; null when there is none. */
+    /** The sheet's cap in force on its today: the most a person's due-total can be; null when there is none. */
     public BigDecimal cap(String sheetId) {
-        return sheets.load(sheetId).getCap();
+        return inForce(sheetId, "cap", sheets.today(sheetId)).map(SettingValue::getValue).orElse(null);
     }
 
     /** A person's due-total held to the sheet's cap; a due-total of none (n/a) is not capped. */
@@ -64,31 +96,38 @@ public class SettingService {
         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
-    /** The sheet's terms in days: a claim is due by its date plus them. */
-    public int terms(String sheetId) {
-        return sheets.load(sheetId).getTerms();
+    /** The sheet's terms in days in force on a date: a claim of that date is due by its date plus them. */
+    public int terms(String sheetId, LocalDate on) {
+        return inForce(sheetId, "terms", on).map(v -> v.getValue().intValue()).orElse(START_TERMS);
     }
 
-    /** The grades' own terms on the sheet, by grade; a grade not listed takes the sheet's terms. */
-    public Map<String, Integer> gradeTerms(String sheetId) {
+    /** The grades' own terms in force on a date, by grade; a grade not listed takes the sheet's terms. */
+    public Map<String, Integer> gradeTerms(String sheetId, LocalDate on) {
         Map<String, Integer> byGrade = new LinkedHashMap<>();
-        gradeTerms.findBySheetIdOrderByGradeAsc(sheetId).forEach(t -> byGrade.put(t.getGrade(), t.getTerms()));
+        dated(sheetId).forEach((key, recorded) -> {
+            if (!key.startsWith(GRADE_TERMS)) {
+                return;
+            }
+            recorded.stream().filter(v -> !v.getFrom().isAfter(on)).reduce((a, b) -> b)
+                    .ifPresent(v -> byGrade.put(key.substring(GRADE_TERMS.length()), v.getValue().intValue()));
+        });
         return byGrade;
     }
 
-    /** The terms in days a claim of the grade takes now: the grade's own, else the sheet's. */
-    public int termsFor(String sheetId, String grade) {
+    /** The terms in days a claim of the grade dated on a date takes: the grade's own in force then,
+     *  else the sheet's. */
+    public int termsFor(String sheetId, String grade, LocalDate on) {
         if (grade == null) {
-            return terms(sheetId);
+            return terms(sheetId, on);
         }
-        return gradeTerms.findBySheetIdAndGrade(sheetId, grade).map(GradeTerms::getTerms)
-                .orElseGet(() -> terms(sheetId));
+        return inForce(sheetId, GRADE_TERMS + grade, on).map(v -> v.getValue().intValue())
+                .orElseGet(() -> terms(sheetId, on));
     }
 
-    /** The sheet's late percent: an overdue claim's due gains it of its figure for every full 30 days
-     *  it is overdue. */
-    public BigDecimal latePct(String sheetId) {
-        return sheets.load(sheetId).getLatePct();
+    /** The sheet's late percent in force on a date: an overdue claim of that date's due gains it of its
+     *  figure for every full 30 days it is overdue. */
+    public BigDecimal latePct(String sheetId, LocalDate on) {
+        return inForce(sheetId, "late-pct", on).map(SettingValue::getValue).orElse(START_LATE_PCT);
     }
 
     /** The sheet's policy date as set; null when it is blank (the sheet's today applies). */
@@ -128,82 +167,57 @@ public class SettingService {
         return saved;
     }
 
-    /** Change the sheet's clerk limit; null removes it. */
+    /** Record the sheet's clerk limit from a date (null for the sheet's today); a null limit records none. */
     @Transactional
-    public Sheet setClerkLimit(String sheetId, String by, BigDecimal limit) {
-        sheets.load(sheetId);
-        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
-        BigDecimal scaled = limit != null ? limit.setScale(2, RoundingMode.UNNECESSARY) : null;
-        sheet.setClerkLimit(scaled);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=clerk-limit value="
-                + (scaled != null ? scaled.toPlainString() : ""));
-        return saved;
+    public SettingValue setClerkLimit(String sheetId, String by, BigDecimal limit, LocalDate from) {
+        return record(sheetId, by, "clerk-limit", limit != null ? limit.setScale(2, RoundingMode.UNNECESSARY) : null, from);
     }
 
-    /** Change the sheet's floor. */
+    /** Record the sheet's floor from a date (null for the sheet's today). */
     @Transactional
-    public Sheet setFloor(String sheetId, String by, BigDecimal floor) {
-        sheets.load(sheetId);
-        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
-        BigDecimal scaled = floor.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setFloor(scaled);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=floor value="
-                + scaled.toPlainString());
-        return saved;
+    public SettingValue setFloor(String sheetId, String by, BigDecimal floor, LocalDate from) {
+        return record(sheetId, by, "floor", floor.setScale(2, RoundingMode.UNNECESSARY), from);
     }
 
-    /** Change the sheet's cap; null removes it. */
+    /** Record the sheet's cap from a date (null for the sheet's today); a null cap records none. */
     @Transactional
-    public Sheet setCap(String sheetId, String by, BigDecimal cap) {
-        sheets.load(sheetId);
-        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
-        BigDecimal scaled = cap != null ? cap.setScale(2, RoundingMode.UNNECESSARY) : null;
-        sheet.setCap(scaled);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=cap value="
-                + (scaled != null ? scaled.toPlainString() : ""));
-        return saved;
+    public SettingValue setCap(String sheetId, String by, BigDecimal cap, LocalDate from) {
+        return record(sheetId, by, "cap", cap != null ? cap.setScale(2, RoundingMode.UNNECESSARY) : null, from);
     }
 
-    /** Change the sheet's terms. */
+    /** Record the sheet's terms from a date (null for the sheet's today). */
     @Transactional
-    public Sheet setTerms(String sheetId, String by, int terms) {
-        sheets.load(sheetId);
-        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
-        sheet.setTerms(terms);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
-        return saved;
+    public SettingValue setTerms(String sheetId, String by, int terms, LocalDate from) {
+        return record(sheetId, by, "terms", BigDecimal.valueOf(terms), from);
     }
 
-    /** Set a grade's own terms on the sheet. */
+    /** Record a grade's own terms on the sheet from a date (null for the sheet's today). */
     @Transactional
-    public GradeTerms setGradeTerms(String sheetId, String by, String grade, int terms) {
+    public SettingValue setGradeTerms(String sheetId, String by, String grade, int terms, LocalDate from) {
+        return record(sheetId, by, GRADE_TERMS + grade, BigDecimal.valueOf(terms), from);
+    }
+
+    /** Record the sheet's late percent from a date (null for the sheet's today). */
+    @Transactional
+    public SettingValue setLatePct(String sheetId, String by, BigDecimal latePct, LocalDate from) {
+        return record(sheetId, by, "late-pct", latePct.setScale(2, RoundingMode.UNNECESSARY), from);
+    }
+
+    /** Record a dated setting's value from a date, the sheet's today when none is given, keeping the
+     *  values already recorded; one already recorded from that date is replaced. */
+    private SettingValue record(String sheetId, String by, String key, BigDecimal value, LocalDate from) {
         sheets.lock(sheetId);
-        GradeTerms saved = gradeTerms.findBySheetIdAndGrade(sheetId, grade)
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        SettingValue saved = values.findBySheetIdAndKeyAndFrom(sheetId, key, on)
                 .map(existing -> {
-                    existing.setTerms(terms);
+                    existing.setValue(value);
                     return existing;
                 })
-                .orElseGet(() -> new GradeTerms(sheetId, grade, terms));
-        saved = gradeTerms.saveAndFlush(saved);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms-" + grade + " value="
-                + terms);
-        return saved;
-    }
-
-    /** Change the sheet's late percent. */
-    @Transactional
-    public Sheet setLatePct(String sheetId, String by, BigDecimal latePct) {
-        sheets.load(sheetId);
-        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
-        BigDecimal scaled = latePct.setScale(2, RoundingMode.UNNECESSARY);
-        sheet.setLatePct(scaled);
-        Sheet saved = sheetRepository.saveAndFlush(sheet);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=late-pct value="
-                + scaled.toPlainString());
+                .orElseGet(() -> new SettingValue(sheetId, key, on, value));
+        saved = values.saveAndFlush(saved);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=" + key + " value="
+                + (value != null ? (key.startsWith("terms") ? String.valueOf(value.intValue()) : value.toPlainString()) : "")
+                + (from != null ? " from=" + from : ""));
         return saved;
     }
 

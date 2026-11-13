@@ -10,10 +10,12 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -40,12 +42,25 @@ public class SettingController {
         }
     }
 
-    /** The sheet's settings: the roles assigned, the clerk limit (two decimals; null for none) and
+    /** The sheet's settings: the roles assigned, and as in force on the sheet's today the clerk limit (two decimals; null for none) and
      *  the floor (two decimals), the cap (two decimals; null for none), the terms (whole days), the late percent (two decimals) and the policy
      *  date (blank for the sheet's today) and the period numbering from (blank for off), and the grades'
-     *  own terms by grade (a grade not listed takes the sheet's terms). */
+     *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
+     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
-            String policyDate, String periodNumberingFrom, Map<String, Integer> gradeTerms) {
+            String policyDate, String periodNumberingFrom, Map<String, Integer> gradeTerms,
+            Map<String, List<DatedView>> dated) {
+    }
+
+    /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
+     *  terms, null for no clerk limit or cap. */
+    public record DatedView(String from, String value) {
+        static DatedView of(SettingValue v) {
+            String value = v.getValue() == null ? null
+                    : v.getKey().startsWith("terms") ? String.valueOf(v.getValue().intValue())
+                    : v.getValue().toPlainString();
+            return new DatedView(v.getFrom().toString(), value);
+        }
     }
 
     /** A role for a user name: clerk or steward. */
@@ -53,23 +68,24 @@ public class SettingController {
     }
 
     /** A clerk limit of 0.00 or more with up to two decimals; null removes the limit. */
-    public record ClerkLimitRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    public record ClerkLimitRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
     /** A floor of 0.00 or more with up to two decimals. */
-    public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
     /** A cap of 0.00 or more with up to two decimals; null removes the cap. */
-    public record CapRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    public record CapRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
-    /** Terms of 0 or more whole days. */
-    public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer value) {
+    /** Terms of 0 or more whole days. Each figure setting is recorded from its from-date; null for the
+     *  sheet's today. */
+    public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer value, LocalDate from) {
     }
 
     /** A late percent of 0.00 or more with up to two decimals. */
-    public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
     /** A policy date; null leaves it blank (the sheet's today). */
@@ -82,10 +98,12 @@ public class SettingController {
 
     private final SettingService service;
     private final RollupService rollups;
+    private final SheetService sheets;
 
-    public SettingController(SettingService service, RollupService rollups) {
+    public SettingController(SettingService service, RollupService rollups, SheetService sheets) {
         this.service = service;
         this.rollups = rollups;
+        this.sheets = sheets;
     }
 
     /** The sheet's settings. */
@@ -110,7 +128,7 @@ public class SettingController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated ClerkLimitRequest request) {
         String sheet = sheetId.trim();
-        service.setClerkLimit(sheet, SignedInUser.decode(user), request.value());
+        service.setClerkLimit(sheet, SignedInUser.decode(user), request.value(), request.from());
         return view(sheet);
     }
 
@@ -121,7 +139,7 @@ public class SettingController {
             @RequestBody @Validated FloorRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        rollups.track(sheet, by, () -> service.setFloor(sheet, by, request.value()));
+        rollups.track(sheet, by, () -> service.setFloor(sheet, by, request.value(), request.from()));
         return view(sheet);
     }
 
@@ -132,7 +150,7 @@ public class SettingController {
             @RequestBody @Validated CapRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        rollups.track(sheet, by, () -> service.setCap(sheet, by, request.value()));
+        rollups.track(sheet, by, () -> service.setCap(sheet, by, request.value(), request.from()));
         return view(sheet);
     }
 
@@ -143,18 +161,18 @@ public class SettingController {
             @RequestBody @Validated TermsRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        rollups.track(sheet, by, () -> service.setTerms(sheet, by, request.value()));
+        rollups.track(sheet, by, () -> service.setTerms(sheet, by, request.value(), request.from()));
         return view(sheet);
     }
 
-    /** Set a grade's (A, B or C) own terms; they fix the due-by of the grade's claims added from now on. */
+    /** Set a grade's (A, B or C) own terms; they fix the due-by of the grade's claims dated from their from-date that are added from now on. */
     @PutMapping("/terms/{grade}")
     public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated TermsRequest request) {
         String sheet = sheetId.trim();
-        service.setGradeTerms(sheet, SignedInUser.decode(user), grade, request.value());
+        service.setGradeTerms(sheet, SignedInUser.decode(user), grade, request.value(), request.from());
         return view(sheet);
     }
 
@@ -165,7 +183,7 @@ public class SettingController {
             @RequestBody @Validated LatePctRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        rollups.track(sheet, by, () -> service.setLatePct(sheet, by, request.value()));
+        rollups.track(sheet, by, () -> service.setLatePct(sheet, by, request.value(), request.from()));
         return view(sheet);
     }
 
@@ -191,15 +209,18 @@ public class SettingController {
     }
 
     private SettingsView view(String sheet) {
+        LocalDate today = sheets.today(sheet);
         BigDecimal limit = service.clerkLimit(sheet);
         BigDecimal cap = service.cap(sheet);
         LocalDate policyDate = service.policyDateSet(sheet);
         LocalDate numberingFrom = service.periodNumberingFrom(sheet);
+        Map<String, List<DatedView>> dated = new LinkedHashMap<>();
+        service.dated(sheet).forEach((key, recorded) -> dated.put(key, recorded.stream().map(DatedView::of).toList()));
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
-                limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString(),
-                cap != null ? cap.toPlainString() : null, service.terms(sheet),
-                service.latePct(sheet).toPlainString(), policyDate != null ? policyDate.toString() : "",
-                numberingFrom != null ? numberingFrom.toString() : "", service.gradeTerms(sheet));
+                limit != null ? limit.toPlainString() : null, service.floor(sheet, today).toPlainString(),
+                cap != null ? cap.toPlainString() : null, service.terms(sheet, today),
+                service.latePct(sheet, today).toPlainString(), policyDate != null ? policyDate.toString() : "",
+                numberingFrom != null ? numberingFrom.toString() : "", service.gradeTerms(sheet, today), dated);
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
