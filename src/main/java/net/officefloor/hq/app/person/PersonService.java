@@ -231,6 +231,7 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             List<String> tags) {
         requireSheet(sheetId);
+        requireNotRetired(sheetId, grade);
         requireFreeName(sheetId, name.trim(), null);
         requireFreeInTree(sheetId, List.of(name.trim()), null);
         String key = contactKey(contact);
@@ -267,6 +268,7 @@ public class PersonService {
     @Transactional
     public ImportResult importPeople(String sheetId, String user, String text) {
         String defaultGrade = defaultGrade(sheetId);
+        List<String> retired = sheets.findById(sheetId).map(Sheet::getRetiredGrades).orElse(List.of());
         List<ImportLine> lines = new ArrayList<>();
         Map<ImportLine, Person> matched = new HashMap<>();
         Set<String> names = new HashSet<>();
@@ -279,6 +281,9 @@ public class PersonService {
                 continue;
             }
             ImportLine line = parseImport(i + 1, raw[i], defaultGrade);
+            if (retired.contains(line.grade())) {
+                throw importRefused(line.number(), "grade " + line.grade() + " is retired.");
+            }
             String lower = line.name().toLowerCase(Locale.ROOT);
             if (!names.add(lower)) {
                 throw importRefused(line.number(), "the name " + line.name() + " is already in this import.");
@@ -402,8 +407,12 @@ public class PersonService {
         }
         String key = contactKey(contact);
         requireFreeContact(sheetId, key, person.getId());
-        Rollup.Snapshot before = rollup.take(sheetId);
         LocalDate today = today(sheetId);
+        // a save leaving the grade as it is, with no from-date, is not a choice of it
+        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            requireNotRetired(sheetId, grade);
+        }
+        Rollup.Snapshot before = rollup.take(sheetId);
         person.setName(name.trim());
         // the terms entered differing from those in force on today count as a change, even when the
         // stored terms they replace were already the same (dated terms still in force over them)
@@ -999,6 +1008,13 @@ public class PersonService {
     @Transactional(readOnly = true)
     public String defaultGrade(String sheetId) {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).defaultGradeOrA();
+    }
+
+    /** Refuse a retired grade chosen for a person. */
+    private void requireNotRetired(String sheetId, String grade) {
+        if (sheets.findById(sheetId).map(s -> s.isGradeRetired(grade)).orElse(false)) {
+            throw new GradeRetiredException(grade);
+        }
     }
 
     private void requireSheet(String sheetId) {

@@ -366,6 +366,23 @@ public class SheetService {
         return sheet;
     }
 
+    /** Retire a grade (one of the grades, not yet retired): it can no longer be chosen for a person, though
+     *  the people on it keep it. Not dated. */
+    @Transactional
+    public Sheet retireGrade(String id, String user, String grade) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        String g = grade == null ? "" : grade.trim();
+        if (!g.matches("[ABC]")) {
+            throw new GradeRefusedException("Choose a grade of A, B or C.");
+        }
+        if (sheet.isGradeRetired(g)) {
+            throw new GradeRefusedException("Grade " + g + " is already retired.");
+        }
+        sheet.retireGrade(g);
+        audit.recordOnCommit("GRADE_RETIRED sheet=" + id + " by=" + user + " grade=" + g);
+        return sheet;
+    }
+
     /** Change the sheet's fiscal start month (1 to 12). Not dated. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

@@ -146,6 +146,11 @@ public class Sheet {
     @Column(name = "default_grade")
     private String defaultGrade;
 
+    /** The retired grades, comma separated in the order retired: none can be chosen for a new person or in
+     *  an edit from then on, though the people on one keep it; none means none. Not dated. */
+    @Column(name = "retired_grades")
+    private String retiredGrades;
+
     /** The month (1 to 12) a fiscal year starts in; a fiscal year is named by the calendar year its first
      *  day falls in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -526,9 +531,24 @@ public class Sheet {
         return defaultGrade;
     }
 
-    /** The grade a new person takes when none is given: the default grade, or A when none is set. */
+    /** The grade a new person takes when none is given: the default grade, or A when none is set or the
+     *  default grade is retired. */
     public String defaultGradeOrA() {
-        return defaultGrade == null ? "A" : defaultGrade;
+        return defaultGrade == null || isGradeRetired(defaultGrade) ? "A" : defaultGrade;
+    }
+
+    /** The retired grades, in the order retired. */
+    public List<String> getRetiredGrades() {
+        return retiredGrades == null ? List.of() : Arrays.asList(retiredGrades.split(","));
+    }
+
+    public boolean isGradeRetired(String grade) {
+        return getRetiredGrades().contains(grade);
+    }
+
+    /** Retire a grade not yet retired. */
+    public void retireGrade(String grade) {
+        retiredGrades = retiredGrades == null ? grade : retiredGrades + "," + grade;
     }
 
     public void setDefaultGrade(String defaultGrade) {

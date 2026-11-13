@@ -280,6 +280,13 @@ public class PersonController {
                 done.updated().size(), done.updated().stream().map(p -> view(p, user.trim())).toList());
     }
 
+    /** A retired grade chosen for a person is refused with the reason, for the screen to show. */
+    @ExceptionHandler(GradeRetiredException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> gradeRetired(GradeRetiredException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     /** An import with a refused line is refused with the reason, for the screen to show. */
     @ExceptionHandler(PersonImportException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

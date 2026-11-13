@@ -60,6 +60,8 @@ export interface SheetView {
   /** The default grade: the grade a person added by the quick-add bar, or by an import line with a blank
    *  grade, takes; null for A. */
   defaultGrade: string | null;
+  /** The retired grades, in the order retired: none can be chosen for a person. */
+  retiredGrades: string[];
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   archived: boolean;
   /** The entry date (YYYY-MM-DD): the default date of a new claim in place of the sheet's today; null when
@@ -251,6 +253,8 @@ export class Session {
   readonly proofKinds = signal<string | null>(null);
   /** The sheet's default grade; null for A. Not dated. */
   readonly defaultGrade = signal<string | null>(null);
+  /** The sheet's retired grades, in the order retired. Not dated. */
+  readonly retiredGrades = signal<string[]>([]);
   /** The sheet's entry date (YYYY-MM-DD); null when off. While set, it is the default date of a new claim
    *  in place of the sheet's today. */
   readonly entryDate = signal<string | null>(null);
@@ -335,6 +339,7 @@ export class Session {
       this.maxOpen.set(sheet.maxOpen);
       this.proofKinds.set(sheet.proofKinds);
       this.defaultGrade.set(sheet.defaultGrade);
+      this.retiredGrades.set(sheet.retiredGrades);
       this.entryDate.set(sheet.entryDate);
       this.pot.set(sheet.pot);
       this.alertThreshold.set(sheet.alertThreshold);
@@ -958,6 +963,25 @@ export class Session {
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Retire a grade (one of the grades, not yet retired); an error message when refused. */
+  async retireGrade(grade: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!(GRADES as readonly string[]).includes(grade)) return `Choose a grade of ${GRADES.join(', ')}.`;
+    try {
+      const sheet = await firstValueFrom(
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/grades/retire`,
+          { grade }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.retiredGrades.set(sheet.retiredGrades);
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string') return e.error.message;
+      return e instanceof HttpErrorResponse ? `Could not retire the grade (${e.status}).` : 'Could not retire the grade.';
     }
   }
 

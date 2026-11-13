@@ -25,6 +25,7 @@ import { BulkVoid } from '../claims/bulk-void';
 import { DuplicatesPanel } from '../claims/duplicates';
 import { BulkSettle } from '../claims/bulk-settle';
 import { PasteClaims } from '../claims/paste-claims';
+import { GradesPanel } from '../grades/grades';
 import { HeaderCounters } from '../header/header';
 import { HolidaysPanel } from '../holidays/holidays';
 import { NotesPanel } from '../notes/notes';
@@ -48,7 +49,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   hostDirectives: [LocaleFigures],
-  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SheetComparePanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
+  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, GradesPanel, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SheetComparePanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -139,6 +140,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
       @if (session.sheetId()) {
         <app-settings />
         <app-rates />
+        <app-grades />
         <app-import-rates />
         <app-periods />
         <app-holidays />
