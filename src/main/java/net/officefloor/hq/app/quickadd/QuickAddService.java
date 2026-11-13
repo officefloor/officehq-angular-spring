@@ -41,7 +41,7 @@ public class QuickAddService {
         String trimmed = name.trim();
         Person person = rollups.track(sheetId, user, () -> people.findByName(sheetId, trimmed)
                 .orElseGet(() -> personService.add(sheetId, user, trimmed, GRADE)));
-        Claim claim = rollups.track(sheetId, user, () -> claims.add(sheetId, user, person.getId(), amount, null, ""));
+        Claim claim = rollups.track(sheetId, user, () -> claims.add(sheetId, user, person.getId(), amount, null, "", null));
         return new Added(person, claim);
     }
 }

@@ -1,9 +1,9 @@
 package net.officefloor.hq.app.claim;
 
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -34,25 +34,29 @@ public class ClaimController {
 
     /** A claim as the screen shows it; the amount and the due fixed on settling (null when none
      *  was) are strings with two decimals; openedBy is null for a claim never opened; stated tells
-     *  whether a statement bound the claim, statedDue the figure it bound it to (null when none). */
+     *  whether a statement bound the claim, statedDue the figure it bound it to (null when none);
+     *  corrects is the number of the claim a correction corrects (null when it is not one). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Long number, String settledDue, String openedBy, boolean stated,
-            String statedDue) {
+            String statedDue, Long corrects) {
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
                     claim.getOpenedBy(), claim.isStated(),
-                    claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null);
+                    claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
+                    claim.getCorrects());
         }
     }
 
-    /** A claim's fields: an amount of 0.00 or more with up to two decimals, a date (blank takes
-     *  the sheet's today) and a note (may be empty). */
+    /** A claim's fields: an amount with up to two decimals (a negative one is a correction), a date
+     *  (blank takes the sheet's today), a note (may be empty) and, for a correction, the number of
+     *  the claim it corrects. */
     public record ClaimRequest(
-            @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal amount,
+            @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
             LocalDate date,
-            @Size(max = 2000) String note) {
+            @Size(max = 2000) String note,
+            @Positive Long corrects) {
     }
 
     private final ClaimService service;
@@ -77,7 +81,7 @@ public class ClaimController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return ClaimView.of(rollups.track(sheet, by, () -> service.add(sheet, by, personId, request.amount(),
-                request.date(), request.note())));
+                request.date(), request.note(), request.corrects())));
     }
 
     /** Change a DRAFT claim's amount, date and note. */
@@ -88,7 +92,7 @@ public class ClaimController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return ClaimView.of(rollups.track(sheet, by, () -> service.update(sheet, by, personId, id,
-                request.amount(), request.date(), request.note())));
+                request.amount(), request.date(), request.note(), request.corrects())));
     }
 
     /** Open a DRAFT claim. */
@@ -119,8 +123,9 @@ public class ClaimController {
     }
 
     /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,
-     *  any change to a claim dated in a closed period, or a claim dated after its person retired, is refused. */
-    @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class,
+     *  any change to a claim dated in a closed period, a claim dated after its person retired, or a
+     *  correction that does not name a SETTLED claim of its person, is refused. */
+    @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {

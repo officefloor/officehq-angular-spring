@@ -17,9 +17,10 @@ export const GRADES = ['A', 'B', 'C'];
 export const NO_RATE = 'n/a';
 
 /** The due on an amount in cents at a percent rate (two decimals), in cents: amount times rate
- *  divided by 100, rounded half to even. Worked in whole numbers so nothing is lost to floating
+ *  divided by 100, rounded half to even (a negative amount rounds as its opposite does). Worked in whole numbers so nothing is lost to floating
  *  point. */
 export function dueCents(amountCents: number, rate: string): number {
+  if (amountCents < 0) return -dueCents(-amountCents, rate);
   const hundredths = BigInt(Math.round(Number(rate) * 100));
   const product = BigInt(amountCents) * hundredths;
   const whole = product / 10000n;

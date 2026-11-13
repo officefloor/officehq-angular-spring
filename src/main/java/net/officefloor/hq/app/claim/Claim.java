@@ -11,8 +11,9 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** A claim a person on a sheet makes: an amount (two decimals, 0.00 or more), a date, a note and a
- *  status (DRAFT when added). */
+/** A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
+ *  when added). A claim with a negative amount is a correction, naming the number of the SETTLED
+ *  claim of the same person it corrects. */
 @Entity
 @Table(name = "claim")
 public class Claim {
@@ -61,11 +62,16 @@ public class Claim {
     @Column(name = "stated_due", precision = 12, scale = 2)
     private BigDecimal statedDue;
 
+    /** The number of the claim this correction corrects; null for a claim that is not a correction. */
+    @Column(name = "corrects_number")
+    private Long corrects;
+
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Long corrects) {
         this.sheetId = sheetId;
+        this.corrects = corrects;
         this.personId = personId;
         this.amount = amount;
         this.date = date;
@@ -90,6 +96,19 @@ public class Claim {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public Long getCorrects() {
+        return corrects;
+    }
+
+    public void setCorrects(Long corrects) {
+        this.corrects = corrects;
+    }
+
+    /** Whether the claim is a correction: its amount is negative. */
+    public boolean isCorrection() {
+        return amount.signum() < 0;
     }
 
     public LocalDate getDate() {

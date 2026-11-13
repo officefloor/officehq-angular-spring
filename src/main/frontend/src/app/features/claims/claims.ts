@@ -31,6 +31,13 @@ export interface Claim {
   stated: boolean;
   /** The figure the statement bound the claim to (two decimals); null when unbound or it had none. */
   statedDue: string | null;
+  /** The number of the claim a correction (a negative amount) corrects; null when it is not one. */
+  corrects: number | null;
+}
+
+/** Whether a claim is a correction: its amount is negative. */
+export function isCorrection(claim: Claim): boolean {
+  return cents(claim.amount) < 0;
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
@@ -53,21 +60,24 @@ export interface Late {
 
 /** A claim's figure in cents: the due fixed when it was settled; otherwise the figure a statement
  *  bound it to; otherwise its amount times the rate in force on its date among its grade's rates,
- *  raised to the sheet's floor (in cents); null when it has no figure. */
+ *  raised to the sheet's floor (in cents) unless it is a correction; null when it has no figure. */
 function figureCents(claim: Claim, rates: Rate[], floor: number): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateOn(rates, claim.date);
-  return rate === null ? null : Math.max(dueCents(cents(claim.amount), rate), floor);
+  if (rate === null) return null;
+  const due = dueCents(cents(claim.amount), rate);
+  return isCorrection(claim) ? due : Math.max(due, floor);
 }
 
 /** A claim's due in cents: its figure plus its late charge, the late percent of the figure for
  *  every full 30 days an OPEN claim is overdue, rounded like a due (a statement never binds the
- *  charge; settling freezes it into the settled due); null when it has no figure. */
+ *  charge; settling freezes it into the settled due; a correction has none); null when it has no
+ *  figure. */
 export function claimDueCents(claim: Claim, rates: Rate[], floor: number, late: Late): number | null {
   const figure = figureCents(claim, rates, floor);
   if (figure === null) return null;
-  const periods = Math.floor(daysOverdue(claim, late) / 30);
+  const periods = isCorrection(claim) ? 0 : Math.floor(daysOverdue(claim, late) / 30);
   return periods > 0 ? figure + dueCents(figure * periods, late.pct) : figure;
 }
 
@@ -98,6 +108,12 @@ const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', v
 /** An amount of 0.00 or more with up to two decimals. */
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
+/** A claim's amount: any amount with up to two decimals; a negative one is a correction. */
+const CLAIM_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
+
+/** A claim number a correction names. */
+const NUMBER = /^\d+$/;
+
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
 // opened, saves its changes.
 @Component({
@@ -127,6 +143,14 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
         [value]="note()"
         (input)="note.set(value($event)); error.set(null)"
       />
+      <label [for]="'claim-corrects-' + personId()">Corrects claim no.</label>
+      <input
+        [id]="'claim-corrects-' + personId()"
+        data-testid="claim-form-corrects"
+        inputmode="numeric"
+        [value]="corrects()"
+        (input)="corrects.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -145,6 +169,7 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
           <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
+          <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
@@ -194,6 +219,7 @@ export class PersonClaims {
   protected readonly amount = signal('');
   protected readonly date = signal('');
   protected readonly note = signal('');
+  protected readonly corrects = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
@@ -237,6 +263,7 @@ export class PersonClaims {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
+    this.corrects.set(claim.corrects === null ? '' : String(claim.corrects));
     this.error.set(null);
   }
 
@@ -245,6 +272,7 @@ export class PersonClaims {
     this.amount.set('');
     this.date.set('');
     this.note.set('');
+    this.corrects.set('');
     this.error.set(null);
   }
 
@@ -282,11 +310,26 @@ export class PersonClaims {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const amount = this.amount().trim();
-    if (!AMOUNT.test(amount)) {
-      this.error.set('Type an amount of 0.00 or more, with up to two decimals.');
+    if (!CLAIM_AMOUNT.test(amount)) {
+      this.error.set('Type an amount with up to two decimals.');
       return;
     }
-    const body = { amount, date: this.date().trim() || null, note: this.note().trim() };
+    const corrects = this.corrects().trim();
+    const negative = amount.startsWith('-') && Number(amount) !== 0;
+    if (negative && !NUMBER.test(corrects)) {
+      this.error.set('A negative amount is a correction: type the number of the settled claim it corrects.');
+      return;
+    }
+    if (!negative && corrects !== '') {
+      this.error.set('Only a negative amount corrects a claim: leave the claim number blank.');
+      return;
+    }
+    const body = {
+      amount,
+      date: this.date().trim() || null,
+      note: this.note().trim(),
+      corrects: corrects === '' ? null : Number(corrects),
+    };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims`;
     this.busy.set(true);
@@ -298,7 +341,8 @@ export class PersonClaims {
       this.saved.emit(saved);
       this.reset();
     } catch {
-      this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+      const what = negative ? 'correction' : 'claim';
+      this.error.set(id === null ? `The ${what} could not be added.` : `The ${what} could not be saved.`);
     } finally {
       this.busy.set(false);
     }

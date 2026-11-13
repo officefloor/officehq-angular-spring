@@ -54,14 +54,17 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
-    /** Add a claim for a person; a missing date takes the sheet's today. */
+    /** Add a claim for a person; a missing date takes the sheet's today. A negative amount is a
+     *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
-    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+            Long corrects) {
         Person person = person(sheetId, personId);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note)));
+        refuseBadCorrection(sheetId, personId, amount, corrects);
+        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note), corrects));
         record("CLAIM_ADDED", sheetId, user, person, added);
         return added;
     }
@@ -70,7 +73,7 @@ public class ClaimService {
      *  other claim is refused: an OPEN one is changed by voiding it and adding a new one. */
     @Transactional
     public Claim update(String sheetId, String user, Long personId, Long id, BigDecimal amount, LocalDate date,
-            String note) {
+            String note, Long corrects) {
         Person person = person(sheetId, personId);
         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
@@ -81,7 +84,9 @@ public class ClaimService {
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
+        refuseBadCorrection(sheetId, personId, amount, corrects);
         claim.setAmount(scaled(amount));
+        claim.setCorrects(corrects);
         claim.setDate(on);
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
@@ -151,12 +156,12 @@ public class ClaimService {
     }
 
     /** The late charge on a claim with a figure: none unless it is OPEN and overdue (its date plus the
-     *  terms is before the sheet's today), else the late percent of the figure for every full 30 days
+     *  terms is before the sheet's today) or a correction, else the late percent of the figure for every full 30 days
      *  it is overdue, rounded half to even to two decimals. Never bound by a statement: it follows the
      *  sheet's today. */
     private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (claim.getStatus() != ClaimStatus.OPEN) {
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
             return none;
         }
         LocalDate dueBy = claim.getDate().plusDays(settings.terms(sheetId));
@@ -170,14 +175,14 @@ public class ClaimService {
 
     /** The due on a claim at the rate in force on the claim's date for the person's grade in force
      *  on the claim's date: amount times rate
-     *  divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when
-     *  no rate applies. */
+     *  divided by 100, rounded half to even to two decimals, and at least the sheet's floor unless it
+     *  is a correction; null when no rate applies. */
     private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim) {
         BigDecimal amount = claim.getAmount();
         return rates.rateOn(sheetId, grades.gradeOn(person.getId(), claim.getDate()), claim.getDate())
                 .map(Rate::getRate)
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
-                .map(due -> due.max(settings.floor(sheetId)))
+                .map(due -> claim.isCorrection() ? due : due.max(settings.floor(sheetId)))
                 .orElse(null);
     }
 
@@ -190,6 +195,25 @@ public class ClaimService {
         }
         if (settings.roleOf(sheetId, user) == Role.CLERK) {
             throw new ClerkLimitRefusedException(user, due, limit);
+        }
+    }
+
+    /** A negative amount (a correction) must name the number of a SETTLED claim of the same person;
+     *  any other amount names none. */
+    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+        if (amount.signum() >= 0) {
+            if (corrects != null) {
+                throw new CorrectionRefusedException("Only a negative amount corrects a claim");
+            }
+            return;
+        }
+        if (corrects == null) {
+            throw new CorrectionRefusedException("A negative amount must name the claim it corrects");
+        }
+        boolean settled = claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .map(c -> c.getStatus() == ClaimStatus.SETTLED).orElse(false);
+        if (!settled) {
+            throw new CorrectionRefusedException("No SETTLED claim " + corrects + " of this person to correct");
         }
     }
 
