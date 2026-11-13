@@ -145,6 +145,29 @@ export class Rates {
     }
   }
 
+  /** Withdraw the newest version of a grade's rate from a date (null: from the beginning of time), the one
+   *  before it applying again (none before it: the rate is gone); by a steward only. An error message when
+   *  refused. */
+  async withdraw(grade: string, from: string | null): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      await firstValueFrom(
+        this.http.delete(`${this.url(sid)}/${encodeURIComponent(grade)}`, {
+          headers: { 'X-User': user },
+          params: from ? { from } : {},
+        }),
+      );
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can withdraw a rate.';
+      if (e instanceof HttpErrorResponse && e.status === 404) return 'That rate is no longer on the sheet.';
+      return failed('withdraw', e);
+    }
+    if (this.session.sheetId() === sid) await this.load();
+    return null;
+  }
+
   /** Set the rate each pasted line of grade,rate,from,to names (from and to may be left out or blank),
    *  in order, as the form would; how many were set, or why the import was refused (then none was). */
   async importRates(text: string): Promise<number | string> {

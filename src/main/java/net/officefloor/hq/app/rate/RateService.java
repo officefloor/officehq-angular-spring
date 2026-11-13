@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
@@ -29,10 +30,12 @@ public class RateService {
     private final SheetRepository sheets;
     private final ClaimRepository claims;
     private final Rollup rollup;
+    private final RoleService roles;
     private final Audit audit;
 
     public RateService(RateRepository rates, RateVersionRepository versions, SheetRepository sheets,
-            ClaimRepository claims, Rollup rollup, Audit audit) {
+            ClaimRepository claims, Rollup rollup, RoleService roles, Audit audit) {
+        this.roles = roles;
         this.rollup = rollup;
         this.claims = claims;
         this.rates = rates;
@@ -101,6 +104,31 @@ public class RateService {
                 + (to == null ? "" : " to=" + to));
         rollup.recordChanges(sheetId, user, before);
         return rate;
+    }
+
+    /** Withdraw a grade's rate from a date (none: from the beginning of time): its newest version is removed
+     *  and the one before it applies again; with none before it the rate is gone. By a steward only. */
+    @Transactional
+    public void withdraw(String sheetId, String user, String grade, LocalDate from) {
+        requireSheet(sheetId);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new RateWithdrawRefusedException();
+        }
+        Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElseThrow(RateNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        RateVersion previous = versions.findFirstByRateIdOrderByVersionDesc(rate.getId()).orElse(null);
+        if (previous == null) {
+            versions.deleteByRateId(rate.getId());
+            rates.delete(rate);
+            rates.flush();
+        } else {
+            rate.withdrawTo(previous);
+            versions.delete(previous);
+            rates.saveAndFlush(rate);
+        }
+        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user
+                + " grade=" + grade + (from == null ? "" : " from=" + from));
+        rollup.recordChanges(sheetId, user, before);
     }
 
     /** One line of the rate import box: a grade's rate from a date through a date, either perhaps none. */

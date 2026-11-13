@@ -13,6 +13,8 @@ import java.util.List;
 import net.officefloor.hq.app.history.AsOf;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +22,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** The sheet's rate for each grade. The signed-in user's name comes in the X-User header. */
@@ -96,6 +100,17 @@ public class RateController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.rate()));
+    }
+
+    /** Withdraw the newest version of a grade's rate from a date (none: from the beginning of time), the one
+     *  before it applying again; by a steward only. */
+    @DeleteMapping("/{grade}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void withdraw(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
+        service.withdraw(sheetId.trim(), user.trim(), grade, from);
     }
 
     /** The rate import box's lines of grade,rate,from,to. */

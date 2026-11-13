@@ -31,6 +31,10 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate toDate;
 
+    /** The rate's earlier entries as they stood in this version (see {@link Rate#getEarlier}). */
+    @Column(name = "earlier")
+    private String earlier;
+
     /** Who set the replacing version. */
     @Column(name = "set_by")
     private String setBy;
@@ -44,6 +48,7 @@ public class RateVersion {
         this.version = replaced.getVersion();
         this.rate = replaced.getRate();
         this.toDate = replaced.getToDate();
+        this.earlier = replaced.earlierText();
         this.setBy = setBy;
     }
 
@@ -65,6 +70,11 @@ public class RateVersion {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    /** The earlier entries as stored. */
+    public String getEarlier() {
+        return earlier;
     }
 
     public String getSetBy() {

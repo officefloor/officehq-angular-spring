@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Figures } from '../../core/figures';
-import { Rates, money } from '../../core/rates';
+import { Rate, Rates, money } from '../../core/rates';
 import { Session } from '../../core/session';
 
 // The sheet's rates for each grade: one form sets a grade's rate from a date (or from the beginning
@@ -123,7 +123,7 @@ import { Session } from '../../core/session';
       <table data-testid="rate-list">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (r of rates.rates(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -133,6 +133,17 @@ import { Session } from '../../core/session';
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td><span data-testid="rate-pct">{{ r.rate }}</span></td>
               <td data-testid="rate-version">{{ r.version }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="rate-withdraw"
+                  [disabled]="saving()"
+                  [attr.aria-label]="'Withdraw rate ' + r.grade + ' ' + (r.from ?? 'always')"
+                  (click)="withdraw(r)"
+                >
+                  Withdraw
+                </button>
+              </td>
             </tr>
           }
         </tbody>
@@ -184,6 +195,19 @@ export class RatesPanel {
         this.from.set('');
         this.to.set('');
       }
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  /** Withdraw a rate's newest version; a refusal shows on the rate form's error. */
+  protected async withdraw(r: Rate): Promise<void> {
+    if (this.saving()) return;
+    this.error.set(null);
+    this.saving.set(true);
+    try {
+      const err = await this.rates.withdraw(r.grade, r.from);
+      if (err) this.error.set(err);
     } finally {
       this.saving.set(false);
     }

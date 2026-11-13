@@ -170,6 +170,20 @@ public class Rate {
         this.earlier = Earlier.format(list);
     }
 
+    /** The earlier entries as stored, for an older version to keep. */
+    String earlierText() {
+        return earlier;
+    }
+
+    /** Withdraw the newest version: the older one it replaced (its value, to-date and earlier entries) is
+     *  the rate again. */
+    public void withdrawTo(RateVersion previous) {
+        this.rate = previous.getRate();
+        this.toDate = previous.getToDate();
+        this.version = previous.getVersion();
+        this.earlier = previous.getEarlier();
+    }
+
     /** A rate's earlier entries as stored, the claim id each names mapped (a clone's claims have new ids). */
     public static String remapEarlier(String earlier, LongUnaryOperator map) {
         List<Earlier> list = new ArrayList<>();
