@@ -248,7 +248,28 @@ function compareKeys(a: string, b: string): number {
                 </button>
               </td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
-              <td data-testid="person-grade">{{ gradeToday(p) }}</td>
+              <td>
+                <span data-testid="person-grade">{{ gradeToday(p) }}</span>
+                <label [for]="'person-inline-grade-' + p.id"><span class="visually-hidden">Grade for {{ p.name }}</span></label>
+                <select
+                  [id]="'person-inline-grade-' + p.id"
+                  data-testid="person-inline-grade"
+                  [value]="inlineGrades()[p.id] ?? gradeToday(p)"
+                  (change)="setInlineGrade(p.id, value($event))"
+                >
+                  @for (g of grades; track g) {
+                    <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeToday(p))">{{ g }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-inline-grade-save"
+                  [disabled]="inlineGrading() === p.id"
+                  (click)="saveInlineGrade(p)"
+                >
+                  Save grade<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
+              </td>
               <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -911,6 +932,33 @@ export class PeopleList {
       await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.periods.load()]);
     } finally {
       this.transferring.set(null);
+    }
+  }
+
+  /** The grade chosen in each row's grade select, by person id, until saved. */
+  protected readonly inlineGrades = signal<Record<number, string>>({});
+  protected readonly inlineGrading = signal<number | null>(null);
+
+  protected setInlineGrade(id: number, grade: string): void {
+    this.clearActionError(id);
+    this.inlineGrades.update((m) => ({ ...m, [id]: grade }));
+  }
+
+  /** Record the row's chosen grade from the sheet's today, as the person form would save it. */
+  protected async saveInlineGrade(p: Person): Promise<void> {
+    if (this.inlineGrading() !== null) return;
+    this.clearActionError(p.id);
+    this.inlineGrading.set(p.id);
+    try {
+      const grade = this.inlineGrades()[p.id] ?? this.gradeToday(p);
+      const refusal = await this.people.update(p.id, p.version, {
+        name: p.name, grade, gradeFrom: '', terms: p.terms === null ? '' : String(p.terms),
+        contact: p.contact ?? '', tags: p.tags.join(', '),
+      });
+      if (refusal) this.actionError.set({ id: p.id, message: refusal.error });
+      else this.inlineGrades.update(({ [p.id]: _, ...rest }) => rest);
+    } finally {
+      this.inlineGrading.set(null);
     }
   }
 
