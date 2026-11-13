@@ -19,7 +19,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The claim's number on the sheet, given when it is opened; null for a draft or a void claim. */
+  /** The claim's number on the sheet, given when it is opened and kept when it is voided; null for a
+   *  claim never opened. */
   number: number | null;
   /** The due fixed when the claim was settled (two decimals); null until then, or when its grade
    *  had no rate to work from. */
@@ -171,8 +172,14 @@ export class PersonClaims {
     return periodOf(this.periods.periods(), claim.date)?.name ?? '';
   }
 
+  /** Open the editor on a DRAFT claim; any other claim cannot be edited (an OPEN one is voided and
+   *  added again), which is refused on the row. */
   protected edit(claim: Claim): void {
     this.rowError.set(null);
+    if (claim.status !== 'DRAFT') {
+      this.rowError.set({ id: claim.id, message: `A ${claim.status} claim cannot be edited; only a draft can.` });
+      return;
+    }
     this.editingId.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);

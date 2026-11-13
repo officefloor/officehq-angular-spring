@@ -56,13 +56,17 @@ public class ClaimService {
         return added;
     }
 
-    /** Change a claim's amount, date and note; a missing date takes the sheet's today. */
+    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's today. Any
+     *  other claim is refused: an OPEN one is changed by voiding it and adding a new one. */
     @Transactional
     public Claim update(String sheetId, String user, Long personId, Long id, BigDecimal amount, LocalDate date,
             String note) {
         Person person = person(sheetId, personId);
         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotEditableException(claim.getStatus());
+        }
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
@@ -91,15 +95,12 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new OwnClaimSettleRefusedException(user);
         }
-        Long had = claim.getNumber();
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(figureOf(sheetId, person, claim));
-        } else if (to == ClaimStatus.VOID) {
-            claim.setNumber(null);
         }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (to) {
@@ -108,7 +109,7 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException("A claim never returns to DRAFT");
         };
-        String line = line(event, sheetId, user, person, saved, had != null ? had : saved.getNumber());
+        String line = line(event, sheetId, user, person, saved, saved.getNumber());
         if (to == ClaimStatus.SETTLED) {
             line += " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE);
         }

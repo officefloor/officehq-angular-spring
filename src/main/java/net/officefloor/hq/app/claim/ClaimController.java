@@ -79,7 +79,7 @@ public class ClaimController {
                 request.date(), request.note())));
     }
 
-    /** Change a claim's amount, date and note. */
+    /** Change a DRAFT claim's amount, date and note. */
     @PutMapping("/people/{personId}/claims/{id}")
     public ClaimView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
@@ -117,9 +117,10 @@ public class ClaimController {
         return ClaimView.of(rollups.track(sheet, by, () -> service.changeStatus(sheet, by, personId, id, to)));
     }
 
-    /** A status change the claim's status does not allow, or any change to a claim dated in a
-     *  closed period, is refused. */
-    @ExceptionHandler({StatusChangeRefusedException.class, PeriodClosedException.class})
+    /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,
+     *  or any change to a claim dated in a closed period, is refused. */
+    @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class,
+            PeriodClosedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }
