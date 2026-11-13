@@ -1,0 +1,317 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index fe5e34d8d..fc960fc5c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -140,6 +140,8 @@ export class PersonClaims {
+   protected readonly note = signal('');
+   protected readonly editingId = signal<number | null>(null);
+   protected readonly error = signal<string | null>(null);
++  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
++  private readonly busy = signal(false);
+   /** The error from the last status change refused, and the claim it belongs to. */
+   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+ 
+@@ -195,6 +197,7 @@ export class PersonClaims {
+ 
+   protected async submit(event: Event): Promise<void> {
+     event.preventDefault();
++    if (this.busy()) return;
+     this.error.set(null);
+     this.rowError.set(null);
+     const sheet = this.session.sheetId();
+@@ -207,6 +210,7 @@ export class PersonClaims {
+     const body = { amount, date: this.date().trim() || null, note: this.note().trim() };
+     const id = this.editingId();
+     const base = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims`;
++    this.busy.set(true);
+     try {
+       const saved = await firstValueFrom(
+         id === null ? this.http.post<Claim>(base, body) : this.http.put<Claim>(`${base}/${id}`, body),
+@@ -216,6 +220,8 @@ export class PersonClaims {
+       this.reset();
+     } catch {
+       this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
++    } finally {
++      this.busy.set(false);
+     }
+   }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index bf81b8a20..be0a7320e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,6 +9,8 @@ interface Person {
+   id: number;
+   name: string;
+   grade: string;
++  /** Raised on every save; an editor saves only the version it loaded. */
++  version: number;
+ }
+ 
+ // The people on the active sheet, in the order they were added, each with their claims and what
+@@ -132,6 +134,10 @@ export class People {
+   protected readonly name = signal('');
+   protected readonly grade = signal('A');
+   protected readonly editingId = signal<number | null>(null);
++  /** The version of the person the editor loaded. */
++  private readonly editingVersion = signal(0);
++  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
++  private readonly busy = signal(false);
+   protected readonly error = signal<string | null>(null);
+ 
+   constructor() {
+@@ -188,6 +194,7 @@ export class People {
+ 
+   protected edit(person: Person): void {
+     this.editingId.set(person.id);
++    this.editingVersion.set(person.version);
+     this.name.set(person.name);
+     this.grade.set(person.grade);
+     this.error.set(null);
+@@ -202,6 +209,7 @@ export class People {
+ 
+   protected async submit(event: Event): Promise<void> {
+     event.preventDefault();
++    if (this.busy()) return;
+     this.error.set(null);
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+@@ -212,11 +220,12 @@ export class People {
+     }
+     const id = this.editingId();
+     const base = `/api/sheets/${encodeURIComponent(sheet)}/people`;
++    this.busy.set(true);
+     try {
+       const saved = await firstValueFrom(
+         id === null
+           ? this.http.post<Person>(base, body)
+-          : this.http.put<Person>(`${base}/${id}`, body),
++          : this.http.put<Person>(`${base}/${id}`, { ...body, version: this.editingVersion() }),
+       );
+       if (this.session.sheetId() !== sheet) return;
+       this.people.update((list) =>
+@@ -224,11 +233,35 @@ export class People {
+       );
+       this.reset();
+     } catch (e) {
+-      if (e instanceof HttpErrorResponse && e.status === 409) {
++      if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
++        await this.showCurrent(sheet, id, e.error as Person | null);
++        this.error.set('Someone else saved this person since you opened the editor; their values are shown.');
++      } else if (e instanceof HttpErrorResponse && e.status === 409) {
+         this.error.set(`Another person on the sheet is already named ${body.name}.`);
+       } else {
+         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+       }
++    } finally {
++      this.busy.set(false);
++    }
++  }
++
++  /** After a refused stale save, show the person as stored now, in their row and in the editor,
++   *  which then holds the version it shows. */
++  private async showCurrent(sheet: string, id: number, current: Person | null): Promise<void> {
++    if (!current) {
++      const list = await firstValueFrom(
++        this.http.get<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people`),
++      ).catch(() => []);
++      current = list.find((p) => p.id === id) ?? null;
++    }
++    if (!current || this.session.sheetId() !== sheet) return;
++    const now = current;
++    this.people.update((list) => list.map((p) => (p.id === now.id ? now : p)));
++    if (this.editingId() === now.id) {
++      this.editingVersion.set(now.version);
++      this.name.set(now.name);
++      this.grade.set(now.grade);
+     }
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 5a9e3f2cd..1870fd373 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -196,6 +196,8 @@ export class Rates {
+   protected readonly pct = signal('');
+   protected readonly from = signal('');
+   protected readonly error = signal<string | null>(null);
++  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
++  private readonly busy = signal(false);
+ 
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+@@ -203,16 +205,20 @@ export class Rates {
+ 
+   protected async submit(event: Event): Promise<void> {
+     event.preventDefault();
++    if (this.busy()) return;
+     this.error.set(null);
+     const pct = this.pct().trim();
+     if (!PERCENT.test(pct)) {
+       this.error.set('Type a rate of 0.00 or more, with up to two decimals.');
+       return;
+     }
++    this.busy.set(true);
+     try {
+       await this.store.set(this.grade(), pct, this.from().trim() || null);
+     } catch {
+       this.error.set('The rate could not be set.');
++    } finally {
++      this.busy.set(false);
+     }
+   }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 79405eafb..8eb3b3a6b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import jakarta.persistence.Version;
+ 
+ /** A person on a sheet, with a name and a grade (A, B or C). */
+ @Entity
+@@ -25,6 +26,11 @@ public class Person {
+     @Column(name = "grade", nullable = false)
+     private String grade;
+ 
++    /** Raised on every save, so a save from an editor that loaded an older version is refused. */
++    @Version
++    @Column(name = "version", nullable = false)
++    private long version;
++
+     protected Person() {
+     }
+ 
+@@ -42,6 +48,10 @@ public class Person {
+         return sheetId;
+     }
+ 
++    public long getVersion() {
++        return version;
++    }
++
+     public String getName() {
+         return name;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index d2cf25e47..0f3ed0249 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -9,6 +9,7 @@ import net.officefloor.hq.app.SignedInUser;
+ import java.util.NoSuchElementException;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
++import org.springframework.orm.ObjectOptimisticLockingFailureException;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -26,9 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}/people")
+ public class PersonController {
+ 
+-    public record PersonView(Long id, String name, String grade) {
++    public record PersonView(Long id, String name, String grade, long version) {
+         static PersonView of(Person person) {
+-            return new PersonView(person.getId(), person.getName(), person.getGrade());
++            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+         }
+     }
+ 
+@@ -38,6 +39,13 @@ public class PersonController {
+             @NotNull @Pattern(regexp = "[ABC]") String grade) {
+     }
+ 
++    /** A person's fields as saved from an editor, with the version of the person the editor loaded. */
++    public record PersonUpdate(
++            @NotBlank @Size(max = 200) String name,
++            @NotNull @Pattern(regexp = "[ABC]") String grade,
++            @NotNull Long version) {
++    }
++
+     private final PersonService service;
+ 
+     public PersonController(PersonService service) {
+@@ -58,12 +66,25 @@ public class PersonController {
+         return PersonView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name(), request.grade()));
+     }
+ 
+-    /** Change a person's name and grade. */
++    /** Change a person's name and grade; refused when the person was saved since the editor loaded them. */
+     @PutMapping("/{id}")
+     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonRequest request) {
+-        return PersonView.of(
+-                service.update(sheetId.trim(), SignedInUser.decode(user), id, request.name(), request.grade()));
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonUpdate request) {
++        return PersonView.of(service.update(sheetId.trim(), SignedInUser.decode(user), id, request.version(),
++                request.name(), request.grade()));
++    }
++
++    /** Someone else saved the person since the editor loaded them: the person as stored now. */
++    @ExceptionHandler(StalePersonException.class)
++    @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
++    public PersonView stale(StalePersonException e) {
++        return PersonView.of(e.getCurrent());
++    }
++
++    /** A save that raced another to the same version; the editor re-reads the person. */
++    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
++    @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
++    public void raced() {
+     }
+ 
+     @ExceptionHandler(NoSuchElementException.class)
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9d7194cf0..443d8df30 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -37,11 +37,14 @@ public class PersonService {
+         return added;
+     }
+ 
+-    /** Change a person's name and grade. */
++    /** Change a person's name and grade, from an editor that loaded the given version of them. */
+     @Transactional
+-    public Person update(String sheetId, String user, Long id, String name, String grade) {
++    public Person update(String sheetId, String user, Long id, long version, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
++        if (person.getVersion() != version) {
++            throw new StalePersonException(person);
++        }
+         String trimmed = name.trim();
+         requireFreeName(sheetId, trimmed, id);
+         person.setName(trimmed);
+diff --git a/src/main/java/net/officefloor/hq/app/person/StalePersonException.java b/src/main/java/net/officefloor/hq/app/person/StalePersonException.java
+new file mode 100644
+index 000000000..571d7d37e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/StalePersonException.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.person;
++
++/** The person was saved by someone else since the editor loaded it; carries the person as stored now. */
++public class StalePersonException extends RuntimeException {
++
++    private final Person current;
++
++    public StalePersonException(Person current) {
++        super("Person " + current.getId() + " was changed since it was loaded");
++        this.current = current;
++    }
++
++    public Person getCurrent() {
++        return current;
++    }
++}
+diff --git a/src/main/resources/db/migration/V12__person_version.sql b/src/main/resources/db/migration/V12__person_version.sql
+new file mode 100644
+index 000000000..843327e2f
+--- /dev/null
++++ b/src/main/resources/db/migration/V12__person_version.sql
+@@ -0,0 +1,2 @@
++-- The version of a person, raised on every save; an editor saves only the version it loaded.
++ALTER TABLE person ADD COLUMN version BIGINT NOT NULL DEFAULT 0;
