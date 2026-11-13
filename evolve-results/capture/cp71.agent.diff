@@ -1,0 +1,168 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2f1532fc2..ff1975bfc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -284,6 +284,14 @@ interface StatementTaken {
+                 >
+                   Statement
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-unstate"
++                  [attr.aria-label]="'Cancel the last statement for ' + p.name"
++                  (click)="cancelStatement(p)"
++                >
++                  Cancel statement
++                </button>
+                 <button
+                   type="button"
+                   data-testid="person-watch"
+@@ -942,6 +950,30 @@ export class People {
+     }
+   }
+ 
++  /** Cancel a person's last statement: their row shows the one before it, and their claims are live again. */
++  protected async cancelStatement(person: Person): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
++    try {
++      const cancelled = await firstValueFrom(this.http.delete<StatementTaken>(url));
++      if (this.session.sheetId() !== sheet) return;
++      const live = new Map(cancelled.claims.map((c) => [c.id, c]));
++      this.claims.update((list) => list.map((c) => live.get(c.id) ?? c));
++      const { count, lastDueTotal, lastDate } = cancelled.statements;
++      this.people.update((list) =>
++        list.map((p) =>
++          p.id === person.id
++            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate }
++            : p,
++        ),
++      );
++    } catch {
++      this.rowError.set({ id: person.id, message: `The last statement for ${person.name} could not be cancelled.` });
++    }
++  }
++
+   protected edit(person: Person): void {
+     this.rowError.set(null);
+     this.editingId.set(person.id);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index ad0f1f62a..3f1ca089c 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -128,7 +128,7 @@ public class PeriodService {
+         return closeFixing(sheetId, user, period, "");
+     }
+ 
+-    /** Close, as a close by hand would, every open period whose to-date plus the sheet's grace days is
++    /** Close, as a close by hand would, every open period (not closed or soft-closed) whose to-date plus the sheet's grace days is
+      *  before the sheet's today, in order of their to-dates, each recorded with auto=yes; nothing when
+      *  the grace days are blank (off). The sheet's permission matrix governs a close by hand, not this
+      *  one. Made when the sheet's today is changed, after it is set. */
+@@ -141,7 +141,7 @@ public class PeriodService {
+         }
+         LocalDate today = sheets.today(sheetId);
+         periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+-                .filter(p -> !p.isClosed() && p.getTo().plusDays(grace).isBefore(today))
++                .filter(p -> !p.isClosed() && !p.isSoftClosed() && p.getTo().plusDays(grace).isBefore(today))
+                 .sorted(Comparator.comparing(Period::getTo))
+                 .forEach(p -> closeFixing(sheetId, user, p, " auto=yes"));
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementCancelRefusedException.java b/src/main/java/net/officefloor/hq/app/statement/StatementCancelRefusedException.java
+new file mode 100644
+index 000000000..af842aaf3
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementCancelRefusedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.statement;
++
++/** Only a steward cancels a statement, and only a person with one has a statement to cancel. */
++public class StatementCancelRefusedException extends RuntimeException {
++
++    public StatementCancelRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementController.java b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+index 95f5d1e49..c25bf5b29 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementController.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementController.java
+@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.claim.ClaimController.ClaimView;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+@@ -52,6 +53,24 @@ public class StatementController {
+         return new StatementTaken(service.summary(sheet, personId), claims);
+     }
+ 
++    /** Cancel the person's last statement: their statements as their row then shows them, and their
++     *  claims, newest first, now live again. */
++    @DeleteMapping
++    public StatementTaken cancel(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
++        String sheet = sheetId.trim();
++        String by = SignedInUser.decode(user);
++        List<ClaimView> claims = rollups.track(sheet, by, () -> service.cancel(sheet, by, personId)).stream()
++                .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim),
++                        claimService.logOf(claim.getId()))).toList();
++        return new StatementTaken(service.summary(sheet, personId), claims);
++    }
++
++    @ExceptionHandler(StatementCancelRefusedException.class)
++    @ResponseStatus(HttpStatus.FORBIDDEN)
++    public void refused() {
++    }
++
+     @ExceptionHandler(NoSuchElementException.class)
+     @ResponseStatus(HttpStatus.NOT_FOUND)
+     public void notFound() {
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 1b4e6d58a..23265bdc7 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.PersonHold;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.person.PersonService;
+ import net.officefloor.hq.app.rate.RateService;
++import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -102,4 +103,31 @@ public class StatementService {
+                 + " due-total=" + dueTotal + " claims=" + counted);
+         return theirs;
+     }
++
++    /** A steward cancels a person's last statement: the claims it bound become live again (a figure
++     *  bound by an earlier statement is not restored) and it is no longer counted. Anyone else, or a
++     *  person with no statement, is refused. Returns their claims, newest first. */
++    @Transactional
++    public List<Claim> cancel(String sheetId, String user, Long personId) {
++        sheets.lock(sheetId);
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new StatementCancelRefusedException(user + " is not a steward: only a steward cancels a statement");
++        }
++        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
++        if (theirs.isEmpty()) {
++            throw new StatementCancelRefusedException(person.getName() + " has no statement to cancel");
++        }
++        Statement last = theirs.get(theirs.size() - 1);
++        List<Claim> theirClaims = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
++        List<Claim> bound = theirClaims.stream().filter(Claim::isStated).toList();
++        bound.forEach(Claim::unbind);
++        claims.saveAllAndFlush(bound);
++        statements.delete(last);
++        statements.flush();
++        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " due-total=" + last.getDueTotal());
++        return theirClaims;
++    }
+ }
