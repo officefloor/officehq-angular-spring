@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.history.AsOf;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -48,13 +50,17 @@ public class PoolController {
             LocalDate from, LocalDate to, boolean active) {
     }
 
-    /** A pool, with its total share and whether that is exactly 100.00. */
-    public record PoolView(long id, String name, List<PoolMemberView> members, String totalShare, boolean balanced) {
+    /** A pool, with its total share and whether that is exactly 100.00. A crew is a pool too (crew set): its id is
+     *  the crew's id negated, its members its lead and then its members, at equal shares. */
+    public record PoolView(long id, String name, List<PoolMemberView> members, String totalShare, boolean balanced,
+            boolean crew) {
 
         /** The sheet's pools as views, in their order. A pool that is a member of another has as its pot its cut
          *  in the pool above (none when that is unbalanced or has none); one that is a member of none has the
-         *  sheet's pot. A person on hold on the sheet's today gets no cut from any pool. */
-        static List<PoolView> of(List<Pool> pools, Map<Long, Person> people, BigDecimal sheetPot, LocalDate today) {
+         *  sheet's pot. A person on hold on the sheet's today gets no cut from any pool. The crews follow, each a
+         *  pool of the sheet's pot. */
+        static List<PoolView> of(List<Pool> pools, List<Crew> crews, Map<Long, Person> people, BigDecimal sheetPot,
+                LocalDate today) {
             Map<Long, Pool> byId = new HashMap<>();
             Map<Long, Pool> parentOf = new HashMap<>();
             for (Pool pool : pools) {
@@ -69,7 +75,27 @@ public class PoolController {
             for (Pool pool : pools) {
                 view(pool, byId, parentOf, people, sheetPot, today, views);
             }
-            return pools.stream().map(p -> views.get(p.getId())).toList();
+            List<PoolView> out = new ArrayList<>(pools.stream().map(p -> views.get(p.getId())).toList());
+            for (Crew crew : crews) {
+                PoolView v = of(crewPool(crew), byId, people, sheetPot, today);
+                out.add(new PoolView(-crew.getId(), v.name(), v.members(), v.totalShare(), v.balanced(), true));
+            }
+            return out;
+        }
+
+        /** A crew as a pool: its lead and then its members, 100.00 split equally between them, each rounded half
+         *  to even to two decimals, the remainder on the lead. */
+        private static Pool crewPool(Crew crew) {
+            Pool pool = new Pool(crew.getSheetId(), crew.getName());
+            List<Long> ids = new ArrayList<>();
+            ids.add(crew.getLeadId());
+            crew.getMembers().forEach(m -> ids.add(m.getPersonId()));
+            BigDecimal each = HUNDRED.divide(BigDecimal.valueOf(ids.size()), 2, RoundingMode.HALF_EVEN);
+            BigDecimal lead = HUNDRED.subtract(each.multiply(BigDecimal.valueOf(ids.size() - 1)));
+            for (int i = 0; i < ids.size(); i++) {
+                pool.addMember(ids.get(i), i == 0 ? lead : each, null, null);
+            }
+            return pool;
         }
 
         private static PoolView view(Pool pool, Map<Long, Pool> byId, Map<Long, Pool> parentOf,
@@ -128,7 +154,8 @@ public class PoolController {
                         cuts[i] == null ? null : cuts[i].toPlainString(), m.getFromDate(), m.getToDate(),
                         active[i]));
             }
-            return new PoolView(pool.getId(), pool.getName(), members, total.setScale(2).toPlainString(), balanced);
+            return new PoolView(pool.getId() == null ? 0 : pool.getId(), pool.getName(), members,
+                    total.setScale(2).toPlainString(), balanced, false);
         }
 
         /** Each member's cut of the pot: the pot times their share divided by the shares of the members with a
@@ -182,12 +209,15 @@ public class PoolController {
     }
 
     private final PoolService service;
+    private final CrewService crews;
     private final PersonRepository people;
     private final SheetService sheets;
     private final AsOf asOf;
 
-    public PoolController(PoolService service, PersonRepository people, SheetService sheets, AsOf asOf) {
+    public PoolController(PoolService service, CrewService crews, PersonRepository people, SheetService sheets,
+            AsOf asOf) {
         this.service = service;
+        this.crews = crews;
         this.people = people;
         this.sheets = sheets;
         this.asOf = asOf;
@@ -206,7 +236,7 @@ public class PoolController {
         }
         Map<Long, Person> then = this.asOf.people(sid, asOf).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        return PoolView.of(service.list(sid), then, this.asOf.sheet(sid, asOf).getPot(), asOf);
+        return PoolView.of(service.list(sid), crews.list(sid), then, this.asOf.sheet(sid, asOf).getPot(), asOf);
     }
 
     /** Add a pool to the sheet. */
@@ -230,11 +260,11 @@ public class PoolController {
     }
 
     private List<PoolView> views(String sheetId) {
-        return PoolView.of(service.list(sheetId), people(sheetId), sheets.pot(sheetId), sheets.today(sheetId));
+        return PoolView.of(service.list(sheetId), crews.list(sheetId), people(sheetId), sheets.pot(sheetId), sheets.today(sheetId));
     }
 
     private PoolView view(String sheetId, Pool pool) {
-        return views(sheetId).stream().filter(v -> v.id() == pool.getId()).findFirst().orElseThrow();
+        return views(sheetId).stream().filter(v -> !v.crew() && v.id() == pool.getId()).findFirst().orElseThrow();
     }
 
     private Map<Long, Person> people(String sheetId) {

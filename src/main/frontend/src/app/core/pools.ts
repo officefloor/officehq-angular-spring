@@ -33,6 +33,9 @@ export interface PoolView {
   members: PoolMemberView[];
   totalShare: string;
   balanced: boolean;
+  /** Whether it is a crew as a pool: its members are the crew's lead and members at equal shares, kept by the
+   *  crew; its id is the crew's id negated. */
+  crew: boolean;
 }
 
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;

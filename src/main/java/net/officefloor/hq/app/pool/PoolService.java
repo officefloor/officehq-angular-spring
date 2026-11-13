@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -20,12 +21,15 @@ public class PoolService {
     private static final int MAX_DEPTH = 3;
 
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final PersonRepository people;
     private final SheetService sheets;
     private final Audit audit;
 
-    public PoolService(PoolRepository pools, PersonRepository people, SheetService sheets, Audit audit) {
+    public PoolService(PoolRepository pools, CrewRepository crews, PersonRepository people, SheetService sheets,
+            Audit audit) {
         this.pools = pools;
+        this.crews = crews;
         this.people = people;
         this.sheets = sheets;
         this.audit = audit;
@@ -37,7 +41,8 @@ public class PoolService {
         return pools.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a pool by a name (surrounding spaces removed); a blank name, or one already taken, is refused. */
+    /** Add a pool by a name (surrounding spaces removed); a blank name, or one already taken by a pool or a crew,
+     *  is refused. */
     @Transactional
     public Pool add(String sheetId, String user, String name) {
         sheets.today(sheetId);
@@ -47,6 +52,9 @@ public class PoolService {
         }
         if (pools.existsBySheetIdAndName(sheetId, n)) {
             throw new PoolRefusedException("\"" + n + "\" is already a pool.");
+        }
+        if (crews.existsBySheetIdAndName(sheetId, n)) {
+            throw new PoolRefusedException("\"" + n + "\" is already a crew, and a crew is a pool.");
         }
         Pool saved = pools.saveAndFlush(new Pool(sheetId, n));
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + n);

@@ -1,4 +1,4 @@
-import { Component, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { download } from '../../core/csv';
 import { People } from '../../core/people';
 import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
@@ -7,7 +7,8 @@ import { Session } from '../../core/session';
 // One pool's row: its members with their shares, its total share and whether it is balanced (exactly
 // 100.00; a retired member counts 0.00), each member's cut of the pool's pot while balanced (the sheet's pot, or
 // its cut in the pool it is a member of), and a form adding a person or another pool (pool:<name>) with a share,
-// from and to a date when given. A member whose dates do not include the sheet's today is left out entirely.
+// from and to a date when given. A member whose dates do not include the sheet's today is left out entirely. A crew's
+// pool has no such form: its members are kept by the crew.
 @Component({
   selector: 'app-pool-row',
   template: `
@@ -35,6 +36,9 @@ import { Session } from '../../core/session';
         </li>
       }
     </ul>
+    @if (p.crew) {
+      <p>A crew: its members are the crew's lead and members, at equal shares.</p>
+    } @else {
     <form (submit)="add($event)">
       <label [for]="'pool-member-select-' + p.id">Member</label>
       <select
@@ -46,7 +50,7 @@ import { Session } from '../../core/session';
         @for (person of people.people(); track person.id) {
           <option [value]="'person:' + person.id" [selected]="member() === 'person:' + person.id">{{ person.name }}</option>
         }
-        @for (other of pools.pools(); track other.id) {
+        @for (other of storedPools(); track other.id) {
           <option [value]="'pool:' + other.id" [selected]="member() === 'pool:' + other.id">pool:{{ other.name }}</option>
         }
       </select>
@@ -79,6 +83,7 @@ import { Session } from '../../core/session';
         <p role="alert" data-testid="pool-error">{{ err }}</p>
       }
     </form>
+    }
   `,
 })
 export class PoolRow {
@@ -92,6 +97,8 @@ export class PoolRow {
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** The pools that can be made members: those that are not crews. */
+  protected readonly storedPools = computed(() => this.pools.pools().filter((p) => !p.crew));
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;

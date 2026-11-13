@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,12 +14,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class CrewService {
 
     private final CrewRepository crews;
+    private final PoolRepository pools;
     private final PersonRepository people;
     private final SheetService sheets;
     private final Audit audit;
 
-    public CrewService(CrewRepository crews, PersonRepository people, SheetService sheets, Audit audit) {
+    public CrewService(CrewRepository crews, PoolRepository pools, PersonRepository people, SheetService sheets,
+            Audit audit) {
         this.crews = crews;
+        this.pools = pools;
         this.people = people;
         this.sheets = sheets;
         this.audit = audit;
@@ -31,7 +35,7 @@ public class CrewService {
     }
 
     /** Add a crew by a name (surrounding spaces removed) with a lead from the sheet's people; a blank name, one
-     *  already taken, or no lead, is refused. */
+     *  already taken by a crew or a pool, or no lead, is refused. */
     @Transactional
     public Crew add(String sheetId, String user, String name, Long leadId) {
         sheets.today(sheetId);
@@ -41,6 +45,9 @@ public class CrewService {
         }
         if (crews.existsBySheetIdAndName(sheetId, n)) {
             throw new CrewRefusedException("\"" + n + "\" is already a crew.");
+        }
+        if (pools.existsBySheetIdAndName(sheetId, n)) {
+            throw new CrewRefusedException("\"" + n + "\" is already a pool, and a crew is a pool.");
         }
         Person lead = leadId == null ? null : people.findByIdAndSheetId(leadId, sheetId).orElse(null);
         if (lead == null) {

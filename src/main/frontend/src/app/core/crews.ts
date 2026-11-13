@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { Pools } from './pools';
 import { Session } from './session';
 
 /** A person of a crew, by id, with their name. */
@@ -22,6 +23,7 @@ export interface CrewView {
 export class Crews {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly pools = inject(Pools);
 
   /** In the order they were added. */
   readonly crews = signal<CrewView[]>([]);
@@ -69,6 +71,7 @@ export class Crews {
         this.crews.update((cs) =>
           cs.some((c) => c.id === saved.id) ? cs.map((c) => (c.id === saved.id ? saved : c)) : [...cs, saved],
         );
+        await this.pools.reread(); // a crew is a pool too
       }
       return null;
     } catch (e) {
