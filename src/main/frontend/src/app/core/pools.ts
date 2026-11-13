@@ -115,7 +115,7 @@ export class Pools {
   }
 
   /** Re-read the active sheet's pools without clearing the ones shown meanwhile. */
-  private async reread(): Promise<void> {
+  async reread(): Promise<void> {
     const user = this.session.user();
     const sid = this.session.sheetId();
     if (!user || !sid) return;

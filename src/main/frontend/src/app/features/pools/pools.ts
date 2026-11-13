@@ -1,4 +1,5 @@
 import { Component, inject, input, signal } from '@angular/core';
+import { download } from '../../core/csv';
 import { People } from '../../core/people';
 import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
 
@@ -131,7 +132,7 @@ export class PoolRow {
 }
 
 // The sheet's pools: a form adds one (a blank name, or one already taken, is refused), and each pool's row
-// shows its members and adds more.
+// shows its members and adds more. A button downloads the pools as CSV.
 @Component({
   selector: 'app-pools',
   imports: [PoolRow],
@@ -151,6 +152,7 @@ export class PoolRow {
           <p role="alert" data-testid="pool-form-error">{{ err }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
       @for (p of pools.pools(); track p.id) {
         <app-pool-row [pool]="p" [attr.data-testid]="'pool-row-' + p.name" />
       }
@@ -165,6 +167,17 @@ export class PoolsPanel {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  /** Download the pools as CSV, re-read first: pools and their members in the order added, a pool member
+   *  as pool:<name>, the cut as shown (empty when none). */
+  protected async exportCsv(): Promise<void> {
+    await this.pools.reread();
+    const lines = [['pool', 'member', 'share', 'cut']];
+    for (const p of this.pools.pools()) {
+      for (const m of p.members) lines.push([p.name, m.poolId !== null ? 'pool:' + m.name : m.name, m.share, m.cut ?? '']);
+    }
+    download(lines, 'pools.csv');
   }
 
   protected async add(e: Event): Promise<void> {
