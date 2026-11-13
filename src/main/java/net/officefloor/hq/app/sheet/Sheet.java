@@ -48,7 +48,8 @@ public class Sheet {
     public static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
             "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
             "void", List.of("clerk", "steward"), "close", List.of("clerk", "steward"),
-            "reassign", List.of("steward"), "reopen", List.of("steward"));
+            "reassign", List.of("steward"), "reopen", List.of("steward"),
+            "today", List.of("clerk", "steward"));
     private static final BigDecimal START_FLOOR = new BigDecimal("1.00");
     private static final BigDecimal START_LATE_PCT = new BigDecimal("0.00");
     private static final int START_TERMS = 14;

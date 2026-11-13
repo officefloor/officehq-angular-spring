@@ -123,6 +123,7 @@ public class SheetService {
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        roles.require(id, user, "today");
         Rollup.Snapshot before = rollup.take(id);
         if (!today.equals(sheet.getToday())) {
             if (sheet.isScoreLog()) {
@@ -270,7 +271,7 @@ public class SheetService {
         return sheet;
     }
 
-    /** Set the roles that may take an action (open, settle, void, reassign, close or reopen), comma
+    /** Set the roles that may take an action (open, settle, void, reassign, close, reopen or today), comma
      *  separated; blank keeps the standing rule. Not dated. */
     @Transactional
     public Sheet setPermission(String id, String user, String action, String roles) {

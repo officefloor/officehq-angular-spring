@@ -402,7 +402,7 @@ public class SheetController {
     /** Change the roles that may take an action. */
     @PutMapping("/{id}/settings/permissions/{action}")
     public SheetView setPermission(@PathVariable @NotBlank @Size(max = 200) String id,
-            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @PathVariable @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PermissionRequest request) {
         return SheetView.of(service.setPermission(id.trim(), user.trim(), action, request.roles()));

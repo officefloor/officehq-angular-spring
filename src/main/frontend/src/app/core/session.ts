@@ -138,7 +138,7 @@ const NO_DESCENDANTS: DescendantFigures = {
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
  *  clerk and steward; reassign and reopen by steward. */
-export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen', 'today'] as const;
 
 /** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, clerk-limit-<grade>, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding) takes from a date
  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
