@@ -1,0 +1,85 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 2e425c8e0..2d1994a8e 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -190,6 +190,15 @@ export class Figures {
+     return f === null ? 0n : this.claims.chargedCents(c, f);
+   }
+ 
++  /** A claim's due as its row shows it: its figure with two decimals, or n/a when it has none. */
++  claimDue(c: Claim, p: Person): string {
++    if (c.settledDue !== null) return c.settledDue;
++    const f = bound(c)
++      ? (c.statedDue === null ? null : hundredths(c.statedDue))
++      : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c));
++    return f === null ? NO_RATE : money(this.claims.chargedCents(c, f));
++  }
++
+   /** What a candidate rate (a percent with up to two decimals) would change if it applied to a grade on
+    *  every date: of the OPEN and PENDING claims of people on that grade on the claim's date, not bound
+    *  by a statement, how many would show a different due, and the sum of new due minus current due in
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6fa10e159..a7360e043 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -139,6 +139,7 @@ import { PersonClaims } from '../claims/claims';
+         Show retired
+       </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
++      <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+       <section aria-label="Grade or retire selected people">
+         <label for="bulk-grade">Grade selected people</label>
+         <select
+@@ -692,13 +693,27 @@ export class PeopleList {
+   protected exportCsv(): void {
+     const lines = [['name', 'grade', 'retired-from', 'due-total']];
+     for (const p of this.people.people()) lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', this.due(p)]);
+-    const csv = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
+-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+-    const a = document.createElement('a');
+-    a.href = url;
+-    a.download = 'people.csv';
+-    a.click();
+-    setTimeout(() => URL.revokeObjectURL(url), 1000);
++    download(lines, 'people.csv');
++  }
++
++  /** Download every claim as CSV: people in list order, retired included, each person's claims
++   *  oldest first, with number, due and period as their rows show them. */
++  protected exportClaims(): void {
++    const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
++    for (const p of this.people.people()) {
++      for (const c of [...this.claims.of(p.id)].reverse()) {
++        lines.push([
++          p.name,
++          c.number ?? '',
++          c.date,
++          c.amount,
++          this.figures.claimDue(c, p),
++          c.status,
++          this.periods.of(c.dueBy)?.name ?? '',
++        ]);
++      }
++    }
++    download(lines, 'claims.csv');
+   }
+ 
+   protected async statement(p: Person): Promise<void> {
+@@ -927,6 +942,17 @@ export class PeopleList {
+   }
+ }
+ 
++/** Download these lines as a CSV file of this name, each line ended by a line feed. */
++function download(lines: string[][], name: string): void {
++  const csv = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
++  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
++  const a = document.createElement('a');
++  a.href = url;
++  a.download = name;
++  a.click();
++  setTimeout(() => URL.revokeObjectURL(url), 1000);
++}
++
+ /** A CSV field: wrapped in double quotes, with quotes inside doubled, when it holds a comma, a
+  *  quote or a line break. */
+ function csvField(v: string): string {
