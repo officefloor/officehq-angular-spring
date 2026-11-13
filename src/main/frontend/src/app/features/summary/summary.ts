@@ -1,10 +1,11 @@
 import { Component, computed, inject } from '@angular/core';
 import { Figures } from '../../core/figures';
-import { GRADES, People } from '../../core/people';
+import { People } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { money } from '../../core/rates';
 import { Claims } from '../../core/claims';
 import { VoidReasons } from '../../core/void-reasons';
+import { Session } from '../../core/session';
 
 // The sheet at a glance, from the same figures the lists show: per grade, the people on it today
 // (retired people left out), their due-totals added up (one that is n/a adds nothing) and how many
@@ -85,10 +86,11 @@ export class SummaryPanel {
   private readonly figures = inject(Figures);
   private readonly claims = inject(Claims);
   private readonly voidReasons = inject(VoidReasons);
+  private readonly session = inject(Session);
 
   protected readonly byGrade = computed(() => {
     const current = this.people.people().filter((p) => !p.retired);
-    return GRADES.map((grade) => {
+    return this.session.grades().map((grade) => {
       const on = current.filter((p) => this.figures.gradeToday(p) === grade);
       return {
         grade,

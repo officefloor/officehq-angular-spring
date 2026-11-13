@@ -1,5 +1,4 @@
 import { Component, inject, signal } from '@angular/core';
-import { GRADES } from '../../core/people';
 import { Pools } from '../../core/pools';
 import { Rates } from '../../core/rates';
 import { ROLES, Roles } from '../../core/roles';
@@ -49,7 +48,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('clerk-limit', value($event))"
         />
         <p>In force: <strong data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</strong></p>
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (blank: the sheet's)</label>
           <input
             [id]="'setting-clerk-limit-' + g"
@@ -142,7 +141,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('proof-threshold', value($event))"
         />
         <p>In force: <strong data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</strong></p>
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (blank: the sheet's)</label>
           <input
             [id]="'setting-proof-threshold-' + g"
@@ -217,7 +216,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('terms', value($event))"
         />
         <p>In force: <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (blank for the sheet's terms)</label>
           <input
             [id]="'setting-terms-' + g"
@@ -238,7 +237,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           />
           <p>In force: <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ session.gradeTerms()[g] ?? '' }}</strong></p>
         }
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           <label [for]="'setting-grace-' + g">Grace days for grade {{ g }} (days past a claim's due-by before it is overdue; blank for none)</label>
           <input
             [id]="'setting-grace-' + g"
@@ -568,7 +567,7 @@ export class SettingsPanel {
   protected readonly reviewThresholdTouched = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTouched = signal(false);
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   /** What is typed for each grade's terms, and the grades typed into since the last save. */
   protected readonly gradeTerms = signal<Record<string, string>>({});
   protected readonly gradeTermsTouched = signal<ReadonlySet<string>>(new Set());
@@ -721,11 +720,11 @@ export class SettingsPanel {
       const pick = untouched ? this.focused() : null;
       if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
       if (pick?.startsWith('perm-')) this.touchPerm(pick.slice('perm-'.length));
-      const graceGrade = this.grades.find((g) => pick === 'grace-' + g);
+      const graceGrade = this.grades().find((g) => pick === 'grace-' + g);
       if (graceGrade) this.touchGradeGrace(graceGrade);
-      const proofGrade = this.grades.find((g) => pick === 'proof-threshold-' + g);
+      const proofGrade = this.grades().find((g) => pick === 'proof-threshold-' + g);
       if (proofGrade) this.touchGradeProofThreshold(proofGrade);
-      const limitGrade = this.grades.find((g) => pick === 'clerk-limit-' + g);
+      const limitGrade = this.grades().find((g) => pick === 'clerk-limit-' + g);
       if (limitGrade) this.touchGradeClerkLimit(limitGrade);
       const guess = untouched && pick === null;
       const floor = this.floorTouched();
@@ -897,7 +896,7 @@ export class SettingsPanel {
 
   /** Save the terms of each grade typed into, in grade order; the first refusal stops the rest. */
   private async saveGradeTerms(): Promise<string | null> {
-    for (const g of this.grades) {
+    for (const g of this.grades()) {
       if (!this.gradeTermsTouched().has(g)) continue;
       const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '', this.fromOf('terms-' + g));
       if (err) return err;
@@ -907,7 +906,7 @@ export class SettingsPanel {
 
   /** Save the clerk limit of each grade typed into, in grade order; the first refusal stops the rest. */
   private async saveGradeClerkLimit(): Promise<string | null> {
-    for (const g of this.grades) {
+    for (const g of this.grades()) {
       if (!this.gradeClerkLimitTouched().has(g)) continue;
       const err = await this.session.setGradeClerkLimit(g, this.gradeClerkLimit()[g] ?? '', this.fromOf('clerk-limit-' + g));
       if (err) return err;
@@ -917,7 +916,7 @@ export class SettingsPanel {
 
   /** Save the proof threshold of each grade typed into, in grade order; the first refusal stops the rest. */
   private async saveGradeProofThreshold(): Promise<string | null> {
-    for (const g of this.grades) {
+    for (const g of this.grades()) {
       if (!this.gradeProofThresholdTouched().has(g)) continue;
       const err = await this.session.setGradeProofThreshold(g, this.gradeProofThreshold()[g] ?? '',
         this.fromOf('proof-threshold-' + g));
@@ -928,7 +927,7 @@ export class SettingsPanel {
 
   /** Save the grace days of each grade typed into, in grade order; the first refusal stops the rest. */
   private async saveGradeGrace(): Promise<string | null> {
-    for (const g of this.grades) {
+    for (const g of this.grades()) {
       if (!this.gradeGraceTouched().has(g)) continue;
       const err = await this.session.setGradeGrace(g, this.gradeGrace()[g] ?? '', this.fromOf('grace-' + g));
       if (err) return err;

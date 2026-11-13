@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Claim } from './claims';
 import { Session } from './session';
 
+/** The grades every sheet has; a sheet's own list (`Session.grades`) adds those added to it. */
 export const GRADES = ['A', 'B', 'C'] as const;
 
 /** A grade a person was given, from a date (YYYY-MM-DD); null for the first, from the beginning of time. */
@@ -259,7 +260,7 @@ export class People {
     if (!user || !sid) return 'Load a sheet first.';
     const personIds = [...this.selected()];
     if (personIds.length === 0) return 'Select the people to grade.';
-    if (!(GRADES as readonly string[]).includes(grade)) return 'Choose a grade.';
+    if (!this.session.grades().includes(grade)) return 'Choose a grade.';
     const d = from.trim();
     if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
     try {
@@ -291,7 +292,7 @@ export class People {
     const sid = this.session.sheetId();
     const user = this.session.user();
     if (!user || !sid) return 'Load a sheet first.';
-    const grades = GRADES as readonly string[];
+    const grades = this.session.grades();
     if (!grades.includes(from) || !grades.includes(into)) return 'Choose two grades.';
     if (from === into) return 'Choose two different grades to merge.';
     try {
@@ -629,7 +630,7 @@ export class People {
   private check(f: PersonFields): string | null {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!f.name.trim()) return 'Enter a name.';
-    if (!(GRADES as readonly string[]).includes(f.grade)) return 'Choose a grade.';
+    if (!this.session.grades().includes(f.grade)) return 'Choose a grade.';
     const from = f.gradeFrom?.trim();
     if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
     const termsFrom = f.termsFrom?.trim();

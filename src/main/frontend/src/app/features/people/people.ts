@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { Claim, Claims, bound } from '../../core/claims';
 import { download } from '../../core/csv';
 import { Figures } from '../../core/figures';
-import { GRADES, People, Person } from '../../core/people';
+import { People, Person } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Pools } from '../../core/pools';
 import { Crews } from '../../core/crews';
@@ -47,7 +47,7 @@ function compareKeys(a: string, b: string): number {
           [value]="grade()"
           (change)="grade.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
@@ -192,7 +192,7 @@ function compareKeys(a: string, b: string): number {
           [value]="bulkGrade()"
           (change)="bulkGrade.set(value($event)); bulkError.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === bulkGrade()">{{ g }}</option>
           }
         </select>
@@ -293,7 +293,7 @@ function compareKeys(a: string, b: string): number {
                   [value]="inlineGrades()[p.id] ?? gradeToday(p)"
                   (change)="setInlineGrade(p.id, value($event))"
                 >
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === (inlineGrades()[p.id] ?? gradeToday(p))">{{ g }}</option>
                   }
                 </select>
@@ -636,7 +636,7 @@ export class PeopleList {
   protected readonly columnKeys = COLUMNS;
   /** The last refused switch of a column, until the next switch. */
   protected readonly columnsError = signal<string | null>(null);
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   /** The people the list shows: everyone, or only those not retired unless show retired is on; for a
    *  restricted user, only the people of their crews and themselves. */
   protected readonly shown = computed(() => {

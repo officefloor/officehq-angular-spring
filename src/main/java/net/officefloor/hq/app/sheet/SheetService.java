@@ -361,8 +361,29 @@ public class SheetService {
     public Sheet setDefaultGrade(String id, String user, String grade) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
         String g = grade == null ? "" : grade.trim();
+        if (!g.isEmpty() && !sheet.isGrade(g)) {
+            throw new GradeRefusedException("Choose a default grade of " + String.join(", ", sheet.getGrades())
+                    + ", or leave it blank for A.");
+        }
         sheet.setDefaultGrade(g.isEmpty() ? null : g);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=default-grade value=" + g);
+        return sheet;
+    }
+
+    /** Add a grade: a code of one to three capital letters (surrounding blanks ignored) not yet a grade. It
+     *  can then be chosen like A, B and C. Not dated. */
+    @Transactional
+    public Sheet addGrade(String id, String user, String grade) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        String g = grade == null ? "" : grade.trim();
+        if (!g.matches("[A-Z]{1,3}")) {
+            throw new GradeRefusedException("Enter a grade of one to three capital letters.");
+        }
+        if (sheet.isGrade(g)) {
+            throw new GradeRefusedException("Grade " + g + " is already a grade.");
+        }
+        sheet.addGrade(g);
+        audit.recordOnCommit("GRADE_ADDED sheet=" + id + " by=" + user + " grade=" + g);
         return sheet;
     }
 
@@ -372,8 +393,8 @@ public class SheetService {
     public Sheet retireGrade(String id, String user, String grade) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
         String g = grade == null ? "" : grade.trim();
-        if (!g.matches("[ABC]")) {
-            throw new GradeRefusedException("Choose a grade of A, B or C.");
+        if (!sheet.isGrade(g)) {
+            throw new GradeRefusedException("Choose a grade of " + String.join(", ", sheet.getGrades()) + ".");
         }
         if (sheet.isGradeRetired(g)) {
             throw new GradeRefusedException("Grade " + g + " is already retired.");

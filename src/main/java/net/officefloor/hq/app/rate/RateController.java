@@ -92,7 +92,7 @@ public class RateController {
      *  replacing the one it had then. */
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid RateRequest request) {
         return RateView.of(service.set(sheetId.trim(), user.trim(), grade, request.from(), request.to(), request.rate()));

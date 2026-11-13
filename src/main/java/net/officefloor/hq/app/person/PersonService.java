@@ -269,6 +269,7 @@ public class PersonService {
     public ImportResult importPeople(String sheetId, String user, String text) {
         String defaultGrade = defaultGrade(sheetId);
         List<String> retired = sheets.findById(sheetId).map(Sheet::getRetiredGrades).orElse(List.of());
+        List<String> grades = sheets.findById(sheetId).map(Sheet::getGrades).orElse(List.of());
         List<ImportLine> lines = new ArrayList<>();
         Map<ImportLine, Person> matched = new HashMap<>();
         Set<String> names = new HashSet<>();
@@ -281,6 +282,9 @@ public class PersonService {
                 continue;
             }
             ImportLine line = parseImport(i + 1, raw[i], defaultGrade);
+            if (!grades.contains(line.grade())) {
+                throw importRefused(line.number(), "choose a grade of " + String.join(", ", grades) + ".");
+            }
             if (retired.contains(line.grade())) {
                 throw importRefused(line.number(), "grade " + line.grade() + " is retired.");
             }
@@ -350,8 +354,8 @@ public class PersonService {
         if (grade.isEmpty()) {
             grade = defaultGrade;
         }
-        if (!grade.matches("[ABC]")) {
-            throw importRefused(number, "choose a grade of A, B or C.");
+        if (!grade.matches("[A-Z]{1,3}")) {
+            throw importRefused(number, "choose a grade of one to three capital letters.");
         }
         String terms = f.length > 2 ? f[2].trim() : "";
         if (!terms.isEmpty() && !terms.matches("\\d{1,6}")) {
@@ -464,6 +468,10 @@ public class PersonService {
         }
         if (from.equals(into)) {
             throw new MergeRefusedException("Choose two different grades to merge.");
+        }
+        List<String> grades = sheets.findById(sheetId).map(Sheet::getGrades).orElse(List.of());
+        if (!grades.contains(from) || !grades.contains(into)) {
+            throw new MergeRefusedException("Choose two of the sheet's grades to merge.");
         }
         LocalDate today = today(sheetId);
         Rollup.Snapshot before = rollup.take(sheetId);
@@ -1036,8 +1044,11 @@ public class PersonService {
         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).defaultGradeOrA();
     }
 
-    /** Refuse a retired grade chosen for a person. */
+    /** Refuse a grade chosen for a person that is not one of the sheet's grades, or is retired. */
     private void requireNotRetired(String sheetId, String grade) {
+        if (sheets.findById(sheetId).map(s -> !s.isGrade(grade)).orElse(false)) {
+            throw new GradeUnknownException(grade);
+        }
         if (sheets.findById(sheetId).map(s -> s.isGradeRetired(grade)).orElse(false)) {
             throw new GradeRetiredException(grade);
         }

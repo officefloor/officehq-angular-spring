@@ -1,6 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Figures } from '../../core/figures';
-import { GRADES } from '../../core/people';
 import { Rates, money } from '../../core/rates';
 import { Session } from '../../core/session';
 
@@ -22,7 +21,7 @@ import { Session } from '../../core/session';
           [value]="grade()"
           (change)="grade.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
@@ -61,7 +60,7 @@ import { Session } from '../../core/session';
           [value]="previewGrade()"
           (change)="previewGrade.set(value($event)); clearPreview()"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
           }
         </select>
@@ -90,7 +89,7 @@ import { Session } from '../../core/session';
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ rates.current(g) }}</td>
@@ -110,7 +109,7 @@ import { Session } from '../../core/session';
             </tr>
           </thead>
           <tbody>
-            @for (g of grades; track g) {
+            @for (g of grades(); track g) {
               <tr>
                 <th scope="row">{{ g }}</th>
                 @for (m of months(); track m) {
@@ -145,7 +144,7 @@ export class RatesPanel {
   protected readonly rates = inject(Rates);
   private readonly figures = inject(Figures);
   private readonly session = inject(Session);
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly grade = signal<string>('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');

@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.Objects;
 import net.officefloor.hq.app.history.History;
 
-/** A person on a sheet, with a name and a dated grade (A, B or C): each grade they are given applies
+/** A person on a sheet, with a name and a dated grade (one of the sheet's grades): each grade they are given applies
  *  from a date, the first from the beginning of time. */
 @Entity
 @EntityListeners(History.class)

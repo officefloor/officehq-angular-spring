@@ -151,6 +151,11 @@ public class Sheet {
     @Column(name = "retired_grades")
     private String retiredGrades;
 
+    /** The grades added to the sheet on top of A, B and C, comma separated in the order added; none means
+     *  none. Not dated. */
+    @Column(name = "added_grades")
+    private String addedGrades;
+
     /** The month (1 to 12) a fiscal year starts in; a fiscal year is named by the calendar year its first
      *  day falls in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -543,6 +548,24 @@ public class Sheet {
      *  default grade is retired. */
     public String defaultGradeOrA() {
         return defaultGrade == null || isGradeRetired(defaultGrade) ? "A" : defaultGrade;
+    }
+
+    /** The sheet's grades: A, B and C, then those added, in the order added. */
+    public List<String> getGrades() {
+        List<String> grades = new ArrayList<>(List.of("A", "B", "C"));
+        if (addedGrades != null) {
+            grades.addAll(Arrays.asList(addedGrades.split(",")));
+        }
+        return grades;
+    }
+
+    public boolean isGrade(String grade) {
+        return getGrades().contains(grade);
+    }
+
+    /** Add a grade not yet a grade. */
+    public void addGrade(String grade) {
+        addedGrades = addedGrades == null ? grade : addedGrades + "," + grade;
     }
 
     /** The retired grades, in the order retired. */

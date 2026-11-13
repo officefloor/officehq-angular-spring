@@ -34,7 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its review threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date), and its escalation gap (days; none: off), and its review SLA (days; none: none), and its proof kinds (comma separated; none: none), and its default grade (none: A), and its mid and high score thresholds (none: no bands), and whether its score log is on, and its maximum of open claims per person (none: none), and its retired grades (in the order retired).
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its review threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date), and its escalation gap (days; none: off), and its review SLA (days; none: none), and its proof kinds (comma separated; none: none), and its default grade (none: A), and its mid and high score thresholds (none: no bands), and whether its score log is on, and its maximum of open claims per person (none: none), and its retired grades (in the order retired), and its grades (A, B and C, then those added in the order added).
      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
@@ -43,9 +43,15 @@ public class SheetController {
             boolean archived, String noteThreshold, LocalDate entryDate, Integer lastSettleBatch, String pot,
             String parent, int fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter,
             Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen,
-            List<String> retiredGrades) {
+            List<String> retiredGrades, List<String> grades) {
 
         static SheetView of(Sheet sheet) {
+            return of(sheet, sheet.getGrades());
+        }
+
+        /** The sheet with the grades given: an as-of view shows the grades as they are now, as they are not
+         *  dated. */
+        static SheetView of(Sheet sheet, List<String> grades) {
             return new SheetView(sheet.getId(), sheet.getToday(),
                     sheet.getClerkLimit() == null ? null : sheet.getClerkLimit().toPlainString(),
                     sheet.getFloor().toPlainString(), sheet.getTerms(),
@@ -64,7 +70,7 @@ public class SheetController {
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(),
-                    sheet.getMaxOpen(), sheet.getRetiredGrades());
+                    sheet.getMaxOpen(), sheet.getRetiredGrades(), grades);
         }
     }
 
@@ -187,11 +193,15 @@ public class SheetController {
     }
 
     /** The sheet's default grade, one of the grades; missing or blank means A. */
-    public record DefaultGradeRequest(@Pattern(regexp = "\\s*[ABC]?\\s*") String defaultGrade) {
+    public record DefaultGradeRequest(@Pattern(regexp = "\\s*([A-Z]{1,3})?\\s*") String defaultGrade) {
     }
 
     /** A grade to retire. */
     public record RetireGradeRequest(@NotNull @Size(max = 20) String grade) {
+    }
+
+    /** A grade to add: checked by the service, so a refused code shows its reason. */
+    public record AddGradeRequest(@NotNull @Size(max = 20) String grade) {
     }
 
     /** The sheet's fiscal start month, 1 to 12. */
@@ -240,7 +250,7 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         Sheet sheet = service.load(id.trim(), user.trim());
-        return SheetView.of(asOf == null ? sheet : this.asOf.sheet(sheet.getId(), asOf));
+        return asOf == null ? SheetView.of(sheet) : SheetView.of(this.asOf.sheet(sheet.getId(), asOf), sheet.getGrades());
     }
 
     /** Archive the sheet (a steward only). */
@@ -325,7 +335,7 @@ public class SheetController {
     /** Change a grade's own terms. */
     @PutMapping("/{id}/settings/terms/{grade}")
     public SheetView setGradeTerms(@PathVariable @NotBlank @Size(max = 200) String id,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GradeTermsRequest request) {
         return SheetView.of(service.setGradeTerms(id.trim(), user.trim(), grade, request.terms(), request.from()));
@@ -334,7 +344,7 @@ public class SheetController {
     /** Change a grade's clerk limit. */
     @PutMapping("/{id}/settings/clerk-limit/{grade}")
     public SheetView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 200) String id,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GradeClerkLimitRequest request) {
         return SheetView.of(service.setGradeClerkLimit(id.trim(), user.trim(), grade, request.clerkLimit(),
@@ -344,7 +354,7 @@ public class SheetController {
     /** Change a grade's proof threshold. */
     @PutMapping("/{id}/settings/proof-threshold/{grade}")
     public SheetView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 200) String id,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GradeProofThresholdRequest request) {
         return SheetView.of(service.setGradeProofThreshold(id.trim(), user.trim(), grade, request.proofThreshold(),
@@ -354,7 +364,7 @@ public class SheetController {
     /** Change a grade's grace days. */
     @PutMapping("/{id}/settings/grace/{grade}")
     public SheetView setGradeGrace(@PathVariable @NotBlank @Size(max = 200) String id,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GradeGraceRequest request) {
         return SheetView.of(service.setGradeGrace(id.trim(), user.trim(), grade, request.graceDays(), request.from()));
@@ -474,7 +484,15 @@ public class SheetController {
         return SheetView.of(service.retireGrade(id.trim(), user.trim(), request.grade()));
     }
 
-    /** A grade that cannot be retired is refused with the reason, for the screen to show. */
+    /** Add a grade. */
+    @PostMapping("/{id}/grades")
+    public SheetView addGrade(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid AddGradeRequest request) {
+        return SheetView.of(service.addGrade(id.trim(), user.trim(), request.grade()));
+    }
+
+    /** A grade that cannot be added or retired is refused with the reason, for the screen to show. */
     @ExceptionHandler(GradeRefusedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> gradeRefused(GradeRefusedException e) {

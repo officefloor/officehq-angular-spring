@@ -65,6 +65,9 @@ public class RateService {
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         requireSheet(sheetId);
+        if (!sheets.findById(sheetId).map(s -> s.isGrade(grade)).orElse(false)) {
+            throw new RateRefusedException("Grade " + grade + " is not a grade of this sheet.");
+        }
         if (to != null && from != null && to.isBefore(from)) {
             throw new RateRefusedException("A rate's to-date cannot be before its from-date.");
         }
@@ -104,7 +107,7 @@ public class RateService {
     private record ImportLine(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
     }
 
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile("[A-Z]{1,3}");
     private static final Pattern PCT = Pattern.compile("\\d{1,7}(\\.\\d{1,2})?");
 
     /** Set the rate each line of grade,rate,from,to names (from and to may be left out or blank), in order,
@@ -123,6 +126,12 @@ public class RateService {
         if (lines.isEmpty()) {
             throw new RateRefusedException("Paste at least one line of grade,rate,from,to.");
         }
+        List<String> grades = sheets.findById(sheetId).map(Sheet::getGrades).orElse(List.of());
+        for (int i = 0; i < lines.size(); i++) {
+            if (!grades.contains(lines.get(i).grade())) {
+                throw new RateRefusedException("A line's grade " + lines.get(i).grade() + " is not a grade of this sheet.");
+            }
+        }
         for (ImportLine line : lines) {
             set(sheetId, user, line.grade(), line.from(), line.to(), line.pct());
         }
@@ -136,7 +145,7 @@ public class RateService {
         }
         String grade = f[0].trim();
         if (!GRADE.matcher(grade).matches()) {
-            throw importRefused(number, "the grade must be A, B or C.");
+            throw importRefused(number, "the grade must be one to three capital letters.");
         }
         String pct = f[1].trim();
         if (!PCT.matcher(pct).matches()) {

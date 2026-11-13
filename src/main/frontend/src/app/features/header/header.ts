@@ -1,6 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { Figures, STATUSES, trimmed } from '../../core/figures';
-import { GRADES, People } from '../../core/people';
+import { People } from '../../core/people';
 import { hundredths, money } from '../../core/rates';
 import { Session, TreeMember } from '../../core/session';
 
@@ -92,7 +92,7 @@ export class HeaderCounters {
   protected readonly consolidated = computed(() => {
     const d = this.session.descendants();
     const grades = (own: (grade: string) => bigint) =>
-      GRADES.map((grade) => ({ grade, dueTotal: money(own(grade) + hundredths(d.gradeDueTotals[grade] ?? '0.00')) }));
+      this.session.grades().map((grade) => ({ grade, dueTotal: money(own(grade) + hundredths(d.gradeDueTotals[grade] ?? '0.00')) }));
     const statuses = (own: (status: string) => number) =>
       STATUSES.map((status) => ({ status, count: own(status) + (d.statusCounts[status] ?? 0) }));
     if (this.session.asOf()) {

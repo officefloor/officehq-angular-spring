@@ -5,7 +5,9 @@ import { Session } from '../../core/session';
 // The grades: each grade and whether it is retired, and a select and a button to retire one (a grade already
 // retired is refused). A retired grade cannot be chosen for a person; the people on it keep it. Two selects
 // and a button merge a grade into another (a steward's only): each person on the merged grade today is given
-// the other from today; the screen shows the merge done and how many people it changed.
+// the other from today; the screen shows the merge done and how many people it changed. An entry and a button
+// add a grade: a code of one to three capital letters not yet a grade (surrounding blanks ignored); the new
+// grade can be chosen wherever a grade can.
 @Component({
   selector: 'app-grades',
   template: `
@@ -16,7 +18,7 @@ import { Session } from '../../core/session';
           <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr [attr.data-testid]="'grade-row-' + g">
               <td data-testid="grade-code">{{ g }}</td>
               <td data-testid="grade-retired">{{ session.retiredGrades().includes(g) ? 'yes' : 'no' }}</td>
@@ -24,6 +26,19 @@ import { Session } from '../../core/session';
           }
         </tbody>
       </table>
+      <form (submit)="add($event)">
+        <label for="grade-add-code">New grade</label>
+        <input
+          id="grade-add-code"
+          data-testid="grade-add-code"
+          [value]="code()"
+          (input)="code.set(text($event)); addError.set(null)"
+        />
+        <button type="submit" data-testid="grade-add" [disabled]="adding()">Add grade</button>
+        @if (addError(); as err) {
+          <p role="alert" data-testid="grade-error">{{ err }}</p>
+        }
+      </form>
       <form (submit)="retire($event)">
         <label for="grade-retire-select">Grade to retire</label>
         <select
@@ -32,7 +47,7 @@ import { Session } from '../../core/session';
           [value]="grade()"
           (change)="grade.set(value($event)); error.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
@@ -49,7 +64,7 @@ import { Session } from '../../core/session';
           [value]="mergeFrom()"
           (change)="mergeFrom.set(value($event)); mergeError.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === mergeFrom()">{{ g }}</option>
           }
         </select>
@@ -60,7 +75,7 @@ import { Session } from '../../core/session';
           [value]="mergeInto()"
           (change)="mergeInto.set(value($event)); mergeError.set(null)"
         >
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g" [selected]="g === mergeInto()">{{ g }}</option>
           }
         </select>
@@ -75,7 +90,7 @@ import { Session } from '../../core/session';
 })
 export class GradesPanel {
   protected readonly session = inject(Session);
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly grade = signal<string>(GRADES[0]);
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
@@ -86,9 +101,32 @@ export class GradesPanel {
   protected readonly merged = signal('');
   protected readonly mergeError = signal<string | null>(null);
   protected readonly merging = signal(false);
+  protected readonly code = signal('');
+  protected readonly addError = signal<string | null>(null);
+  protected readonly adding = signal(false);
 
   protected value(e: Event): string {
     return (e.target as HTMLSelectElement).value;
+  }
+
+  protected text(e: Event): string {
+    return (e.target as HTMLInputElement).value;
+  }
+
+  protected async add(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.adding()) return; // a second submit before the first has answered
+    this.addError.set(null);
+    this.error.set(null);
+    this.mergeError.set(null);
+    this.adding.set(true);
+    try {
+      const err = await this.session.addGrade(this.code());
+      if (err) this.addError.set(err);
+      else this.code.set('');
+    } finally {
+      this.adding.set(false);
+    }
   }
 
   protected async retire(e: Event): Promise<void> {
@@ -96,6 +134,7 @@ export class GradesPanel {
     if (this.saving()) return; // a second submit before the first has answered
     this.error.set(null);
     this.mergeError.set(null);
+    this.addError.set(null);
     this.saving.set(true);
     try {
       const err = await this.session.retireGrade(this.grade());
@@ -110,6 +149,7 @@ export class GradesPanel {
     if (this.merging()) return; // a second submit before the first has answered
     this.error.set(null);
     this.mergeError.set(null);
+    this.addError.set(null);
     this.merged.set('');
     this.merging.set(true);
     const from = this.mergeFrom();

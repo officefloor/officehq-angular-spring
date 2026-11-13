@@ -122,7 +122,7 @@ public class PersonController {
 
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @Min(0) Integer terms,
             @Size(max = 200) String contact,
             @Size(max = 2000) String tags) {
@@ -137,7 +137,7 @@ public class PersonController {
      *  editor loaded. */
     public record PersonUpdate(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate gradeFrom,
             @Min(0) Integer terms,
             LocalDate termsFrom,
@@ -161,7 +161,7 @@ public class PersonController {
      *  today). */
     public record BulkGradeRequest(
             @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> personIds,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate from) {
     }
 
@@ -293,6 +293,13 @@ public class PersonController {
     @ExceptionHandler(GradeRetiredException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> gradeRetired(GradeRetiredException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A grade chosen for a person that is not one of the sheet's grades is refused with the reason. */
+    @ExceptionHandler(GradeUnknownException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> gradeUnknown(GradeUnknownException e) {
         return Map.of("message", e.getMessage());
     }
 
@@ -472,8 +479,8 @@ public class PersonController {
 
     /** The grade to merge and the grade to merge it into. */
     public record MergeGradeRequest(
-            @NotNull @Pattern(regexp = "[ABC]") String from,
-            @NotNull @Pattern(regexp = "[ABC]") String into) {
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String from,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String into) {
     }
 
     /** How many people a grade merge changed, and the people it changed. */

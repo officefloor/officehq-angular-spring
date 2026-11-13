@@ -1,7 +1,7 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { Claim, Claims, bound, countsAt, isOpen, partCents, statusAt } from './claims';
 import { CrewView, Crews } from './crews';
-import { GRADES, People, Person, gradeOn } from './people';
+import { People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
 import { Pools } from './pools';
 import { NO_RATE, Rates, halfEven, hundredths, money, rounded } from './rates';
@@ -156,7 +156,7 @@ export class Figures {
    *  out and a due-total of n/a adding nothing, as the summary shows them. */
   readonly gradeDueTotals = computed(() => {
     const current = this.people.people().filter((p) => !p.retired);
-    return GRADES.map((grade) => ({
+    return this.session.grades().map((grade) => ({
       grade,
       dueTotal: money(
         current.filter((p) => this.gradeToday(p) === grade).reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n),
