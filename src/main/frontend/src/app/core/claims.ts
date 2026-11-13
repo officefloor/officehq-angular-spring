@@ -872,6 +872,34 @@ export class Claims {
     }
   }
 
+  /** Void the chosen claims together, the server voiding them in list order as a single void would (with the
+   *  one reason chosen from the sheet's list) and leaving each that cannot be voided as it is. How many were
+   *  voided and refused, or an error message. */
+  async bulkVoid(reason: string): Promise<{ voided: number; refused: number } | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const claimIds = [...this.selected()];
+    if (claimIds.length === 0) return 'Select the claims to void.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ voided: number; refused: number; claims: Claim[] }>(
+          `${this.url(sid)}/claims/bulk-void`,
+          { claimIds, reason: reason.trim() },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        const byId = new Map(done.claims.map((c) => [c.id, c]));
+        this.claims.update((cs) => cs.map((c) => byId.get(c.id) ?? c));
+        this.selected.set(new Set());
+      }
+      return { voided: done.voided, refused: done.refused };
+    } catch (e) {
+      return failed('void', e).replace(' claim', ' claims');
+    }
+  }
+
   private check(f: ClaimFields): string | null {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!/^-?\d+(\.\d{1,2})?$/.test(f.amount.trim())) return 'Enter an amount with up to two decimals.';

@@ -20,6 +20,7 @@ import { ClaimTemplatesPanel } from '../claim-templates/claim-templates';
 import { BulkOpen } from '../claims/bulk-open';
 import { BulkReassign } from '../claims/bulk-reassign';
 import { BulkRedate } from '../claims/bulk-redate';
+import { BulkVoid } from '../claims/bulk-void';
 import { BulkSettle } from '../claims/bulk-settle';
 import { PasteClaims } from '../claims/paste-claims';
 import { HeaderCounters } from '../header/header';
@@ -43,7 +44,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   hostDirectives: [LocaleFigures],
-  imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -150,6 +151,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-bulk-settle />
         <app-bulk-reassign />
         <app-bulk-redate />
+        <app-bulk-void />
         <app-summary />
         <app-classic-summary />
         <app-search />

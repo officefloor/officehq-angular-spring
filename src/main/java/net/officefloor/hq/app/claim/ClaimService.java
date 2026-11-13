@@ -924,6 +924,31 @@ public class ClaimService {
         return new BulkRedated(redated.size(), chosen.size() - redated.size(), redated);
     }
 
+    /** What a bulk void did: how many it voided and refused, and the claims it voided, in the order voided. */
+    public record BulkVoided(int voided, int refused, List<Claim> claims) {
+    }
+
+    /** Void the chosen claims together in list order (people by their position, each person's claims
+     *  newest first), each as a single void by the user would, with the one reason given; one that cannot be
+     *  voided is left as it is and counted as refused, as is one not on the sheet. */
+    @Transactional
+    public BulkVoided bulkVoid(String sheetId, String user, Collection<Long> claimIds, String reason) {
+        Set<Long> chosen = new HashSet<>(claimIds);
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+            return new BulkVoided(0, chosen.size(), List.of());
+        }
+        List<Claim> voided = new ArrayList<>();
+        for (Claim claim : inListOrder(sheetId, chosen)) {
+            try {
+                voided.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.VOID, reason));
+            } catch (ClaimStatusException | ClaimVoidException | PeriodClosedException | ActionNotAllowedException
+                    | PersonNotFoundException | ClaimNotFoundException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkVoided(voided.size(), chosen.size() - voided.size(), voided);
+    }
+
     /** The sheet's chosen claims in list order: people by their position, each person's claims
      *  newest first. */
     private List<Claim> inListOrder(String sheetId, Set<Long> chosen) {

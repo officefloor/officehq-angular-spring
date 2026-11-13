@@ -355,6 +355,26 @@ public class ClaimController {
                 done.claims().stream().map(ClaimView::of).toList());
     }
 
+    /** The claims chosen to void together, and the reason they are voided with (while the sheet has void reasons). */
+    public record BulkVoidRequest(@NotNull @Size(max = 10000) List<@NotNull Long> claimIds,
+            @Size(max = 200) String reason) {
+    }
+
+    /** How many a bulk void voided and refused, and the claims it voided. */
+    public record BulkVoidView(int voided, int refused, List<ClaimView> claims) {
+    }
+
+    /** Void the chosen claims together, in list order; each that cannot be voided is left as it is. */
+    @PostMapping("/claims/bulk-void")
+    public BulkVoidView bulkVoid(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkVoidRequest request) {
+        String reason = request.reason() == null ? "" : request.reason().trim();
+        ClaimService.BulkVoided done = service.bulkVoid(sheetId.trim(), user.trim(), request.claimIds(), reason);
+        return new BulkVoidView(done.voided(), done.refused(),
+                done.claims().stream().map(ClaimView::of).toList());
+    }
+
     /** Settle an OPEN claim; a clerk settling a due above the clerk limit puts it PENDING instead. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
