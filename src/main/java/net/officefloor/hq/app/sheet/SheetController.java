@@ -43,7 +43,7 @@ public class SheetController {
             boolean archived, String noteThreshold, LocalDate entryDate, Integer lastSettleBatch, String pot,
             String parent, int fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter,
             Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen,
-            List<String> retiredGrades, List<String> grades) {
+            List<String> retiredGrades, List<String> grades, Integer pendingSla) {
 
         static SheetView of(Sheet sheet) {
             return of(sheet, sheet.getGrades());
@@ -70,7 +70,7 @@ public class SheetController {
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
                     sheet.getDefaultGrade(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(),
-                    sheet.getMaxOpen(), sheet.getRetiredGrades(), grades);
+                    sheet.getMaxOpen(), sheet.getRetiredGrades(), grades, sheet.getPendingSla());
         }
     }
 
@@ -185,6 +185,10 @@ public class SheetController {
 
     /** The sheet's review SLA in days; missing means none. */
     public record ReviewSlaRequest(@Min(0) @Max(36500) Integer reviewSla) {
+    }
+
+    /** The sheet's pending SLA in days; missing means none. */
+    public record PendingSlaRequest(@Min(0) @Max(36500) Integer pendingSla) {
     }
 
     /** The sheet's proof kinds, comma separated (receipt or photo); missing or blank means none. */
@@ -458,6 +462,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ReviewSlaRequest request) {
         return SheetView.of(service.setReviewSla(id.trim(), user.trim(), request.reviewSla()));
+    }
+
+    /** Change the sheet's pending SLA. */
+    @PutMapping("/{id}/settings/pending-sla")
+    public SheetView setPendingSla(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid PendingSlaRequest request) {
+        return SheetView.of(service.setPendingSla(id.trim(), user.trim(), request.pendingSla()));
     }
 
     /** Change the sheet's proof kinds. */

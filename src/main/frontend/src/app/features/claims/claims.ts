@@ -112,6 +112,7 @@ import { VoidReasons } from '../../core/void-reasons';
           <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ claims.reviewLate(c) ? 'yes' : 'no' }}</span></span>
+          <span>Pending late <span data-testid="claim-pending-late">{{ claims.pendingLate(c) ? 'yes' : 'no' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
           <span>Receipts <span data-testid="claim-proofs-receipt">{{ c.proofReceipts }}</span></span>
           <span>Photos <span data-testid="claim-proofs-photo">{{ c.proofPhotos }}</span></span>

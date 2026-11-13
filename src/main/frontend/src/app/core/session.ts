@@ -51,6 +51,9 @@ export interface SheetView {
   /** The review SLA: a REVIEW claim whose review day plus these many days is before the sheet's today is
    *  late for review; null when none. */
   reviewSla: number | null;
+  /** The pending SLA: a PENDING claim whose pending day plus these many days is before the sheet's today is
+   *  pending late; null when none. */
+  pendingSla: number | null;
   /** The maximum of open claims per person: a claim is not opened when its person already has this many OPEN
    *  or PENDING claims; null when none. */
   maxOpen: number | null;
@@ -248,6 +251,8 @@ export class Session {
   readonly scoreLog = signal(false);
   /** The sheet's review SLA in days; null when none. */
   readonly reviewSla = signal<number | null>(null);
+  /** The sheet's pending SLA in days; null when none. Not dated. */
+  readonly pendingSla = signal<number | null>(null);
   /** The sheet's maximum of open claims per person; null when none. Not dated. */
   readonly maxOpen = signal<number | null>(null);
   /** The sheet's proof kinds, comma separated; null when none. */
@@ -347,6 +352,7 @@ export class Session {
       this.scoreHigh.set(sheet.scoreHigh);
       this.scoreLog.set(sheet.scoreLog);
       this.reviewSla.set(sheet.reviewSla);
+      this.pendingSla.set(sheet.pendingSla);
       this.maxOpen.set(sheet.maxOpen);
       this.proofKinds.set(sheet.proofKinds);
       this.defaultGrade.set(sheet.defaultGrade);
@@ -929,6 +935,25 @@ export class Session {
           { reviewSla: d ? Number(d) : null }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.reviewSla.set(sheet.reviewSla);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's pending SLA (blank: none); an error message when refused. */
+  async setPendingSla(days: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const d = days.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (d && !/^\d{1,5}$/.test(d)) return 'Enter the pending SLA as a whole number of days, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/pending-sla`,
+          { pendingSla: d ? Number(d) : null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.pendingSla.set(sheet.pendingSla);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

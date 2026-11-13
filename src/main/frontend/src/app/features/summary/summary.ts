@@ -63,6 +63,7 @@ import { Session } from '../../core/session';
         </tbody>
       </table>
       <p>Late for review <span data-testid="summary-review-late-count">{{ reviewLate() }}</span></p>
+      <p>Pending late <span data-testid="summary-pending-late-count">{{ pendingLate() }}</span></p>
       <table data-testid="summary-void-reasons">
         <caption>By void reason</caption>
         <thead>
@@ -114,6 +115,7 @@ export class SummaryPanel {
   protected readonly byStatus = this.figures.statusCounts;
 
   protected readonly reviewLate = computed(() => this.claims.claims().filter((c) => this.claims.reviewLate(c)).length);
+  protected readonly pendingLate = computed(() => this.claims.claims().filter((c) => this.claims.pendingLate(c)).length);
 
   protected readonly byVoidReason = computed(() => {
     const voided = this.claims.claims().filter((c) => c.status === 'VOID');

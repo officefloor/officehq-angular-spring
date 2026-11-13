@@ -346,6 +346,16 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's pending SLA in days (none: none). Not dated. */
+    @Transactional
+    public Sheet setPendingSla(String id, String user, Integer days) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setPendingSla(days);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pending-sla value="
+                + (days == null ? "" : days.toString()));
+        return sheet;
+    }
+
     /** Change the sheet's proof kinds (a comma separated list of receipt or photo; blank: none). Not dated. */
     @Transactional
     public Sheet setProofKinds(String id, String user, String kinds) {

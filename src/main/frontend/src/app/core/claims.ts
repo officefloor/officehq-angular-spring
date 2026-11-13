@@ -273,6 +273,17 @@ export class Claims {
     return went !== undefined && addDays(went.on, sla) < today;
   }
 
+  /** Whether a PENDING claim is pending late: its pending day (the sheet's today when it last went to
+   *  PENDING, as its status log records it) plus the sheet's pending SLA is before the sheet's today. Never
+   *  while the sheet has no SLA. */
+  pendingLate(c: Claim): boolean {
+    const today = this.session.shownToday();
+    const sla = this.session.pendingSla();
+    if (c.status !== 'PENDING' || today === null || sla === null) return false;
+    const went = c.statusLog.filter((l) => l.status === 'PENDING').at(-1);
+    return went !== undefined && addDays(went.on, sla) < today;
+  }
+
   /** Whether a claim shows as deferred: its deferred-until date is after the sheet's today, whatever its
    *  status (a deferred claim voided keeps showing it). Only an OPEN one is left out of totals (`deferred`). */
   deferredShown(c: Claim): boolean {
