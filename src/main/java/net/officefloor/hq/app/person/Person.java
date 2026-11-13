@@ -33,6 +33,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The person's own terms in days, which fix the due-by of their claims; null for none. */
+    @Column(name = "terms")
+    private Integer terms;
+
     protected Person() {
     }
 
@@ -67,6 +71,14 @@ public class Person {
 
     public void setRetiredFrom(LocalDate retiredFrom) {
         this.retiredFrom = retiredFrom;
+    }
+
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     /** Whether the person is retired: any retirement date set counts, even one after the sheet's today. */

@@ -24,6 +24,8 @@ interface Person {
   grades: PersonGrade[];
   /** Raised on every save; an editor saves only the version it loaded. */
   version: number;
+  /** The person's own terms in days, which fix the due-by of their claims; null for none. */
+  terms: number | null;
   /** How many statements were taken for the person. */
   statementCount: number;
   /** The last statement's due-total (two decimals, or n/a); null when none was taken. */
@@ -95,6 +97,14 @@ interface StatementTaken {
           data-testid="person-form-grade-from"
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set(null)"
+        />
+        <label for="person-form-terms">Terms (days)</label>
+        <input
+          id="person-form-terms"
+          data-testid="person-form-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
@@ -184,6 +194,7 @@ interface StatementTaken {
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
+            <th scope="col">Terms</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Overdue</th>
@@ -211,6 +222,7 @@ interface StatementTaken {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</td>
@@ -513,6 +525,8 @@ export class People {
   protected readonly grade = signal('A');
   /** The date the grade saved from the editor applies from; blank takes the sheet's today. */
   protected readonly gradeFrom = signal('');
+  /** The person's own terms in whole days; blank for none. */
+  protected readonly terms = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -909,6 +923,7 @@ export class People {
     this.name.set(person.name);
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set('');
+    this.terms.set(person.terms === null ? '' : String(person.terms));
     this.error.set(null);
   }
 
@@ -917,6 +932,7 @@ export class People {
     this.name.set('');
     this.grade.set('A');
     this.gradeFrom.set('');
+    this.terms.set('');
     this.error.set(null);
   }
 
@@ -926,9 +942,16 @@ export class People {
     this.error.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
-    const body = { name: this.name().trim(), grade: this.grade() };
+    const terms = this.terms().trim();
+    const body = { name: this.name().trim(), grade: this.grade(), terms: terms === '' ? null : Number(terms) };
     if (!body.name) {
       this.error.set('Type a name for the person.');
+      return;
+    }
+    if (terms !== '' && !/^\d{1,5}$/.test(terms)) {
+      // Nothing is saved: the editor closes, leaving the form ready for the next person.
+      this.reset();
+      this.error.set('Terms are a whole number of days, or blank for none; nothing was saved.');
       return;
     }
     const id = this.editingId();

@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -47,21 +48,30 @@ public class PersonService {
     /** Add a person to the sheet; the grade they are given applies from the beginning of time. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
+        return add(sheetId, user, name, grade, null);
+    }
+
+    /** Add a person to the sheet with their own terms (null for none); the grade they are given
+     *  applies from the beginning of time. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         sheets.load(sheetId);
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, null);
-        Person added = people.saveAndFlush(new Person(sheetId, trimmed));
+        Person person = new Person(sheetId, trimmed);
+        person.setTerms(terms);
+        Person added = people.saveAndFlush(person);
         grades.give(added, grade, null);
-        record("PERSON_ADDED", sheetId, user, added, grade);
+        record("PERSON_ADDED", sheetId, user, added, grade, terms != null ? " terms=" + terms : "");
         return added;
     }
 
     /** Change a person's name, and give them the grade from a date (blank takes the sheet's today),
-     *  keeping the grades already given, from an editor that loaded the given version of them. A
+     *  keeping the grades already given, and set their own terms (null for none), from an editor that loaded the given version of them. A
      *  blank from-date with the grade in force on the sheet's today gives no grade. */
     @Transactional
     public Person update(String sheetId, String user, Long id, long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
         if (person.getVersion() != version) {
@@ -70,6 +80,8 @@ public class PersonService {
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, id);
         person.setName(trimmed);
+        Integer before = person.getTerms();
+        person.setTerms(terms);
         LocalDate today = sheets.today(sheetId);
         if (gradeFrom != null || !grade.equals(grades.gradeOn(id, today))) {
             grades.give(person, grade, gradeFrom != null ? gradeFrom : today);
@@ -77,7 +89,8 @@ public class PersonService {
             entityManager.lock(person, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
         }
         Person saved = people.saveAndFlush(person);
-        record("PERSON_EDITED", sheetId, user, saved, grades.gradeOn(id, today));
+        record("PERSON_EDITED", sheetId, user, saved, grades.gradeOn(id, today),
+                Objects.equals(before, terms) ? "" : " terms=" + (terms != null ? terms : ""));
         return saved;
     }
 
@@ -189,9 +202,9 @@ public class PersonService {
         return watches.findByPersonIdOrderByIdAsc(personId).stream().map(PersonWatch::getUser).toList();
     }
 
-    private void record(String event, String sheetId, String user, Person person, String grade) {
+    private void record(String event, String sheetId, String user, Person person, String grade, String terms) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName() + " grade=" + grade);
+                + " name=" + person.getName() + " grade=" + grade + terms);
     }
 
     private void requireFreeName(String sheetId, String name, Long exceptId) {

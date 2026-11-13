@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -54,31 +56,34 @@ public class PersonController {
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named, and whether the signed-in user watches them. */
+     *  they were named, and whether the signed-in user watches them, and their own terms (null for none). */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            List<HoldView> holds, List<Long> patronIds, boolean watched) {
+            List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
-                    holds.stream().map(HoldView::of).toList(), patronIds, watched);
+                    holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms());
         }
     }
 
-    /** A person's fields: a name that is not blank and a grade of A, B or C. */
+    /** A person's fields: a name that is not blank, a grade of A, B or C, and their own terms in whole
+     *  days (null for none). */
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @Min(0) @Max(36500) Integer terms) {
     }
 
     /** A person's fields as saved from an editor: the grade applies from its from-date (blank takes
-     *  the sheet's today), with the version of the person the editor loaded. */
+     *  the sheet's today), their own terms in whole days (null for none), with the version of the person the editor loaded. */
     public record PersonUpdate(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
+            @Min(0) @Max(36500) Integer terms,
             @NotNull Long version) {
     }
 
@@ -140,7 +145,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(),
-                request.grade())), by);
+                request.grade(), request.terms())), by);
     }
 
     /** Change a person's name and give them a grade from a date; refused when the person was saved since the editor loaded them. */
@@ -150,7 +155,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
-                request.name(), request.grade(), request.gradeFrom())), by);
+                request.name(), request.grade(), request.gradeFrom(), request.terms())), by);
     }
 
     /** Retire a person from a date. */

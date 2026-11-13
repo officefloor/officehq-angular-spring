@@ -70,7 +70,7 @@ public class ClaimService {
     }
 
     /** Add a claim for a person; a missing date takes the sheet's today. Its due-by is fixed now: its
-     *  date plus the terms in force on that date for the person's grade then. A negative amount is a
+     *  date plus the person's own terms, else the terms in force on that date for the person's grade then. A negative amount is a
      *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
@@ -81,7 +81,7 @@ public class ClaimService {
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
-        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, grades.gradeOn(personId, on), on));
+        LocalDate dueBy = on.plusDays(termsFor(sheetId, person, on));
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, dueBy, noteOf(note),
                 corrects));
         log(sheetId, user, person, added);
@@ -230,7 +230,7 @@ public class ClaimService {
         claim.unbind();
         Claim kept = claims.saveAndFlush(claim);
         LocalDate on = kept.getDate();
-        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, grades.gradeOn(personId, on), on));
+        LocalDate dueBy = on.plusDays(termsFor(sheetId, person, on));
         Claim added = claims.saveAndFlush(Claim.splitOff(kept, part, dueBy, nextNumber(sheetId, on), user));
         log(sheetId, user, person, added);
         audit.recordOnCommit(line("CLAIM_SPLIT", sheetId, user, person, kept, kept.getNumber())
@@ -592,5 +592,12 @@ public class ClaimService {
 
     private static String noteOf(String note) {
         return note == null ? "" : note.trim();
+    }
+
+    /** The terms in days a claim of the person dated on a date takes: the person's own, else their
+     *  grade's in force then, else the sheet's. */
+    private int termsFor(String sheetId, Person person, LocalDate on) {
+        return person.getTerms() != null ? person.getTerms()
+                : settings.termsFor(sheetId, grades.gradeOn(person.getId(), on), on);
     }
 }
