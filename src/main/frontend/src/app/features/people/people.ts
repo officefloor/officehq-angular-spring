@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, PersonClaims, cents, claimDueCents, counts, money } from '../claims/claims';
+import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, RateStore, Rates } from '../rates/rates';
 
 interface Person {
@@ -31,9 +32,10 @@ interface StatementTaken {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, Rates],
+  imports: [PersonClaims, Periods, Rates],
   template: `
     <app-rates />
+    <app-periods [dueTotals]="periodDueTotals()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
@@ -134,6 +136,7 @@ export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
+  private readonly periods = inject(PeriodStore);
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -163,6 +166,20 @@ export class People {
       }, 0),
     ),
   );
+  /** Each period's due-total, by period id: the dues shown on the claims that count whose date
+   *  falls in the period (a claim with no figure adds nothing). */
+  protected readonly periodDueTotals = computed(() => {
+    const periods = this.periods.periods();
+    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
+    for (const c of this.claims().filter(counts)) {
+      const period = periodOf(periods, c.date);
+      const grade = grades.get(c.personId);
+      if (period === null || grade === undefined) continue;
+      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, this.rates.of(grade)) ?? 0));
+    }
+    return new Map([...totals].map(([id, due]) => [id, money(due)]));
+  });
   protected readonly name = signal('');
   protected readonly grade = signal('A');
   protected readonly editingId = signal<number | null>(null);

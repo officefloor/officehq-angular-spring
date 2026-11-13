@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { PeriodStore, periodOf } from '../periods/periods';
 import { NO_RATE, Rate, dueCents, rateOn } from '../rates/rates';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
@@ -107,6 +108,7 @@ const AMOUNT = /^\d+(\.\d{1,2})?$/;
           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
           <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
             Open
           </button>
@@ -135,6 +137,7 @@ const AMOUNT = /^\d+(\.\d{1,2})?$/;
 export class PersonClaims {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly periods = inject(PeriodStore);
 
   readonly personId = input.required<number>();
   readonly claims = input.required<Claim[]>();
@@ -160,6 +163,11 @@ export class PersonClaims {
   protected dueOf(claim: Claim): string {
     const due = claimDueCents(claim, this.rates());
     return due === null ? NO_RATE : money(due);
+  }
+
+  /** The name of the period the claim's date falls in; empty when it falls in none. */
+  protected periodNameOf(claim: Claim): string {
+    return periodOf(this.periods.periods(), claim.date)?.name ?? '';
   }
 
   protected edit(claim: Claim): void {
