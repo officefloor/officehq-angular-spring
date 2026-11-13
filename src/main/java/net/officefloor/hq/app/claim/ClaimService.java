@@ -62,12 +62,21 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
         Person person = person(sheetId, personId);
+        // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
+        // read below is its latest state.
+        Long number = to == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
         if (!claim.getStatus().canMoveTo(to)) {
             throw new StatusChangeRefusedException(claim.getStatus(), to);
         }
+        Long had = claim.getNumber();
         claim.setStatus(to);
+        if (to == ClaimStatus.OPEN) {
+            claim.setNumber(number);
+        } else if (to == ClaimStatus.VOID) {
+            claim.setNumber(null);
+        }
         Claim saved = claims.saveAndFlush(claim);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
@@ -75,7 +84,7 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException("A claim never returns to DRAFT");
         };
-        record(event, sheetId, user, person, saved);
+        record(event, sheetId, user, person, saved, had != null ? had : saved.getNumber());
         return saved;
     }
 
@@ -85,8 +94,14 @@ public class ClaimService {
     }
 
     private void record(String event, String sheetId, String user, Person person, Claim claim) {
+        record(event, sheetId, user, person, claim, claim.getNumber());
+    }
+
+    /** One audit line about a claim; a claim with a number carries it at the end. */
+    private void record(String event, String sheetId, String user, Person person, Claim claim, Long number) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
-                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate());
+                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
+                + (number != null ? " number=" + number : ""));
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

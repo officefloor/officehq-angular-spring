@@ -34,6 +34,17 @@ public class SheetService {
         return load(id).getToday();
     }
 
+    /** Take the sheet's next claim number, holding the sheet locked until the transaction ends so
+     *  claims opened at the same moment get different numbers. */
+    @Transactional
+    public long nextClaimNumber(String id) {
+        load(id);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        long number = sheet.nextClaimNumber();
+        sheets.saveAndFlush(sheet);
+        return number;
+    }
+
     /** Change the sheet's today. */
     @Transactional
     public Sheet setToday(String id, LocalDate today) {

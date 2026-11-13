@@ -18,6 +18,8 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
+  /** The claim's number on the sheet, given when it is opened; null for a draft or a void claim. */
+  number: number | null;
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
@@ -83,6 +85,7 @@ const AMOUNT = /^\d+(\.\d{1,2})?$/;
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
+          <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
             Open
           </button>
