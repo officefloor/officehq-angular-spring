@@ -121,6 +121,10 @@ public class Claim {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /** Whether a reminder escalated it; a claim is escalated once ever. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** Its external reference, unique on its sheet without regard to case; none when not given. */
     @Column(name = "ref")
     private String ref;
@@ -183,6 +187,7 @@ public class Claim {
         copy.splitFrom = splitFrom;
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
+        copy.escalated = escalated;
         copy.voidReason = voidReason;
         copy.tags = tags;
         statusLog.forEach(l -> copy.statusLog.add(new StatusChange(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
@@ -422,6 +427,14 @@ public class Claim {
 
     public void setRemindedOn(LocalDate remindedOn) {
         this.remindedOn = remindedOn;
+    }
+
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    public void setEscalated(boolean escalated) {
+        this.escalated = escalated;
     }
 
     public List<StatusChange> getStatusLog() {

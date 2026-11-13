@@ -37,6 +37,9 @@ export interface SheetView {
   /** The grace days: a today change closes each open period whose to-date plus these days is before it;
    *  null when off. */
   graceDays: number | null;
+  /** The escalation gap: reminding a claim whose previous reminder was at least these many days before the
+   *  sheet's today escalates it (once per claim); null when off. */
+  escalateAfter: number | null;
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   archived: boolean;
   /** The entry date (YYYY-MM-DD): the default date of a new claim in place of the sheet's today; null when
@@ -173,6 +176,8 @@ export class Session {
   /** The sheet's grace days; null when off. A today change closes each open period whose to-date plus these
    *  days is before the new today. */
   readonly graceDays = signal<number | null>(null);
+  /** The sheet's escalation gap in days; null when off. */
+  readonly escalateAfter = signal<number | null>(null);
   /** The sheet's entry date (YYYY-MM-DD); null when off. While set, it is the default date of a new claim
    *  in place of the sheet's today. */
   readonly entryDate = signal<string | null>(null);
@@ -249,6 +254,7 @@ export class Session {
       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
       this.permissions.set(sheet.permissions);
       this.graceDays.set(sheet.graceDays);
+      this.escalateAfter.set(sheet.escalateAfter);
       this.entryDate.set(sheet.entryDate);
       this.pot.set(sheet.pot);
       this.alertThreshold.set(sheet.alertThreshold);
@@ -701,6 +707,25 @@ export class Session {
           { graceDays: d ? Number(d) : null }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.graceDays.set(sheet.graceDays);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's escalation gap (blank: off); an error message when refused. */
+  async setEscalateAfter(days: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const d = days.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (d && !/^\d{1,5}$/.test(d)) return 'Enter the escalation gap as a whole number of days, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/escalate-after`,
+          { escalateAfter: d ? Number(d) : null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.escalateAfter.set(sheet.escalateAfter);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
