@@ -1,0 +1,268 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4ffc44576..e637b7b06 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -193,6 +193,27 @@ interface StatementTaken {
+       @if (bulkSettleError(); as message) {
+         <p role="alert" data-testid="bulk-settle-error">{{ message }}</p>
+       }
++      <p>
++        <label for="bulk-reassign-to">Move the selected claims to</label>
++        <select
++          id="bulk-reassign-to"
++          data-testid="bulk-reassign-to"
++          (change)="bulkReassignTo.set(value($event)); bulkReassignError.set(null)"
++        >
++          <option value="" [selected]="!bulkReassignTo()">Choose a person</option>
++          @for (o of people(); track o.id) {
++            <option [value]="'' + o.id" [selected]="bulkReassignTo() === '' + o.id">{{ o.name }}</option>
++          }
++        </select>
++        <button type="button" data-testid="bulk-reassign" (click)="reassignSelected()">Move selected claims</button>
++        @if (bulkReassignResult(); as r) {
++          Moved <strong data-testid="bulk-reassigned">{{ r.reassigned }}</strong>, refused
++          <strong data-testid="bulk-reassign-refused">{{ r.refused }}</strong>
++        }
++      </p>
++      @if (bulkReassignError(); as message) {
++        <p role="alert" data-testid="bulk-reassign-error">{{ message }}</p>
++      }
+       <form (submit)="gradeSelected($event)" aria-label="Grade the selected people">
+         <label for="bulk-grade">Grade the selected people</label>
+         <select
+@@ -714,6 +735,14 @@ export class People {
+   protected readonly bulkSettleError = signal<string | null>(null);
+   /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
+   private readonly bulkSettleBusy = signal(false);
++  /** The person (an id, or blank) the selected claims are to move to. */
++  protected readonly bulkReassignTo = signal('');
++  /** How many claims the last bulk move moved and refused; null while it runs or before one. */
++  protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
++  /** Why the last bulk move could not be done at all; null when it was. */
++  protected readonly bulkReassignError = signal<string | null>(null);
++  /** Whether a bulk move is waiting for its answer; a second press meanwhile is dropped. */
++  private readonly bulkReassignBusy = signal(false);
+   /** The ids of the people selected to be given a grade together. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** The grade to give the selected people. */
+@@ -747,6 +776,9 @@ export class People {
+       this.bulkOpenError.set(null);
+       this.bulkSettleResult.set(null);
+       this.bulkSettleError.set(null);
++      this.bulkReassignTo.set('');
++      this.bulkReassignResult.set(null);
++      this.bulkReassignError.set(null);
+       this.selectedPeople.set(new Set());
+       this.bulkGrade.set('A');
+       this.bulkGradeFrom.set('');
+@@ -1109,6 +1141,40 @@ export class People {
+     }
+   }
+ 
++  /** Move the selected claims to the chosen person together, in list order, each by the rules of
++   *  moving one, and each that cannot be moved left as it is; the screen shows how many were moved
++   *  and refused. */
++  protected async reassignSelected(): Promise<void> {
++    if (this.bulkReassignBusy()) return;
++    this.bulkReassignResult.set(null);
++    this.bulkReassignError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const to = this.bulkReassignTo();
++    if (!to) {
++      this.bulkReassignError.set('Choose the person to move the selected claims to.');
++      return;
++    }
++    const ids = [...this.selectedClaims()];
++    this.bulkReassignBusy.set(true);
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ reassigned: Claim[]; refused: number }>(
++          `/api/sheets/${encodeURIComponent(sheet)}/claims/reassign`,
++          { claimIds: ids, toPersonId: Number(to) },
++        ),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      for (const c of result.reassigned) this.claimMoved(c);
++      this.selectedClaims.set(new Set());
++      this.bulkReassignResult.set({ reassigned: result.reassigned.length, refused: result.refused });
++    } catch {
++      this.bulkReassignError.set('The selected claims could not be moved.');
++    } finally {
++      this.bulkReassignBusy.set(false);
++    }
++  }
++
+   protected selectPerson(id: number, selected: boolean): void {
+     this.selectedPeople.update((ids) => {
+       const next = new Set(ids);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkReassignService.java b/src/main/java/net/officefloor/hq/app/claim/BulkReassignService.java
+new file mode 100644
+index 000000000..56345c343
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkReassignService.java
+@@ -0,0 +1,59 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.NoSuchElementException;
++import java.util.Set;
++import net.officefloor.hq.app.period.PeriodClosedException;
++import net.officefloor.hq.app.person.PersonRetiredException;
++import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.setting.SettingService;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++
++/** Moves a selection of claims to another person together. */
++@Service
++public class BulkReassignService {
++
++    /** What a bulk move did: the claims it moved, in the order it moved them, and how many of the
++     *  selected claims it refused. */
++    public record Result(List<Claim> reassigned, int refused) {
++    }
++
++    private final ClaimListOrder order;
++    private final ClaimService service;
++    private final RollupService rollups;
++    private final SettingService settings;
++    private final SheetService sheets;
++
++    public BulkReassignService(ClaimListOrder order, ClaimService service, RollupService rollups,
++            SettingService settings, SheetService sheets) {
++        this.order = order;
++        this.service = service;
++        this.rollups = rollups;
++        this.settings = settings;
++        this.sheets = sheets;
++    }
++
++    /** Move each selected claim that can be moved to the person, in list order (people in the order
++     *  they were added, each person's claims newest first), by exactly the rules of moving one. Each
++     *  that cannot, or is not on the sheet, is refused and left as it is. Each claim is moved on its
++     *  own, so a refused one writes nothing. */
++    public Result reassign(String sheetId, String user, Set<Long> ids, Long toPersonId) {
++        List<Claim> reassigned = new ArrayList<>();
++        if (settings.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
++            // A viewer, or anyone on an archived sheet, changes nothing: every selected claim is refused.
++            return new Result(reassigned, ids.size());
++        }
++        for (Claim claim : order.selected(sheetId, ids)) {
++            try {
++                reassigned.add(rollups.track(sheetId, user, () -> service.reassignSelected(sheetId, user,
++                        claim.getPersonId(), claim.getId(), toPersonId)));
++            } catch (ReassignRefusedException | MoveRefusedException | PeriodClosedException | PersonRetiredException
++                    | NoSuchElementException refused) {
++                // Left as it is: its change rolled back with its own transaction.
++            }
++        }
++        return new Result(reassigned, ids.size() - reassigned.size());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index da34eb8c8..05acc4c2c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -133,14 +133,25 @@ public class ClaimController {
+     public record BulkSettleView(List<ClaimView> settled, int refused) {
+     }
+ 
++    /** The claims selected to move together, and the person on the sheet they move to. */
++    public record BulkReassignRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds, @NotNull Long toPersonId) {
++    }
++
++    /** What a bulk move did: the claims it moved, in list order, and how many of the selected claims
++     *  it refused. */
++    public record BulkReassignView(List<ClaimView> reassigned, int refused) {
++    }
++
+     private final ClaimService service;
+     private final RollupService rollups;
+     private final BulkOpenService bulkOpen;
+     private final BulkSettleService bulkSettle;
++    private final BulkReassignService bulkReassign;
+     private final History history;
+ 
+     public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
+-            BulkSettleService bulkSettle, History history) {
++            BulkSettleService bulkSettle, BulkReassignService bulkReassign, History history) {
++        this.bulkReassign = bulkReassign;
+         this.history = history;
+         this.service = service;
+         this.rollups = rollups;
+@@ -282,6 +293,18 @@ public class ClaimController {
+                 () -> service.reassign(sheet, by, personId, id, request.toPersonId())));
+     }
+ 
++    /** Move the selected claims to a person, in list order, each by the rules of moving one; the rest
++     *  are refused and left as they are. */
++    @PostMapping("/claims/reassign")
++    public BulkReassignView reassignAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkReassignRequest request) {
++        String sheet = sheetId.trim();
++        BulkReassignService.Result result = bulkReassign.reassign(sheet, SignedInUser.decode(user), request.claimIds(),
++                request.toPersonId());
++        return new BulkReassignView(result.reassigned().stream().map(claim -> view(sheet, claim)).toList(),
++                result.refused());
++    }
++
+     /** Defer an OPEN claim until a date after the sheet's today. */
+     @PostMapping("/people/{personId}/claims/{id}/defer")
+     public ClaimView defer(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index d728a1a78..349b5a72c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -509,6 +509,17 @@ public class ClaimService {
+      *  a move to the same person or to one retired before the claim's date, is refused. */
+     @Transactional
+     public Claim reassign(String sheetId, String user, Long personId, Long id, Long toPersonId) {
++        return move(sheetId, user, personId, id, toPersonId, false);
++    }
++
++    /** Move a claim selected among others to a person, by the rules of {@link #reassign}, except that
++     *  a selected claim already the person's is moved too: listed again as their newest. */
++    @Transactional
++    public Claim reassignSelected(String sheetId, String user, Long personId, Long id, Long toPersonId) {
++        return move(sheetId, user, personId, id, toPersonId, true);
++    }
++
++    private Claim move(String sheetId, String user, Long personId, Long id, Long toPersonId, boolean samePerson) {
+         Person from = person(sheetId, personId);
+         Person to = person(sheetId, toPersonId);
+         Claim claim = claim(sheetId, personId, id);
+@@ -518,7 +529,7 @@ public class ClaimService {
+         if (!claim.getStatus().canReassign()) {
+             throw new MoveRefusedException("A " + claim.getStatus() + " claim cannot move to another person");
+         }
+-        if (from.getId().equals(to.getId())) {
++        if (!samePerson && from.getId().equals(to.getId())) {
+             throw new MoveRefusedException("The claim is already " + to.getName() + "'s");
+         }
+         if (claim.isCorrection()) {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+index b957052f7..f041a778b 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+@@ -30,6 +30,7 @@ public class ViewerGuard implements HandlerInterceptor {
+             "/api/sheets/{sheetId}/load",
+             "/api/sheets/{sheetId}/claims/open",
+             "/api/sheets/{sheetId}/claims/settle",
++            "/api/sheets/{sheetId}/claims/reassign",
+             "/api/sheets/{sheetId}/people/grade");
+ 
+     private final AntPathMatcher paths = new AntPathMatcher();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/ArchivedGuard.java b/src/main/java/net/officefloor/hq/app/sheet/ArchivedGuard.java
+index b2a0a0c99..d3cf89610 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/ArchivedGuard.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/ArchivedGuard.java
+@@ -28,6 +28,7 @@ public class ArchivedGuard implements HandlerInterceptor {
+             "/api/sheets/{sheetId}/archive",
+             "/api/sheets/{sheetId}/claims/open",
+             "/api/sheets/{sheetId}/claims/settle",
++            "/api/sheets/{sheetId}/claims/reassign",
+             "/api/sheets/{sheetId}/people/grade");
+ 
+     private final AntPathMatcher paths = new AntPathMatcher();
