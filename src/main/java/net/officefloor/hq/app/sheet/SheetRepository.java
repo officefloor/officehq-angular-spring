@@ -25,17 +25,30 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
     /** How many levels up a sheet's rates are taken from its ancestors. */
     int ANCESTOR_LEVELS = 3;
 
-    /** The sheet's parent, the parent's parent and so on, nearest first, up to three levels up. */
+    /** The sheets whose rates a grade with no rate in force on a date here takes, nearest first: the sheet's
+     *  parent, the parent's parent and so on up to three levels up; then, for a clone, the sheet it was cloned
+     *  from and that sheet's own ancestors the same way (its parents, then its source), and so on. */
     default List<String> ancestors(String id) {
         List<String> found = new ArrayList<>();
-        String at = id;
-        while (found.size() < ANCESTOR_LEVELS) {
-            String parent = findById(at).map(Sheet::getParent).orElse(null);
-            if (parent == null || parent.equals(id) || found.contains(parent)) {
+        String from = id;
+        while (from != null) {
+            String at = from;
+            int levels = 0;
+            while (levels < ANCESTOR_LEVELS) {
+                String parent = findById(at).map(Sheet::getParent).orElse(null);
+                if (parent == null || parent.equals(id) || found.contains(parent)) {
+                    break;
+                }
+                found.add(parent);
+                levels++;
+                at = parent;
+            }
+            String source = findById(from).map(Sheet::getSource).orElse(null);
+            if (source == null || source.equals(id) || found.contains(source)) {
                 break;
             }
-            found.add(parent);
-            at = parent;
+            found.add(source);
+            from = source;
         }
         return found;
     }

@@ -145,6 +145,11 @@ public class Sheet {
     @Column(name = "parent")
     private String parent;
 
+    /** The id of the sheet this one was cloned from: a grade with no rate in force on a date here nor on its
+     *  parents takes the source's, and so on up the source's parents and source; none means not a clone. */
+    @Column(name = "source")
+    private String source;
+
     /** Whether the sheet is archived: everything stays visible and every change is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -410,6 +415,14 @@ public class Sheet {
 
     public void setParent(String parent) {
         this.parent = parent;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
     }
 
     public Integer getGraceDays() {

@@ -49,6 +49,7 @@ public class AsOf {
         then.setToday(asOf);
         // the parent is not dated: the sheet names the one it names now
         then.setParent(now.getParent());
+        then.setSource(now.getSource());
         return then;
     }
 
