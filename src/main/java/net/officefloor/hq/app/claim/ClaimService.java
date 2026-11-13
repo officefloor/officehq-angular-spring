@@ -8,6 +8,8 @@ import java.util.NoSuchElementException;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
+import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,14 +18,20 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ClaimService {
 
+    /** Written for a due that has no rate to work from. */
+    private static final String NO_RATE = "n/a";
+
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
+            Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -74,6 +82,8 @@ public class ClaimService {
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
             claim.setNumber(number);
+        } else if (to == ClaimStatus.SETTLED) {
+            claim.setSettledDue(dueOf(sheetId, person, claim.getAmount()));
         } else if (to == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
@@ -84,8 +94,21 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalStateException("A claim never returns to DRAFT");
         };
-        record(event, sheetId, user, person, saved, had != null ? had : saved.getNumber());
+        String line = line(event, sheetId, user, person, saved, had != null ? had : saved.getNumber());
+        if (to == ClaimStatus.SETTLED) {
+            line += " due=" + (saved.getSettledDue() != null ? saved.getSettledDue().toPlainString() : NO_RATE);
+        }
+        audit.recordOnCommit(line);
         return saved;
+    }
+
+    /** The due on an amount at the rate for the person's grade now: amount times rate divided by 100,
+     *  rounded half up to two decimals; null when the grade has no rate. */
+    private BigDecimal dueOf(String sheetId, Person person, BigDecimal amount) {
+        return rates.findBySheetIdAndGrade(sheetId, person.getGrade())
+                .map(Rate::getRate)
+                .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
+                .orElse(null);
     }
 
     private Person person(String sheetId, Long personId) {
@@ -99,9 +122,13 @@ public class ClaimService {
 
     /** One audit line about a claim; a claim with a number carries it at the end. */
     private void record(String event, String sheetId, String user, Person person, Claim claim, Long number) {
-        audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
+        audit.recordOnCommit(line(event, sheetId, user, person, claim, number));
+    }
+
+    private static String line(String event, String sheetId, String user, Person person, Claim claim, Long number) {
+        return event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
-                + (number != null ? " number=" + number : ""));
+                + (number != null ? " number=" + number : "");
     }
 
     private static BigDecimal scaled(BigDecimal amount) {

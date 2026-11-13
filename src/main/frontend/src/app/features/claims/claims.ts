@@ -20,6 +20,9 @@ export interface Claim {
   status: ClaimStatus;
   /** The claim's number on the sheet, given when it is opened; null for a draft or a void claim. */
   number: number | null;
+  /** The due fixed when the claim was settled (two decimals); null until then, or when its grade
+   *  had no rate to work from. */
+  settledDue: string | null;
 }
 
 /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
@@ -133,8 +136,10 @@ export class PersonClaims {
     return (event.target as HTMLInputElement).value;
   }
 
-  /** The claim's amount times the rate, or n/a when there is no rate. */
+  /** The due fixed when the claim was settled; otherwise the claim's amount times the rate, or n/a
+   *  when there is no rate. */
   protected dueOf(claim: Claim): string {
+    if (claim.settledDue !== null) return claim.settledDue;
     const rate = this.rate();
     return rate === null ? NO_RATE : money(dueCents(cents(claim.amount), rate));
   }
