@@ -310,7 +310,8 @@ function compareKeys(a: string, b: string): number {
               <td>
                 @for (period of periods.periods(); track period.id) {
                   <span class="person-period">{{ period.name }}:
-                    <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ figures.personPeriodDue(period, p.id) }}</span></span>
+                    <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ figures.personPeriodDue(period, p.id) }}</span>
+                    carried <span [attr.data-testid]="'person-period-' + period.name + '-carried'">{{ figures.personPeriodCarried(period, p.id) }}</span></span>
                 }
               </td>
               @if (col('excess')) {

@@ -267,19 +267,53 @@ export class Figures {
     for (const c of this.claims.periodCandidates()) {
       const period = this.periods.of(c.dueBy);
       if (!period || !counts(c, period)) continue;
-      let due: bigint | null;
-      if (c.settledDue !== null) due = hundredths(c.settledDue);
-      else if (bound(c)) due = c.statedDue === null ? null : hundredths(c.statedDue);
-      else {
-        const grade = grades.get(c.personId);
-        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date, this.claims.roundingDate(c), c.id);
-      }
-      if (due !== null && c.settledDue === null) due = this.claims.chargedCents(c, due);
       const byPerson = sums.get(period.id) ?? new Map<number, bigint>();
-      byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0n) + (due ?? 0n));
+      byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0n) + this.periodClaimCents(c, grades));
       sums.set(period.id, byPerson);
     }
     return sums;
+  }
+
+  /** A claim's due as the period figures count it: a settled claim's frozen due, else as its person's
+   *  last statement bound it, else its live due, an overdue claim's late charge on top; 0 with no figure. */
+  private periodClaimCents(c: Claim, grades: Map<number, Person['grades']>): bigint {
+    let due: bigint | null;
+    if (c.settledDue !== null) due = hundredths(c.settledDue);
+    else if (bound(c)) due = c.statedDue === null ? null : hundredths(c.statedDue);
+    else {
+      const grade = grades.get(c.personId);
+      due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date, this.claims.roundingDate(c), c.id);
+    }
+    if (due !== null && c.settledDue === null) due = this.claims.chargedCents(c, due);
+    return due ?? 0n;
+  }
+
+  /** Each period's carried figure for each person, in cents, by period id then person id: the due of the
+   *  person's claims that count (as the period figures count them) whose due-by falls in a period ending
+   *  before this one starts, and that were still OPEN or PENDING at the end of this period's last day, as
+   *  their status log records it. */
+  private readonly carriedCents = computed(() => {
+    const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
+    const periods = this.periods.periods();
+    const sums = new Map<number, Map<number, bigint>>();
+    for (const c of this.claims.periodCandidates()) {
+      const own = this.periods.of(c.dueBy);
+      if (!own) continue;
+      for (const period of periods) {
+        if (own.to >= period.from) continue;
+        const status = statusAt(c, period.to);
+        if (status !== 'OPEN' && status !== 'PENDING') continue;
+        const byPerson = sums.get(period.id) ?? new Map<number, bigint>();
+        byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0n) + this.periodClaimCents(c, grades));
+        sums.set(period.id, byPerson);
+      }
+    }
+    return sums;
+  });
+
+  /** A person's carried figure for a period, 0.00 with nothing carried. */
+  personPeriodCarried(period: Period, personId: number): string {
+    return money(this.carriedCents().get(period.id)?.get(personId) ?? 0n);
   }
 
   /** A person's due-total for a period: fixed when it was closed or soft-closed (0.00 for a person added since), else
