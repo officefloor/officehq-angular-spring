@@ -181,6 +181,26 @@ public class ClaimService {
         return updated;
     }
 
+    /** Change the amount of a claim still DRAFT as the claim form would edit it, keeping the rest of it; none
+     *  when the claim is not a DRAFT, no longer on the sheet, or the form would refuse the edit, then nothing
+     *  is written. */
+    @Transactional
+    public Optional<Claim> changeDraftAmountIfAccepted(String sheetId, String user, long claimId,
+            BigDecimal amount) {
+        Optional<Claim> found = claims.findByIdAndSheetId(claimId, sheetId);
+        if (found.isEmpty() || found.get().getStatus() != ClaimStatus.DRAFT) {
+            return Optional.empty();
+        }
+        Claim claim = found.get();
+        try {
+            return Optional.of(update(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(),
+                    claim.getCorrects(), claim.getRef(), claim.getTags()));
+        } catch (ClaimLockedException | PeriodClosedException | PersonRetiredException | PersonNotFoundException
+                | ClaimCorrectionException | ClaimRefException | ClaimLineException e) {
+            return Optional.empty();
+        }
+    }
+
     /** Open a claim's editor: the claim is locked for every other user until the user saves or cancels it,
      *  or the sheet's today changes. Refused for a claim that is not a DRAFT, a claim in a closed period, and
      *  a claim another user has locked; a refused open takes no lock. */

@@ -338,6 +338,24 @@ export class Claims {
     this.claims.update((cs) => cs.map((c) => (c.personId === personId ? (byId.get(c.id) ?? c) : c)));
   }
 
+  /** Re-read the active sheet's claims from the server in place, keeping what is selected; an error message
+   *  when that failed. */
+  async reread(): Promise<string | null> {
+    const user = this.session.user();
+    const sid = this.session.sheetId();
+    if (!user || !sid) return null;
+    const load = ++this.loads;
+    try {
+      const claims = await firstValueFrom(
+        this.http.get<Claim[]>(`${this.url(sid)}/claims`, { headers: { 'X-User': user } }),
+      );
+      if (load === this.loads && this.session.sheetId() === sid) this.claims.set(claims);
+      return null;
+    } catch (e) {
+      return failed('load', e).replace(' claim', ' claims');
+    }
+  }
+
   /** Re-read the active sheet's claims from the server; an error message when that failed. */
   async load(): Promise<string | null> {
     const user = this.session.user();

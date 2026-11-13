@@ -112,7 +112,9 @@ public class PlanService {
     }
 
     /** Change a plan's amount from the sheet's today: the claims it makes from then on carry the new amount,
-     *  those already made keep theirs. An amount a claim would refuse (below 0.00) is refused. */
+     *  and of those already made, each still DRAFT takes it as the claim form would edit it (one the form
+     *  would refuse keeps its amount); claims in any other status keep theirs. An amount a claim would refuse
+     *  (below 0.00) is refused. */
     @Transactional
     public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
         LocalDate today = sheets.today(sheetId);
@@ -128,6 +130,10 @@ public class PlanService {
         plan = plans.saveAndFlush(plan);
         audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " start=" + plan.getStart() + " amount=" + a.toPlainString());
+        String on = plan.getTargetSheet() != null ? plan.getTargetSheet() : sheetId;
+        for (long claimId : plan.getClaimIds()) {
+            claims.changeDraftAmountIfAccepted(on, user, claimId, a);
+        }
         return plan;
     }
 
@@ -163,7 +169,7 @@ public class PlanService {
                 claims.addIfAccepted(on, user, claimantId, plan.getAmount(), date, "")
                         .ifPresent(claim -> {
                             made.add(claim);
-                            plan.generated(date);
+                            plan.generated(date, claim.getId());
                         });
             }
             plans.saveAndFlush(plan);

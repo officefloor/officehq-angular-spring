@@ -119,8 +119,8 @@ export class Plans {
     }
   }
 
-  /** Change a plan's amount from the sheet's today, for the claims it makes from then on; an error message when
-   *  refused (a bad amount). */
+  /** Change a plan's amount from the sheet's today, for the claims it makes from then on and those it made that
+   *  are still DRAFT; an error message when refused (a bad amount). */
   async changeAmount(planId: number, amount: string): Promise<string | null> {
     const user = this.session.user();
     const sid = this.session.sheetId();
@@ -131,7 +131,10 @@ export class Plans {
       const plan = await firstValueFrom(
         this.http.post<Plan>(`${this.url(sid)}/${planId}/amount`, { amount: a }, { headers: { 'X-User': user } }),
       );
-      if (this.session.sheetId() === sid) this.plans.update((ps) => ps.map((p) => (p.id === plan.id ? plan : p)));
+      if (this.session.sheetId() === sid) {
+        this.plans.update((ps) => ps.map((p) => (p.id === plan.id ? plan : p)));
+        await this.claims.reread(); // its DRAFT claims took the new amount
+      }
       return null;
     } catch (e) {
       return failed('change plan amount', e);

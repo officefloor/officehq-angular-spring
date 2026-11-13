@@ -62,6 +62,12 @@ public class Plan {
     @Column(name = "on_date")
     private Set<LocalDate> generated = new HashSet<>();
 
+    /** The ids of the claims it has made. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
+    @Column(name = "claim_id")
+    private Set<Long> claimIds = new HashSet<>();
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
     private List<PlanPause> pauses = new ArrayList<>();
@@ -202,8 +208,14 @@ public class Plan {
         return out;
     }
 
-    /** Keep that the plan has made its claim for the plan date. */
-    public void generated(LocalDate date) {
+    /** Keep that the plan has made the claim for the plan date. */
+    public void generated(LocalDate date, long claimId) {
         generated.add(date);
+        claimIds.add(claimId);
+    }
+
+    /** The ids of the claims it has made, lowest (first made) first. */
+    public List<Long> getClaimIds() {
+        return claimIds.stream().sorted().toList();
     }
 }
