@@ -22,6 +22,9 @@ export interface Period {
   /** Each person's carried figure for it fixed when it was closed or soft-closed, two decimals, by person id;
    *  empty while open. A person missing here has 0.00. */
   closedPersonCarried: Record<number, string>;
+  /** Each person's opening balance for it, two decimals, by person id, added to their carried figure; a person
+   *  missing here has none. */
+  openings: Record<number, string>;
   /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
   cap: number | null;
 }
@@ -152,6 +155,30 @@ export class Periods {
     const year = Number(date.slice(0, 4));
     const month = Number(date.slice(5, 7));
     return 'FY' + String(month >= this.session.fiscalStartMonth() ? year : year - 1).padStart(4, '0');
+  }
+
+  /** Paste opening balances, lines of name,period,amount, each adding its amount to a person's carried figure
+   *  for a period: how many lines went through, or an error message when the paste is refused. The periods
+   *  are re-read after it. */
+  async importOpenings(text: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!text.trim()) return 'Paste at least one line of name,period,amount.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ count: number }>(`${this.url(sid)}/openings`, { text }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) await this.load();
+      return done.count;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) {
+        const message = (e.error as { message?: unknown } | null)?.message;
+        return typeof message === 'string' && message ? message : 'A line of the paste is wrong; nothing was added.';
+      }
+      if (e instanceof HttpErrorResponse && e.status === 400) return 'Paste lines of name,period,amount.';
+      return e instanceof HttpErrorResponse ? `Could not paste opening balances (${e.status}).` : 'Could not paste opening balances.';
+    }
   }
 
   /** Close a period, fixing its due-total; an error message when refused. */

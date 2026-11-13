@@ -6,6 +6,7 @@ import { Period, Periods } from '../../core/periods';
 // and the list shows each with its dates, its cap on each person's open claims in it, the fiscal year its from-date falls in, and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
 // whether it is closed or soft-closed, with buttons to close it, soft-close it and reopen it (by the roles the sheet allows).
+// A paste box adds opening balances, lines of name,period,amount, to people's carried figures for periods.
 @Component({
   selector: 'app-periods',
   template: `
@@ -85,6 +86,23 @@ import { Period, Periods } from '../../core/periods';
       @if (genError(); as err) {
         <p role="alert" data-testid="period-generate-error">{{ err }}</p>
       }
+      <form (submit)="importOpenings($event)" data-testid="opening-import-form">
+        <label for="opening-import">Opening balances (one line each: name,period,amount)</label>
+        <textarea
+          id="opening-import"
+          data-testid="opening-import"
+          rows="3"
+          [value]="openingText()"
+          (input)="openingText.set(value($event)); openingError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="opening-import-submit" [disabled]="importing()">Paste opening balances</button>
+      </form>
+      @if (openingsDone() !== null) {
+        <p>Added <span data-testid="opening-import-done">{{ openingsDone() }}</span> opening balance(s)</p>
+      }
+      @if (openingError(); as err) {
+        <p role="alert" data-testid="opening-error">{{ err }}</p>
+      }
       <table data-testid="period-list">
         <thead>
           <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Cap</th><th scope="col">Actions</th></tr>
@@ -136,6 +154,11 @@ export class PeriodsPanel {
   protected readonly genError = signal<string | null>(null);
   /** The fiscal year typed for the fiscal-year generator, which shares the count and refusal above. */
   protected readonly fyYear = signal('');
+  /** The opening balances paste: its text, how many lines it last added, and its refusal. */
+  protected readonly openingText = signal('');
+  protected readonly importing = signal(false);
+  protected readonly openingsDone = signal<number | null>(null);
+  protected readonly openingError = signal<string | null>(null);
   /** The period whose action is under way, and the last action's refusal, by period. */
   protected readonly acting = signal<number | null>(null);
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
@@ -169,7 +192,22 @@ export class PeriodsPanel {
   }
 
   protected value(e: Event): string {
-    return (e.target as HTMLInputElement).value;
+    return (e.target as HTMLInputElement | HTMLTextAreaElement).value;
+  }
+
+  protected async importOpenings(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.importing()) return;
+    this.openingsDone.set(null);
+    this.openingError.set(null);
+    this.importing.set(true);
+    try {
+      const done = await this.periods.importOpenings(this.openingText());
+      if (typeof done === 'string') this.openingError.set(done);
+      else this.openingsDone.set(done);
+    } finally {
+      this.importing.set(false);
+    }
   }
 
   protected async generate(e: Event): Promise<void> {

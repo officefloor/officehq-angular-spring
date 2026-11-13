@@ -32,18 +32,21 @@ public class PeriodController {
     /** A period as the screen shows it: its name, its from and to dates (YYYY-MM-DD), whether it is
      *  closed or soft-closed and, once either, the due-total fixed then and each person's fixed then, by person id
      *  (two decimals); and its cap on each person's open claims in it (none: no cap); and each person's carried
-     *  figure fixed then, by person id. */
+     *  figure fixed then, by person id; and each person's opening balance for it, by person id. */
     public record PeriodView(long id, String name, String from, String to, boolean closed, boolean soft, String closedTotal,
-            Map<Long, String> closedPersonTotals, Integer cap, Map<Long, String> closedPersonCarried) {
+            Map<Long, String> closedPersonTotals, Integer cap, Map<Long, String> closedPersonCarried,
+            Map<Long, String> openings) {
 
         static PeriodView of(Period p) {
             Map<Long, String> people = new TreeMap<>();
             p.getClosedPersonTotals().forEach((id, total) -> people.put(id, total.toPlainString()));
             Map<Long, String> carried = new TreeMap<>();
             p.getClosedPersonCarried().forEach((id, c) -> carried.put(id, c.toPlainString()));
+            Map<Long, String> openings = new TreeMap<>();
+            p.getOpenings().forEach((id, o) -> openings.put(id, o.toPlainString()));
             return new PeriodView(p.getId(), p.getName(), p.getFromDate().toString(), p.getToDate().toString(),
                     p.isClosed(), p.isSoftClosed(), p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), people,
-                    p.getCap(), carried);
+                    p.getCap(), carried, openings);
         }
     }
 
@@ -60,11 +63,21 @@ public class PeriodController {
     public record GenerateFiscalYearRequest(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** Opening balances to paste: lines of name,period,amount. */
+    public record OpeningsRequest(@NotNull @Size(max = 100000) String text) {
+    }
+
+    /** How many lines of opening balances went through. */
+    public record OpeningsView(int count) {
+    }
+
     private final PeriodService service;
+    private final OpeningService openings;
     private final AsOf asOf;
 
-    public PeriodController(PeriodService service, AsOf asOf) {
+    public PeriodController(PeriodService service, OpeningService openings, AsOf asOf) {
         this.service = service;
+        this.openings = openings;
         this.asOf = asOf;
     }
 
@@ -106,6 +119,15 @@ public class PeriodController {
             @RequestBody @Valid GenerateFiscalYearRequest request) {
         return service.generateFiscalYear(sheetId.trim(), user.trim(), request.year()).stream()
                 .map(PeriodView::of).toList();
+    }
+
+    /** Paste opening balances, each line adding its amount to a person's carried figure for a period; refused
+     *  whole when any line is wrong. How many lines went through. */
+    @PostMapping("/openings")
+    public OpeningsView pasteOpenings(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid OpeningsRequest request) {
+        return new OpeningsView(openings.paste(sheetId.trim(), user.trim(), request.text()));
     }
 
     /** Close a period (a soft-closed one too), fixing its due-total afresh; refused when it is already closed. */

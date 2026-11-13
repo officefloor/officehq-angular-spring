@@ -224,7 +224,7 @@ public class Rollup {
      *  screen shows it while the period is open: the due (as {@link #dueBetweenByPerson} counts it) of their
      *  claims not left out now by a hold or a deferral whose due-by falls in one of the sheet's periods ending
      *  before this one starts, and that were still OPEN or PENDING at the end of this period's last day, as
-     *  their status log records it. */
+     *  their status log records it; and their opening balance for the period on top. */
     public Map<Long, BigDecimal> carriedByPerson(String sheetId, Period period, List<Period> sheetPeriods) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
@@ -263,6 +263,7 @@ public class Rollup {
                 carried.merge(person.getId(), charged(sheet, claim, person, due), BigDecimal::add);
             }
         }
+        period.getOpenings().forEach((id, opening) -> carried.computeIfPresent(id, (k, c) -> c.add(opening)));
         return carried;
     }
 

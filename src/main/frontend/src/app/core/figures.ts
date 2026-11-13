@@ -320,7 +320,7 @@ export class Figures {
   /** Each period's carried figure for each person, in cents, by period id then person id: the due of the
    *  person's claims that count (as the period figures count them) whose due-by falls in a period ending
    *  before this one starts, and that were still OPEN or PENDING at the end of this period's last day, as
-   *  their status log records it. */
+   *  their status log records it; and their opening balance for it on top. */
   private readonly carriedCents = computed(() => {
     const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
     const periods = this.periods.periods();
@@ -334,6 +334,13 @@ export class Figures {
         if (status !== 'OPEN' && status !== 'PENDING') continue;
         const byPerson = sums.get(period.id) ?? new Map<number, bigint>();
         byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0n) + this.periodClaimCents(c, grades));
+        sums.set(period.id, byPerson);
+      }
+    }
+    for (const period of periods) {
+      for (const [id, opening] of Object.entries(period.openings ?? {})) {
+        const byPerson = sums.get(period.id) ?? new Map<number, bigint>();
+        byPerson.set(Number(id), (byPerson.get(Number(id)) ?? 0n) + hundredths(opening));
         sums.set(period.id, byPerson);
       }
     }
