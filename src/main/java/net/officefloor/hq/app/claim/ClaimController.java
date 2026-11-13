@@ -9,7 +9,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.setting.PermissionRefusedException;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonRetiredException;
@@ -117,21 +119,27 @@ public class ClaimController {
     private final RollupService rollups;
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
+    private final History history;
 
     public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
-            BulkSettleService bulkSettle) {
+            BulkSettleService bulkSettle, History history) {
+        this.history = history;
         this.service = service;
         this.rollups = rollups;
         this.bulkOpen = bulkOpen;
         this.bulkSettle = bulkSettle;
     }
 
-    /** The sheet's claims, newest first. */
+    /** The sheet's claims, newest first: as they stand now, or as they stood at the end of the
+     *  screen's as-of date (those added by then, each with its status log up to then). */
     @GetMapping("/claims")
-    public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
+    public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
         String sheet = sheetId.trim();
-        Map<Long, List<String>> logs = service.logsOf(sheet);
-        return service.list(sheet).stream()
+        LocalDate asOf = AsOf.parse(asOfHeader);
+        Map<Long, List<String>> logs = service.logsOf(sheet, asOf);
+        List<Claim> claims = asOf == null ? service.list(sheet) : history.claims(service.list(sheet), asOf);
+        return claims.stream()
                 .map(claim -> ClaimView.of(claim, service.roundsBy(sheet, claim), logs.getOrDefault(claim.getId(), List.of())))
                 .toList();
     }

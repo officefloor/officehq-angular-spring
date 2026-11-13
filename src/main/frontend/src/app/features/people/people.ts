@@ -945,7 +945,7 @@ export class People {
   }
 
   /** Take a statement for a person, as of the typed date (blank: now): their row and claims then
-   *  show what it recorded and bound. */
+   *  show what it recorded and bound. The typed date is cleared whether or not it is taken. */
   protected async takeStatement(person: Person): Promise<void> {
     this.rowError.set(null);
     const sheet = this.session.sheetId();
@@ -970,6 +970,8 @@ export class People {
         ),
       );
     } catch {
+      // The typed date was for this statement only: the next one is taken now unless a date is typed again.
+      this.statementDates.update((dates) => ({ ...dates, [person.id]: '' }));
       this.rowError.set({ id: person.id, message: `A statement could not be taken for ${person.name}.` });
     }
   }

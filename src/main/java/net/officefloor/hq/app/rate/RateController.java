@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -52,10 +53,12 @@ public class RateController {
         this.rollups = rollups;
     }
 
-    /** The sheet's rates by grade, each grade's from the earliest; a grade with no rate is not listed. */
+    /** The sheet's rates by grade, each grade's from the earliest; a grade with no rate is not listed.
+     *  As they stand now, or as they stood at the end of the screen's as-of date. */
     @GetMapping
-    public List<RateView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(RateView::of).toList();
+    public List<RateView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
+        return service.list(sheetId.trim(), AsOf.parse(asOf)).stream().map(RateView::of).toList();
     }
 
     /** Set the rate for a grade (A, B or C) from a date, replacing the one it had from that date. */

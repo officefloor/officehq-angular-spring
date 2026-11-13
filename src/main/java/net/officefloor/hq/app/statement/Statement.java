@@ -33,10 +33,15 @@ public class Statement {
     @Column(name = "claims", nullable = false)
     private int claims;
 
+    /** The sheet's today when the statement was taken; null for one taken before it was kept. */
+    @Column(name = "made_on", updatable = false)
+    private LocalDate madeOn;
+
     protected Statement() {
     }
 
-    public Statement(String sheetId, Long personId, LocalDate takenOn, String dueTotal, int claims) {
+    public Statement(String sheetId, Long personId, LocalDate takenOn, String dueTotal, int claims, LocalDate madeOn) {
+        this.madeOn = madeOn;
         this.sheetId = sheetId;
         this.personId = personId;
         this.takenOn = takenOn;
@@ -58,6 +63,12 @@ public class Statement {
 
     public String getDueTotal() {
         return dueTotal;
+    }
+
+    /** Whether the statement stood at the end of a day: taken while the sheet's today was on or before
+     *  it (one taken before that was kept: dated on or before it). */
+    public boolean madeAsOf(LocalDate day) {
+        return !(madeOn != null ? madeOn : takenOn).isAfter(day);
     }
 
     public int getClaims() {

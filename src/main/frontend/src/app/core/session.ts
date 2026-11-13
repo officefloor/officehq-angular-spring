@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 interface SheetView {
@@ -16,9 +16,15 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
+  /** The active sheet's today (yyyy-mm-dd) as the store holds it. */
+  private readonly sheetToday = signal<string | null>(null);
+  /** The date this screen shows the sheet as of (yyyy-mm-dd); null while it shows it as it is now.
+   *  It belongs to this screen alone: while it is set, everything read is as it stood at the end of
+   *  that day, and every change is refused. */
+  readonly asOf = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default date uses
-   *  it, never the real clock. */
-  readonly today = signal<string | null>(null);
+   *  it, never the real clock; while an as-of date is set, that date stands in for it. */
+  readonly today = computed(() => this.asOf() ?? this.sheetToday());
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** Counts sheet loads, so features re-read their data even when the same id is loaded again. */
@@ -37,6 +43,18 @@ export class Session {
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
     );
     this.show(sheet);
+    this.loads.update((n) => n + 1);
+  }
+
+  /** Show the sheet as of a date (yyyy-mm-dd) on this screen, re-reading everything as it stood then. */
+  setAsOf(date: string): void {
+    this.asOf.set(date);
+    this.loads.update((n) => n + 1);
+  }
+
+  /** Show the sheet as it is now again, re-reading everything. */
+  clearAsOf(): void {
+    this.asOf.set(null);
     this.loads.update((n) => n + 1);
   }
 
@@ -62,7 +80,7 @@ export class Session {
 
   private show(sheet: SheetView): void {
     this.sheetId.set(sheet.id);
-    this.today.set(sheet.today);
+    this.sheetToday.set(sheet.today);
     this.archived.set(sheet.archived);
   }
 }

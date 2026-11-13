@@ -36,6 +36,16 @@ public class PersonGradeService {
                 .collect(Collectors.groupingBy(PersonGrade::getPersonId));
     }
 
+    /** Each person's grades on the sheet as they stood at the end of a day, from the earliest, by
+     *  person id (null: as they stand now). */
+    public Map<Long, List<PersonGrade>> bySheet(String sheetId, LocalDate asOf) {
+        if (asOf == null) {
+            return bySheet(sheetId);
+        }
+        return bySheet(sheetId).keySet().stream().collect(Collectors.toMap(id -> id,
+                id -> history.grades(id, asOf).stream().sorted(FROM_EARLIEST).toList()));
+    }
+
     /** The person's grade in force on a date: the one whose from-date is the latest on or before it
      *  (the first grade applies from the beginning of time). */
     public String gradeOn(Long personId, LocalDate date) {

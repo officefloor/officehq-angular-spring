@@ -13,6 +13,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
@@ -37,11 +38,13 @@ public class PeriodService {
     private final PersonRepository people;
     private final PersonService personService;
     private final SettingService settings;
+    private final History history;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
             ClaimService claimService, PersonRepository people, PersonService personService, SettingService settings,
-            Audit audit) {
+            History history, Audit audit) {
+        this.history = history;
         this.periods = periods;
         this.sheets = sheets;
         this.claims = claims;
@@ -55,6 +58,21 @@ public class PeriodService {
     /** The sheet's periods, the earliest first. */
     public List<Period> list(String sheetId) {
         return periods.findBySheetIdOrderByFromAsc(sheetId);
+    }
+
+    /** The sheet's periods as they stood at the end of a day, the earliest first: those added by then,
+     *  each closed, soft-closed or open as it was then. */
+    public List<History.PeriodThen> listAsOf(String sheetId, LocalDate day) {
+        return history.periods(sheetId, day).values().stream()
+                .sorted(Comparator.comparing(History.PeriodThen::from)).toList();
+    }
+
+    /** Save a period, keeping the state it is saved in with the sheet's today. */
+    private Period save(Period period) {
+        Period saved = periods.saveAndFlush(period);
+        history.periodSaved(saved.getId(), saved.getSheetId(), saved.getName(), saved.getFrom(), saved.getTo(),
+                saved.isClosed(), saved.isSoftClosed(), saved.getClosedTotal(), saved.getPersonTotals());
+        return saved;
     }
 
     /** Add a period from and to a date, inclusive. Refused when another period on the sheet has the
@@ -72,7 +90,7 @@ public class PeriodService {
         if (periods.findBySheetIdOrderByFromAsc(sheetId).stream().anyMatch(p -> p.overlaps(from, to))) {
             throw new PeriodRefusedException("The period overlaps another on the sheet");
         }
-        Period saved = periods.saveAndFlush(new Period(sheetId, name, from, to));
+        Period saved = save(new Period(sheetId, name, from, to));
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + name
                 + " from=" + from + " to=" + to);
         return saved;
@@ -101,7 +119,7 @@ public class PeriodService {
             if (periods.nameInUse(sheetId, name) || existing.stream().anyMatch(p -> p.overlaps(first, last))) {
                 continue;
             }
-            Period saved = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            Period saved = save(new Period(sheetId, name, first, last));
             existing.add(saved);
             audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + name
                     + " from=" + first + " to=" + last);
@@ -164,7 +182,7 @@ public class PeriodService {
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
         BigDecimal total = sum(personTotals);
         period.softClose(total, personTotals);
-        Period saved = periods.saveAndFlush(period);
+        Period saved = save(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
                 + " total=" + total.toPlainString());
         return saved;
@@ -175,7 +193,7 @@ public class PeriodService {
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
         BigDecimal total = sum(personTotals);
         period.close(total, personTotals);
-        Period saved = periods.saveAndFlush(period);
+        Period saved = save(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
                 + " total=" + total.toPlainString() + suffix);
         return saved;
@@ -224,7 +242,7 @@ public class PeriodService {
             throw new PeriodRefusedException("The period " + name + " is not closed");
         }
         period.reopen();
-        Period saved = periods.saveAndFlush(period);
+        Period saved = save(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + name);
         return saved;
     }

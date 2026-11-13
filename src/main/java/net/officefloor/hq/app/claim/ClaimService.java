@@ -463,6 +463,15 @@ public class ClaimService {
                 ClaimLogEntry::getClaimId, Collectors.mapping(ClaimLogEntry::text, Collectors.toList())));
     }
 
+    /** The status logs of the sheet's claims by claim id, each oldest first, as they stood at the end
+     *  of a day: the lines logged while the sheet's today was on or before it (null: every line). */
+    public Map<Long, List<String>> logsOf(String sheetId, LocalDate asOf) {
+        return logs.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(entry -> asOf == null || !entry.getOn().isAfter(asOf))
+                .collect(Collectors.groupingBy(ClaimLogEntry::getClaimId,
+                        Collectors.mapping(ClaimLogEntry::text, Collectors.toList())));
+    }
+
     /** The status each of the sheet's claims had at the end of a day, by claim id, as its status log
      *  records it: the last status it moved to on or before that day. A claim added after it has none. */
     public Map<Long, ClaimStatus> statusesAsOf(String sheetId, LocalDate day) {

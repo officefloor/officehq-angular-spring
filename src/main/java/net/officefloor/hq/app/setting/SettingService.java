@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
@@ -49,6 +50,62 @@ public class SettingService {
         this.permissions = permissions;
         this.delegations = delegations;
         this.audit = audit;
+    }
+
+    /** The keys the values of the settings that are not dated are kept under (see {@link History#settings}). */
+    private static final String ROLE = "role:";
+    private static final String PERMISSION = "perm:";
+    private static final String NUMBERING_FROM = "period-numbering-from";
+    private static final String GRACE_DAYS = "grace-days";
+
+    /** The sheet's settings as they stood at the end of a past day: each value as it stood set then,
+     *  the day standing in for the sheet's today in those in force on a date. */
+    public record AsOfView(Map<String, String> roles, Map<String, String> permissions, LocalDate periodNumberingFrom,
+            Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
+            int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
+            Map<String, List<SettingValue>> dated) {
+    }
+
+    /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
+     *  value was never kept stands as it is now; one kept only after the day was not set then. */
+    public AsOfView asOf(String sheetId, LocalDate day) {
+        Map<String, String> then = history.settings(sheetId, day);
+        List<String> kept = history.settingsKept(sheetId);
+        Map<String, String> byUser = new TreeMap<>();
+        roles(sheetId).forEach(r -> byUser.put(r.getUser(), r.getRole().label()));
+        Map<String, String> byAction = permissions(sheetId);
+        for (String key : kept) {
+            String value = then.get(key);
+            if (key.startsWith(ROLE)) {
+                String user = key.substring(ROLE.length());
+                if (value == null) {
+                    byUser.remove(user);
+                } else {
+                    byUser.put(user, value);
+                }
+            } else if (key.startsWith(PERMISSION)) {
+                byAction.put(key.substring(PERMISSION.length()), value != null ? value : "");
+            }
+        }
+        String numbering = kept.contains(NUMBERING_FROM) ? then.get(NUMBERING_FROM)
+                : Objects.toString(periodNumberingFrom(sheetId), null);
+        String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
+        Map<String, List<SettingValue>> dated = history.dated(sheetId, day);
+        Map<String, Integer> gradeTerms = new LinkedHashMap<>();
+        dated.forEach((key, recorded) -> {
+            if (key.startsWith(GRADE_TERMS)) {
+                recorded.stream().filter(v -> !v.getFrom().isAfter(day)).reduce((a, b) -> b)
+                        .ifPresent(v -> gradeTerms.put(key.substring(GRADE_TERMS.length()), v.getValue().intValue()));
+            }
+        });
+        return new AsOfView(byUser, byAction, numbering != null ? LocalDate.parse(numbering) : null,
+                grace != null ? Integer.valueOf(grace) : null,
+                delegations(sheetId).stream().filter(d -> d.madeAsOf(day)).toList(),
+                inForce(sheetId, "clerk-limit", day, day).map(SettingValue::getValue).orElse(null),
+                floor(sheetId, day, day),
+                inForce(sheetId, "cap", day, day).map(SettingValue::getValue).orElse(null),
+                inForce(sheetId, "terms", day, day).map(v -> v.getValue().intValue()).orElse(START_TERMS),
+                latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -97,7 +154,7 @@ public class SettingService {
         if (end.isBefore(start)) {
             throw new DelegationRefusedException("The to-date is before the from-date");
         }
-        Delegation saved = delegations.saveAndFlush(new Delegation(sheetId, user, start, end, by));
+        Delegation saved = delegations.saveAndFlush(new Delegation(sheetId, user, start, end, by, sheets.today(sheetId)));
         audit.recordOnCommit("DELEGATED sheet=" + sheetId + " by=" + by + " user=" + user + " from=" + start
                 + " to=" + end);
         return saved;
@@ -154,6 +211,7 @@ public class SettingService {
             saved.setRoles(value);
             permissions.saveAndFlush(saved);
         }
+        history.settingSet(sheetId, PERMISSION + action.label(), value.isEmpty() ? null : value);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=perm-" + action.label()
                 + " value=" + value);
     }
@@ -314,6 +372,7 @@ public class SettingService {
                 })
                 .orElseGet(() -> new SheetRole(sheetId, user, role));
         saved = roles.saveAndFlush(saved);
+        history.settingSet(sheetId, ROLE + user, role.label());
         audit.recordOnCommit("ROLE_SET sheet=" + sheetId + " by=" + by + " user=" + user + " role=" + role.label());
         return saved;
     }
@@ -400,6 +459,7 @@ public class SettingService {
         Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
         sheet.setPeriodNumberingFrom(from);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, NUMBERING_FROM, from != null ? from.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=period-numbering-from value="
                 + (from != null ? from.toString() : ""));
         return saved;
@@ -412,6 +472,7 @@ public class SettingService {
         Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
         sheet.setGraceDays(days);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, GRACE_DAYS, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=grace-days value="
                 + (days != null ? days.toString() : ""));
         return saved;

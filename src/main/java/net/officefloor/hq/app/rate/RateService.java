@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -31,6 +32,18 @@ public class RateService {
     /** The sheet's rates by grade, each grade's from the earliest. */
     public List<Rate> list(String sheetId) {
         return rates.findBySheetIdOrderByGradeAscFromAscIdAsc(sheetId);
+    }
+
+    /** The sheet's rates by grade, each grade's from the earliest, as they stood at the end of a day
+     *  (null: as they stand now). */
+    public List<Rate> list(String sheetId, LocalDate asOf) {
+        if (asOf == null) {
+            return list(sheetId);
+        }
+        return Stream.of("A", "B", "C")
+                .flatMap(grade -> history.rates(sheetId, grade, asOf).stream()
+                        .sorted(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder()))))
+                .toList();
     }
 
     /** The grade's rate in force on a date: the one whose from-date is the latest on or before it

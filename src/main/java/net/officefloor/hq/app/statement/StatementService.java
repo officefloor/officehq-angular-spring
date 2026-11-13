@@ -66,6 +66,15 @@ public class StatementService {
                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
     }
 
+    /** Each person's statement summary on the sheet as their statements stood at the end of a day, by
+     *  person id (null: as they stand now); a person with none is absent. */
+    public Map<Long, StatementSummary> summaries(String sheetId, LocalDate asOf) {
+        return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(statement -> asOf == null || statement.madeAsOf(asOf))
+                .collect(Collectors.groupingBy(Statement::getPersonId,
+                        Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
+    }
+
     public StatementSummary summary(String sheetId, Long personId) {
         return StatementSummary.of(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
     }
@@ -116,7 +125,7 @@ public class StatementService {
         claims.saveAllAndFlush(theirs);
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), day, asOf), day, asOf).isPresent();
         String dueTotal = hasRate || anyFigure ? settings.capped(sheetId, total, asOf).toPlainString() : NO_RATE;
-        statements.saveAndFlush(new Statement(sheetId, personId, day, dueTotal, counted));
+        statements.saveAndFlush(new Statement(sheetId, personId, day, dueTotal, counted, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted + (asOf != null ? " asof=" + asOf : ""));
         return theirs;

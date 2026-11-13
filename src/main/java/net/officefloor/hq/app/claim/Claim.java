@@ -141,6 +141,20 @@ public class Claim {
         return was;
     }
 
+    /** The rest of the claim as it was once saved, read back from its history onto a copy made by
+     *  {@link #asItWas}: its number, opener, note, proofs, the claim it was split from and whether it
+     *  was a late entry. */
+    public Claim withRest(String number, String openedBy, String note, int proofs, String splitFrom,
+            boolean lateEntry) {
+        this.number = number;
+        this.openedBy = openedBy;
+        this.note = note;
+        this.proofs = proofs;
+        this.splitFrom = splitFrom;
+        this.lateEntry = lateEntry;
+        return this;
+    }
+
     public Long getId() {
         return id;
     }

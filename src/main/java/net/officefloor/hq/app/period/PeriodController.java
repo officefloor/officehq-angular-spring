@@ -8,7 +8,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.TreeMap;
+import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.history.History;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -40,6 +42,14 @@ public class PeriodController {
                     period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null,
                     personTotals);
         }
+
+        static PeriodView of(History.PeriodThen period) {
+            Map<Long, String> personTotals = new TreeMap<>();
+            period.personTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
+            return new PeriodView(period.id(), period.name(), period.from(), period.to(), period.closed(),
+                    period.softClosed(), period.closedTotal() != null ? period.closedTotal().toPlainString() : null,
+                    personTotals);
+        }
     }
 
     /** A period: a name and its from and to dates. */
@@ -53,9 +63,15 @@ public class PeriodController {
         this.service = service;
     }
 
-    /** The sheet's periods, the earliest first. */
+    /** The sheet's periods, the earliest first: as they stand now, or as they stood at the end of the
+     *  screen's as-of date. */
     @GetMapping
-    public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
+    public List<PeriodView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
+        LocalDate asOf = AsOf.parse(asOfHeader);
+        if (asOf != null) {
+            return service.listAsOf(sheetId.trim(), asOf).stream().map(PeriodView::of).toList();
+        }
         return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
     }
 

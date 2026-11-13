@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 /** A patron a person named: another person on the same sheet. */
 @Entity
@@ -25,13 +26,24 @@ public class PersonPatron {
     @Column(name = "patron_id", nullable = false)
     private Long patronId;
 
+    /** The sheet's today when the patron was named; null for one named before it was kept. */
+    @Column(name = "made_on", updatable = false)
+    private LocalDate madeOn;
+
     protected PersonPatron() {
     }
 
-    public PersonPatron(String sheetId, Long personId, Long patronId) {
+    public PersonPatron(String sheetId, Long personId, Long patronId, LocalDate madeOn) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.patronId = patronId;
+        this.madeOn = madeOn;
+    }
+
+    /** Whether the patron was named at the end of a day: named while the sheet's today was on or
+     *  before it (one named before that was kept always was). */
+    public boolean madeAsOf(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 
     public Long getId() {

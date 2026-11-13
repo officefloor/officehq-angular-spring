@@ -33,10 +33,15 @@ public class Delegation {
     @Column(name = "delegated_by", nullable = false)
     private String by;
 
+    /** The sheet's today when the delegation was made; null for one made before it was kept. */
+    @Column(name = "made_on", updatable = false)
+    private LocalDate madeOn;
+
     protected Delegation() {
     }
 
-    public Delegation(String sheetId, String user, LocalDate from, LocalDate to, String by) {
+    public Delegation(String sheetId, String user, LocalDate from, LocalDate to, String by, LocalDate madeOn) {
+        this.madeOn = madeOn;
         this.sheetId = sheetId;
         this.user = user;
         this.from = from;
@@ -63,6 +68,12 @@ public class Delegation {
     /** The steward who delegated. */
     public String getBy() {
         return by;
+    }
+
+    /** Whether the delegation stood at the end of a day: made while the sheet's today was on or before
+     *  it (one made before that was kept always stood). */
+    public boolean madeAsOf(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 
     /** Whether the delegation is in force on a date. */

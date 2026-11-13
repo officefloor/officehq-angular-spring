@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,11 +26,13 @@ public class PersonService {
     private final PersonWatchRepository watches;
     private final SheetService sheets;
     private final EntityManager entityManager;
+    private final History history;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
             PersonHoldRepository holds, PersonWatchRepository watches, SheetService sheets,
-            EntityManager entityManager, Audit audit) {
+            EntityManager entityManager, History history, Audit audit) {
+        this.history = history;
         this.people = people;
         this.watches = watches;
         this.patrons = patrons;
@@ -149,6 +152,42 @@ public class PersonService {
                         Collectors.mapping(PersonPatron::getPatronId, Collectors.toList())));
     }
 
+    /** Each person's patron ids on the sheet as they stood at the end of a day, in the order they were
+     *  named, by person id (null: as they stand now); a person with none is absent. */
+    public Map<Long, List<Long>> patronIds(String sheetId, LocalDate asOf) {
+        return patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(patron -> asOf == null || patron.madeAsOf(asOf))
+                .collect(Collectors.groupingBy(PersonPatron::getPersonId,
+                        Collectors.mapping(PersonPatron::getPatronId, Collectors.toList())));
+    }
+
+    /** Each person's holds on the sheet as they stood at the end of a day, in the order they were put
+     *  on, by person id (null: as they stand now); a person with none is absent. */
+    public Map<Long, List<PersonHold>> holds(String sheetId, LocalDate asOf) {
+        return holds.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(hold -> asOf == null || hold.madeAsOf(asOf))
+                .collect(Collectors.groupingBy(PersonHold::getPersonId));
+    }
+
+    /** The ids of the people a user watched on the sheet at the end of a day (null: now). */
+    public Set<Long> watchedIds(String sheetId, String user, LocalDate asOf) {
+        Set<Long> now = watchedIds(sheetId, user);
+        return asOf == null ? now : history.watched(sheetId, user, now, asOf);
+    }
+
+    /** The sheet's people as they stood at the end of a day, in the order they were added: those added
+     *  by then, each with the name, own terms and retirement they had then (null: as they stand now). */
+    public List<Person> list(String sheetId, LocalDate asOf) {
+        if (asOf == null) {
+            return list(sheetId);
+        }
+        Map<Long, History.PersonThen> then = history.people(sheetId, asOf);
+        return list(sheetId).stream().filter(person -> person.onSheetAsOf(asOf)).map(person -> {
+            History.PersonThen was = then.get(person.getId());
+            return was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom());
+        }).toList();
+    }
+
     /** A person's patron ids, in the order they were named. */
     public List<Long> patronIds(Long personId) {
         return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(PersonPatron::getPatronId).toList();
@@ -168,7 +207,7 @@ public class PersonService {
         if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
             throw new PatronRefusedException(patron.getName() + " is already a patron of " + person.getName());
         }
-        patrons.saveAndFlush(new PersonPatron(sheetId, person.getId(), patron.getId()));
+        patrons.saveAndFlush(new PersonPatron(sheetId, person.getId(), patron.getId(), sheets.today(sheetId)));
         audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " patron=" + patron.getName());
         return person;
@@ -183,10 +222,12 @@ public class PersonService {
         var existing = watches.findByPersonIdAndUser(id, user);
         if (on && existing.isEmpty()) {
             watches.saveAndFlush(new PersonWatch(sheetId, id, user));
+            history.watchSet(sheetId, id, user, true);
             audit.recordOnCommit("PERSON_WATCHED sheet=" + sheetId + " by=" + user + " name=" + person.getName());
         } else if (!on && existing.isPresent()) {
             watches.delete(existing.get());
             watches.flush();
+            history.watchSet(sheetId, id, user, false);
             audit.recordOnCommit("PERSON_UNWATCHED sheet=" + sheetId + " by=" + user + " name=" + person.getName());
         }
         return person;

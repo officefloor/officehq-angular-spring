@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -133,11 +134,26 @@ public class SettingController {
         this.sheets = sheets;
     }
 
-    /** The sheet's settings. */
+    /** The sheet's settings: as they stand now, or as they stood at the end of the screen's as-of date. */
     @GetMapping
-    public SettingsView get(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
+    public SettingsView get(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
         String sheet = sheetId.trim();
-        return view(sheet);
+        LocalDate asOf = AsOf.parse(asOfHeader);
+        return asOf == null ? view(sheet) : view(service.asOf(sheet, asOf));
+    }
+
+    private static SettingsView view(SettingService.AsOfView then) {
+        Map<String, List<DatedView>> dated = new LinkedHashMap<>();
+        then.dated().forEach((key, recorded) -> dated.put(key, recorded.stream().map(DatedView::of).toList()));
+        return new SettingsView(
+                then.roles().entrySet().stream().map(e -> new RoleView(e.getKey(), e.getValue())).toList(),
+                then.clerkLimit() != null ? then.clerkLimit().toPlainString() : null, then.floor().toPlainString(),
+                then.cap() != null ? then.cap().toPlainString() : null, then.terms(), then.latePct().toPlainString(),
+                then.policyDate() != null ? then.policyDate().toString() : "",
+                then.periodNumberingFrom() != null ? then.periodNumberingFrom().toString() : "", then.graceDays(),
+                then.gradeTerms(), dated, then.permissions(),
+                then.delegations().stream().map(DelegationView::of).toList());
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */

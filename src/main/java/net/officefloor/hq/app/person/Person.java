@@ -2,16 +2,19 @@ package net.officefloor.hq.app.person;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A person on a sheet, with a name; their grades, each dated, are kept as {@link PersonGrade}s. */
 @Entity
 @Table(name = "person")
+@EntityListeners(HistoryListener.class)
 public class Person {
 
     @Id
@@ -48,6 +51,17 @@ public class Person {
         this.sheetId = sheetId;
         this.name = name;
         this.addedOn = addedOn;
+    }
+
+    /** The person as they stood at the end of a past day, with the name, own terms and retirement
+     *  date they had then: a copy that is never saved. */
+    public Person asItWas(String name, Integer terms, LocalDate retiredFrom) {
+        Person was = new Person(sheetId, name, addedOn);
+        was.id = id;
+        was.version = version;
+        was.terms = terms;
+        was.retiredFrom = retiredFrom;
+        return was;
     }
 
     public Long getId() {

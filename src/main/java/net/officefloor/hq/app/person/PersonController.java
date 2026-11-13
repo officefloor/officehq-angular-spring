@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -118,18 +119,21 @@ public class PersonController {
         this.sheets = sheets;
     }
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in the order they were added: as they stand now, or as they stood at the
+     *  end of the screen's as-of date (those added by then, the date standing in for the sheet's today). */
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader(value = SignedInUser.HEADER, required = false) String user) {
+            @RequestHeader(value = SignedInUser.HEADER, required = false) String user,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
         String sheet = sheetId.trim();
-        Set<Long> watched = user == null ? Set.of() : service.watchedIds(sheet, SignedInUser.decode(user));
-        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
-        Map<Long, List<Long>> patrons = service.patronIds(sheet);
-        Map<Long, List<PersonGrade>> given = grades.bySheet(sheet);
-        Map<Long, List<PersonHold>> holds = service.holds(sheet);
-        LocalDate today = sheets.today(sheet);
-        return service.list(sheet).stream()
+        LocalDate asOf = AsOf.parse(asOfHeader);
+        Set<Long> watched = user == null ? Set.of() : service.watchedIds(sheet, SignedInUser.decode(user), asOf);
+        Map<Long, StatementSummary> summaries = statements.summaries(sheet, asOf);
+        Map<Long, List<Long>> patrons = service.patronIds(sheet, asOf);
+        Map<Long, List<PersonGrade>> given = grades.bySheet(sheet, asOf);
+        Map<Long, List<PersonHold>> holds = service.holds(sheet, asOf);
+        LocalDate today = asOf != null ? asOf : sheets.today(sheet);
+        return service.list(sheet, asOf).stream()
                 .map(p -> PersonView.of(p, given.getOrDefault(p.getId(), List.of()), today,
                         summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         holds.getOrDefault(p.getId(), List.of()),

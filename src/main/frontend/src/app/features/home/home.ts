@@ -45,6 +45,22 @@ import { People } from '../people/people';
         @if (todayError(); as error) {
           <p role="alert" data-testid="sheet-error">{{ error }}</p>
         }
+        <form (submit)="setAsOf($event)">
+          <label for="asof-date">Show as of</label>
+          <input
+            id="asof-date"
+            type="date"
+            data-testid="asof-date"
+            [value]="asOfInput()"
+            (input)="asOfInput.set(value($event)); asOfError.set(null)"
+          />
+          <button type="submit" data-testid="asof-set">Set as of</button>
+          <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as of</button>
+          As of <strong data-testid="sheet-asof">{{ session.asOf() ?? '' }}</strong>
+        </form>
+        @if (asOfError(); as error) {
+          <p role="alert" data-testid="asof-error">{{ error }}</p>
+        }
         <app-people />
       } @else {
         <p data-testid="home-empty">No sheet loaded.</p>
@@ -74,6 +90,8 @@ export class Home {
   protected readonly sheetError = signal<string | null>(null);
   protected readonly todayInput = signal('');
   protected readonly todayError = signal<string | null>(null);
+  protected readonly asOfInput = signal('');
+  protected readonly asOfError = signal<string | null>(null);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -107,6 +125,27 @@ export class Home {
     } catch {
       this.todayError.set('The sheet could not be archived.');
     }
+  }
+
+  /** Show the sheet as of the typed date on this screen only. */
+  protected setAsOf(event: Event): void {
+    event.preventDefault();
+    this.asOfError.set(null);
+    this.todayError.set(null);
+    const date = this.asOfInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.asOfError.set('Type a date (yyyy-mm-dd) to show the sheet as of.');
+      return;
+    }
+    this.session.setAsOf(date);
+  }
+
+  /** Show the sheet as it is now again. */
+  protected clearAsOf(): void {
+    this.asOfError.set(null);
+    this.todayError.set(null);
+    this.asOfInput.set('');
+    this.session.clearAsOf();
   }
 
   protected async saveToday(event: Event): Promise<void> {
