@@ -18,6 +18,8 @@ export class Session {
   /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default date uses
    *  it, never the real clock. */
   readonly today = signal<string | null>(null);
+  /** Counts sheet loads, so features re-read their data even when the same id is loaded again. */
+  readonly loads = signal(0);
 
   signIn(name: string): boolean {
     const trimmed = name.trim();
@@ -32,6 +34,7 @@ export class Session {
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
     );
     this.show(sheet);
+    this.loads.update((n) => n + 1);
   }
 
   /** Change the active sheet's today. */
