@@ -67,7 +67,7 @@ public class StatementService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
         LocalDate today = sheets.today(sheetId);
-        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByIdDesc(sheetId, personId);
+        List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
         int counted = 0;

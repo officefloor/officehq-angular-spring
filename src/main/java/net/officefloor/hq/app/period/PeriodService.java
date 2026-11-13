@@ -81,7 +81,7 @@ public class PeriodService {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         BigDecimal total = BigDecimal.ZERO.setScale(2);
-        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
             if (person == null || !claim.countsLive(person.isHeld()) || !period.contains(claim.getDate())) {
                 continue;

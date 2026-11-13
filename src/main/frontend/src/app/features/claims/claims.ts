@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, periodOf } from '../periods/periods';
@@ -226,6 +226,20 @@ const NUMBER = /^\S+$/;
           <button type="button" data-testid="claim-void" [attr.aria-label]="'Void claim ' + c.id" (click)="act(c, 'void')">
             Void
           </button>
+          <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+          <select
+            [id]="'claim-reassign-to-' + c.id"
+            data-testid="claim-reassign-to"
+            (change)="setReassignTo(c.id, value($event))"
+          >
+            <option value="" [selected]="!reassignTo()[c.id]">Choose a person</option>
+            @for (o of others(); track o.id) {
+              <option [value]="o.id" [selected]="reassignTo()[c.id] === '' + o.id">{{ o.name }}</option>
+            }
+          </select>
+          <button type="button" data-testid="claim-reassign" [attr.aria-label]="'Move claim ' + c.id" (click)="reassign(c)">
+            Move
+          </button>
           <button type="button" data-testid="claim-edit" [attr.aria-label]="'Edit claim ' + c.id" (click)="edit(c)">
             Edit
           </button>
@@ -262,7 +276,11 @@ export class PersonClaims {
   readonly policyDate = input.required<string>();
   /** The ids of the claims selected to act on together. */
   readonly selectedIds = input.required<ReadonlySet<number>>();
+  /** The people on the sheet, in the order they were added: a claim can move to any other. */
+  readonly people = input.required<readonly { id: number; name: string }[]>();
   readonly saved = output<Claim>();
+  /** A claim moved to another person: listed as their newest. */
+  readonly moved = output<Claim>();
   /** A claim's checkbox ticked or cleared. */
   readonly selectedChange = output<{ id: number; selected: boolean }>();
 
@@ -278,6 +296,11 @@ export class PersonClaims {
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** The reject reason typed on each claim's row, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+
+  /** The person chosen on each claim's row to move it to, by claim id (a person id, or blank). */
+  protected readonly reassignTo = signal<Record<number, string>>({});
+  /** The people a claim of this person can move to: everyone else on the sheet. */
+  protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -331,6 +354,39 @@ export class PersonClaims {
   protected setRejectReason(id: number, reason: string): void {
     this.rejectReasons.update((reasons) => ({ ...reasons, [id]: reason }));
     if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setReassignTo(id: number, personId: string): void {
+    this.reassignTo.update((chosen) => ({ ...chosen, [id]: personId }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** A steward moves a DRAFT, OPEN or PENDING claim to the person chosen on its row; anyone else, a
+   *  SETTLED or VOID claim, or no person chosen, is refused on the row. */
+  protected async reassign(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = this.reassignTo()[claim.id] ?? '';
+    if (to === '') {
+      this.rowError.set({ id: claim.id, message: 'Choose the person to move the claim to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/reassign`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { toPersonId: Number(to) }));
+      if (this.session.sheetId() !== sheet) return;
+      this.setReassignTo(claim.id, '');
+      this.moved.emit(saved);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.rowError.set({
+        id: claim.id,
+        message: forbidden
+          ? 'The claim could not be moved: only a steward can move a claim.'
+          : 'The claim could not be moved: a settled or voided claim, or a correction, stays where it is.',
+      });
+    }
   }
 
   protected reset(): void {

@@ -16,6 +16,11 @@ public enum ClaimStatus {
         return this == OPEN || this == PENDING;
     }
 
+    /** Whether a claim in this status may be moved to another person: a SETTLED or VOID one cannot. */
+    public boolean canReassign() {
+        return this == DRAFT || this == OPEN || this == PENDING;
+    }
+
     /** Whether a claim in this status may be opened, settled or voided to the given one; a PENDING
      *  claim leaves PENDING only by being approved, rejected or voided. */
     public boolean canMoveTo(ClaimStatus next) {

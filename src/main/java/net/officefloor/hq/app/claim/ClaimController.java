@@ -65,6 +65,10 @@ public class ClaimController {
     public record RejectRequest(@NotBlank @Size(max = 500) String reason) {
     }
 
+    /** The person on the sheet a claim moves to. */
+    public record ReassignRequest(@NotNull Long toPersonId) {
+    }
+
     /** The claims selected to open together. */
     public record BulkOpenRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds) {
     }
@@ -157,6 +161,17 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.reject(sheet, by, personId, id, request.reason())));
     }
 
+    /** Move a DRAFT, OPEN or PENDING claim to another person: a steward only. */
+    @PostMapping("/people/{personId}/claims/{id}/reassign")
+    public ClaimView reassign(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ReassignRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by,
+                () -> service.reassign(sheet, by, personId, id, request.toPersonId())));
+    }
+
     /** Void a DRAFT, OPEN or PENDING claim. */
     @PostMapping("/people/{personId}/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -176,16 +191,17 @@ public class ClaimController {
 
     /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,
      *  any change to a claim dated in a closed period, a claim dated after its person retired, or a
-     *  correction that does not name a SETTLED claim of its person, is refused. */
+     *  correction that does not name a SETTLED claim of its person, or a move the claim does not allow,
+     *  is refused. */
     @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
-            PeriodClosedException.class, PersonRetiredException.class})
+            PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }
 
     /** The user who opened a claim cannot settle or approve it, and only a steward approves or
-     *  rejects a PENDING claim. */
-    @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class})
+     *  rejects a PENDING claim or moves a claim to another person. */
+    @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class})
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public void ownClaim() {
     }

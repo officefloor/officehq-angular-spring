@@ -184,7 +184,9 @@ interface StatementTaken {
                   [latePct]="settings.latePct()"
                   [policyDate]="settings.policyDate()"
                   [selectedIds]="selectedClaims()"
+                  [people]="people()"
                   (saved)="claimSaved($event)"
+                  (moved)="claimMoved($event)"
                   (selectedChange)="selectClaim($event.id, $event.selected)"
                 />
               </td>
@@ -615,6 +617,11 @@ export class People {
         ? list.map((c) => (c.id === saved.id ? saved : c))
         : [saved, ...list],
     );
+  }
+
+  /** A claim moved to another person: listed first, as their newest. */
+  protected claimMoved(moved: Claim): void {
+    this.claims.update((list) => [moved, ...list.filter((c) => c.id !== moved.id)]);
   }
 
   protected selectClaim(id: number, selected: boolean): void {

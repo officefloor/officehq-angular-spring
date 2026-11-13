@@ -89,7 +89,7 @@ public class RollupService {
         LocalDate today = sheets.today(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
         Set<Long> held = sheetPeople.stream().filter(Person::isHeld).map(Person::getId).collect(Collectors.toSet());
-        Map<Long, List<Claim>> counted = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        Map<Long, List<Claim>> counted = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(claim -> claim.countsLive(held.contains(claim.getPersonId())))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();

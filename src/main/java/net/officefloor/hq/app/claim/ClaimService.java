@@ -55,7 +55,7 @@ public class ClaimService {
 
     /** The sheet's claims, newest first. */
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
     /** Add a claim for a person; a missing date takes the sheet's today. A negative amount is a
@@ -176,6 +176,40 @@ public class ClaimService {
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(line("CLAIM_REJECTED", sheetId, user, person, saved, saved.getNumber())
                 + " reason=" + reason.trim());
+        return saved;
+    }
+
+    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
+     *  number and date, loses any figure a statement bound it to (live again until its new person's
+     *  next statement), and is listed as its new person's newest claim. Anyone else, a SETTLED or VOID
+     *  claim, a correction (it names a claim of its own person), a claim dated in a closed period, or
+     *  a move to the same person or to one retired before the claim's date, is refused. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, Long personId, Long id, Long toPersonId) {
+        Person from = person(sheetId, personId);
+        Person to = person(sheetId, toPersonId);
+        Claim claim = claim(sheetId, personId, id);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ReassignRefusedException(user);
+        }
+        if (!claim.getStatus().canReassign()) {
+            throw new MoveRefusedException("A " + claim.getStatus() + " claim cannot move to another person");
+        }
+        if (from.getId().equals(to.getId())) {
+            throw new MoveRefusedException("The claim is already " + to.getName() + "'s");
+        }
+        if (claim.isCorrection()) {
+            throw new MoveRefusedException("A correction stays with the person whose claim it corrects");
+        }
+        refuseClosed(sheetId, claim.getDate());
+        refuseRetired(to, claim.getDate());
+        claim.setPersonId(to.getId());
+        claim.unbind();
+        claims.saveAndFlush(claim);
+        claims.relist(claim.getId());
+        Claim saved = claim(sheetId, to.getId(), id);
+        audit.recordOnCommit(line("CLAIM_REASSIGNED", sheetId, user, to, saved, saved.getNumber())
+                + " from=" + from.getName() + " to=" + to.getName());
         return saved;
     }
 

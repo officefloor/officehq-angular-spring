@@ -45,7 +45,7 @@ public class BulkOpenService {
         for (int i = 0; i < sheetPeople.size(); i++) {
             personOrder.put(sheetPeople.get(i).getId(), i);
         }
-        List<Claim> selected = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        List<Claim> selected = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(claim -> ids.contains(claim.getId()))
                 .sorted(Comparator.comparing((Claim claim) -> personOrder.getOrDefault(claim.getPersonId(), Integer.MAX_VALUE)))
                 .toList();

@@ -28,6 +28,11 @@ public class Claim {
     @Column(name = "person_id", nullable = false)
     private Long personId;
 
+    /** When the claim was listed under its person, from the database's sequence: when it was added,
+     *  or last reassigned. Claims are listed newest first by it; set by the database only. */
+    @Column(name = "listed", insertable = false, updatable = false)
+    private Long listed;
+
     @Column(name = "amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
@@ -89,6 +94,11 @@ public class Claim {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    /** Move the claim to another person. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
     }
 
     public BigDecimal getAmount() {
