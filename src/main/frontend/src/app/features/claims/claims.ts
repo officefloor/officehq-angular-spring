@@ -87,7 +87,7 @@ export function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
-/** What a late charge works from: the sheet's late percent (two decimals) in force on a claim's date and its today; and what a claim's figures round by: the sheet's policy date (blank for its today). */
+/** What a late charge works from: the sheet's late percent (two decimals) in force on a date and its today; and what a claim's figures round by: the sheet's policy date (blank for its today). */
 export interface Late {
   pct: (date: string) => string;
   today: string | null;
@@ -113,8 +113,9 @@ function figureCents(claim: Claim, rates: Rate[], floor: (date: string) => numbe
   return isCorrection(claim) ? due : Math.max(due, floor(claim.date));
 }
 
-/** A claim's due in cents: its figure plus its late charge, the late percent in force on its date of the figure for
- *  every full 30 days an OPEN or PENDING claim is overdue, rounded like a due (a statement never binds the
+/** A claim's due in cents: its figure plus its late charge: for every full 30 days an OPEN or PENDING claim is
+ *  overdue, the late percent in force on that boundary (its due-by plus 30, 60, 90 ... days) of the figure,
+ *  rounded like a due, the charges added up (a statement never binds the
  *  charge; settling freezes it into the settled due; a correction has none); null when it has no
  *  figure. */
 export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string) => number, late: Late): number | null {
@@ -122,7 +123,17 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
   const figure = figureCents(claim, rates, floor, halfUp);
   if (figure === null) return null;
   const periods = isCorrection(claim) ? 0 : Math.floor(daysOverdue(claim, late) / 30);
-  return periods > 0 ? figure + dueCents(figure * periods, late.pct(claim.date), halfUp) : figure;
+  let charge = 0;
+  for (let boundary = 1; boundary <= periods; boundary++) {
+    const pct = late.pct(plusDays(claim.dueBy, 30 * boundary));
+    if (cents(pct) !== 0) charge += dueCents(figure, pct, halfUp);
+  }
+  return figure + charge;
+}
+
+/** A date (yyyy-mm-dd) some days on. */
+function plusDays(date: string, days: number): string {
+  return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 /** How many days an OPEN or PENDING claim is past its due-by on the sheet's today; 0 when it is not overdue. */

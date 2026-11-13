@@ -355,7 +355,7 @@ export class People {
     const cap = this.settings.cap();
     return cap === null ? null : cents(cap);
   });
-  /** What late charges work from: the sheet's late percent in force on a claim's date and today; and the policy date
+  /** What late charges work from: the sheet's late percent in force on a date and today; and the policy date
    *  figures round by. */
   private readonly late = computed<Late>(() => ({
     pct: this.settings.latePctOn(),
