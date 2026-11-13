@@ -484,6 +484,9 @@ function compareKeys(a: string, b: string): number {
                 >
                   Statement<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
+                <button type="button" data-testid="person-export" (click)="exportPerson(p)">
+                  Export row (CSV)<span class="visually-hidden"> for {{ p.name }}</span>
+                </button>
                 <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)">
                   Export statement (CSV)<span class="visually-hidden"> for {{ p.name }}</span>
                 </button>
@@ -1048,6 +1051,27 @@ export class PeopleList {
       }
     }
     download(lines, 'periods.csv');
+  }
+
+  /** Download the person's row as CSV: one line per cell, with the value as the row shows it. */
+  protected async exportPerson(p: Person): Promise<void> {
+    await this.session.loaded();
+    download(
+      [
+        ['cell', 'value'],
+        ['person-name', this.figures.shownName(p)],
+        ['person-grade', this.gradeToday(p)],
+        ['person-claimed', this.claims.claimed(p.id)],
+        ['person-due-total', this.due(p)],
+        ['person-statement-count', String(p.statementCount)],
+        ['person-overdue-total', this.overdueDue(p)],
+        ['person-hold', p.held ? 'yes' : 'no'],
+        ['person-retired', p.retired ? 'yes' : 'no'],
+        ['person-aliases', p.aliases.join(', ')],
+        ['person-score', String(this.figures.score(p))],
+      ],
+      'person.csv',
+    );
   }
 
   /** Download the person's statement as CSV: their claims bound by their last statement, oldest
