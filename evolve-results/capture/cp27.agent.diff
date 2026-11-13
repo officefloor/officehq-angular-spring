@@ -1,0 +1,444 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e0c1343e7..00d4d9e36 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -25,6 +25,8 @@ interface Person {
+   retiredFrom: string | null;
+   /** Whether the person is on hold: while held, their OPEN claims count in no live total. */
+   held: boolean;
++  /** The ids of the person's patrons, in the order they were named. */
++  patronIds: number[];
+ }
+ 
+ /** A statement taken: the person's statements as their row shows them, and their claims as it
+@@ -125,6 +127,8 @@ interface StatementTaken {
+             <th scope="col">Retired</th>
+             <th scope="col">Retired from</th>
+             <th scope="col">On hold</th>
++            <th scope="col">Patrons</th>
++            <th scope="col">Backing</th>
+             <th scope="col">Claims</th>
+             <th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+@@ -144,6 +148,8 @@ interface StatementTaken {
+               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
++              <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
++              <td data-testid="person-backing">{{ backingOf(p) }}</td>
+               <td>
+                 <app-person-claims
+                   [personId]="p.id"
+@@ -196,9 +202,29 @@ interface StatementTaken {
+                 >
+                   {{ p.held ? 'Release' : 'Hold' }}
+                 </button>
++                <label [for]="'person-patron-select-' + p.id">Patron</label>
++                <select
++                  [id]="'person-patron-select-' + p.id"
++                  data-testid="person-patron-select"
++                  [value]="patronChoices()[p.id] ?? ''"
++                  (change)="setPatronChoice(p.id, value($event))"
++                >
++                  <option value="" [selected]="!patronChoices()[p.id]">Choose a patron</option>
++                  @for (o of people(); track o.id) {
++                    <option [value]="'' + o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ o.name }}</option>
++                  }
++                </select>
++                <button
++                  type="button"
++                  data-testid="person-patron-add"
++                  [attr.aria-label]="'Add a patron for ' + p.name"
++                  (click)="addPatron(p)"
++                >
++                  Add patron
++                </button>
+                 @if (rowError(); as e) {
+                   @if (e.id === p.id) {
+-                    <p role="alert" data-testid="person-error">{{ e.message }}</p>
++                    <p role="alert" [attr.data-testid]="e.testId ?? 'person-error'">{{ e.message }}</p>
+                   }
+                 }
+               </td>
+@@ -312,7 +338,9 @@ export class People {
+   private readonly quickBusy = signal(false);
+   protected readonly quickError = signal<string | null>(null);
+   /** The error from the last action on a person's row refused, and the person it belongs to. */
+-  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
++  protected readonly rowError = signal<{ id: number; message: string; testId?: string } | null>(null);
++  /** The patron chosen on each person's row (a person id, or blank), by person id. */
++  protected readonly patronChoices = signal<Record<number, string>>({});
+ 
+   constructor() {
+     effect(() => {
+@@ -322,6 +350,7 @@ export class People {
+       this.claims.set([]);
+       this.rowError.set(null);
+       this.retireDates.set({});
++      this.patronChoices.set({});
+       this.reset();
+       this.quickName.set('');
+       this.quickAmount.set('');
+@@ -361,6 +390,62 @@ export class People {
+     }
+   }
+ 
++  protected setPatronChoice(personId: number, patronId: string): void {
++    this.patronChoices.update((choices) => ({ ...choices, [personId]: patronId }));
++    if (this.rowError()?.id === personId) this.rowError.set(null);
++  }
++
++  /** Name the chosen person as a person's patron; their row then shows them and the backing. */
++  protected async addPatron(person: Person): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const refused = (message: string) =>
++      this.rowError.set({ id: person.id, message, testId: 'person-patron-error' });
++    const chosen = this.patronChoices()[person.id] ?? '';
++    if (!chosen) {
++      refused('Choose a patron to add.');
++      return;
++    }
++    const patronId = Number(chosen);
++    const patron = this.people().find((p) => p.id === patronId);
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/patrons`;
++    try {
++      const saved = await firstValueFrom(this.http.post<Person>(url, { patronId }));
++      if (this.session.sheetId() !== sheet) return;
++      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++      this.patronChoices.update((choices) => ({ ...choices, [person.id]: '' }));
++    } catch {
++      refused(
++        patronId === person.id
++          ? `${person.name} cannot be their own patron.`
++          : `${patron?.name ?? 'That person'} could not be added as a patron of ${person.name}.`,
++      );
++    }
++  }
++
++  /** A person's patrons' names, sorted, comma and space separated. */
++  protected patronsOf(person: Person): string {
++    const names = new Map(this.people().map((p) => [p.id, p.name]));
++    return person.patronIds
++      .map((id) => names.get(id))
++      .filter((name): name is string => name !== undefined)
++      .sort((a, b) => a.localeCompare(b))
++      .join(', ');
++  }
++
++  /** A person's patrons' due-totals added up, skipping those with no figure; 0.00 with no patrons. */
++  protected backingOf(person: Person): string {
++    const byId = new Map(this.people().map((p) => [p.id, p]));
++    return money(
++      person.patronIds.reduce((sum, id) => {
++        const patron = byId.get(id);
++        const due = patron ? this.dueCentsBy(patron) : null;
++        return due === null ? sum : sum + due;
++      }, 0),
++    );
++  }
++
+   /** Put a person on hold, or take them off hold; their row and the totals then show it. */
+   protected async toggleHold(person: Person): Promise<void> {
+     this.rowError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PatronRefusedException.java b/src/main/java/net/officefloor/hq/app/person/PatronRefusedException.java
+new file mode 100644
+index 000000000..04a039e31
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PatronRefusedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.person;
++
++/** A patron a person may not name: themselves, or someone already their patron. */
++public class PatronRefusedException extends RuntimeException {
++
++    public PatronRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index dcf544ca0..253cee5f3 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -35,13 +35,15 @@ public class PersonController {
+ 
+     /** A person as the screen shows them, with how many statements were taken for them and the
+      *  last one's due-total and date (null when none was), and whether they are retired and from
+-     *  when (null when not), and whether they are on hold. */
++     *  when (null when not), and whether they are on hold, and the ids of their patrons in the order
++     *  they were named. */
+     public record PersonView(Long id, String name, String grade, long version, int statementCount,
+-            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held) {
+-        public static PersonView of(Person person, StatementSummary statements) {
++            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
++            List<Long> patronIds) {
++        public static PersonView of(Person person, StatementSummary statements, List<Long> patronIds) {
+             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                     statements.count(), statements.lastDueTotal(), statements.lastDate(), person.isRetired(),
+-                    person.getRetiredFrom(), person.isHeld());
++                    person.getRetiredFrom(), person.isHeld(), patronIds);
+         }
+     }
+ 
+@@ -62,6 +64,10 @@ public class PersonController {
+     public record RetireRequest(LocalDate from) {
+     }
+ 
++    /** A patron to name: the id of another person on the sheet. */
++    public record PatronRequest(@NotNull Long patronId) {
++    }
++
+     private final PersonService service;
+     private final StatementService statements;
+     private final RollupService rollups;
+@@ -77,8 +83,10 @@ public class PersonController {
+     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
+         String sheet = sheetId.trim();
+         Map<Long, StatementSummary> summaries = statements.summaries(sheet);
++        Map<Long, List<Long>> patrons = service.patronIds(sheet);
+         return service.list(sheet).stream()
+-                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE)))
++                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
++                        patrons.getOrDefault(p.getId(), List.of())))
+                 .toList();
+     }
+ 
+@@ -121,6 +129,15 @@ public class PersonController {
+         return withStatements(rollups.track(sheet, by, () -> service.toggleHold(sheet, by, id)));
+     }
+ 
++    /** Name another person on the sheet as a person's patron. */
++    @PostMapping("/{id}/patrons")
++    public PersonView addPatron(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PatronRequest request) {
++        String sheet = sheetId.trim();
++        String by = SignedInUser.decode(user);
++        return withStatements(service.addPatron(sheet, by, id, request.patronId()));
++    }
++
+     /** A date that is not a real yyyy-mm-dd date is refused. */
+     @ExceptionHandler(HttpMessageNotReadableException.class)
+     @ResponseStatus(HttpStatus.BAD_REQUEST)
+@@ -135,7 +152,8 @@ public class PersonController {
+     }
+ 
+     private PersonView withStatements(Person person) {
+-        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()));
++        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()),
++                service.patronIds(person.getId()));
+     }
+ 
+     /** A save that raced another to the same version; the editor re-reads the person. */
+@@ -149,8 +167,9 @@ public class PersonController {
+     public void notFound() {
+     }
+ 
+-    /** The name is already in use on the sheet; a concurrent save is caught by the unique index. */
+-    @ExceptionHandler({NameInUseException.class, DataIntegrityViolationException.class})
++    /** The name is already in use on the sheet, or the patron may not be named; a concurrent save is
++     *  caught by the unique index. */
++    @ExceptionHandler({NameInUseException.class, PatronRefusedException.class, DataIntegrityViolationException.class})
+     @ResponseStatus(HttpStatus.CONFLICT)
+     public void nameInUse() {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonPatron.java b/src/main/java/net/officefloor/hq/app/person/PersonPatron.java
+new file mode 100644
+index 000000000..f3f48e905
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonPatron.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A patron a person named: another person on the same sheet. */
++@Entity
++@Table(name = "person_patron")
++public class PersonPatron {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(name = "patron_id", nullable = false)
++    private Long patronId;
++
++    protected PersonPatron() {
++    }
++
++    public PersonPatron(String sheetId, Long personId, Long patronId) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.patronId = patronId;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public Long getPatronId() {
++        return patronId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonPatronRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonPatronRepository.java
+new file mode 100644
+index 000000000..a83477817
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonPatronRepository.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.person;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PersonPatronRepository extends JpaRepository<PersonPatron, Long> {
++
++    /** The sheet's patrons in the order they were named. */
++    List<PersonPatron> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** A person's patrons in the order they were named. */
++    List<PersonPatron> findByPersonIdOrderByIdAsc(Long personId);
++
++    boolean existsByPersonIdAndPatronId(Long personId, Long patronId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index f843a873b..290a15275 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -2,7 +2,9 @@ package net.officefloor.hq.app.person;
+ 
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Map;
+ import java.util.NoSuchElementException;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -13,11 +15,13 @@ import org.springframework.transaction.annotation.Transactional;
+ public class PersonService {
+ 
+     private final PersonRepository people;
++    private final PersonPatronRepository patrons;
+     private final SheetService sheets;
+     private final Audit audit;
+ 
+-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
++    public PersonService(PersonRepository people, PersonPatronRepository patrons, SheetService sheets, Audit audit) {
+         this.people = people;
++        this.patrons = patrons;
+         this.sheets = sheets;
+         this.audit = audit;
+     }
+@@ -80,6 +84,39 @@ public class PersonService {
+         return saved;
+     }
+ 
++    /** Each person's patron ids on the sheet, in the order they were named, by person id; a person
++     *  with none is absent. */
++    public Map<Long, List<Long>> patronIds(String sheetId) {
++        return patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .collect(Collectors.groupingBy(PersonPatron::getPersonId,
++                        Collectors.mapping(PersonPatron::getPatronId, Collectors.toList())));
++    }
++
++    /** A person's patron ids, in the order they were named. */
++    public List<Long> patronIds(Long personId) {
++        return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(PersonPatron::getPatronId).toList();
++    }
++
++    /** Name another person on the sheet as a person's patron; refused for the person themselves and
++     *  for someone already their patron. */
++    @Transactional
++    public Person addPatron(String sheetId, String user, Long id, Long patronId) {
++        Person person = people.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
++        Person patron = people.findByIdAndSheetId(patronId, sheetId)
++                .orElseThrow(() -> new NoSuchElementException("No person " + patronId + " on sheet " + sheetId));
++        if (person.getId().equals(patron.getId())) {
++            throw new PatronRefusedException(person.getName() + " cannot be their own patron");
++        }
++        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
++            throw new PatronRefusedException(patron.getName() + " is already a patron of " + person.getName());
++        }
++        patrons.saveAndFlush(new PersonPatron(sheetId, person.getId(), patron.getId()));
++        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " patron=" + patron.getName());
++        return person;
++    }
++
+     private void record(String event, String sheetId, String user, Person person) {
+         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
+                 + " name=" + person.getName() + " grade=" + person.getGrade());
+diff --git a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+index 0f292ec4c..ebbdd9429 100644
+--- a/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
++++ b/src/main/java/net/officefloor/hq/app/quickadd/QuickAddController.java
+@@ -12,6 +12,7 @@ import net.officefloor.hq.app.period.PeriodClosedException;
+ import net.officefloor.hq.app.person.PersonRetiredException;
+ import net.officefloor.hq.app.person.NameInUseException;
+ import net.officefloor.hq.app.person.PersonController.PersonView;
++import net.officefloor.hq.app.person.PersonService;
+ import net.officefloor.hq.app.statement.StatementService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -44,10 +45,12 @@ public class QuickAddController {
+ 
+     private final QuickAddService service;
+     private final StatementService statements;
++    private final PersonService people;
+ 
+-    public QuickAddController(QuickAddService service, StatementService statements) {
++    public QuickAddController(QuickAddService service, StatementService statements, PersonService people) {
+         this.service = service;
+         this.statements = statements;
++        this.people = people;
+     }
+ 
+     /** Add a DRAFT claim for the named person, adding them first when the name is not on the sheet. */
+@@ -58,7 +61,8 @@ public class QuickAddController {
+         String sheet = sheetId.trim();
+         String by = SignedInUser.decode(user);
+         QuickAddService.Added added = service.add(sheet, by, request.name(), request.amount());
+-        return new QuickAddView(PersonView.of(added.person(), statements.summary(sheet, added.person().getId())),
++        return new QuickAddView(PersonView.of(added.person(), statements.summary(sheet, added.person().getId()),
++                people.patronIds(added.person().getId())),
+                 ClaimView.of(added.claim()));
+     }
+ 
+diff --git a/src/main/resources/db/migration/V22__person_patron.sql b/src/main/resources/db/migration/V22__person_patron.sql
+new file mode 100644
+index 000000000..a43353f75
+--- /dev/null
++++ b/src/main/resources/db/migration/V22__person_patron.sql
+@@ -0,0 +1,10 @@
++-- A person's patrons: other people on the same sheet the person names, each at most once.
++CREATE TABLE person_patron (
++    id BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(200) NOT NULL REFERENCES sheet (id),
++    person_id BIGINT NOT NULL REFERENCES person (id),
++    patron_id BIGINT NOT NULL REFERENCES person (id),
++    CHECK (person_id <> patron_id)
++);
++CREATE UNIQUE INDEX person_patron_pair ON person_patron (person_id, patron_id);
++CREATE INDEX person_patron_sheet ON person_patron (sheet_id, id);
