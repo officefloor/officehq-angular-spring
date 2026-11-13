@@ -1,0 +1,163 @@
+diff --git a/src/main/frontend/src/app/core/audit.ts b/src/main/frontend/src/app/core/audit.ts
+index 3f36f6839..476634668 100644
+--- a/src/main/frontend/src/app/core/audit.ts
++++ b/src/main/frontend/src/app/core/audit.ts
+@@ -26,4 +26,21 @@ export class AuditLog {
+       return { error: e instanceof HttpErrorResponse ? `Could not read the audit (${e.status}).` : 'Could not read the audit.' };
+     }
+   }
++
++  /** A claim's timeline: the audit lines about it, newest first. An error message when that failed. */
++  async claimLines(claimId: number): Promise<{ lines: string[] } | { error: string }> {
++    const user = this.session.user();
++    const sid = this.session.sheetId();
++    if (!user || !sid) return { error: 'Load a sheet first.' };
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sid)}/audit/claims/${claimId}`, {
++          headers: { 'X-User': user },
++        }),
++      );
++      return { lines };
++    } catch (e) {
++      return { error: e instanceof HttpErrorResponse ? `Could not read the timeline (${e.status}).` : 'Could not read the timeline.' };
++    }
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 71ac2fa68..28af3e722 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -1,4 +1,5 @@
+ import { Component, ElementRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
++import { AuditLog } from '../../core/audit';
+ import { ClaimTemplates } from '../../core/claim-templates';
+ import { Claim, ClaimAction, Claims, bound } from '../../core/claims';
+ import { Periods } from '../../core/periods';
+@@ -272,6 +273,16 @@ import { VoidReasons } from '../../core/void-reasons';
+               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+             </button>
+           }
++          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)">
++            Timeline<span class="visually-hidden"> of claim {{ c.amount }} on {{ c.date }}</span>
++          </button>
++          @if (timeline()?.id === c.id) {
++            <ol data-testid="claim-timeline-list" aria-label="Claim timeline">
++              @for (line of timeline()?.lines; track $index) {
++                <li data-testid="claim-timeline-line">{{ line }}</li>
++              }
++            </ol>
++          }
+           @if (actionError()?.id === c.id) {
+             <p role="alert" data-testid="claim-error">{{ actionError()?.message }}</p>
+           }
+@@ -314,6 +325,10 @@ export class PersonClaims {
+   private locking: Promise<boolean> | null = null;
+   /** The id of the claim whose editor is open, or null when the form adds. */
+   protected readonly editing = signal<number | null>(null);
++  private readonly audit = inject(AuditLog);
++  /** The timeline last shown, of the claim it is about: the audit lines about it, newest first. */
++  protected readonly timeline = signal<{ id: number; lines: string[] } | null>(null);
++  private timelineShows = 0;
+   protected readonly error = signal<string | null>(null);
+   protected readonly saving = signal(false);
+   protected readonly actions: { action: ClaimAction; label: string }[] = [
+@@ -466,6 +481,16 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected async showTimeline(c: Claim): Promise<void> {
++    this.clearActionError(c.id);
++    const show = ++this.timelineShows;
++    this.timeline.set(null);
++    const res = await this.audit.claimLines(c.id);
++    if (show !== this.timelineShows) return; // a later press has taken over
++    if ('error' in res) this.actionError.set({ id: c.id, message: res.error });
++    else this.timeline.set({ id: c.id, lines: res.lines });
++  }
++
+   protected async remind(c: Claim): Promise<void> {
+     this.clearActionError(c.id);
+     this.acting.set(c.id);
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index d4c277f76..b03ac46ec 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -30,4 +30,11 @@ public class AuditController {
+             @RequestParam(defaultValue = "") @Size(max = 200) String name) {
+         return service.lines(sheetId.trim(), name);
+     }
++
++    /** A claim's timeline: the audit lines about it, newest first. */
++    @GetMapping("/claims/{claimId}")
++    public List<String> claim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
++        return service.claimLines(sheetId.trim(), claimId);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+index 3a2ab6be9..e3e8953fc 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+@@ -8,6 +8,9 @@ import java.util.List;
+ import java.util.TreeSet;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimNotFoundException;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -24,11 +27,50 @@ public class AuditViewService {
+     private final Audit audit;
+     private final PersonRepository people;
+     private final SheetRepository sheets;
++    private final ClaimRepository claims;
+ 
+-    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets) {
++    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets, ClaimRepository claims) {
+         this.audit = audit;
+         this.people = people;
+         this.sheets = sheets;
++        this.claims = claims;
++    }
++
++    /**
++     * A claim's timeline: the sheet's audit lines about it, newest first, as the file holds them. A claim
++     * with a number has the lines carrying number=&lt;its number&gt;; one with no number has the lines,
++     * carrying no number, that name its person, amount and date together.
++     */
++    public List<String> claimLines(String sheetId, Long claimId) {
++        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        Pattern sheet = field("sheet", sheetId);
++        List<Pattern> about;
++        Pattern numbered = Pattern.compile("(?:^| )number=");
++        if (claim.getNumber() != null) {
++            about = List.of(field("number", claim.getNumber()));
++            numbered = null;
++        } else {
++            String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse(null);
++            if (person == null) {
++                return new ArrayList<>();
++            }
++            about = List.of(field("person", person), field("amount", claim.getAmount().toPlainString()),
++                    field("date", claim.getDate().toString()));
++        }
++        List<String> lines = new ArrayList<>();
++        for (String line : audit.lines()) {
++            if (sheet.matcher(line).find() && (numbered == null || !numbered.matcher(line).find())
++                    && about.stream().allMatch(p -> p.matcher(line).find())) {
++                lines.add(line);
++            }
++        }
++        Collections.reverse(lines);
++        return lines;
++    }
++
++    /** A key=value field of a line, the value running up to the next field or the line's end. */
++    private static Pattern field(String key, String value) {
++        return Pattern.compile("(?:^| )" + key + "=" + Pattern.quote(value) + "(?= [A-Za-z][\\w-]*=|$)");
+     }
+ 
+     /**
