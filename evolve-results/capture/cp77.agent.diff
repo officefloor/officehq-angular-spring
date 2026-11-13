@@ -1,0 +1,356 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e24c38157..d28c63916 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -745,6 +745,8 @@ export class PersonClaims {
+             ? 'The claim could not be settled: whoever opened it cannot settle it, and your role must be allowed to settle.'
+             : !forbidden && (action === 'settle' || action === 'approve')
+               ? `The claim could not be ${PAST[action]}: one due above the proof threshold needs a proof first, and its status must allow it.`
++            : !forbidden && action === 'open'
++              ? 'The claim could not be opened: one due above the note threshold needs a note first, and its status and period must allow it.'
+             : forbidden && action === 'resettle'
+               ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
+               : !forbidden && action === 'void' && claim.status === 'SETTLED'
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 23c8b13fe..75e738ee6 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -120,6 +120,8 @@ export class SettingStore {
+   readonly cap = computed(() => this.onToday('cap') ?? null);
+   /** The proof threshold in force on the sheet's today; null when there is none. */
+   readonly proofThreshold = computed(() => this.onToday('proof-threshold') ?? null);
++  /** The note threshold in force on the sheet's today; null when there is none. */
++  readonly noteThreshold = computed(() => this.onToday('note-threshold') ?? null);
+   /** The terms in force on the sheet's today. */
+   readonly terms = computed(() => Number(this.onToday('terms') ?? TERMS));
+   /** The late percent in force on the sheet's today. */
+@@ -240,6 +242,17 @@ export class SettingStore {
+     this.show(saved);
+   }
+ 
++  /** Record the active sheet's note threshold from a date (null for the sheet's today); null records none. */
++  async setNoteThreshold(value: string | null, from: string | null): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(
++      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/note-threshold`, { value, from }),
++    );
++    if (this.session.sheetId() !== sheet) return;
++    this.show(saved);
++  }
++
+   /** Record the active sheet's terms from a date (null for the sheet's today). */
+   async setTerms(value: number, from: string | null): Promise<void> {
+     const sheet = this.session.sheetId();
+@@ -352,7 +365,8 @@ export class SettingStore {
+ // who acts as a steward while the sheet's today is from its from-date to its to-date) and the
+ // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
+ // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
+-// in force on its date) cannot be settled or approved until the claim has a proof,
++// in force on its date) cannot be settled or approved until the claim has a proof, the note threshold, above
++// which a claim's due (by the threshold in force on its date) cannot be opened while its note is empty,
+ // the terms, the days after its date a claim is due by (fixed when the claim is added), and each
+ // grade's own terms, which a claim of that grade takes instead, and the late percent, what an overdue claim's
+ // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
+@@ -362,7 +376,7 @@ export class SettingStore {
+ // the roles that may open, settle, void, reassign, close and reopen (blank keeps the standing rule).
+ // The settings that carry a figure are dated: each is saved from the from-date typed beside it (blank
+ // for the sheet's today), keeping the values recorded before, and the value in force on the sheet's
+-// today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof threshold, the policy date,
++// today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof and note thresholds, the policy date,
+ // the period numbering from and the grace days count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
+ @Component({
+   selector: 'app-settings',
+@@ -516,6 +530,23 @@ export class SettingStore {
+           [value]="proofThresholdFrom()"
+           (input)="proofThresholdFrom.set(value($event)); settingsError.set(null)"
+         />
++        <label for="setting-note-threshold">Note threshold</label>
++        <input
++          id="setting-note-threshold"
++          data-testid="setting-note-threshold"
++          inputmode="decimal"
++          [value]="noteThreshold()"
++          (focus)="noteThresholdTyped.set(true)"
++          (input)="noteThreshold.set(value($event)); noteThresholdTyped.set(true); settingsError.set(null)"
++        />
++        <label for="setting-note-threshold-from">Note threshold from</label>
++        <input
++          id="setting-note-threshold-from"
++          data-testid="setting-note-threshold-from"
++          placeholder="yyyy-mm-dd"
++          [value]="noteThresholdFrom()"
++          (input)="noteThresholdFrom.set(value($event)); settingsError.set(null)"
++        />
+         <label for="setting-terms">Terms (days)</label>
+         <input
+           id="setting-terms"
+@@ -636,6 +667,13 @@ export class SettingStore {
+           <span>none</span>
+         }
+       </p>
++      <p>
++        Note threshold in force:
++        <strong data-testid="setting-note-threshold-current">{{ store.noteThreshold() ?? '' }}</strong>
++        @if (store.noteThreshold() === null) {
++          <span>none</span>
++        }
++      </p>
+       <p>
+         Terms in force:
+         <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days
+@@ -711,6 +749,9 @@ export class Settings {
+   protected readonly proofThreshold = signal('');
+   protected readonly proofThresholdTyped = signal(false);
+   protected readonly proofThresholdFrom = signal('');
++  protected readonly noteThreshold = signal('');
++  protected readonly noteThresholdTyped = signal(false);
++  protected readonly noteThresholdFrom = signal('');
+   protected readonly terms = signal('');
+   protected readonly termsTyped = signal(false);
+   protected readonly termsFrom = signal('');
+@@ -821,6 +862,8 @@ export class Settings {
+     const saveCap = this.capTyped();
+     const threshold = this.proofThreshold().trim();
+     const saveThreshold = this.proofThresholdTyped();
++    const noteThreshold = this.noteThreshold().trim();
++    const saveNoteThreshold = this.noteThresholdTyped();
+     const terms = this.terms().trim();
+     const saveTerms = this.termsTyped();
+     const gradeTerms = Object.entries(this.gradeTerms()).map(([grade, days]) => [grade, days.trim()] as const);
+@@ -839,6 +882,7 @@ export class Settings {
+     const floorFrom = this.floorFrom().trim();
+     const capFrom = this.capFrom().trim();
+     const thresholdFrom = this.proofThresholdFrom().trim();
++    const noteThresholdFrom = this.noteThresholdFrom().trim();
+     const termsFrom = this.termsFrom().trim();
+     const latePctFrom = this.latePctFrom().trim();
+     const gradeTermsFrom: Record<string, string> = Object.fromEntries(
+@@ -849,6 +893,7 @@ export class Settings {
+       [saveFloor, floorFrom, 'the floor'],
+       [saveCap, capFrom, 'the cap'],
+       [saveThreshold, thresholdFrom, 'the proof threshold'],
++      [saveNoteThreshold, noteThresholdFrom, 'the note threshold'],
+       [saveTerms, termsFrom, 'the terms'],
+       ...gradeTerms.map(([grade]) => [true, gradeTermsFrom[grade] ?? '', `the terms for grade ${grade}`] as [boolean, string, string]),
+       [saveLatePct, latePctFrom, 'the late percent'],
+@@ -869,6 +914,10 @@ export class Settings {
+       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+       return;
+     }
++    if (saveNoteThreshold && noteThreshold !== '' && !AMOUNT.test(noteThreshold)) {
++      this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
++      return;
++    }
+     if (saveTerms && !DAYS.test(terms)) {
+       this.settingsError.set('Type terms of 0 or more whole days.');
+       return;
+@@ -909,6 +958,7 @@ export class Settings {
+     this.floorTyped.set(false);
+     this.capTyped.set(false);
+     this.proofThresholdTyped.set(false);
++    this.noteThresholdTyped.set(false);
+     this.termsTyped.set(false);
+     this.gradeTerms.set({});
+     this.latePctTyped.set(false);
+@@ -922,6 +972,9 @@ export class Settings {
+         if (saveFloor) await this.store.setFloor(floor, fromOf(floorFrom));
+         if (saveCap) await this.store.setCap(cap === '' ? null : cap, fromOf(capFrom));
+         if (saveThreshold) await this.store.setProofThreshold(threshold === '' ? null : threshold, fromOf(thresholdFrom));
++        if (saveNoteThreshold) {
++          await this.store.setNoteThreshold(noteThreshold === '' ? null : noteThreshold, fromOf(noteThresholdFrom));
++        }
+         if (saveTerms) await this.store.setTerms(Number(terms), fromOf(termsFrom));
+         for (const [grade, days] of gradeTerms) {
+           await this.store.setGradeTerms(grade, Number(days), fromOf(gradeTermsFrom[grade] ?? ''));
+@@ -937,6 +990,7 @@ export class Settings {
+         if (saveFloor) this.floorTyped.set(true);
+         if (saveCap) this.capTyped.set(true);
+         if (saveThreshold) this.proofThresholdTyped.set(true);
++        if (saveNoteThreshold) this.noteThresholdTyped.set(true);
+         if (saveTerms) this.termsTyped.set(true);
+         this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
+         if (saveLatePct) this.latePctTyped.set(true);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+index f18224eda..72134a006 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+@@ -49,7 +49,7 @@ public class BulkOpenService {
+             try {
+                 opened.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
+                         claim.getPersonId(), claim.getId(), ClaimStatus.OPEN)));
+-            } catch (StatusChangeRefusedException | PermissionRefusedException | PeriodClosedException | NoSuchElementException refused) {
++            } catch (StatusChangeRefusedException | NoteRequiredException | PermissionRefusedException | PeriodClosedException | NoSuchElementException refused) {
+                 // Left as it is: its change rolled back with its own transaction.
+             }
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 342f5355d..ab94f1567 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -319,13 +319,14 @@ public class ClaimController {
+      *  any change to a claim dated in a closed period, a claim dated after its person retired, or a
+      *  correction that does not name a SETTLED claim of its person, a move the claim does not allow,
+      *  a deferral the claim does not allow, a proof added to a SETTLED or VOID claim, or settling or
+-     *  approving a claim above the proof threshold with no proofs, or a split the claim or amount does
++     *  approving a claim above the proof threshold with no proofs, or opening a claim above the note
++     *  threshold with an empty note, or a split the claim or amount does
+      *  not allow, or a void of a SETTLED claim by anyone but a steward or after its void window, or a
+      *  re-date of a claim that is not OPEN or PENDING, or opening or saving the editor of a claim
+      *  another user's editor locks, is refused. */
+     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
+             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
+-            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class,
++            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
+             SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class})
+     @ResponseStatus(HttpStatus.CONFLICT)
+     public void refused() {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 3a90c2b81..683cc644d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -211,6 +211,9 @@ public class ClaimService {
+         if (to == ClaimStatus.SETTLED) {
+             refuseUnproved(sheetId, claim, due);
+         }
++        if (to == ClaimStatus.OPEN) {
++            refuseUnnoted(sheetId, person, claim);
++        }
+         if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, due)) {
+             to = ClaimStatus.PENDING;
+         }
+@@ -683,6 +686,19 @@ public class ClaimService {
+         }
+     }
+ 
++    /** A claim whose due is above the note threshold in force on its date cannot be opened while its
++     *  note is empty; a due of n/a, or no threshold, asks for none. */
++    private void refuseUnnoted(String sheetId, Person person, Claim claim) {
++        BigDecimal threshold = settings.noteThreshold(sheetId, claim.getDate());
++        if (threshold == null || (claim.getNote() != null && !claim.getNote().isBlank())) {
++            return;
++        }
++        BigDecimal due = dueOf(sheetId, person, claim);
++        if (due != null && due.compareTo(threshold) > 0) {
++            throw new NoteRequiredException(due, threshold);
++        }
++    }
++
+     /** A negative amount (a correction) must name the number of a SETTLED claim of the same person;
+      *  any other amount names none. */
+     private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/NoteRequiredException.java b/src/main/java/net/officefloor/hq/app/claim/NoteRequiredException.java
+new file mode 100644
+index 000000000..a5c9d3442
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/NoteRequiredException.java
+@@ -0,0 +1,12 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++
++/** A claim whose due is above the note threshold in force on its date cannot be opened while its note
++ *  is empty. */
++public class NoteRequiredException extends RuntimeException {
++
++    public NoteRequiredException(BigDecimal due, BigDecimal threshold) {
++        super("A claim due " + due + " is above the note threshold " + threshold + " and has no note");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index c9ab61ca2..85718ebab 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -49,7 +49,7 @@ public class SettingController {
+      *  date (blank for the sheet's today) and the period numbering from (blank for off) and the grace days
+      *  (null for off), and the grades'
+      *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
+-     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold); and
++     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold, note-threshold); and
+      *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
+     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
+             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
+@@ -57,7 +57,7 @@ public class SettingController {
+     }
+ 
+     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
+-     *  terms, null for no clerk limit, cap or proof threshold. */
++     *  terms, null for no clerk limit, cap, proof threshold or note threshold. */
+     public record DatedView(String from, String value) {
+         static DatedView of(SettingValue v) {
+             String value = v.getValue() == null ? null
+@@ -99,6 +99,10 @@ public class SettingController {
+     public record ProofThresholdRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
+     }
+ 
++    /** A note threshold of 0.00 or more with up to two decimals; null removes the threshold. */
++    public record NoteThresholdRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
++    }
++
+     /** Terms of 0 or more whole days. Each figure setting is recorded from its from-date; null for the
+      *  sheet's today. */
+     public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer value, LocalDate from) {
+@@ -218,6 +222,16 @@ public class SettingController {
+         return view(sheet);
+     }
+ 
++    /** Change the sheet's note threshold. */
++    @PutMapping("/note-threshold")
++    public SettingsView setNoteThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated NoteThresholdRequest request) {
++        String sheet = sheetId.trim();
++        service.setNoteThreshold(sheet, SignedInUser.decode(user), request.value(), request.from());
++        return view(sheet);
++    }
++
+     /** Change the sheet's terms; the late charges it moves are followed in the audit. */
+     @PutMapping("/terms")
+     public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index cc4a4fe0c..d83414bd8 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -271,6 +271,12 @@ public class SettingService {
+         return inForce(sheetId, "proof-threshold", on).map(SettingValue::getValue).orElse(null);
+     }
+ 
++    /** The sheet's note threshold in force on a date: a claim of that date whose due is above it cannot
++     *  be opened while its note is empty; null when there is none. */
++    public BigDecimal noteThreshold(String sheetId, LocalDate on) {
++        return inForce(sheetId, "note-threshold", on).map(SettingValue::getValue).orElse(null);
++    }
++
+     /** A person's due-total held to the sheet's cap; a due-total of none (n/a) is not capped. */
+     public BigDecimal capped(String sheetId, BigDecimal dueTotal) {
+         return capped(sheetId, dueTotal, null);
+@@ -403,6 +409,14 @@ public class SettingService {
+                 threshold != null ? threshold.setScale(2, RoundingMode.UNNECESSARY) : null, from);
+     }
+ 
++    /** Record the sheet's note threshold from a date (null for the sheet's today); a null threshold
++     *  records none. */
++    @Transactional
++    public SettingValue setNoteThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
++        return record(sheetId, by, "note-threshold",
++                threshold != null ? threshold.setScale(2, RoundingMode.UNNECESSARY) : null, from);
++    }
++
+     /** Record the sheet's terms from a date (null for the sheet's today). */
+     @Transactional
+     public SettingValue setTerms(String sheetId, String by, int terms, LocalDate from) {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingValue.java b/src/main/java/net/officefloor/hq/app/setting/SettingValue.java
+index ba78ffe99..dc187c68b 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingValue.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingValue.java
+@@ -12,8 +12,8 @@ import java.time.LocalDate;
+ import net.officefloor.hq.app.history.HistoryListener;
+ 
+ /** A value recorded for one of a sheet's dated settings (floor, late-pct, terms, terms-&lt;grade&gt;,
+- *  clerk-limit, cap, proof-threshold): in force from its from-date until the next one recorded for the
+- *  key. Null only for the clerk limit, the cap or the proof threshold, where it means none. */
++ *  clerk-limit, cap, proof-threshold, note-threshold): in force from its from-date until the next one recorded for the
++ *  key. Null only for the clerk limit, the cap, the proof threshold or the note threshold, where it means none. */
+ @Entity
+ @Table(name = "sheet_setting_value")
+ @EntityListeners(HistoryListener.class)
