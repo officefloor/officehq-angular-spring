@@ -131,6 +131,10 @@ function compareKeys(a: string, b: string): number {
       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <p>Cut total: <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
+      @let agedTotals = figures.agedTotals();
+      <p>Aged 0 to 30 days: <strong data-testid="rollup-aged-0-30">{{ agedTotals.upTo30 }}</strong></p>
+      <p>Aged 31 to 60 days: <strong data-testid="rollup-aged-31-60">{{ agedTotals.upTo60 }}</strong></p>
+      <p>Aged 61 days or more: <strong data-testid="rollup-aged-61">{{ agedTotals.over60 }}</strong></p>
       @if (figures.tagTotals().length > 0) {
         <table data-testid="tag-totals">
           <caption>Due total by tag</caption>

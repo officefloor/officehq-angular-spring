@@ -234,6 +234,18 @@ export class Figures {
     return aged;
   }
 
+  /** The sheet's age buckets: every person's agedCents added up, not trimmed, each with two decimals. */
+  readonly agedTotals = computed(() => {
+    const sum = { upTo30: 0n, upTo60: 0n, over60: 0n };
+    for (const p of this.people.people()) {
+      const a = this.agedCents(p);
+      sum.upTo30 += a.upTo30;
+      sum.upTo60 += a.upTo60;
+      sum.over60 += a.over60;
+    }
+    return { upTo30: money(sum.upTo30), upTo60: money(sum.upTo60), over60: money(sum.over60) };
+  });
+
   /** A claim's figure: its settled due, else the figure its person's last statement bound it to, else its live due at the rate in force on its date, an overdue claim's late charge on top, at
    *  least the floor;
    *  nothing when it has no figure. */
