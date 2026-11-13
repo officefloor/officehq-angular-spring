@@ -1,0 +1,55 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index b06e99567..9762844b9 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -77,6 +77,14 @@ export class Figures {
+       .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+   }
+ 
++  /** The due of a person's SETTLED claims that count live and correct nothing, at their frozen figures. */
++  scoreSettledCents(p: Person): bigint {
++    return this.claims
++      .live()
++      .filter((c) => c.personId === p.id && c.status === 'SETTLED' && !c.corrects)
++      .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
++  }
++
+   /** The due of a person's OPEN and PENDING claims that count live (not deferred or retired-and-excluded). */
+   openCents(p: Person): bigint {
+     return this.claims
+@@ -231,10 +239,10 @@ export class Figures {
+     return this.claims.live().filter((c) => c.personId === p.id && this.claims.overdue(c));
+   }
+ 
+-  /** A person's score: their settled figures divided by 100, less 5 for every overdue claim of theirs
++  /** A person's score: their settled figures (corrections left out) divided by 100, less 5 for every overdue claim of theirs
+    *  that counts, rounded half to even to a whole number. */
+   score(p: Person): string {
+-    const tenThousandths = this.settledCents(p) - 50000n * BigInt(this.overdue(p).length);
++    const tenThousandths = this.scoreSettledCents(p) - 50000n * BigInt(this.overdue(p).length);
+     return halfEven(tenThousandths, 10000n).toString();
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 7f586be5e..634ddc31c 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -41,7 +41,7 @@ public class Rollup {
+     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+ 
+     /** A person's figures; a null due-total is n/a. Their score is the due of their settled claims that count
+-     *  divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
++     *  and correct nothing divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
+     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score) {
+     }
+ 
+@@ -140,7 +140,8 @@ public class Rollup {
+                     if (overdue(sheet, claim, person, today)) {
+                         overdue = overdue.add(figure);
+                     }
+-                    if (claim.getStatus() == ClaimStatus.SETTLED) {
++                    if (claim.getStatus() == ClaimStatus.SETTLED
++                            && (claim.getCorrects() == null || claim.getCorrects().isEmpty())) {
+                         settled = settled.add(figure);
+                     }
+                 }
