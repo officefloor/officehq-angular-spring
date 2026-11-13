@@ -2,6 +2,7 @@ import { Component, inject, linkedSignal, signal } from '@angular/core';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { Claims } from '../../core/claims';
 import { Holidays } from '../../core/holidays';
+import { Notes } from '../../core/notes';
 import { People } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Plans } from '../../core/plans';
@@ -23,6 +24,7 @@ import { BulkSettle } from '../claims/bulk-settle';
 import { PasteClaims } from '../claims/paste-claims';
 import { HeaderCounters } from '../header/header';
 import { HolidaysPanel } from '../holidays/holidays';
+import { NotesPanel } from '../notes/notes';
 import { ImportPeople } from '../people/import-people';
 import { PeopleList } from '../people/people';
 import { PeriodsPanel } from '../periods/periods';
@@ -41,7 +43,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   hostDirectives: [LocaleFigures],
-  imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -135,6 +137,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-import-rates />
         <app-periods />
         <app-holidays />
+        <app-notes />
         <app-void-reasons />
         <app-claim-templates />
         <app-people />
@@ -180,6 +183,7 @@ export class Home {
   private readonly periods = inject(Periods);
   private readonly roles = inject(Roles);
   private readonly holidays = inject(Holidays);
+  private readonly notes = inject(Notes);
   private readonly voidReasons = inject(VoidReasons);
   private readonly claimTemplates = inject(ClaimTemplates);
   private readonly pools = inject(Pools);
@@ -248,7 +252,7 @@ export class Home {
     return this.session.trackLoad(
       (async () =>
         (await this.session.loadSheet(id)) ??
-        (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.crews.load(), this.plans.load()])).find((err) => err !== null) ??
+        (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.notes.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.crews.load(), this.plans.load()])).find((err) => err !== null) ??
         null)(),
     );
   }
