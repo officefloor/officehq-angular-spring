@@ -1,0 +1,141 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 2da57d15a..b4c8140d7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,4 +1,4 @@
+-import { HttpClient } from '@angular/common/http';
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+@@ -120,8 +120,8 @@ export class People {
+     this.error.set(null);
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+-    const body = { name: this.name(), grade: this.grade() };
+-    if (!body.name.trim()) {
++    const body = { name: this.name().trim(), grade: this.grade() };
++    if (!body.name) {
+       this.error.set('Type a name for the person.');
+       return;
+     }
+@@ -138,8 +138,12 @@ export class People {
+         id === null ? [...list, saved] : list.map((p) => (p.id === saved.id ? saved : p)),
+       );
+       this.reset();
+-    } catch {
+-      this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 409) {
++        this.error.set(`Another person on the sheet is already named ${body.name}.`);
++      } else {
++        this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
++      }
+     }
+   }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/NameInUseException.java b/src/main/java/net/officefloor/hq/app/person/NameInUseException.java
+new file mode 100644
+index 000000000..a165a370e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/NameInUseException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.person;
++
++/** Another person on the sheet already has this name (ignoring case and surrounding spaces). */
++public class NameInUseException extends RuntimeException {
++
++    public NameInUseException(String name) {
++        super("The name " + name + " is already in use on the sheet");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 74aad5277..9c072ceaa 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.util.List;
+ import java.util.NoSuchElementException;
++import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+@@ -66,4 +67,10 @@ public class PersonController {
+     @ResponseStatus(HttpStatus.NOT_FOUND)
+     public void notFound() {
+     }
++
++    /** The name is already in use on the sheet; a concurrent save is caught by the unique index. */
++    @ExceptionHandler({NameInUseException.class, DataIntegrityViolationException.class})
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public void nameInUse() {
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 0cccf6e8a..9c3055223 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
+ import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface PersonRepository extends JpaRepository<Person, Long> {
+ 
+@@ -10,4 +11,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+ 
+     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
++
++    /** Whether another person on the sheet (not {@code exceptId}) has this name, ignoring case. */
++    @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)"
++            + " and (:exceptId is null or p.id <> :exceptId)")
++    boolean nameInUse(String sheetId, String name, Long exceptId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 05291cdfb..f197e463e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -27,7 +27,9 @@ public class PersonService {
+     @Transactional
+     public Person add(String sheetId, String name, String grade) {
+         sheets.load(sheetId);
+-        return people.save(new Person(sheetId, name, grade));
++        String trimmed = name.trim();
++        requireFreeName(sheetId, trimmed, null);
++        return people.saveAndFlush(new Person(sheetId, trimmed, grade));
+     }
+ 
+     /** Change a person's name and grade. */
+@@ -35,8 +37,16 @@ public class PersonService {
+     public Person update(String sheetId, Long id, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+-        person.setName(name);
++        String trimmed = name.trim();
++        requireFreeName(sheetId, trimmed, id);
++        person.setName(trimmed);
+         person.setGrade(grade);
+-        return people.save(person);
++        return people.saveAndFlush(person);
++    }
++
++    private void requireFreeName(String sheetId, String name, Long exceptId) {
++        if (people.nameInUse(sheetId, name, exceptId)) {
++            throw new NameInUseException(name);
++        }
+     }
+ }
+diff --git a/src/main/resources/db/migration/V4__person_name_unique.sql b/src/main/resources/db/migration/V4__person_name_unique.sql
+new file mode 100644
+index 000000000..e020597d5
+--- /dev/null
++++ b/src/main/resources/db/migration/V4__person_name_unique.sql
+@@ -0,0 +1,5 @@
++-- A person's name is unique on the sheet, compared without regard to case and ignoring spaces
++-- around it. Names are kept trimmed; name_key is the comparison form the unique index holds.
++UPDATE person SET name = TRIM(name);
++ALTER TABLE person ADD COLUMN name_key VARCHAR(200) GENERATED ALWAYS AS (LOWER(name));
++CREATE UNIQUE INDEX person_sheet_name ON person (sheet_id, name_key);
