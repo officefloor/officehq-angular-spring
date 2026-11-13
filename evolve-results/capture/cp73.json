@@ -1,0 +1,64 @@
+{
+  "checkpoint": 73,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp73_statement-as-of",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3fa6bab90468ae968971338656ba9c9a50512fa8",
+  "reset_sha": "",
+  "preagent_sha": "f385a88fd96468eac9c29333cad1ad4d00ed1dda",
+  "prev_sha": "f385a88fd96468eac9c29333cad1ad4d00ed1dda",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.828873599999999,
+    "input_tokens": 74,
+    "output_tokens": 42580,
+    "cache_read_tokens": 3961848,
+    "cache_creation_tokens": 148076,
+    "num_turns": 41,
+    "duration_ms": 693908,
+    "duration_api_ms": 403230,
+    "model": "claude-opus-5-5",
+    "session_id": "9e4afa4a-11dc-4bac-b50f-1b413ef31a08",
+    "stop_reason": "success",
+    "result_text": "You can now take a statement as of a past date, and all 4 tests in `bin/e2e` pass.\n\n**What changed**\n\n- **Screen:** each person's row has a date field (`person-statement-asof`) beside the Statement button. Leaving it blank takes the statement now, as before. After a statement goes through, the field clears, so the next plain statement isn't taken with an old date by mistake.\n- **Server:** the statement endpoint accepts an optional date. A date after the sheet's today is refused with an error on the person and writes nothing. When a date is given, the STATEMENT audit line ends with `asof=<date>`, and the row shows that date as the statement date.\n- **History:** working out \"figures as they stood then\" needs a record of past values. A new migration, `V49__as_of_history.sql`, keeps a copy of each saved state of claims, rates, person grades, dated settings and the policy date. Each copy is stamped with the sheet's today at the time of the change. Most copies are written automatically on every save (`history/HistoryListener.java`), so all the existing ways of changing a claim are covered. Holds and people now also record the sheet's today when they were added.\n- **Working out the figures:** for each of the person's current claims, the statement looks up the latest copy saved on or before the date. That gives its status, amount, settled due, any earlier statement's binding, and any deferral as they were then. Grades, rates, floor, late percent, cap, rounding and holds are read the same way. The chosen date stands in for the sheet's today everywhere, including late charges and deferrals. Claims that hadn't been added by then, or belonged to someone else then, are left unstated. The other services gained an optional as-of date for this; when no date is given they behave exactly as before.\n\n**Decisions for you**\n\n- **An extra refusal rule I inferred.** The tests expect some dates before the sheet's today to be refused too. In each of those cases the person was added after the chosen date, so I also refuse a date before the person was on the sheet. The request doesn't say this. The tests can't tell my rule apart from another one, \"refuse dates before the sheet's first recorded today\". Please confirm which you meant.\n- **Retirements and closed periods** are listed in the request, but they play no part in the figures. A normal statement doesn't use them either, so I left them out. The tests agree: a statement as of a date inside a closed period goes through.\n- **Data saved before this change has no history.** People and holds from before the migration count as always having existed. Claims, rates, grades and settings with no history aren't found at all, so a past-date statement leaves those claims unstated and treats those rates and settings as unset. This makes no difference to the tests, which start from an empty in-memory database each run.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.828873599999999,
+        "num_turns": 41,
+        "duration_ms": 693908,
+        "duration_api_ms": 403230,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp73.agent.jsonl",
+  "agent_diff_file": "cp73.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
