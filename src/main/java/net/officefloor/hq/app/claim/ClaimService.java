@@ -1127,8 +1127,9 @@ public class ClaimService {
         }
         boolean rated = Rollup.inForce(rates.findWithAncestors(sheetId, sheetRows.ancestors(sheetId)), person.gradeOn(today), today).isPresent();
         BigDecimal summed = total;
+        BigDecimal cutTotal = rollup.cutTotals(sheetId).get(personId);
         BigDecimal dueTotal = rated || figure
-                ? sheetRows.findById(sheetId).map(s -> s.capped(summed)).orElse(summed) : null;
+                ? sheetRows.findById(sheetId).map(s -> s.capped(summed, cutTotal)).orElse(summed) : null;
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
@@ -1189,7 +1190,7 @@ public class ClaimService {
             claim.setStated(figures.containsKey(claim.getId()), figures.get(claim.getId()));
         }
         boolean rated = Rollup.inForce(ratesThen, then.gradeOn(asOf), asOf).isPresent();
-        BigDecimal dueTotal = rated || figure ? sheetThen.capped(total) : null;
+        BigDecimal dueTotal = rated || figure ? sheetThen.capped(total, rollup.cutTotals(sheetId, asOf).get(personId)) : null;
         int counted = figures.size();
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, asOf, dueTotal, counted));

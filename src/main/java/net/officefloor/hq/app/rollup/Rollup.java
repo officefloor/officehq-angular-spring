@@ -18,10 +18,15 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.StatusChange;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.history.AsOf;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.Pool;
+import net.officefloor.hq.app.pool.PoolController;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -73,23 +78,49 @@ public class Rollup {
     private final ClaimRepository claims;
     private final RateRepository rates;
     private final SheetRepository sheets;
+    private final PoolRepository pools;
+    private final CrewRepository crews;
     private final AsOf asOf;
     private final Audit audit;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            AsOf asOf, Audit audit) {
+            PoolRepository pools, CrewRepository crews, AsOf asOf, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
         this.sheets = sheets;
+        this.pools = pools;
+        this.crews = crews;
         this.asOf = asOf;
         this.audit = audit;
     }
 
     /** The sheet's figures now. */
     public Snapshot take(String sheetId) {
-        return take(sheets.findById(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
-                claims.findBySheetIdOrderByIdDesc(sheetId), rates.findWithAncestors(sheetId, sheets.ancestors(sheetId)));
+        Optional<Sheet> sheet = sheets.findById(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        return take(sheet, sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
+                rates.findWithAncestors(sheetId, sheets.ancestors(sheetId)),
+                cutTotals(sheet, sheetPeople, pools.findBySheetIdOrderByIdAsc(sheetId),
+                        crews.findBySheetIdOrderByIdAsc(sheetId)));
+    }
+
+    /** Each person's cut total now, by person id. */
+    public Map<Long, BigDecimal> cutTotals(String sheetId) {
+        return cutTotals(sheets.findById(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+                pools.findBySheetIdOrderByIdAsc(sheetId), crews.findBySheetIdOrderByIdAsc(sheetId));
+    }
+
+    /** Each person's cut total as the sheet stood at the end of a date, that date its today, by person id. */
+    public Map<Long, BigDecimal> cutTotals(String sheetId, LocalDate date) {
+        return cutTotals(Optional.of(asOf.sheet(sheetId, date)), asOf.people(sheetId, date),
+                asOf.pools(sheetId, date), asOf.crews(sheetId, date));
+    }
+
+    private static Map<Long, BigDecimal> cutTotals(Optional<Sheet> sheet, List<Person> sheetPeople,
+            List<Pool> sheetPools, List<Crew> sheetCrews) {
+        return sheet.map(s -> PoolController.cutTotals(sheetPools, sheetCrews, sheetPeople, s.getPot(), s.getToday()))
+                .orElse(Map.of());
     }
 
     /** The sheet's figures as it stood at the end of a date, that date its today: its rows, and its ancestors'
@@ -98,10 +129,11 @@ public class Rollup {
         List<Rate> sheetRates = new ArrayList<>(asOf.rates(sheetId, date));
         sheets.ancestors(sheetId).forEach(a -> sheetRates.addAll(asOf.rates(a, date)));
         return take(Optional.of(asOf.sheet(sheetId, date)), asOf.people(sheetId, date), asOf.claims(sheetId, date),
-                sheetRates);
+                sheetRates, cutTotals(sheetId, date));
     }
 
-    private Snapshot take(Optional<Sheet> sheet, List<Person> sheetPeople, List<Claim> sheetClaims, List<Rate> sheetRates) {
+    private Snapshot take(Optional<Sheet> sheet, List<Person> sheetPeople, List<Claim> sheetClaims, List<Rate> sheetRates,
+            Map<Long, BigDecimal> cuts) {
         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = ZERO;
@@ -172,7 +204,7 @@ public class Rollup {
             BigDecimal score = settled.subtract(BigDecimal.valueOf(500L * overdueCount))
                     .movePointLeft(2).setScale(0, RoundingMode.HALF_EVEN);
             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
-            BigDecimal personDue = rated || keptFigure ? capped(sheet, due) : null;
+            BigDecimal personDue = rated || keptFigure ? capped(sheet, due, cuts.get(person.getId())) : null;
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, score));
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
@@ -583,9 +615,9 @@ public class Rollup {
                 .orElse(figure);
     }
 
-    /** A person's due-total at most the sheet's cap. */
-    private static BigDecimal capped(Optional<Sheet> sheet, BigDecimal dueTotal) {
-        return sheet.map(s -> s.capped(dueTotal)).orElse(dueTotal);
+    /** A person's due-total at most the sheet's cap less their cut total. */
+    private static BigDecimal capped(Optional<Sheet> sheet, BigDecimal dueTotal, BigDecimal cutTotal) {
+        return sheet.map(s -> s.capped(dueTotal, cutTotal)).orElse(dueTotal);
     }
 
     private static boolean sameDue(BigDecimal a, BigDecimal b) {

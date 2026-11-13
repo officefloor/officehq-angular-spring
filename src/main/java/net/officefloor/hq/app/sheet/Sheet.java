@@ -312,10 +312,18 @@ public class Sheet {
         return reviewThresholdOn(today);
     }
 
-    /** A person's due-total as it counts: at most the cap; none (n/a) stays none. */
-    public BigDecimal capped(BigDecimal dueTotal) {
+    /** A person's due-total as it counts, with their cut total: at most the cap less the cut total (not below
+     *  0.00); none (n/a) stays none. */
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
+        BigDecimal limit = capLess(cutTotal);
+        return dueTotal == null || limit == null ? dueTotal : dueTotal.min(limit);
+    }
+
+    /** The most a person's due-total can be with their cut total: the cap less it, not below 0.00; none when
+     *  there is no cap. */
+    public BigDecimal capLess(BigDecimal cutTotal) {
         BigDecimal cap = getCap();
-        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+        return cap == null ? null : cap.subtract(cutTotal == null ? BigDecimal.ZERO : cutTotal).max(BigDecimal.ZERO.setScale(2));
     }
 
     /** The sheet's terms on a date; 14 before every from-date. */

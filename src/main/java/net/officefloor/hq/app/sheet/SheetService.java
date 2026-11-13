@@ -396,10 +396,14 @@ public class SheetService {
     @Transactional
     public Sheet setPot(String id, String user, BigDecimal pot) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(id);
         BigDecimal p = pot == null ? null : pot.setScale(2);
         sheet.setPot(p);
+        sheets.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
                 + (p == null ? "" : p.toPlainString()));
+        // a person's cut moves what the cap leaves their due-total
+        rollup.recordChanges(id, user, before);
         return sheet;
     }
 

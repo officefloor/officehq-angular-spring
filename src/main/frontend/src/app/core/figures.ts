@@ -3,6 +3,7 @@ import { Claim, Claims, bound, countsAt, isOpen, partCents, statusAt } from './c
 import { CrewView, Crews } from './crews';
 import { GRADES, People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
+import { Pools } from './pools';
 import { NO_RATE, Rates, halfEven, hundredths, money, rounded } from './rates';
 import { Roles } from './roles';
 import { Session, addDays } from './session';
@@ -28,27 +29,33 @@ export class Figures {
   private readonly crews = inject(Crews);
   private readonly people = inject(People);
   private readonly periods = inject(Periods);
+  private readonly pools = inject(Pools);
   private readonly rates = inject(Rates);
   private readonly roles = inject(Roles);
   private readonly session = inject(Session);
 
-  /** A person's due-total: the sum of their figures, at most the sheet's cap. Null (n/a) is not capped. */
+  /** A person's due-total: the sum of their figures, at most the sheet's cap less their cut total (not below
+   *  0.00). Null (n/a) is not capped. */
   dueCents(p: Person): bigint | null {
     const sum = this.sumCents(p);
-    const cap = this.capCents();
+    const cap = this.capCents(p);
     return sum !== null && cap !== null && sum > cap ? cap : sum;
   }
 
-  /** How far the sum of a person's figures is above the sheet's cap; 0 when it is not (or is n/a). */
+  /** How far the sum of a person's figures is above the sheet's cap less their cut total; 0 when it is not
+   *  (or is n/a). */
   excessCents(p: Person): bigint {
     const sum = this.sumCents(p);
-    const cap = this.capCents();
+    const cap = this.capCents(p);
     return sum !== null && cap !== null && sum > cap ? sum - cap : 0n;
   }
 
-  private capCents(): bigint | null {
+  /** The most a person's due-total can be: the sheet's cap less their cut total, not below 0.00; null for no cap. */
+  private capCents(p: Person): bigint | null {
     const cap = this.session.cap();
-    return cap === null ? null : hundredths(cap);
+    if (cap === null) return null;
+    const left = hundredths(cap) - (this.pools.cutCents().get(p.id) ?? 0n);
+    return left > 0n ? left : 0n;
   }
 
   /** The sum of the figures of a person's claims that count live (not left out by a hold), less the parts others

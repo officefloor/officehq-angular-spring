@@ -4,6 +4,7 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -17,10 +18,12 @@ public class CrewService {
     private final PoolRepository pools;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final Audit audit;
 
     public CrewService(CrewRepository crews, PoolRepository pools, PersonRepository people, SheetService sheets,
-            Audit audit) {
+            Rollup rollup, Audit audit) {
+        this.rollup = rollup;
         this.crews = crews;
         this.pools = pools;
         this.people = people;
@@ -53,8 +56,11 @@ public class CrewService {
         if (lead == null) {
             throw new CrewRefusedException("Choose a lead.");
         }
+        Rollup.Snapshot before = rollup.take(sheetId);
         Crew saved = crews.saveAndFlush(new Crew(sheetId, n, lead.getId()));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + n + " lead=" + lead.getName());
+        // a crew's cuts move what the cap leaves its people's due-totals
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
@@ -73,10 +79,12 @@ public class CrewService {
         if (crew.includes(person.getId())) {
             throw new CrewRefusedException(person.getName() + " is already in " + crew.getName() + ".");
         }
+        Rollup.Snapshot before = rollup.take(sheetId);
         crew.addMember(person.getId());
         Crew saved = crews.saveAndFlush(crew);
         audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
                 + " name=" + person.getName());
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 }

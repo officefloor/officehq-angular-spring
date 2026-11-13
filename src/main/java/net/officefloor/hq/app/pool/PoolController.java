@@ -246,6 +246,23 @@ public class PoolController {
         return out;
     }
 
+    /** Each person's cut total as it stands now (the pools, crews, people and pot given, today as the sheet's
+     *  today): their cuts across every pool and crew they are a member of, added up, by person id; a person
+     *  with no cut is left out. */
+    public static Map<Long, BigDecimal> cutTotals(List<Pool> pools, List<Crew> crews, List<Person> people,
+            BigDecimal pot, LocalDate today) {
+        Map<Long, Person> byId = people.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, BigDecimal> out = new HashMap<>();
+        for (PoolView v : PoolView.of(pools, crews, byId, pot, today)) {
+            for (PoolMemberView m : v.members()) {
+                if (m.personId() != null && m.cut() != null) {
+                    out.merge(m.personId(), new BigDecimal(m.cut()), BigDecimal::add);
+                }
+            }
+        }
+        return out;
+    }
+
     /** The views with each member's cut for each period that is closed or soft-closed, or whose to-date is on
      *  or before today, by from-date: for a closed or soft-closed one, its cut fixed when it was closed; for an
      *  open one, its cut in the pools as they stood at its end (then, by that date). */

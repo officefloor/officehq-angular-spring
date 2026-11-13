@@ -9,6 +9,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rollup.Rollup;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +25,12 @@ public class PoolService {
     private final CrewRepository crews;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Rollup rollup;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, CrewRepository crews, PersonRepository people, SheetService sheets,
-            Audit audit) {
+            Rollup rollup, Audit audit) {
+        this.rollup = rollup;
         this.pools = pools;
         this.crews = crews;
         this.people = people;
@@ -83,6 +86,7 @@ public class PoolService {
             throw new PoolRefusedException("A membership cannot end before it starts.");
         }
         BigDecimal s = share.setScale(2);
+        Rollup.Snapshot before = rollup.take(sheetId);
         String name;
         if (person != null) {
             if (pool.hasMember(person.getId())) {
@@ -99,6 +103,8 @@ public class PoolService {
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + name + " share=" + s.toPlainString() + (from == null ? "" : " from=" + from)
                 + (to == null ? "" : " to=" + to));
+        // a member's cut moves what the cap leaves their due-total
+        rollup.recordChanges(sheetId, user, before);
         return saved;
     }
 
