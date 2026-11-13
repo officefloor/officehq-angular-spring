@@ -1,0 +1,64 @@
+{
+  "checkpoint": 65,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp65_void-settled",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward may void a SETTLED claim within 7 days of its settlement by the sheet's today (the\nstatus log's SETTLED date). The frozen figure leaves every total, the claim keeps its number, and\nCLAIM_VOIDED ends with reversed=<the frozen figure>. Anyone else, a later day, or a claim in a\nclosed period is refused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward may void a SETTLED claim within 7 days of its settlement by the sheet's today (the\nstatus log's SETTLED date). The frozen figure leaves every total, the claim keeps its number, and\nCLAIM_VOIDED ends with reversed=<the frozen figure>. Anyone else, a later day, or a claim in a\nclosed period is refused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f87c3c482a612804985cc26adc5a760ac0693b96",
+  "reset_sha": "",
+  "preagent_sha": "0d2bf99077d94847ca51dd754b9d1d925afffecc",
+  "prev_sha": "0d2bf99077d94847ca51dd754b9d1d925afffecc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.80018,
+    "input_tokens": 36,
+    "output_tokens": 7085,
+    "cache_read_tokens": 835200,
+    "cache_creation_tokens": 61412,
+    "num_turns": 19,
+    "duration_ms": 323582,
+    "duration_api_ms": 80006,
+    "model": "claude-opus-5-5",
+    "session_id": "68a2adba-0135-46dd-8e09-0017830f5683",
+    "stop_reason": "success",
+    "result_text": "A steward can now void a SETTLED claim within 7 days of its settlement. `bin/e2e` passes all 4 tests in the spec.\n\n**Server (`ClaimService.changeStatus`)**\n- Voiding a SETTLED claim is refused when:\n  - the user's role is not steward (a steward role delegated to them counts), or\n  - the claim is dated in a closed period, or\n  - the sheet's today is more than 7 days after the date of the latest SETTLED line in the claim's status log. A claim settled 2026-03-10 can still be voided on 03-17 but not on 03-18.\n- These refusals use a new `VoidRefusedException`, which returns a 409 \"conflict\" response and shows the error on the claim's row. The existing permission and closed-period checks still run first.\n- A voided claim keeps its number and its frozen figure on the row, but no longer counts in any total. Its `CLAIM_VOIDED` audit line now ends with `reversed=<frozen figure>`. Voids of DRAFT, OPEN and PENDING claims are recorded exactly as before.\n- The ROLLUP and TOTALS audit lines after the void are written by the existing totals logic; I didn't change it.\n\n**Front end (`claims.ts`)**\n- The Void button was already on every claim row, so I only added a specific refusal message for a settled claim.\n- I also updated the status descriptions in `ClaimStatus.java`, `claims.ts` and the controller to mention the new rule.\n\nIf a claim has been re-settled, the 7 days count from its most recent settlement, since that adds another SETTLED line to the log. The request only says \"the status log's SETTLED date\", so that choice is mine.\n\nThe 7-day limit is a constant (`VOID_WINDOW_DAYS`) in `ClaimService`, not a sheet setting.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.80018,
+        "num_turns": 19,
+        "duration_ms": 323582,
+        "duration_api_ms": 80006,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp65.agent.jsonl",
+  "agent_diff_file": "cp65.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
