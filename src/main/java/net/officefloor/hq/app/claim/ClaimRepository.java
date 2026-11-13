@@ -47,5 +47,15 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
             + " and (:id is null or c.id <> :id)")
     boolean refInUse(@Param("sheetId") String sheetId, @Param("refKey") String refKey, @Param("id") Long id);
 
+    /** Every tag ever used on the sheet's claims, sorted. */
+    @Query(value = "SELECT tag FROM sheet_tag WHERE sheet_id = :sheetId ORDER BY tag", nativeQuery = true)
+    List<String> tagsUsed(@Param("sheetId") String sheetId);
+
+    /** Keep a tag on the sheet's list of the tags ever used. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "MERGE INTO sheet_tag (sheet_id, tag) KEY (sheet_id, tag) VALUES (:sheetId, :tag)",
+            nativeQuery = true)
+    void useTag(@Param("sheetId") String sheetId, @Param("tag") String tag);
+
     Optional<Claim> findByIdAndSheetIdAndPersonId(Long id, String sheetId, Long personId);
 }

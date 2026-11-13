@@ -11,8 +11,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.TreeSet;
 import net.officefloor.hq.app.history.HistoryListener;
 import net.officefloor.hq.app.person.PersonHold;
 
@@ -116,6 +118,10 @@ public class Claim {
     @Column(name = "ref_key")
     private String refKey;
 
+    /** The claim's tags, lower case, sorted and comma separated; null when it has none. */
+    @Column(name = "tags")
+    private String tags;
+
     protected Claim() {
     }
 
@@ -138,6 +144,7 @@ public class Claim {
         split.number = number;
         split.openedBy = openedBy;
         split.splitFrom = from.number;
+        split.tags = from.tags;
         return split;
     }
 
@@ -235,6 +242,16 @@ public class Claim {
     public void setRef(String ref) {
         this.ref = ref;
         this.refKey = keyOf(ref);
+    }
+
+    /** The claim's tags, sorted; empty when it has none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give the claim its tags (already trimmed, lower case and without repeats), or none (empty). */
+    public void setTags(Collection<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", new TreeSet<>(tags));
     }
 
     /** A reference as it is compared on the sheet, without regard to case; null for none. */

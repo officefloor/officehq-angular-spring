@@ -220,6 +220,13 @@ interface StatementTaken {
       <p>Open in total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      @if (tagTotals().length > 0) {
+        <ul aria-label="Due in total by tag">
+          @for (t of tagTotals(); track t.tag) {
+            <li>{{ t.tag }} <strong [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ t.dueTotal }}</strong></li>
+          }
+        </ul>
+      }
 
       <table>
         <thead>
@@ -543,6 +550,25 @@ export class People {
       ),
     ),
   );
+  /** Every tag ever used on the sheet, as the store last told it. */
+  private readonly usedTags = signal<string[]>([]);
+  /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it
+   *  added up (a claim with no figure adds nothing; one with two tags counts in both). */
+  protected readonly tagTotals = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const floor = this.floor();
+    const late = this.late();
+    const totals = new Map<string, number>();
+    for (const tag of this.usedTags()) totals.set(tag, 0);
+    for (const c of this.claims()) for (const tag of c.tags) if (!totals.has(tag)) totals.set(tag, 0);
+    for (const c of this.live()) {
+      const theirs = grades.get(c.personId);
+      if (theirs === undefined || c.tags.length === 0) continue;
+      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), floor, late) ?? 0;
+      for (const tag of c.tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
+    }
+    return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
+  });
   /** Everyone's settled-total added up (not trimmed). */
   protected readonly settledTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.settledCentsOf(p), 0)),
@@ -695,6 +721,7 @@ export class People {
       const load = this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.usedTags.set([]);
       this.rowError.set(null);
       this.retireDates.set({});
       this.holdDates.set({});
@@ -1346,13 +1373,15 @@ export class People {
   /** Read the sheet's people and claims; a response for an earlier load is dropped. */
   private async read(sheet: string, load: number): Promise<void> {
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [list, claims] = await Promise.all([
+    const [list, claims, tags] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${base}/people`)),
       firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
+      firstValueFrom(this.http.get<string[]>(`${base}/claim-tags`)),
     ]);
     if (this.session.loads() !== load) return;
     this.people.set(list);
     this.claims.set(claims);
+    this.usedTags.set(tags);
   }
 }
 

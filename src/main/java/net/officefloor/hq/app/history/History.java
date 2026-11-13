@@ -71,6 +71,7 @@ public class History {
                     }
                     if (is != null) {
                         was.setRef(is.getRef());
+                        was.setTags(is.getTags());
                     }
                     return was;
                 },

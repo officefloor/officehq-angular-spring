@@ -49,12 +49,13 @@ public class ClaimController {
      *  to it; splitFrom is the number of the claim it was split off (null when it was not); lockedBy is
      *  the user whose open editor locks it (null when no one's does); lateEntry is whether it was
      *  added while its period was soft-closed; remindedOn is the last day a reminder was written for it
-     *  (null when none was); ref is its external reference (null when it has none). */
+     *  (null when none was); ref is its external reference (null when it has none); tags are its tags,
+     *  sorted (empty when it has none). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            LocalDate remindedOn, String ref) {
+            LocalDate remindedOn, String ref, List<String> tags) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -63,19 +64,21 @@ public class ClaimController {
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn(), claim.getRef());
+                    claim.getRemindedOn(), claim.getRef(), claim.getTags());
         }
     }
 
     /** A claim's fields: an amount with up to two decimals (a negative one is a correction), a date
      *  (blank takes the sheet's today), a note (may be empty) and, for a correction, the number of
-     *  the claim it corrects, and an external reference (blank: none). */
+     *  the claim it corrects, an external reference (blank: none) and tags, comma separated (blank:
+     *  none). */
     public record ClaimRequest(
             @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 2000) String note,
             @Size(max = 255) String corrects,
-            @Size(max = 255) String ref) {
+            @Size(max = 255) String ref,
+            @Size(max = 2000) String tags) {
     }
 
     /** The date an OPEN claim is deferred until. */
@@ -149,6 +152,12 @@ public class ClaimController {
                 .toList();
     }
 
+    /** Every tag ever used on the sheet's claims, sorted. */
+    @GetMapping("/claim-tags")
+    public List<String> tags(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
+        return service.tagsUsed(sheetId.trim());
+    }
+
     /** Add a claim for a person. */
     @PostMapping("/people/{personId}/claims")
     @ResponseStatus(HttpStatus.CREATED)
@@ -157,7 +166,7 @@ public class ClaimController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return view(sheet, rollups.track(sheet, by, () -> service.add(sheet, by, personId, request.amount(),
-                request.date(), request.note(), request.corrects(), request.ref())));
+                request.date(), request.note(), request.corrects(), request.ref(), request.tags())));
     }
 
     /** Change a DRAFT claim's amount, date and note. */
@@ -168,7 +177,7 @@ public class ClaimController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return view(sheet, rollups.track(sheet, by, () -> service.update(sheet, by, personId, id,
-                request.amount(), request.date(), request.note(), request.corrects(), request.ref())));
+                request.amount(), request.date(), request.note(), request.corrects(), request.ref(), request.tags())));
     }
 
     /** Open a claim's editor: lock the DRAFT claim to the user until they save or cancel it. */

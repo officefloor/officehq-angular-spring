@@ -59,6 +59,8 @@ export interface Claim {
   lateEntry: boolean;
   /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
   ref: string | null;
+  /** The claim's tags, lower case and sorted; empty when it has none. */
+  tags: string[];
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -237,6 +239,13 @@ const NUMBER = /^\S+$/;
         [value]="ref()"
         (input)="ref.set(value($event)); error.set(null)"
       />
+      <label [for]="'claim-tags-' + personId()">Tags (comma separated)</label>
+      <input
+        [id]="'claim-tags-' + personId()"
+        data-testid="claim-form-tags"
+        [value]="tags()"
+        (input)="tags.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -258,6 +267,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
+          <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-due-by">{{ dueBy(c) }}</span>
           <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span>
@@ -428,6 +438,7 @@ export class PersonClaims {
   protected readonly note = signal('');
   protected readonly corrects = signal('');
   protected readonly ref = signal('');
+  protected readonly tags = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
@@ -601,6 +612,7 @@ export class PersonClaims {
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
     this.ref.set(claim.ref ?? '');
+    this.tags.set(claim.tags.join(', '));
     this.error.set(null);
   }
 
@@ -731,7 +743,7 @@ export class PersonClaims {
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}`;
     try {
       const saved = await firstValueFrom(
-        this.http.put<Claim>(url, { amount, date: claim.date, note: claim.note, corrects: claim.corrects, ref: claim.ref }),
+        this.http.put<Claim>(url, { amount, date: claim.date, note: claim.note, corrects: claim.corrects, ref: claim.ref, tags: claim.tags.join(',') }),
       );
       if (this.session.sheetId() !== sheet) return;
       this.setInlineAmount(claim.id, '');
@@ -839,6 +851,7 @@ export class PersonClaims {
     this.note.set('');
     this.corrects.set('');
     this.ref.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -914,6 +927,7 @@ export class PersonClaims {
       note: this.note().trim(),
       corrects: corrects === '' ? null : corrects,
       ref: this.ref().trim() || null,
+      tags: this.tags().trim() || null,
     };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims`;
