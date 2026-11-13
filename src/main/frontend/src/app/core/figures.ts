@@ -3,7 +3,7 @@ import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
 import { CrewView, Crews } from './crews';
 import { People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
-import { NO_RATE, Rates, hundredths, money, rounded } from './rates';
+import { NO_RATE, Rates, halfEven, hundredths, money, rounded } from './rates';
 import { Roles } from './roles';
 import { Session, addDays } from './session';
 
@@ -134,14 +134,16 @@ export class Figures {
     return today !== null && this.roles.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
   });
 
-  /** The ids of the people a restricted user's people list shows: the person with the user's name and
-   *  everyone in a crew they lead or belong to; null when the signed-in user is not restricted (a user
+  /** The ids of the people a restricted user's people list shows: the person with the user's name,
+   *  everyone in a crew they lead or belong to, and anyone they added on this screen until the sheet is
+   *  loaded again; null when the signed-in user is not restricted (a user
    *  delegated the steward role acts as a steward). Every other figure is still over everyone. */
   readonly visibleIds = computed(() => {
     const user = this.session.user();
     if (!user || this.steward()) return null;
     if (!this.roles.roles().some((r) => r.user === user && r.role === 'restricted')) return null;
-    const ids = new Set<number>();
+    const loaded = this.people.loadedIds();
+    const ids = new Set<number>(this.people.people().filter((o) => !loaded.has(o.id)).map((o) => o.id));
     const p = this.me();
     if (!p) return ids;
     ids.add(p.id);
@@ -227,6 +229,13 @@ export class Figures {
   /** A person's claims that count live and are overdue. */
   overdue(p: Person): Claim[] {
     return this.claims.live().filter((c) => c.personId === p.id && this.claims.overdue(c));
+  }
+
+  /** A person's score: their settled figures divided by 100, less 5 for every overdue claim of theirs
+   *  that counts, rounded half to even to a whole number. */
+  score(p: Person): string {
+    const tenThousandths = this.settledCents(p) - 50000n * BigInt(this.overdue(p).length);
+    return halfEven(tenThousandths, 10000n).toString();
   }
 
   /** The due of a person's overdue claims that count, added up. */

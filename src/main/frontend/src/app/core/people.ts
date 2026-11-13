@@ -144,6 +144,8 @@ export class People {
   readonly showRetired = signal(false);
   /** The ids of the people chosen for a bulk grade or retire. */
   readonly selected = signal<ReadonlySet<number>>(new Set());
+  /** The ids of the people the last load read; anyone else was added on this screen since. */
+  readonly loadedIds = signal<ReadonlySet<number>>(new Set());
   private loads = 0;
 
   /** Re-read the active sheet's people from the server; an error message when that failed. */
@@ -153,12 +155,16 @@ export class People {
     const load = ++this.loads;
     this.people.set([]);
     this.selected.set(new Set());
+    this.loadedIds.set(new Set());
     if (!user || !sid) return null;
     try {
       const people = await firstValueFrom(
         this.http.get<Person[]>(this.url(sid), { headers: { 'X-User': user } }),
       );
-      if (load === this.loads) this.people.set(people);
+      if (load === this.loads) {
+        this.people.set(people);
+        this.loadedIds.set(new Set(people.map((p) => p.id)));
+      }
       return null;
     } catch (e) {
       return failed('load', e).replace(' person', ' people');
