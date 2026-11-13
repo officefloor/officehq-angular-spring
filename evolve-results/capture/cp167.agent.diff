@@ -1,0 +1,119 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 7590f6ed6..fe68bb22e 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -1,5 +1,6 @@
+ import { Injectable, computed, inject } from '@angular/core';
+ import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
++import { CrewView, Crews } from './crews';
+ import { People, Person, gradeOn } from './people';
+ import { Period, Periods } from './periods';
+ import { NO_RATE, Rates, hundredths, money, rounded } from './rates';
+@@ -23,6 +24,7 @@ function trimmed(figures: bigint[]): bigint {
+ @Injectable({ providedIn: 'root' })
+ export class Figures {
+   private readonly claims = inject(Claims);
++  private readonly crews = inject(Crews);
+   private readonly people = inject(People);
+   private readonly periods = inject(Periods);
+   private readonly rates = inject(Rates);
+@@ -101,20 +103,48 @@ export class Figures {
+     money(trimmed(this.people.people().map((p) => this.overdueCents(p)))),
+   );
+ 
+-  /** The signed-in user's own figures: the due-total (n/a when it has none) and overdue-total of the
+-   *  person whose name or an alias is the user's name, compared as names are (trimmed, ignoring case);
+-   *  null when no one on the sheet has it. */
+-  readonly mine = computed(() => {
++  /** The person whose name or an alias is the signed-in user's name, compared as names are (trimmed,
++   *  ignoring case); undefined when no one on the sheet has it. */
++  private readonly me = computed(() => {
+     const user = this.session.user()?.trim().toLowerCase();
+-    if (!user) return null;
+-    const p = this.people
++    if (!user) return undefined;
++    return this.people
+       .people()
+       .find((p) => p.name.trim().toLowerCase() === user || p.aliases.some((a) => a.trim().toLowerCase() === user));
++  });
++
++  /** The signed-in user's own figures: the due-total (n/a when it has none) and overdue-total of the
++   *  person with the user's name; null when no one on the sheet has it. */
++  readonly mine = computed(() => {
++    const p = this.me();
+     if (!p) return null;
+     const due = this.dueCents(p);
+     return { dueTotal: due === null ? NO_RATE : money(due), overdueTotal: money(this.overdueCents(p)) };
+   });
+ 
++  /** A crew's due-total: the lead's and the members' due-totals as the people list shows them, added up,
++   *  n/a skipped. */
++  crewDueCents(c: CrewView): bigint {
++    const ids = new Set([c.lead.personId, ...c.members.map((m) => m.personId)]);
++    let sum = 0n;
++    for (const p of this.people.people()) {
++      if (!ids.has(p.id)) continue;
++      const d = this.dueCents(p);
++      if (d !== null) sum += d;
++    }
++    return sum;
++  }
++
++  /** The signed-in user's crew total: the due-totals of the crews the person with the user's name leads,
++   *  added up; null when there is no such person or they lead no crew. */
++  readonly myCrewDueTotal = computed(() => {
++    const p = this.me();
++    if (!p) return null;
++    const led = this.crews.crews().filter((c) => c.lead.personId === p.id);
++    if (led.length === 0) return null;
++    return money(led.reduce((sum, c) => sum + this.crewDueCents(c), 0n));
++  });
++
+   /** Each tag ever used on the sheet (on a claim or a person), sorted, with the due of the claims that
+    *  count live and carry it, or whose person carries it, once each (a claim with two tags counts in both),
+    *  not capped or trimmed. */
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index ad6921691..06287f86f 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -51,17 +51,7 @@ export class CrewRow {
+   protected readonly saving = signal(false);
+ 
+   /** The lead's and the members' due-totals added up, skipping those that are n/a. */
+-  protected readonly dueTotal = computed(() => {
+-    const c = this.crew();
+-    const ids = new Set([c.lead.personId, ...c.members.map((m) => m.personId)]);
+-    let sum = 0n;
+-    for (const p of this.people.people()) {
+-      if (!ids.has(p.id)) continue;
+-      const d = this.figures.dueCents(p);
+-      if (d !== null) sum += d;
+-    }
+-    return money(sum);
+-  });
++  protected readonly dueTotal = computed(() => money(this.figures.crewDueCents(this.crew())));
+ 
+   /** A person's name as the people list has it now; as the crew was read when they are not on it. */
+   protected name(m: { personId: number; name: string }): string {
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 53c917698..74a7ec041 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -9,7 +9,8 @@ import { Session } from '../../core/session';
+ // people list show. Then the same figures consolidated over the sheet and all its descendants: each
+ // descendant's as that sheet shows them, added to this sheet's own; while the screen shows the sheet as
+ // of a date, every sheet of the tree as it stood at the end of that date. And the signed-in user's own due- and overdue-totals, when a
+-// person on the sheet has their name or an alias equal to it; blank otherwise.
++// person on the sheet has their name or an alias equal to it; blank otherwise. And the user's crew total: the due-totals of
++// the crews that person leads, added up; blank when they lead none.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -23,6 +24,7 @@ import { Session } from '../../core/session';
+         <div><dt>Overdue total</dt><dd data-testid="header-overdue-total">{{ figures.overdueTotal() }}</dd></div>
+         <div><dt>My due total</dt><dd data-testid="my-due-total">{{ figures.mine()?.dueTotal }}</dd></div>
+         <div><dt>My overdue total</dt><dd data-testid="my-overdue-total">{{ figures.mine()?.overdueTotal }}</dd></div>
++        <div><dt>My crew due total</dt><dd data-testid="my-crew-due-total">{{ figures.myCrewDueTotal() }}</dd></div>
+       </dl>
+       <dl aria-label="Consolidated with descendant sheets">
+         <div><dt>Consolidated people</dt><dd data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</dd></div>

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 167,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp167_crew-lead-total",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user's crew total when a person with the user's name leads a\ncrew: the due-totals of the crews they lead, added up; nothing otherwise.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user's crew total when a person with the user's name leads a\ncrew: the due-totals of the crews they lead, added up; nothing otherwise.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b23a1a710b20c18510e9f9700821c04e22cecd18",
+  "reset_sha": "",
+  "preagent_sha": "960527cec8e77f340a3da770c6f59648fe3f30d3",
+  "prev_sha": "960527cec8e77f340a3da770c6f59648fe3f30d3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.49048200000000003,
+    "input_tokens": 6,
+    "output_tokens": 689,
+    "cache_read_tokens": 97040,
+    "cache_creation_tokens": 2715,
+    "num_turns": 2,
+    "duration_ms": 8801,
+    "duration_api_ms": 44152,
+    "model": "claude-opus-5-5",
+    "session_id": "93699440-b639-40a5-882f-129eb798d37c",
+    "stop_reason": "success",
+    "result_text": "The header now shows the signed-in user's crew total, and all 4 acceptance tests pass in `bin/e2e`.\n\n**What it shows:** if a person on the sheet has the user's name, or an alias equal to it, the header adds up the due-totals of every crew that person leads and shows the sum in `my-crew-due-total`. It's blank when no one has the user's name or that person leads no crew. In the test, \"uma\" is an alias of Cam, so Cam's crew Green counts as hers. That follows the same name matching the existing \"my due total\" uses.\n\n**What changed (front end only):**\n- **`core/figures.ts`:** the code that finds the user's person by name is now shared between \"my due total\" and the new total. I added `crewDueCents(crew)` and `myCrewDueTotal` here.\n- **`features/crews/crews.ts`:** the crew row now uses `crewDueCents`, so each crew's row and the header always agree.\n- **`features/header/header.ts`:** adds the \"My crew due total\" entry and a line about it in the header's comment.\n\nThe server and stored data didn't need to change, since the crews and their leads were already loaded on the page. The figure isn't written to the audit file.\n\nIf a person sits in two crews the user leads, their due-total is counted once per crew. That's my reading of \"the due-totals of the crews they lead, added up\", and the tests don't cover that case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.49048200000000003,
+        "num_turns": 2,
+        "duration_ms": 8801,
+        "duration_api_ms": 44152,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp167.agent.jsonl",
+  "agent_diff_file": "cp167.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
