@@ -1,0 +1,64 @@
+diff --git a/src/main/frontend/src/app/features/counters/counters.ts b/src/main/frontend/src/app/features/counters/counters.ts
+new file mode 100644
+index 000000000..19362da13
+--- /dev/null
++++ b/src/main/frontend/src/app/features/counters/counters.ts
+@@ -0,0 +1,30 @@
++import { Component, input } from '@angular/core';
++import { StatusSummary } from '../summary/summary';
++
++// The sheet's counters, shown at the top at all times; each repeats a figure shown elsewhere: the
++// people on the sheet (retired included), the summary's claims per status and the sheet's totals.
++@Component({
++  selector: 'app-counters',
++  template: `
++    <header aria-label="Sheet counters">
++      <dl>
++        <dt>People</dt>
++        <dd data-testid="header-people-count">{{ peopleCount() }}</dd>
++        @for (s of statuses(); track s.status) {
++          <dt>{{ s.status }} claims</dt>
++          <dd [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</dd>
++        }
++        <dt>Due in total</dt>
++        <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
++        <dt>Overdue in total</dt>
++        <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++      </dl>
++    </header>
++  `,
++})
++export class Counters {
++  readonly peopleCount = input.required<number>();
++  readonly statuses = input.required<StatusSummary[]>();
++  readonly dueTotal = input.required<string>();
++  readonly overdueTotal = input.required<string>();
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a882a044d..7d00ac193 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,6 +7,7 @@ import { PeriodStore, Periods, periodOf } from '../periods/periods';
+ import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
+ import { SettingStore, Settings } from '../settings/settings';
+ import { Summary } from '../summary/summary';
++import { Counters } from '../counters/counters';
+ 
+ /** A hold put on a person: from its from-date to its to-date, both included (null: it does not end). */
+ interface Hold {
+@@ -52,8 +53,14 @@ interface StatementTaken {
+ // saves their changes.
+ @Component({
+   selector: 'app-people',
+-  imports: [PersonClaims, Periods, Rates, Settings, Summary],
++  imports: [Counters, PersonClaims, Periods, Rates, Settings, Summary],
+   template: `
++    <app-counters
++      [peopleCount]="people().length"
++      [statuses]="statusSummary()"
++      [dueTotal]="dueTotal()"
++      [overdueTotal]="overdueTotal()"
++    />
+     <app-settings />
+     <app-rates />
+     <app-periods [dueTotals]="periodDueTotals()" />
