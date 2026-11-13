@@ -37,11 +37,14 @@ public class PersonService {
         return added;
     }
 
-    /** Change a person's name and grade. */
+    /** Change a person's name and grade, from an editor that loaded the given version of them. */
     @Transactional
-    public Person update(String sheetId, String user, Long id, String name, String grade) {
+    public Person update(String sheetId, String user, Long id, long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        if (person.getVersion() != version) {
+            throw new StalePersonException(person);
+        }
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, id);
         person.setName(trimmed);

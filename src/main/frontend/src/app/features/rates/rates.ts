@@ -196,6 +196,8 @@ export class Rates {
   protected readonly pct = signal('');
   protected readonly from = signal('');
   protected readonly error = signal<string | null>(null);
+  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
+  private readonly busy = signal(false);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
@@ -203,16 +205,20 @@ export class Rates {
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.busy()) return;
     this.error.set(null);
     const pct = this.pct().trim();
     if (!PERCENT.test(pct)) {
       this.error.set('Type a rate of 0.00 or more, with up to two decimals.');
       return;
     }
+    this.busy.set(true);
     try {
       await this.store.set(this.grade(), pct, this.from().trim() || null);
     } catch {
       this.error.set('The rate could not be set.');
+    } finally {
+      this.busy.set(false);
     }
   }
 }

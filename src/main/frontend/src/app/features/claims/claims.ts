@@ -140,6 +140,8 @@ export class PersonClaims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
+  private readonly busy = signal(false);
   /** The error from the last status change refused, and the claim it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
 
@@ -195,6 +197,7 @@ export class PersonClaims {
 
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
+    if (this.busy()) return;
     this.error.set(null);
     this.rowError.set(null);
     const sheet = this.session.sheetId();
@@ -207,6 +210,7 @@ export class PersonClaims {
     const body = { amount, date: this.date().trim() || null, note: this.note().trim() };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims`;
+    this.busy.set(true);
     try {
       const saved = await firstValueFrom(
         id === null ? this.http.post<Claim>(base, body) : this.http.put<Claim>(`${base}/${id}`, body),
@@ -216,6 +220,8 @@ export class PersonClaims {
       this.reset();
     } catch {
       this.error.set(id === null ? 'The claim could not be added.' : 'The claim could not be saved.');
+    } finally {
+      this.busy.set(false);
     }
   }
 }

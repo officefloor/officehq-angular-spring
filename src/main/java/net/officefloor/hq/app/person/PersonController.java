@@ -9,6 +9,7 @@ import net.officefloor.hq.app.SignedInUser;
 import java.util.NoSuchElementException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,9 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(Long id, String name, String grade) {
+    public record PersonView(Long id, String name, String grade, long version) {
         static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade());
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
         }
     }
 
@@ -36,6 +37,13 @@ public class PersonController {
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
+    }
+
+    /** A person's fields as saved from an editor, with the version of the person the editor loaded. */
+    public record PersonUpdate(
+            @NotBlank @Size(max = 200) String name,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull Long version) {
     }
 
     private final PersonService service;
@@ -58,12 +66,25 @@ public class PersonController {
         return PersonView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name(), request.grade()));
     }
 
-    /** Change a person's name and grade. */
+    /** Change a person's name and grade; refused when the person was saved since the editor loaded them. */
     @PutMapping("/{id}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonRequest request) {
-        return PersonView.of(
-                service.update(sheetId.trim(), SignedInUser.decode(user), id, request.name(), request.grade()));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonUpdate request) {
+        return PersonView.of(service.update(sheetId.trim(), SignedInUser.decode(user), id, request.version(),
+                request.name(), request.grade()));
+    }
+
+    /** Someone else saved the person since the editor loaded them: the person as stored now. */
+    @ExceptionHandler(StalePersonException.class)
+    @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
+    public PersonView stale(StalePersonException e) {
+        return PersonView.of(e.getCurrent());
+    }
+
+    /** A save that raced another to the same version; the editor re-reads the person. */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
+    public void raced() {
     }
 
     @ExceptionHandler(NoSuchElementException.class)
