@@ -1,15 +1,10 @@
 package net.officefloor.hq.app.claim;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import net.officefloor.hq.app.period.PeriodClosedException;
-import net.officefloor.hq.app.person.Person;
-import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.stereotype.Service;
 
@@ -22,15 +17,12 @@ public class BulkOpenService {
     public record Result(List<Claim> opened, int refused) {
     }
 
-    private final ClaimRepository claims;
-    private final PersonRepository people;
+    private final ClaimListOrder order;
     private final ClaimService service;
     private final RollupService rollups;
 
-    public BulkOpenService(ClaimRepository claims, PersonRepository people, ClaimService service,
-            RollupService rollups) {
-        this.claims = claims;
-        this.people = people;
+    public BulkOpenService(ClaimListOrder order, ClaimService service, RollupService rollups) {
+        this.order = order;
         this.service = service;
         this.rollups = rollups;
     }
@@ -40,17 +32,8 @@ public class BulkOpenService {
      *  cannot, or is not on the sheet, is refused and left as it is. Each claim is opened on its
      *  own, so a refused one writes nothing. */
     public Result open(String sheetId, String user, Set<Long> ids) {
-        Map<Long, Integer> personOrder = new HashMap<>();
-        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
-        for (int i = 0; i < sheetPeople.size(); i++) {
-            personOrder.put(sheetPeople.get(i).getId(), i);
-        }
-        List<Claim> selected = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
-                .filter(claim -> ids.contains(claim.getId()))
-                .sorted(Comparator.comparing((Claim claim) -> personOrder.getOrDefault(claim.getPersonId(), Integer.MAX_VALUE)))
-                .toList();
         List<Claim> opened = new ArrayList<>();
-        for (Claim claim : selected) {
+        for (Claim claim : order.selected(sheetId, ids)) {
             try {
                 opened.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
                         claim.getPersonId(), claim.getId(), ClaimStatus.OPEN)));

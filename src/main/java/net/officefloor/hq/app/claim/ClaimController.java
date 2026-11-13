@@ -80,14 +80,26 @@ public class ClaimController {
     public record BulkOpenView(List<ClaimView> opened, int refused) {
     }
 
+    /** The claims selected to settle together. */
+    public record BulkSettleRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds) {
+    }
+
+    /** What a bulk settle did: the claims it settled (SETTLED, or PENDING a steward's approval), in
+     *  list order, and how many of the selected claims it refused. */
+    public record BulkSettleView(List<ClaimView> settled, int refused) {
+    }
+
     private final ClaimService service;
     private final RollupService rollups;
     private final BulkOpenService bulkOpen;
+    private final BulkSettleService bulkSettle;
 
-    public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen) {
+    public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
+            BulkSettleService bulkSettle) {
         this.service = service;
         this.rollups = rollups;
         this.bulkOpen = bulkOpen;
+        this.bulkSettle = bulkSettle;
     }
 
     /** The sheet's claims, newest first. */
@@ -145,6 +157,16 @@ public class ClaimController {
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED);
+    }
+
+    /** Settle the selected claims that can be settled, in list order, each by the rules of settling
+     *  one; the rest are refused and left as they are. */
+    @PostMapping("/claims/settle")
+    public BulkSettleView settleAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkSettleRequest request) {
+        String sheet = sheetId.trim();
+        BulkSettleService.Result result = bulkSettle.settle(sheet, SignedInUser.decode(user), request.claimIds());
+        return new BulkSettleView(result.settled().stream().map(claim -> view(sheet, claim)).toList(), result.refused());
     }
 
     /** Approve a PENDING claim: a steward other than whoever opened it settles it. */

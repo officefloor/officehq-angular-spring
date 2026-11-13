@@ -145,6 +145,16 @@ interface StatementTaken {
       @if (bulkOpenError(); as message) {
         <p role="alert" data-testid="bulk-open-error">{{ message }}</p>
       }
+      <p>
+        <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
+        @if (bulkSettleResult(); as r) {
+          Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>, refused
+          <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
+        }
+      </p>
+      @if (bulkSettleError(); as message) {
+        <p role="alert" data-testid="bulk-settle-error">{{ message }}</p>
+      }
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -447,7 +457,7 @@ export class People {
   protected readonly quickError = signal<string | null>(null);
   /** The error from the last action on a person's row refused, and the person it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string; testId?: string } | null>(null);
-  /** The ids of the claims selected to open together. */
+  /** The ids of the claims selected to open or settle together. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** How many claims the last bulk open opened and refused; null while it runs or before one. */
   protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
@@ -455,6 +465,12 @@ export class People {
   protected readonly bulkOpenError = signal<string | null>(null);
   /** Whether a bulk open is waiting for its answer; a second press meanwhile is dropped. */
   private readonly bulkOpenBusy = signal(false);
+  /** How many claims the last bulk settle settled and refused; null while it runs or before one. */
+  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+  /** Why the last bulk settle could not be done at all; null when it was. */
+  protected readonly bulkSettleError = signal<string | null>(null);
+  /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
+  private readonly bulkSettleBusy = signal(false);
   /** The patron chosen on each person's row (a person id, or blank), by person id. */
   protected readonly patronChoices = signal<Record<number, string>>({});
 
@@ -471,6 +487,8 @@ export class People {
       this.selectedClaims.set(new Set());
       this.bulkOpenResult.set(null);
       this.bulkOpenError.set(null);
+      this.bulkSettleResult.set(null);
+      this.bulkSettleError.set(null);
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -729,6 +747,35 @@ export class People {
       this.bulkOpenError.set('The selected claims could not be opened.');
     } finally {
       this.bulkOpenBusy.set(false);
+    }
+  }
+
+  /** Settle the selected claims together, in list order, each by the rules of settling one: a claim
+   *  that goes PENDING counts as settled, and each that cannot be settled is left as it is; the
+   *  screen shows how many were settled and refused. */
+  protected async settleSelected(): Promise<void> {
+    if (this.bulkSettleBusy()) return;
+    this.bulkSettleResult.set(null);
+    this.bulkSettleError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = [...this.selectedClaims()];
+    this.bulkSettleBusy.set(true);
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ settled: Claim[]; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/settle`,
+          { claimIds: ids },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.settled) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkSettleResult.set({ settled: result.settled.length, refused: result.refused });
+    } catch {
+      this.bulkSettleError.set('The selected claims could not be settled.');
+    } finally {
+      this.bulkSettleBusy.set(false);
     }
   }
 
