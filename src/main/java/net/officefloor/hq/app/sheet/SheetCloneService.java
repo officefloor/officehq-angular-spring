@@ -31,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Clones a sheet to another id never used: its today, settings, roles, rates, holidays, void reasons,
- * templates, people (with all they carry but their watches and statements), pools, periods (all open) and
+ * templates, people (with all they carry but their watches and statements), pools, crews, periods (all open) and
  * claims (statement bindings dropped, numbers given afresh by the clone's own numbering).
  */
 @Service
@@ -87,6 +87,7 @@ public class SheetCloneService {
         copySheet(sheet, target, user);
         Map<Long, Long> personIds = copyPeople(id, target);
         copyPools(id, target, personIds);
+        copyCrews(id, target, personIds);
         copyPeriods(id, target);
         List<long[]> claimIds = copyClaims(id, target, personIds);
         remapRates(target, claimIds);
@@ -162,6 +163,20 @@ public class SheetCloneService {
                     + " VALUES (?, ?, ?, ?, ?, ?)", poolIds.get(((Number) m.get("pool_id")).longValue()),
                     mapped(personIds, m.get("person_id")), mapped(poolIds, m.get("member_pool_id")), m.get("share"),
                     m.get("from_date"), m.get("to_date"));
+        }
+    }
+
+    private void copyCrews(String id, String target, Map<Long, Long> personIds) {
+        Map<Long, Long> crewIds = new HashMap<>();
+        for (Map<String, Object> c : jdbc.queryForList("SELECT * FROM crew WHERE sheet_id = ? ORDER BY id", id)) {
+            crewIds.put(((Number) c.get("id")).longValue(),
+                    insert("INSERT INTO crew (sheet_id, name, lead_person_id) VALUES (?, ?, ?)", target, c.get("name"),
+                            mapped(personIds, c.get("lead_person_id"))));
+        }
+        for (Map<String, Object> m : jdbc.queryForList("SELECT m.* FROM crew_member m JOIN crew c ON c.id = m.crew_id"
+                + " WHERE c.sheet_id = ? ORDER BY m.id", id)) {
+            jdbc.update("INSERT INTO crew_member (crew_id, person_id) VALUES (?, ?)",
+                    crewIds.get(((Number) m.get("crew_id")).longValue()), mapped(personIds, m.get("person_id")));
         }
     }
 

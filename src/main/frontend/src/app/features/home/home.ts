@@ -6,6 +6,7 @@ import { People } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Plans } from '../../core/plans';
 import { Pools } from '../../core/pools';
+import { Crews } from '../../core/crews';
 import { Rates } from '../../core/rates';
 import { Roles } from '../../core/roles';
 import { LocaleFigures } from '../../core/locale-figures';
@@ -27,6 +28,7 @@ import { PeopleList } from '../people/people';
 import { PeriodsPanel } from '../periods/periods';
 import { GeneratePlans } from '../plans/generate-plans';
 import { PoolsPanel } from '../pools/pools';
+import { CrewsPanel } from '../crews/crews';
 import { ImportRates } from '../rates/import-rates';
 import { RatesPanel } from '../rates/rates';
 import { SearchPanel } from '../search/search';
@@ -39,7 +41,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   hostDirectives: [LocaleFigures],
-  imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, ClaimTemplatesPanel, ClassicSummaryPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -138,6 +140,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-people />
         <app-import-people />
         <app-pools />
+        <app-crews />
         <app-paste-claims />
         <app-generate-plans />
         <app-bulk-open />
@@ -180,6 +183,7 @@ export class Home {
   private readonly voidReasons = inject(VoidReasons);
   private readonly claimTemplates = inject(ClaimTemplates);
   private readonly pools = inject(Pools);
+  private readonly crews = inject(Crews);
   private readonly plans = inject(Plans);
   protected readonly nameInput = signal('');
   protected readonly signinError = signal<string | null>(null);
@@ -244,7 +248,7 @@ export class Home {
     return this.session.trackLoad(
       (async () =>
         (await this.session.loadSheet(id)) ??
-        (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
+        (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.crews.load(), this.plans.load()])).find((err) => err !== null) ??
         null)(),
     );
   }

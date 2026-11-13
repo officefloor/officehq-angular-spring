@@ -20,6 +20,8 @@ import net.officefloor.hq.app.claim.SheetTag;
 import net.officefloor.hq.app.claim.SheetTagRepository;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.RoleService;
@@ -51,6 +53,7 @@ public class PersonService {
     private final Audit audit;
     private final ClaimRepository claims;
     private final PoolRepository pools;
+    private final CrewRepository crews;
     private final PeriodRepository periods;
     private final SheetService sheetService;
     private final SheetTagRepository sheetTags;
@@ -58,7 +61,8 @@ public class PersonService {
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
             PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles,
             ClaimRepository claims, PoolRepository pools, PeriodRepository periods, SheetService sheetService,
-            SheetTagRepository sheetTags, PersonSnapshotRepository snapshots) {
+            SheetTagRepository sheetTags, PersonSnapshotRepository snapshots, CrewRepository crews) {
+        this.crews = crews;
         this.snapshots = snapshots;
         this.sheetTags = sheetTags;
         this.sheetService = sheetService;
@@ -431,7 +435,8 @@ public class PersonService {
      *  bound); their statements count as the other's too, the other's last statement staying their last (or,
      *  having none, the merged person's last becoming theirs); their name and aliases become the other's aliases; their patrons are added to the other's (not
      *  themselves, no repeats), anyone naming them as patron names the other instead (no repeats), and their
-     *  pool memberships move to the other (shares added, at most 100.00, where the other is already a member)
+     *  pool memberships move to the other (shares added, at most 100.00, where the other is already a member), their
+     *  crew places move to the other (leading what they led, a membership dropped where the other is in the crew),
      *  as do their figures for closed periods. Their holds, watchers and contact are dropped, and
      *  they leave the sheet. Refused for anyone but a steward, for the same person, and when either is
      *  retired. */
@@ -483,6 +488,10 @@ public class PersonService {
                 pool.moveMember(from.getId(), into.getId());
             }
         }
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            crew.movePerson(from.getId(), into.getId());
+        }
+        crews.flush();
         for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
             period.moveClosedTotal(from.getId(), into.getId());
         }
@@ -511,7 +520,8 @@ public class PersonService {
      *  the other sheet, in the order the claims were opened (by the sheet's today then, then by the order they
      *  were added). Figures a statement bound are kept, as are their statements (counting as those of whom they
      *  are merged into too, whose last statement stays their last unless they have none), and references
-     *  are not carried. They leave this sheet entirely: their patron links, pool memberships, watches,
+     *  are not carried. They leave this sheet entirely: their patron links, pool memberships, crew memberships (a crew they lead
+     *  goes with them), watches,
      *  holds and fixed period figures are dropped. Refused for anyone but a steward, a retired
      *  person, this sheet's own id, an archived sheet, and when their name, an alias or their contact is already
      *  on the other sheet or their name or an alias on another sheet of its tree; a sheet never loaded is started.
@@ -609,6 +619,14 @@ public class PersonService {
         for (Pool pool : pools.findBySheetIdOrderByIdAsc(sheetId)) {
             pool.removeMember(from.getId());
         }
+        for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (crew.getLeadId().equals(from.getId())) {
+                crews.delete(crew);
+            } else {
+                crew.removeMember(from.getId());
+            }
+        }
+        crews.flush();
         for (Period period : periods.findBySheetIdOrderByFromDateAsc(sheetId)) {
             period.dropClosedTotal(from.getId());
         }

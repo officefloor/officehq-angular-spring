@@ -5,6 +5,7 @@ import { Figures } from '../../core/figures';
 import { GRADES, People, Person } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Pools } from '../../core/pools';
+import { Crews } from '../../core/crews';
 import { Session } from '../../core/session';
 import { COLUMNS, ColumnKey, UserColumns } from '../../core/user-columns';
 import { NO_RATE, halfEven, money } from '../../core/rates';
@@ -562,6 +563,7 @@ export class PeopleList {
   protected readonly money = money;
   protected readonly periods = inject(Periods);
   private readonly pools = inject(Pools);
+  private readonly crews = inject(Crews);
   private readonly session = inject(Session);
   protected readonly userColumns = inject(UserColumns);
   protected readonly columnKeys = COLUMNS;
@@ -985,7 +987,7 @@ export class PeopleList {
         return;
       }
       this.mergeChoices.update((cs) => ({ ...cs, [p.id]: '' }));
-      await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.periods.load()]);
+      await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.crews.load(), this.periods.load()]);
     } finally {
       this.merging.set(null);
     }
@@ -1008,7 +1010,7 @@ export class PeopleList {
         return;
       }
       this.transferTargets.update((ts) => ({ ...ts, [p.id]: '' }));
-      await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.periods.load()]);
+      await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.crews.load(), this.periods.load()]);
     } finally {
       this.transferring.set(null);
     }
