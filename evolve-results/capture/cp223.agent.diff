@@ -1,0 +1,426 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index be1179fb4..cabfde759 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -60,6 +60,8 @@ export interface SheetView {
+   /** The default grade: the grade a person added by the quick-add bar, or by an import line with a blank
+    *  grade, takes; null for A. */
+   defaultGrade: string | null;
++  /** The retired grades, in the order retired: none can be chosen for a person. */
++  retiredGrades: string[];
+   /** Whether the sheet is archived: everything stays visible and every change is refused. */
+   archived: boolean;
+   /** The entry date (YYYY-MM-DD): the default date of a new claim in place of the sheet's today; null when
+@@ -251,6 +253,8 @@ export class Session {
+   readonly proofKinds = signal<string | null>(null);
+   /** The sheet's default grade; null for A. Not dated. */
+   readonly defaultGrade = signal<string | null>(null);
++  /** The sheet's retired grades, in the order retired. Not dated. */
++  readonly retiredGrades = signal<string[]>([]);
+   /** The sheet's entry date (YYYY-MM-DD); null when off. While set, it is the default date of a new claim
+    *  in place of the sheet's today. */
+   readonly entryDate = signal<string | null>(null);
+@@ -335,6 +339,7 @@ export class Session {
+       this.maxOpen.set(sheet.maxOpen);
+       this.proofKinds.set(sheet.proofKinds);
+       this.defaultGrade.set(sheet.defaultGrade);
++      this.retiredGrades.set(sheet.retiredGrades);
+       this.entryDate.set(sheet.entryDate);
+       this.pot.set(sheet.pot);
+       this.alertThreshold.set(sheet.alertThreshold);
+@@ -961,6 +966,25 @@ export class Session {
+     }
+   }
+ 
++  /** Retire a grade (one of the grades, not yet retired); an error message when refused. */
++  async retireGrade(grade: string): Promise<string | null> {
++    const user = this.user();
++    const sid = this.sheetId();
++    if (!user || !sid) return 'Load a sheet first.';
++    if (!(GRADES as readonly string[]).includes(grade)) return `Choose a grade of ${GRADES.join(', ')}.`;
++    try {
++      const sheet = await firstValueFrom(
++        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/grades/retire`,
++          { grade }, { headers: { 'X-User': user } }),
++      );
++      if (this.sheetId() === sheet.id) this.retiredGrades.set(sheet.retiredGrades);
++      return null;
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 409 && typeof e.error?.message === 'string') return e.error.message;
++      return e instanceof HttpErrorResponse ? `Could not retire the grade (${e.status}).` : 'Could not retire the grade.';
++    }
++  }
++
+   /** Change the sheet's fiscal start month (1 to 12); an error message when refused. */
+   async setFiscalStartMonth(month: string): Promise<string | null> {
+     const user = this.user();
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+new file mode 100644
+index 000000000..6fea68c38
+--- /dev/null
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -0,0 +1,68 @@
++import { Component, inject, signal } from '@angular/core';
++import { GRADES } from '../../core/people';
++import { Session } from '../../core/session';
++
++// The grades: each grade and whether it is retired, and a select and a button to retire one (a grade already
++// retired is refused). A retired grade cannot be chosen for a person; the people on it keep it.
++@Component({
++  selector: 'app-grades',
++  template: `
++    <section aria-label="Grades" data-testid="grades">
++      <h2>Grades</h2>
++      <table>
++        <thead>
++          <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
++        </thead>
++        <tbody>
++          @for (g of grades; track g) {
++            <tr [attr.data-testid]="'grade-row-' + g">
++              <td data-testid="grade-code">{{ g }}</td>
++              <td data-testid="grade-retired">{{ session.retiredGrades().includes(g) ? 'yes' : 'no' }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <form (submit)="retire($event)">
++        <label for="grade-retire-select">Grade to retire</label>
++        <select
++          id="grade-retire-select"
++          data-testid="grade-retire-select"
++          [value]="grade()"
++          (change)="grade.set(value($event)); error.set(null)"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="g === grade()">{{ g }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="grade-retire" [disabled]="saving()">Retire grade</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="grade-error">{{ err }}</p>
++        }
++      </form>
++    </section>
++  `,
++})
++export class GradesPanel {
++  protected readonly session = inject(Session);
++  protected readonly grades = GRADES;
++  protected readonly grade = signal<string>(GRADES[0]);
++  protected readonly error = signal<string | null>(null);
++  protected readonly saving = signal(false);
++
++  protected value(e: Event): string {
++    return (e.target as HTMLSelectElement).value;
++  }
++
++  protected async retire(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.saving()) return; // a second submit before the first has answered
++    this.error.set(null);
++    this.saving.set(true);
++    try {
++      const err = await this.session.retireGrade(this.grade());
++      if (err) this.error.set(err);
++    } finally {
++      this.saving.set(false);
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 981f8d5fe..9c5ff9684 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -25,6 +25,7 @@ import { BulkVoid } from '../claims/bulk-void';
+ import { DuplicatesPanel } from '../claims/duplicates';
+ import { BulkSettle } from '../claims/bulk-settle';
+ import { PasteClaims } from '../claims/paste-claims';
++import { GradesPanel } from '../grades/grades';
+ import { HeaderCounters } from '../header/header';
+ import { HolidaysPanel } from '../holidays/holidays';
+ import { NotesPanel } from '../notes/notes';
+@@ -48,7 +49,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ @Component({
+   selector: 'app-home',
+   hostDirectives: [LocaleFigures],
+-  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SheetComparePanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
++  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, GradesPanel, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SheetComparePanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
+   template: `
+     @if (session.user(); as user) {
+       @if (session.sheetId()) {
+@@ -139,6 +140,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+       @if (session.sheetId()) {
+         <app-settings />
+         <app-rates />
++        <app-grades />
+         <app-import-rates />
+         <app-periods />
+         <app-holidays />
+diff --git a/src/main/java/net/officefloor/hq/app/person/GradeRetiredException.java b/src/main/java/net/officefloor/hq/app/person/GradeRetiredException.java
+new file mode 100644
+index 000000000..d8182691f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/GradeRetiredException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.person;
++
++/** A retired grade chosen for a person: by the form for a new person or in an edit, or by an import. */
++public class GradeRetiredException extends RuntimeException {
++
++    public GradeRetiredException(String grade) {
++        super("Grade " + grade + " is retired; choose another grade.");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 63cc9edbd..8771c3941 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -280,6 +280,13 @@ public class PersonController {
+                 done.updated().size(), done.updated().stream().map(p -> view(p, user.trim())).toList());
+     }
+ 
++    /** A retired grade chosen for a person is refused with the reason, for the screen to show. */
++    @ExceptionHandler(GradeRetiredException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> gradeRetired(GradeRetiredException e) {
++        return Map.of("message", e.getMessage());
++    }
++
+     /** An import with a refused line is refused with the reason, for the screen to show. */
+     @ExceptionHandler(PersonImportException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 7c6603e21..d8f2b51eb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -231,6 +231,7 @@ public class PersonService {
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+             List<String> tags) {
+         requireSheet(sheetId);
++        requireNotRetired(sheetId, grade);
+         requireFreeName(sheetId, name.trim(), null);
+         requireFreeInTree(sheetId, List.of(name.trim()), null);
+         String key = contactKey(contact);
+@@ -267,6 +268,7 @@ public class PersonService {
+     @Transactional
+     public ImportResult importPeople(String sheetId, String user, String text) {
+         String defaultGrade = defaultGrade(sheetId);
++        List<String> retired = sheets.findById(sheetId).map(Sheet::getRetiredGrades).orElse(List.of());
+         List<ImportLine> lines = new ArrayList<>();
+         Map<ImportLine, Person> matched = new HashMap<>();
+         Set<String> names = new HashSet<>();
+@@ -279,6 +281,9 @@ public class PersonService {
+                 continue;
+             }
+             ImportLine line = parseImport(i + 1, raw[i], defaultGrade);
++            if (retired.contains(line.grade())) {
++                throw importRefused(line.number(), "grade " + line.grade() + " is retired.");
++            }
+             String lower = line.name().toLowerCase(Locale.ROOT);
+             if (!names.add(lower)) {
+                 throw importRefused(line.number(), "the name " + line.name() + " is already in this import.");
+@@ -402,8 +407,12 @@ public class PersonService {
+         }
+         String key = contactKey(contact);
+         requireFreeContact(sheetId, key, person.getId());
+-        Rollup.Snapshot before = rollup.take(sheetId);
+         LocalDate today = today(sheetId);
++        // a save leaving the grade as it is, with no from-date, is not a choice of it
++        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
++            requireNotRetired(sheetId, grade);
++        }
++        Rollup.Snapshot before = rollup.take(sheetId);
+         person.setName(name.trim());
+         // the terms entered differing from those in force on today count as a change, even when the
+         // stored terms they replace were already the same (dated terms still in force over them)
+@@ -1001,6 +1010,13 @@ public class PersonService {
+         return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).defaultGradeOrA();
+     }
+ 
++    /** Refuse a retired grade chosen for a person. */
++    private void requireNotRetired(String sheetId, String grade) {
++        if (sheets.findById(sheetId).map(s -> s.isGradeRetired(grade)).orElse(false)) {
++            throw new GradeRetiredException(grade);
++        }
++    }
++
+     private void requireSheet(String sheetId) {
+         if (!sheets.existsById(sheetId)) {
+             throw new SheetNotFoundException();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/GradeRefusedException.java b/src/main/java/net/officefloor/hq/app/sheet/GradeRefusedException.java
+new file mode 100644
+index 000000000..f20e5d238
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/GradeRefusedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.sheet;
++
++/** A grade that cannot be retired: not one of the grades, or already retired. */
++public class GradeRefusedException extends RuntimeException {
++
++    public GradeRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index c51329285..a252fca7b 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -146,6 +146,11 @@ public class Sheet {
+     @Column(name = "default_grade")
+     private String defaultGrade;
+ 
++    /** The retired grades, comma separated in the order retired: none can be chosen for a new person or in
++     *  an edit from then on, though the people on one keep it; none means none. Not dated. */
++    @Column(name = "retired_grades")
++    private String retiredGrades;
++
+     /** The month (1 to 12) a fiscal year starts in; a fiscal year is named by the calendar year its first
+      *  day falls in. Not dated. */
+     @Column(name = "fiscal_start_month", nullable = false)
+@@ -526,9 +531,24 @@ public class Sheet {
+         return defaultGrade;
+     }
+ 
+-    /** The grade a new person takes when none is given: the default grade, or A when none is set. */
++    /** The grade a new person takes when none is given: the default grade, or A when none is set or the
++     *  default grade is retired. */
+     public String defaultGradeOrA() {
+-        return defaultGrade == null ? "A" : defaultGrade;
++        return defaultGrade == null || isGradeRetired(defaultGrade) ? "A" : defaultGrade;
++    }
++
++    /** The retired grades, in the order retired. */
++    public List<String> getRetiredGrades() {
++        return retiredGrades == null ? List.of() : Arrays.asList(retiredGrades.split(","));
++    }
++
++    public boolean isGradeRetired(String grade) {
++        return getRetiredGrades().contains(grade);
++    }
++
++    /** Retire a grade not yet retired. */
++    public void retireGrade(String grade) {
++        retiredGrades = retiredGrades == null ? grade : retiredGrades + "," + grade;
+     }
+ 
+     public void setDefaultGrade(String defaultGrade) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 032b641bf..85e003014 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -15,13 +15,16 @@ import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.history.AsOf;
+ import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /** Sheet endpoints. The signed-in user's name comes in the X-User header. */
+@@ -31,7 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
+ public class SheetController {
+ 
+     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
+-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its review threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date), and its escalation gap (days; none: off), and its review SLA (days; none: none), and its proof kinds (comma separated; none: none), and its default grade (none: A), and its mid and high score thresholds (none: no bands), and whether its score log is on, and its maximum of open claims per person (none: none).
++     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its review threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date), and its escalation gap (days; none: off), and its review SLA (days; none: none), and its proof kinds (comma separated; none: none), and its default grade (none: A), and its mid and high score thresholds (none: no bands), and whether its score log is on, and its maximum of open claims per person (none: none), and its retired grades (in the order retired).
+      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
+      *  settings. */
+     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+@@ -39,7 +42,8 @@ public class SheetController {
+             List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
+             boolean archived, String noteThreshold, LocalDate entryDate, Integer lastSettleBatch, String pot,
+             String parent, int fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter,
+-            Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen) {
++            Integer reviewSla, String proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen,
++            List<String> retiredGrades) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(),
+@@ -60,7 +64,7 @@ public class SheetController {
+                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
+                     sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds(),
+                     sheet.getDefaultGrade(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(),
+-                    sheet.getMaxOpen());
++                    sheet.getMaxOpen(), sheet.getRetiredGrades());
+         }
+     }
+ 
+@@ -186,6 +190,10 @@ public class SheetController {
+     public record DefaultGradeRequest(@Pattern(regexp = "\\s*[ABC]?\\s*") String defaultGrade) {
+     }
+ 
++    /** A grade to retire. */
++    public record RetireGradeRequest(@NotNull @Size(max = 20) String grade) {
++    }
++
+     /** The sheet's fiscal start month, 1 to 12. */
+     public record FiscalStartMonthRequest(@NotNull @Min(1) @Max(12) Integer fiscalStartMonth) {
+     }
+@@ -458,6 +466,21 @@ public class SheetController {
+         return SheetView.of(service.setDefaultGrade(id.trim(), user.trim(), request.defaultGrade()));
+     }
+ 
++    /** Retire a grade. */
++    @PostMapping("/{id}/grades/retire")
++    public SheetView retireGrade(@PathVariable @NotBlank @Size(max = 200) String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid RetireGradeRequest request) {
++        return SheetView.of(service.retireGrade(id.trim(), user.trim(), request.grade()));
++    }
++
++    /** A grade that cannot be retired is refused with the reason, for the screen to show. */
++    @ExceptionHandler(GradeRefusedException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> gradeRefused(GradeRefusedException e) {
++        return Map.of("message", e.getMessage());
++    }
++
+     /** Change the sheet's fiscal start month. */
+     @PutMapping("/{id}/settings/fiscal-start-month")
+     public SheetView setFiscalStartMonth(@PathVariable @NotBlank @Size(max = 200) String id,
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 16c4e182f..0766f353e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -366,6 +366,23 @@ public class SheetService {
+         return sheet;
+     }
+ 
++    /** Retire a grade (one of the grades, not yet retired): it can no longer be chosen for a person, though
++     *  the people on it keep it. Not dated. */
++    @Transactional
++    public Sheet retireGrade(String id, String user, String grade) {
++        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
++        String g = grade == null ? "" : grade.trim();
++        if (!g.matches("[ABC]")) {
++            throw new GradeRefusedException("Choose a grade of A, B or C.");
++        }
++        if (sheet.isGradeRetired(g)) {
++            throw new GradeRefusedException("Grade " + g + " is already retired.");
++        }
++        sheet.retireGrade(g);
++        audit.recordOnCommit("GRADE_RETIRED sheet=" + id + " by=" + user + " grade=" + g);
++        return sheet;
++    }
++
+     /** Change the sheet's fiscal start month (1 to 12). Not dated. */
+     @Transactional
+     public Sheet setFiscalStartMonth(String id, String user, int month) {
+diff --git a/src/main/resources/db/migration/V120__sheet_retired_grades.sql b/src/main/resources/db/migration/V120__sheet_retired_grades.sql
+new file mode 100644
+index 000000000..82a48e5bb
+--- /dev/null
++++ b/src/main/resources/db/migration/V120__sheet_retired_grades.sql
+@@ -0,0 +1,2 @@
++-- The grades retired on a sheet, comma separated: none can be chosen for a person from then on.
++ALTER TABLE sheet ADD COLUMN retired_grades VARCHAR(20);
