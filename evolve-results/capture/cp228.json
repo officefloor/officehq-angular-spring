@@ -1,0 +1,73 @@
+{
+  "checkpoint": 228,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp228_rollover-soft-closes",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    207,
+    215,
+    219
+  ],
+  "replaced_tests": [
+    "cp207_year-end-rollover.spec.ts::year end rollover",
+    "cp215_sheet-comparison.spec.ts::sheet comparison scenario 2",
+    "cp219_rollover-undo.spec.ts::rollover undo",
+    "cp219_rollover-undo.spec.ts::rollover undo scenario 1"
+  ],
+  "request": {
+    "spec": "The rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe rollover now also soft-closes every period of the old fiscal year that is still open, in\nstart-date order, each as a soft close would (PERIOD_SOFT_CLOSED), after the ROLLOVER line.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "458906a248ff2ef75c15c63e53ea257006c0bbbb",
+  "reset_sha": "",
+  "preagent_sha": "6b922919c6e7b8ac932a36387dd9970de9b7fde6",
+  "prev_sha": "6b922919c6e7b8ac932a36387dd9970de9b7fde6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.310973,
+    "input_tokens": 18,
+    "output_tokens": 2988,
+    "cache_read_tokens": 230945,
+    "cache_creation_tokens": 25619,
+    "num_turns": 9,
+    "duration_ms": 334520,
+    "duration_api_ms": 33037,
+    "model": "claude-opus-5-5",
+    "session_id": "375b3c91-7982-462e-af39-1e865dabe8a1",
+    "stop_reason": "success",
+    "result_text": "The rollover now soft-closes every period of the old fiscal year that is still open. It does them in start-date order and writes one `PERIOD_SOFT_CLOSED` line each, after the `ROLLOVER` line. `bin/e2e` passes all 4 tests.\n\n**What changed** (server only; the front end and stored data needed nothing new):\n- **`PeriodService.java`**: I moved the existing soft-close step (fix the figures, save, write the audit line) into a private `softCloseNow`. The normal soft close and a new `softCloseOpen(sheetId, user, periods)` both use it. `softCloseOpen` skips periods that are already closed or soft-closed. For example, in the test 2026-11 was closed beforehand and gets no line.\n- **`RolloverService.java`**: right after writing `ROLLOVER`, it calls `softCloseOpen` on the old year's periods. I updated the class comment to match.\n\n**Two things to know:**\n- **No separate role check:** the rollover already requires a steward, so these automatic soft closes don't re-check the \"close\" permission the way the soft-close button does.\n- **Undo doesn't reopen them:** undoing a rollover still removes its new periods and takes back its opening balances, but the old year's periods stay soft-closed. The request didn't cover undo and the test doesn't exercise it. If undo should reopen them, the rollover record would also need to store which periods it soft-closed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.310973,
+        "num_turns": 9,
+        "duration_ms": 334520,
+        "duration_api_ms": 33037,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp228.agent.jsonl",
+  "agent_diff_file": "cp228.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

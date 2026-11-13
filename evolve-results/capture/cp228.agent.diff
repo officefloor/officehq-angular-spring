@@ -1,0 +1,48 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index f20e22de9..2aa86b11a 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -176,6 +176,20 @@ public class PeriodService {
+         if (period.isClosed() || period.isSoftClosed()) {
+             throw new PeriodRefusedException("The period is already closed.");
+         }
++        return softCloseNow(sheetId, user, period);
++    }
++
++    /** Soft-close, in order of their from-dates, every period that is still open (neither closed nor soft-closed)
++     *  among those given, each as a soft close would. The caller holds the sheet's lock. */
++    @Transactional
++    public void softCloseOpen(String sheetId, String user, List<Period> among) {
++        among.stream()
++                .filter(p -> !p.isClosed() && !p.isSoftClosed())
++                .sorted(Comparator.comparing(Period::getFromDate))
++                .forEach(p -> softCloseNow(sheetId, user, p));
++    }
++
++    private Period softCloseNow(String sheetId, String user, Period period) {
+         period.softClose(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()),
+                 rollup.carriedByPerson(sheetId, period, periods.findBySheetIdOrderByFromDateAsc(sheetId)),
+                 cuts(sheetId));
+diff --git a/src/main/java/net/officefloor/hq/app/period/RolloverService.java b/src/main/java/net/officefloor/hq/app/period/RolloverService.java
+index cf8156fc1..62bbcca13 100644
+--- a/src/main/java/net/officefloor/hq/app/period/RolloverService.java
++++ b/src/main/java/net/officefloor/hq/app/period/RolloverService.java
+@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
+  * The year end rollover, by a steward only: generates the next fiscal year's twelve periods as the fiscal year
+  * generator does, then adds each person's open figure at the end of the old year's last period to their opening
+  * balance for the new year's first period (an OPENING_SET line each, none for a figure of 0.00), then writes
+- * ROLLOVER. Rolling a year over again (while its last rollover stands) carries no opening balances a second
++ * ROLLOVER, then soft-closes (as a soft close would, in from-date order) every old-year period still open.
++ * Rolling a year over again (while its last rollover stands) carries no opening balances a second
+  * time. The old year's periods are those whose from-date falls in it; refused when it has none.
+  * The last rollover can be undone by the steward who made it on the sheet-today it was made, unless a claim (not
+  * deleted) now belongs to a period it generated: its periods are removed and its opening balances taken back.
+@@ -97,6 +98,8 @@ public class RolloverService {
+         rollovers.saveAndFlush(record);
+         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + String.format("%04d", year)
+                 + " periods=" + made.size());
++        // The old year's periods still open are soft-closed, after the ROLLOVER line.
++        periodService.softCloseOpen(sheetId, user, oldPeriods);
+         return made;
+     }
+ 
