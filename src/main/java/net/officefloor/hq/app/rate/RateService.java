@@ -15,19 +15,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Keeps each sheet's rates for each grade, each from a date or from the beginning of time.
- *  perhaps through a to-date. Setting a grade's rate for a from-date it already has replaces that
- *  rate, and its to-date. */
+ *  perhaps through a to-date. Setting a grade's rate for a from-date it already has keeps the rate
+ *  it replaces as an older version and makes the new one, with its to-date, the one in force. */
 @Service
 public class RateService {
 
     private final RateRepository rates;
+    private final RateVersionRepository versions;
     private final SheetRepository sheets;
     private final Rollup rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetRepository sheets, Rollup rollup, Audit audit) {
+    public RateService(RateRepository rates, RateVersionRepository versions, SheetRepository sheets, Rollup rollup,
+            Audit audit) {
         this.rollup = rollup;
         this.rates = rates;
+        this.versions = versions;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -70,8 +73,8 @@ public class RateService {
                 throw new RateConflictException();
             }
         } else {
-            rate.setRate(value);
-            rate.setToDate(to);
+            versions.save(new RateVersion(rate, user));
+            rate.newVersion(value, to);
             rate = rates.saveAndFlush(rate);
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user

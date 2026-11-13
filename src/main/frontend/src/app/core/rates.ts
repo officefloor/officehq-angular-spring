@@ -11,6 +11,8 @@ export interface Rate {
   to: string | null;
   /** A percent with two decimals, as the server stores it. */
   rate: string;
+  /** How many versions the rate has had; the one shown is the newest. */
+  version: number;
 }
 
 /** What due shows for a grade with no rate. */

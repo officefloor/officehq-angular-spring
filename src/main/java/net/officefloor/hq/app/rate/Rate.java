@@ -39,6 +39,10 @@ public class Rate {
     @Column(name = "rate", nullable = false)
     private BigDecimal rate;
 
+    /** How many versions the rate has had: this, the newest, and the older ones it replaced. */
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -85,5 +89,16 @@ public class Rate {
 
     public void setRate(BigDecimal rate) {
         this.rate = rate;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    /** Replace the rate with a newer version, through a to-date; the caller keeps the one it replaces. */
+    public void newVersion(BigDecimal rate, LocalDate toDate) {
+        this.rate = rate;
+        this.toDate = toDate;
+        this.version++;
     }
 }

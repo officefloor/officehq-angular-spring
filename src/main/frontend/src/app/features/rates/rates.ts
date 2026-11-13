@@ -99,7 +99,7 @@ import { Rates, money } from '../../core/rates';
       <table data-testid="rate-list">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (r of rates.rates(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -108,6 +108,7 @@ import { Rates, money } from '../../core/rates';
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td><span data-testid="rate-pct">{{ r.rate }}</span></td>
+              <td data-testid="rate-version">{{ r.version }}</td>
             </tr>
           }
         </tbody>

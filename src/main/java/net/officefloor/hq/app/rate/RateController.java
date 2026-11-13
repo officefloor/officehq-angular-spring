@@ -30,12 +30,13 @@ public class RateController {
 
     /** A grade's rate as the screen shows it: its from-date (YYYY-MM-DD, none when it applies from
      *  the beginning of time), its to-date (none when it applies on for good) and a percent with two
-     *  decimals. */
-    public record RateView(String grade, String from, String to, String rate) {
+     *  decimals, the newest of its versions, with how many it has had. */
+    public record RateView(String grade, String from, String to, String rate, int version) {
 
         static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getFromDate() == null ? null : rate.getFromDate().toString(),
-                    rate.getToDate() == null ? null : rate.getToDate().toString(), rate.getRate().toPlainString());
+                    rate.getToDate() == null ? null : rate.getToDate().toString(), rate.getRate().toPlainString(),
+                    rate.getVersion());
         }
     }
 
