@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { Claim, PersonClaims, cents, money } from '../claims/claims';
+import { NO_RATE, RateStore, Rates, dueCents } from '../rates/rates';
 
 interface Person {
   id: number;
@@ -15,8 +16,9 @@ interface Person {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims],
+  imports: [PersonClaims, Rates],
   template: `
+    <app-rates />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
@@ -49,6 +51,7 @@ interface Person {
         <p role="alert" data-testid="person-form-error">{{ message }}</p>
       }
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+      <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
 
       <table>
         <thead>
@@ -56,6 +59,7 @@ interface Person {
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
+            <th scope="col">Due</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -66,10 +70,12 @@ interface Person {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
+              <td data-testid="person-due-total">{{ dueBy(p) }}</td>
               <td>
                 <app-person-claims
                   [personId]="p.id"
                   [claims]="claimsOf(p.id)"
+                  [rate]="rates.byGrade().get(p.grade) ?? null"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -93,6 +99,7 @@ interface Person {
 export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  protected readonly rates = inject(RateStore);
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -106,6 +113,15 @@ export class People {
   });
   protected readonly claimedTotal = computed(() =>
     money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)),
+  );
+  /** Everyone's due-total added up, skipping those whose grade has no rate. */
+  protected readonly dueTotal = computed(() =>
+    money(
+      this.people().reduce((sum, p) => {
+        const due = this.dueCentsBy(p);
+        return due === null ? sum : sum + due;
+      }, 0),
+    ),
   );
   protected readonly name = signal('');
   protected readonly grade = signal('A');
@@ -133,6 +149,18 @@ export class People {
 
   protected claimedBy(personId: number): string {
     return money(this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+  }
+
+  /** What a person has claimed times their grade's rate, or n/a when the grade has no rate. */
+  protected dueBy(person: Person): string {
+    const due = this.dueCentsBy(person);
+    return due === null ? NO_RATE : money(due);
+  }
+
+  private dueCentsBy(person: Person): number | null {
+    const rate = this.rates.byGrade().get(person.grade);
+    if (rate === undefined) return null;
+    return dueCents(this.claimsOf(person.id).reduce((sum, c) => sum + cents(c.amount), 0), rate);
   }
 
   /** A claim added (listed first) or saved in place. */

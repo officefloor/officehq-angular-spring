@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { NO_RATE, dueCents } from '../rates/rates';
 
 export interface Claim {
   id: number;
@@ -66,6 +67,7 @@ const AMOUNT = /^\d+(\.\d{1,2})?$/;
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <button type="button" data-testid="claim-edit" [attr.aria-label]="'Edit claim ' + c.id" (click)="edit(c)">
             Edit
           </button>
@@ -83,6 +85,8 @@ export class PersonClaims {
 
   readonly personId = input.required<number>();
   readonly claims = input.required<Claim[]>();
+  /** The rate for the person's grade, or null when the grade has no rate. */
+  readonly rate = input.required<string | null>();
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -93,6 +97,12 @@ export class PersonClaims {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** The claim's amount times the rate, or n/a when there is no rate. */
+  protected dueOf(claim: Claim): string {
+    const rate = this.rate();
+    return rate === null ? NO_RATE : money(dueCents(cents(claim.amount), rate));
   }
 
   protected edit(claim: Claim): void {
