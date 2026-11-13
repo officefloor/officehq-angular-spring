@@ -6,7 +6,12 @@ import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.CrewRepository;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolController;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.ActionNotAllowedException;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -26,9 +31,15 @@ public class PeriodService {
     private final Rollup rollup;
     private final RoleService roles;
     private final Audit audit;
+    private final PoolRepository pools;
+    private final CrewRepository crews;
+    private final PersonRepository people;
 
     public PeriodService(PeriodRepository periods, SheetRepository sheets, Rollup rollup, RoleService roles,
-            Audit audit) {
+            Audit audit, PoolRepository pools, CrewRepository crews, PersonRepository people) {
+        this.pools = pools;
+        this.crews = crews;
+        this.people = people;
         this.periods = periods;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -162,7 +173,8 @@ public class PeriodService {
             throw new PeriodRefusedException("The period is already closed.");
         }
         period.softClose(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()),
-                rollup.carriedByPerson(sheetId, period, periods.findBySheetIdOrderByFromDateAsc(sheetId)));
+                rollup.carriedByPerson(sheetId, period, periods.findBySheetIdOrderByFromDateAsc(sheetId)),
+                cuts(sheetId));
         periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + period.getClosedTotal().toPlainString());
@@ -185,7 +197,8 @@ public class PeriodService {
 
     private Period closeNow(String sheetId, String user, Period period, boolean auto) {
         period.close(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()),
-                rollup.carriedByPerson(sheetId, period, periods.findBySheetIdOrderByFromDateAsc(sheetId)));
+                rollup.carriedByPerson(sheetId, period, periods.findBySheetIdOrderByFromDateAsc(sheetId)),
+                cuts(sheetId));
         periods.saveAndFlush(period);
         BigDecimal total = period.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
@@ -193,7 +206,15 @@ public class PeriodService {
         return period;
     }
 
-    /** Reopen a closed or soft-closed period, making its due-total and each person's carried figure live again; by a role the sheet allows (a steward
+    /** Each pool member's cut as it stands now, by member key: what a close fixes. */
+    private Map<String, BigDecimal> cuts(String sheetId) {
+        Sheet sheet = sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        return PoolController.currentCuts(pools.findBySheetIdOrderByIdAsc(sheetId),
+                crews.findBySheetIdOrderByIdAsc(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+                sheet.getPot(), sheet.getToday());
+    }
+
+    /** Reopen a closed or soft-closed period, making its due-total, each person's carried figure and each pool member's cut live again; by a role the sheet allows (a steward
      *  by the standing rule), and refused when it is open. */
     @Transactional
     public Period reopen(String sheetId, String user, long periodId) {

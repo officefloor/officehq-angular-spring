@@ -225,19 +225,47 @@ public class PoolController {
         }
     }
 
-    /** The views with each member's cut at the end of each period whose to-date is on or before today, by
-     *  from-date: its cut in the pools as they stood then (then, by that date). */
+    /** The key a member's cut is fixed by when a period is closed: its pool's view id and the member. */
+    static String memberKey(PoolView pool, PoolMemberView m) {
+        return pool.id() + ":" + (m.personId() != null ? "p" + m.personId() : "q" + m.poolId());
+    }
+
+    /** Each pool member's cut as it stands now (the pools, crews, people and pot given, today as the sheet's
+     *  today), by member key; a member with no cut is left out. What a close or soft close fixes. */
+    public static Map<String, BigDecimal> currentCuts(List<Pool> pools, List<Crew> crews, List<Person> people,
+            BigDecimal pot, LocalDate today) {
+        Map<Long, Person> byId = people.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<String, BigDecimal> out = new HashMap<>();
+        for (PoolView v : PoolView.of(pools, crews, byId, pot, today)) {
+            for (PoolMemberView m : v.members()) {
+                if (m.cut() != null) {
+                    out.put(memberKey(v, m), new BigDecimal(m.cut()));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The views with each member's cut for each period that is closed or soft-closed, or whose to-date is on
+     *  or before today, by from-date: for a closed or soft-closed one, its cut fixed when it was closed; for an
+     *  open one, its cut in the pools as they stood at its end (then, by that date). */
     static List<PoolView> withHistory(List<PoolView> views, List<Period> periods, LocalDate today,
             Function<LocalDate, List<PoolView>> then) {
-        List<Period> ended = periods.stream()
-                .filter(p -> today != null && p.getToDate() != null && !p.getToDate().isAfter(today)).toList();
-        List<List<PoolView>> past = ended.stream().map(p -> then.apply(p.getToDate())).toList();
+        List<Period> ended = periods.stream().filter(p -> fixed(p)
+                || today != null && p.getToDate() != null && !p.getToDate().isAfter(today)).toList();
+        List<List<PoolView>> past = ended.stream().map(p -> fixed(p) ? List.<PoolView>of() : then.apply(p.getToDate()))
+                .toList();
         List<PoolView> out = new ArrayList<>();
         for (PoolView v : views) {
             List<PoolMemberView> members = new ArrayList<>();
             for (PoolMemberView m : v.members()) {
                 List<PeriodCut> cuts = new ArrayList<>();
                 for (int i = 0; i < ended.size(); i++) {
+                    if (fixed(ended.get(i))) {
+                        BigDecimal c = ended.get(i).getClosedCuts().get(memberKey(v, m));
+                        cuts.add(new PeriodCut(ended.get(i).getName(), c == null ? null : c.setScale(2).toPlainString()));
+                        continue;
+                    }
                     String cut = past.get(i).stream().filter(p -> p.id() == v.id() && p.crew() == v.crew())
                             .flatMap(p -> p.members().stream()).filter(m::same).findFirst()
                             .map(PoolMemberView::cut).orElse(null);
@@ -248,6 +276,10 @@ public class PoolController {
             out.add(new PoolView(v.id(), v.name(), members, v.totalShare(), v.balanced(), v.crew()));
         }
         return out;
+    }
+
+    private static boolean fixed(Period period) {
+        return period.isClosed() || period.isSoftClosed();
     }
 
     public record PoolRequest(@Size(max = 200) String name) {

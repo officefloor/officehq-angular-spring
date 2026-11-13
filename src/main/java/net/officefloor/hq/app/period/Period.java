@@ -20,7 +20,7 @@ import net.officefloor.hq.app.history.History;
 
 /** A named period on the sheet, from one date to another, both inclusive. A claim belongs to the
  *  period whose dates contain its due-by date, or to none. A closed period keeps the due-total it had when
- *  closed, and each person's carried figure, and its claims can no longer change, until a steward reopens it. A soft-closed period keeps
+ *  closed, and each person's carried figure and each pool member's cut, and its claims can no longer change, until a steward reopens it. A soft-closed period keeps
  *  its figures fixed the same way, but its claims can still change. */
 @Entity
 @EntityListeners(History.class)
@@ -81,6 +81,14 @@ public class Period {
     @MapKeyColumn(name = "person_id")
     @Column(name = "opening", nullable = false)
     private Map<Long, BigDecimal> openings = new HashMap<>();
+
+    /** Each pool member's cut for the period, fixed when it was closed, by member key (see
+     *  {@code PoolController.memberKey}); a member missing here had none; empty while open. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_pool_cut", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "member_key")
+    @Column(name = "cut", nullable = false)
+    private Map<String, BigDecimal> closedCuts = new HashMap<>();
 
     protected Period() {
     }
@@ -155,6 +163,11 @@ public class Period {
         return closedPersonCarried;
     }
 
+    /** Each pool member's cut fixed when it was closed, by member key; empty while open. */
+    public Map<String, BigDecimal> getClosedCuts() {
+        return closedCuts;
+    }
+
     /** Each person's opening balance for the period, by person id; a person missing here has none. */
     public Map<Long, BigDecimal> getOpenings() {
         return openings;
@@ -167,19 +180,24 @@ public class Period {
 
     /** Close the period, fixing each person's due-total and carried figure for it, and its own as the sum of
      *  their due-totals. */
-    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
-        fix(personTotals, personCarried);
+    public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
+            Map<String, BigDecimal> cuts) {
+        fix(personTotals, personCarried, cuts);
         this.closed = true;
         this.softClosed = false;
     }
 
     /** Soft-close the period, fixing its figures as a close does while its claims can still change. */
-    public void softClose(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
-        fix(personTotals, personCarried);
+    public void softClose(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
+            Map<String, BigDecimal> cuts) {
+        fix(personTotals, personCarried, cuts);
         this.softClosed = true;
     }
 
-    private void fix(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
+    private void fix(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
+            Map<String, BigDecimal> cuts) {
+        this.closedCuts.clear();
+        this.closedCuts.putAll(cuts);
         this.closedPersonTotals.clear();
         this.closedPersonTotals.putAll(personTotals);
         this.closedPersonCarried.clear();
@@ -217,6 +235,7 @@ public class Period {
         this.closedTotal = null;
         this.closedPersonTotals.clear();
         this.closedPersonCarried.clear();
+        this.closedCuts.clear();
     }
 
     /** Whether a date falls in this period. */
