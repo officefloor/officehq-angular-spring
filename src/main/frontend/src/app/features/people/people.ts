@@ -6,6 +6,7 @@ import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, money,
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
+import { Summary } from '../summary/summary';
 
 interface Person {
   id: number;
@@ -44,11 +45,12 @@ interface StatementTaken {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, Periods, Rates, Settings],
+  imports: [PersonClaims, Periods, Rates, Settings, Summary],
   template: `
     <app-settings />
     <app-rates />
     <app-periods [dueTotals]="periodDueTotals()" />
+    <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
@@ -335,6 +337,32 @@ export class People {
       totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, rates, this.floor(), this.late()) ?? 0));
     }
     return new Map([...totals].map(([id, due]) => [id, money(due)]));
+  });
+  /** Per grade: the people not retired on it on the sheet's today, and their due-totals added up
+   *  (skipping those with no figure), as their rows show them. */
+  protected readonly gradeSummary = computed(() => {
+    const current = this.people().filter((p) => !p.retired);
+    return this.grades.map((grade) => {
+      const on = current.filter((p) => this.gradeOf(p) === grade);
+      const due = on.reduce((sum, p) => sum + (this.dueCentsBy(p) ?? 0), 0);
+      return { grade, count: on.length, dueTotal: money(due) };
+    });
+  });
+  /** Per period: the due-total its row shows, fixed when closed and live while open. */
+  protected readonly periodSummary = computed(() => {
+    const live = this.periodDueTotals();
+    return this.periods.periods().map((p) => ({
+      name: p.name,
+      dueTotal: p.closedTotal ?? live.get(p.id) ?? '0.00',
+    }));
+  });
+  /** Per status: how many of the sheet's claims have it. */
+  protected readonly statusSummary = computed(() => {
+    const claims = this.claims();
+    return ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({
+      status,
+      count: claims.filter((c) => c.status === status).length,
+    }));
   });
   protected readonly name = signal('');
   protected readonly grade = signal('A');
