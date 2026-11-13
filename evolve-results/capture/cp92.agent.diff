@@ -1,0 +1,80 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 6b954f764..0d3025c5a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -74,6 +74,10 @@ public class Claim {
+     @Column(name = "opened_by")
+     private String openedBy;
+ 
++    /** The user who last edited the claim; null for a claim never edited. */
++    @Column(name = "edited_by")
++    private String editedBy;
++
+     /** Whether the person's last statement bound the claim to the figure it had then. */
+     @Column(name = "stated", nullable = false)
+     private boolean stated;
+@@ -304,6 +308,19 @@ public class Claim {
+         this.openedBy = openedBy;
+     }
+ 
++    public String getEditedBy() {
++        return editedBy;
++    }
++
++    public void setEditedBy(String editedBy) {
++        this.editedBy = editedBy;
++    }
++
++    /** Whether the user opened the claim or last edited it, and so may not settle or approve it. */
++    public boolean openedOrEditedBy(String user) {
++        return user.equals(openedBy) || user.equals(editedBy);
++    }
++
+     public boolean isStated() {
+         return stated;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4ac55b338..d728a1a78 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -167,6 +167,7 @@ public class ClaimService {
+         claim.setDate(on);
+         claim.setNote(noteOf(note));
+         claim.setLockedBy(null);
++        claim.setEditedBy(user);
+         Claim saved = claims.saveAndFlush(claim);
+         useTags(sheetId, saved);
+         record("CLAIM_EDITED", sheetId, user, person, saved);
+@@ -253,7 +254,7 @@ public class ClaimService {
+         if (to == ClaimStatus.VOID) {
+             refuseUnreasonedVoid(sheetId, reason);
+         }
+-        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
++        if (to == ClaimStatus.SETTLED && claim.openedOrEditedBy(user)) {
+             throw new OwnClaimSettleRefusedException(user);
+         }
+         if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
+@@ -370,12 +371,12 @@ public class ClaimService {
+     }
+ 
+     /** A steward approves a PENDING claim: it is SETTLED, its due frozen at this moment. Anyone else,
+-     *  the user who opened it, or a claim that is not PENDING, is refused. */
++     *  the user who opened or last edited it, or a claim that is not PENDING, is refused. */
+     @Transactional
+     public Claim approve(String sheetId, String user, Long personId, Long id) {
+         Person person = person(sheetId, personId);
+         Claim claim = pending(sheetId, user, personId, id, ClaimStatus.SETTLED);
+-        if (user.equals(claim.getOpenedBy())) {
++        if (claim.openedOrEditedBy(user)) {
+             throw new OwnClaimSettleRefusedException(user);
+         }
+         BigDecimal due = dueOf(sheetId, person, claim);
+diff --git a/src/main/resources/db/migration/V59__claim_edited_by.sql b/src/main/resources/db/migration/V59__claim_edited_by.sql
+new file mode 100644
+index 000000000..edcf4ac1d
+--- /dev/null
++++ b/src/main/resources/db/migration/V59__claim_edited_by.sql
+@@ -0,0 +1,3 @@
++-- Who last edited a claim: the signed-in user who last saved its form or its amount entry; null for
++-- a claim never edited. Like its opener, that user may not settle or approve it.
++ALTER TABLE claim ADD COLUMN edited_by VARCHAR(200);
