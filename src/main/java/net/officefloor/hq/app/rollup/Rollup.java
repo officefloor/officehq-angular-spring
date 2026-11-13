@@ -49,8 +49,12 @@ public class Rollup {
 
     /** A person's figures; a null due-total is n/a. Their due-total counts their own claims less the parts
      *  others hold of them, and the parts they hold of other people's claims. Their score is the due of their settled claims that count
-     *  and correct nothing divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score) {
+     *  and correct nothing divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number.
+     *  Their settled- and open-total are the due of their SETTLED, and their OPEN and PENDING, claims that count (corrections
+     *  included), less the parts others hold of them, and the parts they hold of other people's; their cut total their cuts
+     *  across every pool they are a member of. */
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score,
+            BigDecimal settledTotal, BigDecimal openTotal, BigDecimal cutTotal) {
     }
 
     /** Everyone's figures by person id, in list order, and the sheet's totals; and the number of its overdue claims that count. */
@@ -66,8 +70,9 @@ public class Rollup {
     }
 
     /** One person's row on a sheet of a tree: their name and aliases, and their due-total (null for n/a) and
-     *  overdue-total, for figures worked out over the whole tree. */
-    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
+     *  overdue-total, settled-, open- and cut total, for figures worked out over the whole tree. */
+    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settledTotal,
+            BigDecimal openTotal, BigDecimal cutTotal) {
     }
 
     /** A sheet's due-totals by grade (each person not retired on the grade in force on the sheet's today, a due-total
@@ -169,6 +174,8 @@ public class Rollup {
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
             BigDecimal settled = ZERO;
+            BigDecimal settledTotal = ZERO;
+            BigDecimal openTotal = ZERO;
             int overdueCount = 0;
             boolean keptFigure = false;
             for (Claim claim : sheetClaims) {
@@ -197,7 +204,13 @@ public class Rollup {
                 }
                 if (figure != null) {
                     // the parts its holders hold are theirs, not its person's
-                    due = due.add(figure.subtract(sharedPart(sheet, claim, figure, byId, sheetClaims, sheetRates)));
+                    BigDecimal own = figure.subtract(sharedPart(sheet, claim, figure, byId, sheetClaims, sheetRates));
+                    due = due.add(own);
+                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                        settledTotal = settledTotal.add(own);
+                    } else if (isOpen(claim)) {
+                        openTotal = openTotal.add(own);
+                    }
                     if (overdue(sheet, claim, person, today)) {
                         overdue = overdue.add(figure);
                     }
@@ -222,6 +235,11 @@ public class Rollup {
                 if (part != null) {
                     keptFigure = true;
                     due = due.add(part);
+                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                        settledTotal = settledTotal.add(part);
+                    } else if (isOpen(claim)) {
+                        openTotal = openTotal.add(part);
+                    }
                 }
             }
             sheetOverdueCount += overdueCount;
@@ -229,7 +247,9 @@ public class Rollup {
                     .movePointLeft(2).setScale(0, RoundingMode.HALF_EVEN);
             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
             BigDecimal personDue = rated || keptFigure ? capped(sheet, due, cuts.get(person.getId())) : null;
-            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, score));
+            BigDecimal cut = cuts.getOrDefault(person.getId(), ZERO);
+            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, score,
+                    settledTotal, openTotal, cut == null ? ZERO : cut.setScale(2, RoundingMode.HALF_EVEN)));
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
             if (personDue != null) {
@@ -368,7 +388,8 @@ public class Rollup {
             }
             List<String> names = new ArrayList<>(List.of(person.getName()));
             names.addAll(person.getAliases());
-            members.add(new Member(names, figures.dueTotal(), figures.overdueTotal()));
+            members.add(new Member(names, figures.dueTotal(), figures.overdueTotal(), figures.settledTotal(),
+                    figures.openTotal(), figures.cutTotal()));
         }
         return members;
     }
@@ -614,6 +635,10 @@ public class Rollup {
 
     private static boolean above(BigDecimal dueTotal, BigDecimal threshold) {
         return dueTotal != null && dueTotal.compareTo(threshold) > 0;
+    }
+
+    private static boolean isOpen(Claim claim) {
+        return claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.PENDING;
     }
 
     /** Whether a claim counts toward claimed: its status counts, it is not left out by its person's

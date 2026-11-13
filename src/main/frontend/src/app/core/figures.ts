@@ -151,15 +151,21 @@ export class Figures {
     return this.heldParts(p).filter(({ c }) => isOpen(c)).reduce((sum, { part }) => sum + part, own);
   }
 
-  /** Everyone's settled-total added up (not trimmed). */
+  /** Everyone's settled-total added up, trimmed. */
   readonly settledTotal = computed(() =>
-    money(this.people.people().reduce((sum, p) => sum + this.settledCents(p), 0n)),
+    money(trimmed(this.people.people().map((p) => this.settledCents(p)))),
   );
 
-  /** Everyone's open-total added up (not trimmed). */
+  /** Everyone's open-total added up, trimmed. */
   readonly openTotal = computed(() =>
-    money(this.people.people().reduce((sum, p) => sum + this.openCents(p), 0n)),
+    money(trimmed(this.people.people().map((p) => this.openCents(p)))),
   );
+
+  /** Everyone's cut total added up, trimmed. */
+  readonly cutTotal = computed(() => {
+    const cuts = this.pools.cutCents();
+    return money(trimmed(this.people.people().map((p) => cuts.get(p.id) ?? 0n)));
+  });
 
   /** Everyone's (capped) due-total added up, skipping those whose grade has no rate, trimmed. */
   readonly dueTotal = computed(() =>

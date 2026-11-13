@@ -780,11 +780,8 @@ export class PeopleList {
   protected cut(p: Person): string {
     return money(this.pools.cutCents().get(p.id) ?? 0n);
   }
-  /** Everyone's cut total added up. */
-  protected readonly cutTotal = computed(() => {
-    const cuts = this.pools.cutCents();
-    return money(this.people.people().reduce((sum, p) => sum + (cuts.get(p.id) ?? 0n), 0n));
-  });
+  /** Everyone's cut total added up, trimmed. */
+  protected readonly cutTotal = this.figures.cutTotal;
   protected readonly name = signal('');
   protected readonly grade = signal<string>('A');
   /** The date the editor's grade applies from; blank takes the sheet's today. */

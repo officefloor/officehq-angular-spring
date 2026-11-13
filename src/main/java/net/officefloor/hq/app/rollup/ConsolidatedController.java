@@ -39,9 +39,10 @@ public class ConsolidatedController {
             List<MemberView> people, List<MemberView> ownPeople, int overdueCount) {
     }
 
-    /** A person's names (their name, then their aliases) and their due-total (two decimals; null for n/a) and
-     *  overdue-total (two decimals). */
-    public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
+    /** A person's names (their name, then their aliases) and their due-total (two decimals; null for n/a),
+     *  overdue-total, settled-total, open-total and cut total (two decimals). */
+    public record MemberView(List<String> names, String dueTotal, String overdueTotal, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     private final Rollup rollup;
@@ -72,7 +73,8 @@ public class ConsolidatedController {
 
     private static List<MemberView> viewed(List<Rollup.Member> members) {
         return members.stream().map(m -> new MemberView(m.names(),
-                m.dueTotal() == null ? null : m.dueTotal().toPlainString(), m.overdueTotal().toPlainString())).toList();
+                m.dueTotal() == null ? null : m.dueTotal().toPlainString(), m.overdueTotal().toPlainString(),
+                m.settledTotal().toPlainString(), m.openTotal().toPlainString(), m.cutTotal().toPlainString())).toList();
     }
 
     private static Map<String, String> shown(Map<String, BigDecimal> totals) {

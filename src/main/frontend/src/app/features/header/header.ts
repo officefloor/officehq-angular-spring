@@ -2,6 +2,7 @@ import { Component, computed, inject } from '@angular/core';
 import { Figures, STATUSES, trimmed } from '../../core/figures';
 import { People } from '../../core/people';
 import { hundredths, money } from '../../core/rates';
+import { Pools } from '../../core/pools';
 import { Session, TreeMember } from '../../core/session';
 
 /** How many people there are among rows whose names or aliases match, as names are compared (trimmed, without
@@ -21,19 +22,23 @@ function distinctPeople(rows: string[][]): number {
   return rows.filter((_, i) => root(i) === i).length;
 }
 
-/** People count, due-total and overdue-total over every person of a tree, the totals trimmed once over them all. */
+/** People count, due-, overdue-, settled-, open- and cut total over every person of a tree, the totals trimmed once
+ *  over them all. */
 function overTree(members: TreeMember[]) {
   return {
     peopleCount: distinctPeople(members.map((m) => m.names)),
     dueTotal: money(trimmed(members.filter((m) => m.dueTotal !== null).map((m) => hundredths(m.dueTotal!)))),
     overdueTotal: money(trimmed(members.map((m) => hundredths(m.overdueTotal)))),
+    settledTotal: money(trimmed(members.map((m) => hundredths(m.settledTotal)))),
+    openTotal: money(trimmed(members.map((m) => hundredths(m.openTotal)))),
+    cutTotal: money(trimmed(members.map((m) => hundredths(m.cutTotal)))),
   };
 }
 
 // The sheet's counters, always in view: everyone on it (retired people included), the claims in
 // each status, and the sheet's due- and overdue-totals — the same figures the summary and the
 // people list show. Then the same figures consolidated over the sheet and all its descendants (the tree): the
-// due- and overdue-totals of every person of the tree added up, trimmed once over them all; the people counted
+// due-, overdue-, settled-, open- and cut totals of every person of the tree added up, trimmed once over them all; the people counted
 // once each, people whose names or aliases match (as names are compared) being one; while the screen shows the
 // sheet as of a date, every sheet of the tree as it stood at the end of that date. Likewise per grade the due-totals of
 // the people on it (retired people left out), and per status the number of claims in it. And the signed-in user's own due- and overdue-totals, when a
@@ -67,6 +72,9 @@ function overTree(members: TreeMember[]) {
         <div><dt>Consolidated people</dt><dd data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</dd></div>
         <div><dt>Consolidated due total</dt><dd data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</dd></div>
         <div><dt>Consolidated overdue total</dt><dd data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</dd></div>
+        <div><dt>Consolidated settled total</dt><dd data-testid="consolidated-settled-total">{{ consolidated().settledTotal }}</dd></div>
+        <div><dt>Consolidated open total</dt><dd data-testid="consolidated-open-total">{{ consolidated().openTotal }}</dd></div>
+        <div><dt>Consolidated cut total</dt><dd data-testid="consolidated-cut-total">{{ consolidated().cutTotal }}</dd></div>
         @for (g of consolidated().grades; track g.grade) {
           <div><dt>Consolidated grade {{ g.grade }} due total</dt><dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</dd></div>
         }
@@ -88,6 +96,7 @@ export class HeaderCounters {
   protected readonly people = inject(People);
   protected readonly figures = inject(Figures);
   private readonly session = inject(Session);
+  private readonly pools = inject(Pools);
 
   protected readonly consolidated = computed(() => {
     const d = this.session.descendants();
@@ -104,9 +113,17 @@ export class HeaderCounters {
     }
     const current = this.people.people().filter((p) => !p.retired);
     const counts = this.figures.statusCounts();
+    const cuts = this.pools.cutCents();
     const own: TreeMember[] = this.people.people().map((p) => {
       const due = this.figures.dueCents(p);
-      return { names: [p.name, ...p.aliases], dueTotal: due === null ? null : money(due), overdueTotal: money(this.figures.overdueCents(p)) };
+      return {
+        names: [p.name, ...p.aliases],
+        dueTotal: due === null ? null : money(due),
+        overdueTotal: money(this.figures.overdueCents(p)),
+        settledTotal: money(this.figures.settledCents(p)),
+        openTotal: money(this.figures.openCents(p)),
+        cutTotal: money(cuts.get(p.id) ?? 0n),
+      };
     });
     return {
       ...overTree([...own, ...d.people]),

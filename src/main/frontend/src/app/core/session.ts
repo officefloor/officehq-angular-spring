@@ -112,12 +112,15 @@ export interface DescendantFigures {
   overdueCount: number;
 }
 
-/** A person on a sheet of a tree: their name then aliases, their due-total (two decimals; null for n/a) and
- *  overdue-total (two decimals). */
+/** A person on a sheet of a tree: their name then aliases, their due-total (two decimals; null for n/a),
+ *  overdue-total, settled-total, open-total and cut total (two decimals). */
 export interface TreeMember {
   names: string[];
   dueTotal: string | null;
   overdueTotal: string;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 const NO_DESCENDANTS: DescendantFigures = {
