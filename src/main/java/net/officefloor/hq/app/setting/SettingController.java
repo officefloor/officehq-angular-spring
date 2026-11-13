@@ -3,10 +3,12 @@ package net.officefloor.hq.app.setting;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -33,8 +35,9 @@ public class SettingController {
         }
     }
 
-    /** The sheet's settings: the roles assigned, and the clerk limit (two decimals; null for none). */
-    public record SettingsView(List<RoleView> roles, String clerkLimit) {
+    /** The sheet's settings: the roles assigned, the clerk limit (two decimals; null for none) and
+     *  the floor (two decimals). */
+    public record SettingsView(List<RoleView> roles, String clerkLimit, String floor) {
     }
 
     /** A role for a user name: clerk or steward. */
@@ -45,10 +48,16 @@ public class SettingController {
     public record ClerkLimitRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
     }
 
-    private final SettingService service;
+    /** A floor of 0.00 or more with up to two decimals. */
+    public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    }
 
-    public SettingController(SettingService service) {
+    private final SettingService service;
+    private final RollupService rollups;
+
+    public SettingController(SettingService service, RollupService rollups) {
         this.service = service;
+        this.rollups = rollups;
     }
 
     /** The sheet's settings. */
@@ -77,10 +86,21 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's floor; the figures it moves are followed in the audit. */
+    @PutMapping("/floor")
+    public SettingsView setFloor(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated FloorRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        rollups.track(sheet, by, () -> service.setFloor(sheet, by, request.value()));
+        return view(sheet);
+    }
+
     private SettingsView view(String sheet) {
         BigDecimal limit = service.clerkLimit(sheet);
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
-                limit != null ? limit.toPlainString() : null);
+                limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString());
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

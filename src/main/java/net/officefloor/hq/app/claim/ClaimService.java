@@ -138,12 +138,14 @@ public class ClaimService {
     }
 
     /** The due on a claim at the person's grade rate in force on the claim's date: amount times rate
-     *  divided by 100, rounded half to even to two decimals; null when no rate applies. */
+     *  divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when
+     *  no rate applies. */
     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         BigDecimal amount = claim.getAmount();
         return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
                 .map(Rate::getRate)
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(due -> due.max(settings.floor(sheetId)))
                 .orElse(null);
     }
 

@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, claimDueCents, counts, money } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, RateStore, Rates } from '../rates/rates';
-import { Settings } from '../settings/settings';
+import { SettingStore, Settings } from '../settings/settings';
 
 interface Person {
   id: number;
@@ -143,6 +143,7 @@ interface StatementTaken {
                   [personId]="p.id"
                   [claims]="claimsOf(p.id)"
                   [rates]="rates.of(p.grade)"
+                  [floor]="floor()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -205,6 +206,9 @@ export class People {
   private readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
   private readonly periods = inject(PeriodStore);
+  private readonly settings = inject(SettingStore);
+  /** The sheet's floor in cents. */
+  protected readonly floor = computed(() => cents(this.settings.floor()));
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -258,7 +262,7 @@ export class People {
       const period = periodOf(periods, c.date);
       const grade = grades.get(c.personId);
       if (period === null || grade === undefined) continue;
-      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, this.rates.of(grade)) ?? 0));
+      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, this.rates.of(grade), this.floor()) ?? 0));
     }
     return new Map([...totals].map(([id, due]) => [id, money(due)]));
   });
@@ -370,7 +374,8 @@ export class People {
       return null;
     }
     const rates = this.rates.of(person.grade);
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates) ?? 0), 0);
+    const floor = this.floor();
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
   }
 
   /** A claim added (listed first) or saved in place. */

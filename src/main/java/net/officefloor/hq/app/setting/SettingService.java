@@ -10,7 +10,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** A sheet's settings: the role each user name has on it, and its clerk limit. */
+/** A sheet's settings: the role each user name has on it, and its clerk limit and its floor. */
 @Service
 public class SettingService {
 
@@ -42,6 +42,11 @@ public class SettingService {
         return sheets.load(sheetId).getClerkLimit();
     }
 
+    /** The sheet's floor: the least a claim's live due can be. */
+    public BigDecimal floor(String sheetId) {
+        return sheets.load(sheetId).getFloor();
+    }
+
     /** Assign a user name a role on the sheet. */
     @Transactional
     public SheetRole setRole(String sheetId, String by, String user, Role role) {
@@ -67,6 +72,19 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=clerk-limit value="
                 + (scaled != null ? scaled.toPlainString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's floor. */
+    @Transactional
+    public Sheet setFloor(String sheetId, String by, BigDecimal floor) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        BigDecimal scaled = floor.setScale(2, RoundingMode.UNNECESSARY);
+        sheet.setFloor(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=floor value="
+                + scaled.toPlainString());
         return saved;
     }
 }

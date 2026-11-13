@@ -44,13 +44,13 @@ export function cents(amount: string): number {
 }
 
 /** A claim's due in cents: the due fixed when it was settled; otherwise the figure a statement
- *  bound it to; otherwise its amount times the rate in force on its date among its grade's rates;
- *  null when it has no figure. */
-export function claimDueCents(claim: Claim, rates: Rate[]): number | null {
+ *  bound it to; otherwise its amount times the rate in force on its date among its grade's rates,
+ *  raised to the sheet's floor (in cents); null when it has no figure. */
+export function claimDueCents(claim: Claim, rates: Rate[], floor: number): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateOn(rates, claim.date);
-  return rate === null ? null : dueCents(cents(claim.amount), rate);
+  return rate === null ? null : Math.max(dueCents(cents(claim.amount), rate), floor);
 }
 
 /** Cents shown with two decimals. */
@@ -145,6 +145,8 @@ export class PersonClaims {
   readonly claims = input.required<Claim[]>();
   /** The rates for the person's grade; none when the grade has no rate. */
   readonly rates = input.required<Rate[]>();
+  /** The sheet's floor in cents: the least a live due can be. */
+  readonly floor = input.required<number>();
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -163,7 +165,7 @@ export class PersonClaims {
 
   /** The claim's due (see claimDueCents), or n/a when it has no figure. */
   protected dueOf(claim: Claim): string {
-    const due = claimDueCents(claim, this.rates());
+    const due = claimDueCents(claim, this.rates(), this.floor());
     return due === null ? NO_RATE : money(due);
   }
 
