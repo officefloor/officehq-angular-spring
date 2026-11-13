@@ -73,7 +73,7 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
-    /** Add a claim for a person; a missing date takes the sheet's today. One added while the period
+    /** Add a claim for a person; a missing date takes the sheet's entry date, else its today. One added while the period
      *  its date falls in is soft-closed is a late entry. Its due-by is fixed now: its
      *  date plus the person's own terms, else the terms in force on that date for the person's grade then. A negative amount is a
      *  correction and must name a SETTLED claim of the person it corrects. */
@@ -82,7 +82,7 @@ public class ClaimService {
             String corrects) {
         Person person = person(sheetId, personId);
         corrects = numberOf(corrects);
-        LocalDate on = date != null ? date : sheets.today(sheetId);
+        LocalDate on = date != null ? date : settings.defaultClaimDate(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
@@ -101,7 +101,8 @@ public class ClaimService {
         return added;
     }
 
-    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's today. Any
+    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's entry date, else
+     *  its today. Any
      *  other claim is refused: an OPEN one is changed by voiding it and adding a new one. */
     @Transactional
     public Claim update(String sheetId, String user, Long personId, Long id, BigDecimal amount, LocalDate date,
@@ -116,7 +117,7 @@ public class ClaimService {
         if (claim.lockedAgainst(user)) {
             throw new ClaimLockedException(claim.getLockedBy());
         }
-        LocalDate on = date != null ? date : sheets.today(sheetId);
+        LocalDate on = date != null ? date : settings.defaultClaimDate(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
         refuseRetired(person, on);

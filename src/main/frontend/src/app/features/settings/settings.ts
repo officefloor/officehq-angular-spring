@@ -51,6 +51,9 @@ interface SettingsView {
   /** The grace days: when the sheet's today is changed, every open period whose to-date plus them is
    *  before the new today is closed; null for off. */
   graceDays: number | null;
+  /** The entry date (yyyy-mm-dd): while it is set, a new claim given no date is dated it rather than
+   *  the sheet's today; blank for off. */
+  entryDate: string;
   /** The grades' own terms in whole days, by grade; a grade not listed takes the sheet's terms. */
   gradeTerms: Record<string, number>;
   /** Every value recorded for the dated settings, by key (floor, late-pct, terms, terms-<grade>,
@@ -148,6 +151,7 @@ export class SettingStore {
   });
   readonly policyDate = signal('');
   readonly periodNumberingFrom = signal('');
+  readonly entryDate = signal('');
   /** The grace days as text: whole days, blank for off. */
   readonly graceDays = signal('');
   /** The permission matrix as set, by action; blank keeps the standing rule. */
@@ -166,6 +170,7 @@ export class SettingStore {
       this.dated.set({});
       this.policyDate.set('');
       this.periodNumberingFrom.set('');
+      this.entryDate.set('');
       this.graceDays.set('');
       this.permissions.set({});
       if (sheet) void this.read(sheet, load);
@@ -316,6 +321,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's entry date; null leaves it blank (off). */
+  async setEntryDate(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/entry-date`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Change the active sheet's grace days; null leaves them blank (off). */
   async setGraceDays(value: number | null): Promise<void> {
     const sheet = this.session.sheetId();
@@ -355,6 +371,7 @@ export class SettingStore {
     this.dated.set(settings.dated);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
+    this.entryDate.set(settings.entryDate);
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.permissions.set(settings.permissions);
   }
@@ -372,12 +389,14 @@ export class SettingStore {
 // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
 // claim's date makes its figures round half up rather than half to even, and the period numbering
 // from, on or after which a claim opened is numbered within its period, and the grace days, past which
-// (after its to-date) an open period is closed when the sheet's today is changed, and the permission matrix,
+// (after its to-date) an open period is closed when the sheet's today is changed, and the entry date, which
+// a new claim given no date (on the claim form, the quick-add bar, a pasted line or a correction) takes
+// instead of the sheet's today while it is set, and the permission matrix,
 // the roles that may open, settle, void, reassign, close and reopen (blank keeps the standing rule).
 // The settings that carry a figure are dated: each is saved from the from-date typed beside it (blank
 // for the sheet's today), keeping the values recorded before, and the value in force on the sheet's
 // today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof and note thresholds, the policy date,
-// the period numbering from and the grace days count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
+// the period numbering from, the entry date and the grace days count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
 @Component({
   selector: 'app-settings',
   template: `
@@ -615,6 +634,15 @@ export class SettingStore {
           (focus)="periodNumberingFromTyped.set(true)"
           (input)="periodNumberingFrom.set(value($event)); periodNumberingFromTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-entry-date">Entry date</label>
+        <input
+          id="setting-entry-date"
+          data-testid="setting-entry-date"
+          placeholder="yyyy-mm-dd"
+          [value]="entryDate()"
+          (focus)="entryDateTyped.set(true)"
+          (input)="entryDate.set(value($event)); entryDateTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-grace-days">Grace days</label>
         <input
           id="setting-grace-days"
@@ -706,6 +734,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Entry date:
+        <strong data-testid="setting-entry-date-current">{{ store.entryDate() }}</strong>
+        @if (store.entryDate() === '') {
+          <span>off (the sheet's today)</span>
+        }
+      </p>
+      <p>
         Grace days:
         <strong data-testid="setting-grace-days-current">{{ store.graceDays() }}</strong>
         @if (store.graceDays() === '') {
@@ -766,6 +801,8 @@ export class Settings {
   protected readonly policyDateTyped = signal(false);
   protected readonly periodNumberingFrom = signal('');
   protected readonly periodNumberingFromTyped = signal(false);
+  protected readonly entryDate = signal('');
+  protected readonly entryDateTyped = signal(false);
   protected readonly graceDays = signal('');
   protected readonly graceDaysTyped = signal(false);
   /** The permission entries typed since the last save, by action; a focused one counts as typed, as
@@ -873,6 +910,8 @@ export class Settings {
     const savePolicyDate = this.policyDateTyped();
     const numberingFrom = this.periodNumberingFrom().trim();
     const saveNumberingFrom = this.periodNumberingFromTyped();
+    const entryDate = this.entryDate().trim();
+    const saveEntryDate = this.entryDateTyped();
     const graceDays = this.graceDays().trim();
     const saveGraceDays = this.graceDaysTyped();
     const permissions = Object.entries(this.permissions()).map(
@@ -944,6 +983,10 @@ export class Settings {
       this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
       return;
     }
+    if (saveEntryDate && entryDate !== '' && !DATE.test(entryDate)) {
+      this.settingsError.set('Type an entry date as yyyy-mm-dd, or leave it blank for off.');
+      return;
+    }
     if (saveGraceDays && graceDays !== '' && !DAYS.test(graceDays)) {
       this.settingsError.set('Type grace days of 0 or more whole days, or leave them blank for off.');
       return;
@@ -964,6 +1007,7 @@ export class Settings {
     this.latePctTyped.set(false);
     this.policyDateTyped.set(false);
     this.periodNumberingFromTyped.set(false);
+    this.entryDateTyped.set(false);
     this.graceDaysTyped.set(false);
     this.permissions.set({});
     const save = async () => {
@@ -982,6 +1026,7 @@ export class Settings {
         if (saveLatePct) await this.store.setLatePct(latePct, fromOf(latePctFrom));
         if (savePolicyDate) await this.store.setPolicyDate(policyDate === '' ? null : policyDate);
         if (saveNumberingFrom) await this.store.setPeriodNumberingFrom(numberingFrom === '' ? null : numberingFrom);
+        if (saveEntryDate) await this.store.setEntryDate(entryDate === '' ? null : entryDate);
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
         for (const [action, roles] of permissions) await this.store.setPermission(action, roles);
       } catch {
@@ -996,6 +1041,7 @@ export class Settings {
         if (saveLatePct) this.latePctTyped.set(true);
         if (savePolicyDate) this.policyDateTyped.set(true);
         if (saveNumberingFrom) this.periodNumberingFromTyped.set(true);
+        if (saveEntryDate) this.entryDateTyped.set(true);
         if (saveGraceDays) this.graceDaysTyped.set(true);
         this.permissions.update((typed) => ({ ...Object.fromEntries(permissions), ...typed }));
         this.settingsError.set('The settings could not be saved.');

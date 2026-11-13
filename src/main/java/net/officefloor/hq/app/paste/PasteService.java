@@ -21,7 +21,7 @@ public class PasteService {
     /** The most a claim's note holds, as on the claim form. */
     private static final int NOTE_MAX = 2000;
 
-    /** A pasted line, read: the person it names and the claim's figures (a null date: the sheet's today). */
+    /** A pasted line, read: the person it names and the claim's figures (a null date: the sheet's entry date, else its today). */
     private record Line(Person person, BigDecimal amount, LocalDate date, String note) {
     }
 
@@ -55,7 +55,7 @@ public class PasteService {
     }
 
     /** One line as the claim form reads it: an amount of 0.00 or more with up to two decimals, a
-     *  date (blank: the sheet's today) and a note (absent: empty) that may hold commas. */
+     *  date (blank: the sheet's entry date, else its today) and a note (absent: empty) that may hold commas. */
     private Line read(String sheetId, int at, String raw) {
         String[] fields = raw.split(",", 4);
         if (fields.length < 3) {

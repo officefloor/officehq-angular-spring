@@ -47,13 +47,14 @@ public class SettingController {
     /** The sheet's settings: the roles assigned, and as in force on the sheet's today the clerk limit (two decimals; null for none) and
      *  the floor (two decimals), the cap (two decimals; null for none), the terms (whole days), the late percent (two decimals) and the policy
      *  date (blank for the sheet's today) and the period numbering from (blank for off) and the grace days
-     *  (null for off), and the grades'
+     *  (null for off) and the entry date (blank for off), and the grades'
      *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
      *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold, note-threshold); and
      *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
-            Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations) {
+            Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
+            String entryDate) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -124,6 +125,10 @@ public class SettingController {
     public record PeriodNumberingFromRequest(LocalDate value) {
     }
 
+    /** An entry date; null leaves it blank (off). */
+    public record EntryDateRequest(LocalDate value) {
+    }
+
     /** Grace days of 0 or more whole days; null leaves them blank (off). */
     public record GraceDaysRequest(@Min(0) @Max(36500) Integer value) {
     }
@@ -157,7 +162,8 @@ public class SettingController {
                 then.policyDate() != null ? then.policyDate().toString() : "",
                 then.periodNumberingFrom() != null ? then.periodNumberingFrom().toString() : "", then.graceDays(),
                 then.gradeTerms(), dated, then.permissions(),
-                then.delegations().stream().map(DelegationView::of).toList());
+                then.delegations().stream().map(DelegationView::of).toList(),
+                then.entryDate() != null ? then.entryDate().toString() : "");
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -304,6 +310,16 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's entry date; it dates only claims added from then on. */
+    @PutMapping("/entry-date")
+    public SettingsView setEntryDate(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated EntryDateRequest request) {
+        String sheet = sheetId.trim();
+        service.setEntryDate(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     /** Change the sheet's grace days; they close periods only when the sheet's today is changed. */
     @PutMapping("/grace-days")
     public SettingsView setGraceDays(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -320,6 +336,7 @@ public class SettingController {
         BigDecimal cap = service.cap(sheet);
         LocalDate policyDate = service.policyDateSet(sheet);
         LocalDate numberingFrom = service.periodNumberingFrom(sheet);
+        LocalDate entryDate = service.entryDate(sheet);
         Map<String, List<DatedView>> dated = new LinkedHashMap<>();
         service.dated(sheet).forEach((key, recorded) -> dated.put(key, recorded.stream().map(DatedView::of).toList()));
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
@@ -327,7 +344,8 @@ public class SettingController {
                 cap != null ? cap.toPlainString() : null, service.terms(sheet, today),
                 service.latePct(sheet, today).toPlainString(), policyDate != null ? policyDate.toString() : "",
                 numberingFrom != null ? numberingFrom.toString() : "", service.graceDays(sheet), service.gradeTerms(sheet, today), dated,
-                service.permissions(sheet), service.delegations(sheet).stream().map(DelegationView::of).toList());
+                service.permissions(sheet), service.delegations(sheet).stream().map(DelegationView::of).toList(),
+                entryDate != null ? entryDate.toString() : "");
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

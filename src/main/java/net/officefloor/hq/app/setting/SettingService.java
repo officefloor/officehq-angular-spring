@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its cap, its proof threshold, its terms
- *  (and any grade's own terms) and its late percent, its policy date, its period numbering from and its grace days. The
+ *  (and any grade's own terms) and its late percent, its policy date, its period numbering from, its grace days and its entry date. The
  *  settings that carry a figure are dated: each value recorded is in force from its from-date. A claim's
  *  floor, late percent, terms and proof threshold are those in force on its date; the clerk limit and the cap those in
  *  force on the sheet's today. */
@@ -57,13 +57,14 @@ public class SettingService {
     private static final String PERMISSION = "perm:";
     private static final String NUMBERING_FROM = "period-numbering-from";
     private static final String GRACE_DAYS = "grace-days";
+    private static final String ENTRY_DATE = "entry-date";
 
     /** The sheet's settings as they stood at the end of a past day: each value as it stood set then,
      *  the day standing in for the sheet's today in those in force on a date. */
     public record AsOfView(Map<String, String> roles, Map<String, String> permissions, LocalDate periodNumberingFrom,
             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
-            Map<String, List<SettingValue>> dated) {
+            Map<String, List<SettingValue>> dated, LocalDate entryDate) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -89,6 +90,7 @@ public class SettingService {
         }
         String numbering = kept.contains(NUMBERING_FROM) ? then.get(NUMBERING_FROM)
                 : Objects.toString(periodNumberingFrom(sheetId), null);
+        String entry = kept.contains(ENTRY_DATE) ? then.get(ENTRY_DATE) : Objects.toString(entryDate(sheetId), null);
         String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
         Map<String, List<SettingValue>> dated = history.dated(sheetId, day);
         Map<String, Integer> gradeTerms = new LinkedHashMap<>();
@@ -105,7 +107,8 @@ public class SettingService {
                 floor(sheetId, day, day),
                 inForce(sheetId, "cap", day, day).map(SettingValue::getValue).orElse(null),
                 inForce(sheetId, "terms", day, day).map(v -> v.getValue().intValue()).orElse(START_TERMS),
-                latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated);
+                latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
+                entry != null ? LocalDate.parse(entry) : null);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -346,6 +349,17 @@ public class SettingService {
         return sheets.load(sheetId).getPeriodNumberingFrom();
     }
 
+    /** The sheet's entry date; null when it is blank (off). */
+    public LocalDate entryDate(String sheetId) {
+        return sheets.load(sheetId).getEntryDate();
+    }
+
+    /** The date a new claim given none takes: the sheet's entry date while it is set, else its today. */
+    public LocalDate defaultClaimDate(String sheetId) {
+        LocalDate entry = entryDate(sheetId);
+        return entry != null ? entry : sheets.today(sheetId);
+    }
+
     /** The sheet's grace days; null when they are blank (off). */
     public Integer graceDays(String sheetId) {
         return sheets.load(sheetId).getGraceDays();
@@ -476,6 +490,19 @@ public class SettingService {
         history.settingSet(sheetId, NUMBERING_FROM, from != null ? from.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=period-numbering-from value="
                 + (from != null ? from.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's entry date; null leaves it blank (off). */
+    @Transactional
+    public Sheet setEntryDate(String sheetId, String by, LocalDate date) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setEntryDate(date);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, ENTRY_DATE, date != null ? date.toString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=entry-date value="
+                + (date != null ? date.toString() : ""));
         return saved;
     }
 

@@ -35,7 +35,7 @@ public class QuickAddService {
         this.rollups = rollups;
     }
 
-    /** Add a claim of the amount, dated the sheet's today with an empty note, for the named person. */
+    /** Add a claim of the amount, dated the sheet's entry date (else its today) with an empty note, for the named person. */
     @Transactional
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         String trimmed = name.trim();

@@ -27,7 +27,8 @@ public class ArchivedGuard implements HandlerInterceptor {
             "/api/sheets/{sheetId}/load",
             "/api/sheets/{sheetId}/archive",
             "/api/sheets/{sheetId}/claims/open",
-            "/api/sheets/{sheetId}/claims/settle");
+            "/api/sheets/{sheetId}/claims/settle",
+            "/api/sheets/{sheetId}/people/grade");
 
     private final AntPathMatcher paths = new AntPathMatcher();
     private final SheetService sheets;

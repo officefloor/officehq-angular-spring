@@ -29,7 +29,8 @@ public class ViewerGuard implements HandlerInterceptor {
     private static final Set<String> LET_THROUGH = Set.of(
             "/api/sheets/{sheetId}/load",
             "/api/sheets/{sheetId}/claims/open",
-            "/api/sheets/{sheetId}/claims/settle");
+            "/api/sheets/{sheetId}/claims/settle",
+            "/api/sheets/{sheetId}/people/grade");
 
     private final AntPathMatcher paths = new AntPathMatcher();
     private final SettingService settings;
