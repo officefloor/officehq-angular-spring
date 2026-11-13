@@ -74,6 +74,10 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** The user who last edited the claim; null for a claim never edited. */
+    @Column(name = "edited_by")
+    private String editedBy;
+
     /** Whether the person's last statement bound the claim to the figure it had then. */
     @Column(name = "stated", nullable = false)
     private boolean stated;
@@ -302,6 +306,19 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public String getEditedBy() {
+        return editedBy;
+    }
+
+    public void setEditedBy(String editedBy) {
+        this.editedBy = editedBy;
+    }
+
+    /** Whether the user opened the claim or last edited it, and so may not settle or approve it. */
+    public boolean openedOrEditedBy(String user) {
+        return user.equals(openedBy) || user.equals(editedBy);
     }
 
     public boolean isStated() {

@@ -167,6 +167,7 @@ public class ClaimService {
         claim.setDate(on);
         claim.setNote(noteOf(note));
         claim.setLockedBy(null);
+        claim.setEditedBy(user);
         Claim saved = claims.saveAndFlush(claim);
         useTags(sheetId, saved);
         record("CLAIM_EDITED", sheetId, user, person, saved);
@@ -253,7 +254,7 @@ public class ClaimService {
         if (to == ClaimStatus.VOID) {
             refuseUnreasonedVoid(sheetId, reason);
         }
-        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+        if (to == ClaimStatus.SETTLED && claim.openedOrEditedBy(user)) {
             throw new OwnClaimSettleRefusedException(user);
         }
         if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
@@ -370,12 +371,12 @@ public class ClaimService {
     }
 
     /** A steward approves a PENDING claim: it is SETTLED, its due frozen at this moment. Anyone else,
-     *  the user who opened it, or a claim that is not PENDING, is refused. */
+     *  the user who opened or last edited it, or a claim that is not PENDING, is refused. */
     @Transactional
     public Claim approve(String sheetId, String user, Long personId, Long id) {
         Person person = person(sheetId, personId);
         Claim claim = pending(sheetId, user, personId, id, ClaimStatus.SETTLED);
-        if (user.equals(claim.getOpenedBy())) {
+        if (claim.openedOrEditedBy(user)) {
             throw new OwnClaimSettleRefusedException(user);
         }
         BigDecimal due = dueOf(sheetId, person, claim);
