@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.PeriodClosedException;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
@@ -25,10 +27,12 @@ public class ClaimService {
     private final PersonRepository people;
     private final RateService rates;
     private final SheetService sheets;
+    private final PeriodRepository periods;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            Audit audit) {
+            PeriodRepository periods, Audit audit) {
+        this.periods = periods;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -46,6 +50,7 @@ public class ClaimService {
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = person(sheetId, personId);
         LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, on);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note)));
         record("CLAIM_ADDED", sheetId, user, person, added);
         return added;
@@ -58,8 +63,11 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, on);
         claim.setAmount(scaled(amount));
-        claim.setDate(date != null ? date : sheets.today(sheetId));
+        claim.setDate(on);
         claim.setNote(noteOf(note));
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_EDITED", sheetId, user, person, saved);
@@ -76,6 +84,7 @@ public class ClaimService {
         Long number = to == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
+        refuseClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canMoveTo(to)) {
             throw new StatusChangeRefusedException(claim.getStatus(), to);
         }
@@ -124,6 +133,13 @@ public class ClaimService {
                 .map(Rate::getRate)
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .orElse(null);
+    }
+
+    /** A claim dated inside a closed period cannot be added, edited, opened, settled or voided. */
+    private void refuseClosed(String sheetId, LocalDate date) {
+        if (periods.closedOn(sheetId, date)) {
+            throw new PeriodClosedException("A claim dated " + date + " falls in a closed period");
+        }
     }
 
     private Person person(String sheetId, Long personId) {

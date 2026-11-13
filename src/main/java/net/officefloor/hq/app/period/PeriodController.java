@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.NoSuchElementException;
 import net.officefloor.hq.app.SignedInUser;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -26,9 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class PeriodController {
 
     /** A period as the screen shows it. */
-    public record PeriodView(Long id, String name, LocalDate from, LocalDate to) {
+    public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed,
+            String closedTotal) {
         static PeriodView of(Period period) {
-            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo());
+            return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
+                    period.isClosed(),
+                    period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null);
         }
     }
 
@@ -56,6 +60,24 @@ public class PeriodController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PeriodRequest request) {
         return PeriodView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name().trim(),
                 request.from(), request.to()));
+    }
+
+    /** Close a period, fixing its due-total. */
+    @PostMapping("/{name}/close")
+    public PeriodView close(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable String name,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PeriodView.of(service.close(sheetId.trim(), SignedInUser.decode(user), name));
+    }
+
+    /** A period already closed is refused. */
+    @ExceptionHandler(PeriodClosedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public void closed() {
+    }
+
+    @ExceptionHandler(NoSuchElementException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public void notFound() {
     }
 
     /** A name taken, dates running backwards or a period overlapping another is refused. */

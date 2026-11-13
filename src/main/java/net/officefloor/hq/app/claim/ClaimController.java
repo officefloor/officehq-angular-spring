@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.rollup.RollupService;
 import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
@@ -116,8 +117,9 @@ public class ClaimController {
         return ClaimView.of(rollups.track(sheet, by, () -> service.changeStatus(sheet, by, personId, id, to)));
     }
 
-    /** A status change the claim's status does not allow is refused. */
-    @ExceptionHandler(StatusChangeRefusedException.class)
+    /** A status change the claim's status does not allow, or any change to a claim dated in a
+     *  closed period, is refused. */
+    @ExceptionHandler({StatusChangeRefusedException.class, PeriodClosedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

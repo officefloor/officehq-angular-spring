@@ -11,6 +11,10 @@ export interface Period {
   from: string;
   /** The last day of the period (yyyy-mm-dd), inclusive. */
   to: string;
+  /** Whether the period is closed: no claim dated in it can change. */
+  closed: boolean;
+  /** The due-total fixed when the period was closed (two decimals); null while it is open. */
+  closedTotal: string | null;
 }
 
 /** The period whose dates contain a date; null when none does. Periods never overlap, so at most
@@ -52,6 +56,21 @@ export class PeriodStore {
     );
   }
 
+  /** Close a period on the active sheet, fixing its due-total; the server refuses one already
+   *  closed. */
+  async close(name: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<Period>(
+        `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(name)}/close`,
+        null,
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const list = await firstValueFrom(
       this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`),
@@ -61,8 +80,8 @@ export class PeriodStore {
   }
 }
 
-// The sheet's periods, each with the due-total of the claims that count dated in it, and the form
-// that adds one.
+// The sheet's periods, each with the due-total of the claims that count dated in it (fixed once the
+// period is closed) and whether it is closed, and the form that adds one.
 @Component({
   selector: 'app-periods',
   template: `
@@ -104,6 +123,8 @@ export class PeriodStore {
             <th scope="col">From</th>
             <th scope="col">To</th>
             <th scope="col">Due</th>
+            <th scope="col">Closed</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -112,7 +133,23 @@ export class PeriodStore {
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="period-close"
+                  [attr.aria-label]="'Close period ' + p.name"
+                  (click)="close(p)"
+                >
+                  Close
+                </button>
+                @if (rowError(); as e) {
+                  @if (e.id === p.id) {
+                    <p role="alert" data-testid="period-error">{{ e.message }}</p>
+                  }
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -129,11 +166,23 @@ export class Periods {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The error from the last close refused, and the period it belongs to. */
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Close a period; one already closed is refused on its row. */
+  protected async close(period: Period): Promise<void> {
+    this.rowError.set(null);
+    try {
+      await this.store.close(period.name);
+    } catch {
+      this.rowError.set({ id: period.id, message: `The period ${period.name} could not be closed.` });
+    }
   }
 
   protected async submit(event: Event): Promise<void> {

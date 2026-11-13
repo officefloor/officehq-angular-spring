@@ -1,8 +1,18 @@
 package net.officefloor.hq.app.period;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,11 +23,18 @@ public class PeriodService {
 
     private final PeriodRepository periods;
     private final SheetService sheets;
+    private final ClaimRepository claims;
+    private final ClaimService claimService;
+    private final PersonRepository people;
     private final Audit audit;
 
-    public PeriodService(PeriodRepository periods, SheetService sheets, Audit audit) {
+    public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
+            ClaimService claimService, PersonRepository people, Audit audit) {
         this.periods = periods;
         this.sheets = sheets;
+        this.claims = claims;
+        this.claimService = claimService;
+        this.people = people;
         this.audit = audit;
     }
 
@@ -44,6 +61,36 @@ public class PeriodService {
         Period saved = periods.saveAndFlush(new Period(sheetId, name, from, to));
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + name
                 + " from=" + from + " to=" + to);
+        return saved;
+    }
+
+    /** Close a period, fixing its due-total: the figures shown on the claims that count dated in it
+     *  (a claim with no figure adds nothing). A period already closed is refused. */
+    @Transactional
+    public Period close(String sheetId, String user, String name) {
+        sheets.lock(sheetId);
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new NoSuchElementException("No period " + name + " on sheet " + sheetId));
+        if (period.isClosed()) {
+            throw new PeriodClosedException("The period " + name + " is already closed");
+        }
+        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (!claim.counts() || person == null || !period.contains(claim.getDate())) {
+                continue;
+            }
+            BigDecimal figure = claimService.figureOf(sheetId, person, claim);
+            if (figure != null) {
+                total = total.add(figure);
+            }
+        }
+        period.close(total);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
+                + " total=" + total.toPlainString());
         return saved;
     }
 }
