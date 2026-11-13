@@ -188,15 +188,18 @@ export class Claims {
     };
   });
 
+  /** The claims that count toward claimed: the live ones, leaving out claims that correct another. */
+  private readonly counted = computed(() => this.live().filter((c) => !c.corrects));
+
   /** Each person's claimed, in cents, by person id. */
   readonly claimedCents = computed(() => {
     const out = new Map<number, number>();
-    for (const c of this.live()) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
+    for (const c of this.counted()) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
     return out;
   });
 
   /** Everyone's claimed added up, with two decimals. */
-  readonly total = computed(() => money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)));
+  readonly total = computed(() => money(this.counted().reduce((sum, c) => sum + cents(c.amount), 0)));
 
   /** The date a claim is due by: fixed when it was added, from the terms of its person's grade then. */
   dueBy(c: Claim): string {

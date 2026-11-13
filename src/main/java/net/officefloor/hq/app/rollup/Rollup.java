@@ -85,7 +85,10 @@ public class Rollup {
                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) {
                     continue;
                 }
-                claimed = claimed.add(claim.getAmount());
+                if (claim.getCorrects() == null || claim.getCorrects().isEmpty()) {
+                    // a claim that corrects another is left out of claimed
+                    claimed = claimed.add(claim.getAmount());
+                }
                 BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
                         : claim.isBound() ? claim.getStatedDue() : null;
                 BigDecimal figure = null;

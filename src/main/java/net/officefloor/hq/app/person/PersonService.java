@@ -655,14 +655,17 @@ public class PersonService {
     }
 
     /** Carry a person's snapshots to whom they merge into or arrive as (on that person's sheet), the two
-     *  people's kept oldest first by the day each was written for. */
+     *  people's kept oldest first by the day each was written for; on a day both have one, the receiving
+     *  person's own is kept. */
     private void carrySnapshots(Person from, Person into) {
         List<PersonSnapshot> theirs = snapshots.findByPersonIdOrderByIdAsc(from.getId());
         if (theirs.isEmpty()) {
             return;
         }
         List<PersonSnapshot> own = snapshots.findByPersonIdOrderByIdAsc(into.getId());
-        List<PersonSnapshot> all = new ArrayList<>(theirs);
+        Set<LocalDate> ownDays = own.stream().map(PersonSnapshot::getDay).collect(Collectors.toSet());
+        List<PersonSnapshot> all = new ArrayList<>(
+                theirs.stream().filter(s -> !ownDays.contains(s.getDay())).toList());
         all.addAll(own);
         all.sort(Comparator.comparing(PersonSnapshot::getDay));
         snapshots.deleteAll(theirs);
