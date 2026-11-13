@@ -8,7 +8,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -46,7 +48,7 @@ public class PersonController {
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
             List<RetirementView> retirements,
             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String origin) {
+            List<String> aliases, boolean clashing, String origin, List<String> tags) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
                 boolean watched, boolean clashing) {
@@ -60,7 +62,7 @@ public class PersonController {
                     person.getRetirements().stream().map(RetirementView::of).toList(),
                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
-                    person.getOriginSheet());
+                    person.getOriginSheet(), person.getTags());
         }
     }
 
@@ -98,7 +100,12 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @Min(0) Integer terms,
-            @Size(max = 200) String contact) {
+            @Size(max = 200) String contact,
+            @Size(max = 2000) String tags) {
+
+        List<String> tagList() {
+            return PersonController.tagList(tags);
+        }
     }
 
     /** A person's new name and grade, the date the grade applies from (none: the sheet's today, or
@@ -110,7 +117,19 @@ public class PersonController {
             LocalDate gradeFrom,
             @Min(0) Integer terms,
             @Size(max = 200) String contact,
+            @Size(max = 2000) String tags,
             @NotNull Long version) {
+
+        List<String> tagList() {
+            return PersonController.tagList(tags);
+        }
+    }
+
+    /** Tags, comma separated: each trimmed and lower-cased, blanks and repeats dropped, sorted. */
+    static List<String> tagList(String tags) {
+        return tags == null ? List.of()
+                : Arrays.stream(tags.split(",")).map(t -> t.trim().toLowerCase(Locale.ROOT))
+                        .filter(t -> !t.isEmpty()).distinct().sorted().toList();
     }
 
     /** The people to give a grade together, the grade, and the date it applies from (none: the sheet's
@@ -190,7 +209,7 @@ public class PersonController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PersonRequest request) {
         Person added = service.add(sheetId.trim(), user.trim(), request.name(), request.grade(), request.terms(),
-                request.contact());
+                request.contact(), request.tagList());
         return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of(), false,
                 service.clashing(added));
     }
@@ -231,7 +250,8 @@ public class PersonController {
             @RequestBody @Valid PersonUpdate request) {
         try {
             Person updated = service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact());
+                    request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact(),
+                    request.tagList());
             return view(updated, user.trim());
         } catch (ObjectOptimisticLockingFailureException e) {
             // saved by someone else between the version check and the write

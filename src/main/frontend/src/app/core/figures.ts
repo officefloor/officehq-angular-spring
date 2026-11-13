@@ -115,16 +115,18 @@ export class Figures {
     return { dueTotal: due === null ? NO_RATE : money(due), overdueTotal: money(this.overdueCents(p)) };
   });
 
-  /** Each tag ever used on the sheet, sorted, with the due of the claims that count live and carry it
-   *  (a claim with two tags counts in both), not capped or trimmed. */
+  /** Each tag ever used on the sheet (on a claim or a person), sorted, with the due of the claims that
+   *  count live and carry it, or whose person carries it, once each (a claim with two tags counts in both),
+   *  not capped or trimmed. */
   readonly tagTotals = computed(() => {
     const byId = new Map(this.people.people().map((p) => [p.id, p]));
-    const sums = new Map<string, bigint>(this.claims.usedTags().map((t) => [t, 0n]));
+    const used = [...new Set([...this.claims.usedTags(), ...this.people.people().flatMap((p) => p.tags)])].sort();
+    const sums = new Map<string, bigint>(used.map((t) => [t, 0n]));
     for (const c of this.claims.live()) {
       const p = byId.get(c.personId);
       if (!p) continue;
       const due = this.figureCents(c, p);
-      for (const t of c.tags) sums.set(t, (sums.get(t) ?? 0n) + due);
+      for (const t of new Set([...c.tags, ...p.tags])) sums.set(t, (sums.get(t) ?? 0n) + due);
     }
     return [...sums].map(([tag, cents]) => ({ tag, dueTotal: money(cents) }));
   });

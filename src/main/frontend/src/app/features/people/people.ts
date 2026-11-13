@@ -60,6 +60,13 @@ import { PersonPlans } from '../plans/person-plans';
           [value]="contact()"
           (input)="contact.set(value($event)); error.set(null)"
         />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input
+          id="person-form-tags"
+          data-testid="person-form-tags"
+          [value]="tags()"
+          (input)="tags.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit" [disabled]="saving()">
           {{ editing() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -187,7 +194,7 @@ import { PersonPlans } from '../plans/person-plans';
       </section>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -226,6 +233,7 @@ import { PersonPlans } from '../plans/person-plans';
               <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
               <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
               <td data-testid="person-due-total">{{ due(p) }}</td>
               <td data-testid="person-settled-total">{{ money(figures.settledCents(p)) }}</td>
@@ -504,6 +512,8 @@ export class PeopleList {
   protected readonly terms = signal('');
   /** The person's contact; blank for none. */
   protected readonly contact = signal('');
+  /** The person's tags, comma separated; blank for none. */
+  protected readonly tags = signal('');
   /** The id of the person whose editor is open, or null when the form adds. */
   protected readonly editing = signal<number | null>(null);
   /** The version of the person the editor loaded; a save from it is refused once someone else saved. */
@@ -886,6 +896,7 @@ export class PeopleList {
     this.gradeFrom.set('');
     this.terms.set(p.terms === null ? '' : String(p.terms));
     this.contact.set(p.contact ?? '');
+    this.tags.set(p.tags.join(', '));
   }
 
   protected reset(): void {
@@ -895,6 +906,7 @@ export class PeopleList {
     this.gradeFrom.set('');
     this.terms.set('');
     this.contact.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -922,7 +934,7 @@ export class PeopleList {
     this.saving.set(true);
     try {
       const f = { name: this.name(), grade: this.grade(), gradeFrom: this.gradeFrom(), terms: this.terms(),
-        contact: this.contact() };
+        contact: this.contact(), tags: this.tags() };
       const id = this.editing();
       if (id === null) {
         const err = await this.people.add(f);

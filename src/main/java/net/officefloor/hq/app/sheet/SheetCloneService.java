@@ -124,9 +124,9 @@ public class SheetCloneService {
         Map<Long, Long> ids = new LinkedHashMap<>();
         for (Map<String, Object> p : jdbc.queryForList("SELECT * FROM person WHERE sheet_id = ? ORDER BY id", id)) {
             long newId = insert("INSERT INTO person (sheet_id, name, version, retired_from, terms, contact,"
-                    + " list_position, origin_sheet) VALUES (?, ?, 0, ?, ?, ?, ?, ?)", target, p.get("name"),
+                    + " list_position, origin_sheet, tags) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?)", target, p.get("name"),
                     p.get("retired_from"), p.get("terms"), p.get("contact"), p.get("list_position"),
-                    p.get("origin_sheet"));
+                    p.get("origin_sheet"), p.get("tags"));
             long oldId = ((Number) p.get("id")).longValue();
             ids.put(oldId, newId);
             jdbc.update("INSERT INTO person_grade (person_id, grade, from_date)"

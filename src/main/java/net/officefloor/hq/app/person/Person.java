@@ -50,6 +50,10 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** Their tags, sorted and comma separated; none when they carry none. */
+    @Column(name = "tags")
+    private String tags;
+
     /** The date they are retired from; null while not retired. Set at all, they count as retired. */
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
@@ -157,6 +161,16 @@ public class Person {
         this.contact = contact;
     }
 
+    /** Their tags, sorted; empty when they carry none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Carry the tags (normalised: trimmed, lower-cased, without repeats and sorted). */
+    public void setTags(List<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", tags);
+    }
+
     public LocalDate getRetiredFrom() {
         return retiredFrom;
     }
@@ -234,7 +248,7 @@ public class Person {
     }
 
     /** A copy of them for another sheet: every grade they were given (with its from-date), their terms,
-     *  contact and aliases; not their holds. */
+     *  contact, tags and aliases; not their holds. */
     public Person copyTo(String otherSheetId) {
         Person copy = new Person();
         copy.sheetId = otherSheetId;
@@ -242,6 +256,7 @@ public class Person {
         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFromDate())));
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         copy.originSheet = sheetId;
         aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias(), a.getAliasCopy())));
         return copy;

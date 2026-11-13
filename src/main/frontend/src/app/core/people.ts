@@ -86,6 +86,8 @@ export interface Person {
   clashing: boolean;
   /** The sheet they were transferred from; null for anyone added on this sheet. */
   origin: string | null;
+  /** Their tags: trimmed, lower-cased, without repeats, sorted; empty when they carry none. */
+  tags: string[];
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -109,6 +111,8 @@ export interface PersonFields {
   terms?: string;
   /** Their contact; blank for none. */
   contact?: string;
+  /** Their tags, comma separated; blank for none. */
+  tags?: string;
 }
 
 // The people on the active sheet, in list order (by position), re-read from the server each
@@ -522,13 +526,15 @@ export class People {
     const terms = f.terms?.trim();
     if (terms && !/^\d{1,6}$/.test(terms)) return 'Enter the terms as a whole number of days, or leave them blank.';
     if ((f.contact?.trim().length ?? 0) > 200) return 'Enter a contact of at most 200 characters.';
+    if ((f.tags?.length ?? 0) > 2000) return 'Enter tags of up to 2000 characters.';
     return null;
   }
 
-  private body(f: PersonFields): { name: string; grade: string; terms: number | null; contact: string | null } {
+  private body(f: PersonFields): { name: string; grade: string; terms: number | null; contact: string | null; tags: string } {
     const terms = f.terms?.trim();
     const contact = f.contact?.trim().toLowerCase();
-    return { name: f.name.trim(), grade: f.grade, terms: terms ? Number(terms) : null, contact: contact || null };
+    return { name: f.name.trim(), grade: f.grade, terms: terms ? Number(terms) : null, contact: contact || null,
+      tags: f.tags ?? '' };
   }
 
   private url(sid: string): string {

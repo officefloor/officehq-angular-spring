@@ -16,6 +16,8 @@ import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.SheetTag;
+import net.officefloor.hq.app.claim.SheetTagRepository;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.pool.Pool;
@@ -50,10 +52,13 @@ public class PersonService {
     private final PoolRepository pools;
     private final PeriodRepository periods;
     private final SheetService sheetService;
+    private final SheetTagRepository sheetTags;
 
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
             PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles,
-            ClaimRepository claims, PoolRepository pools, PeriodRepository periods, SheetService sheetService) {
+            ClaimRepository claims, PoolRepository pools, PeriodRepository periods, SheetService sheetService,
+            SheetTagRepository sheetTags) {
+        this.sheetTags = sheetTags;
         this.sheetService = sheetService;
         this.claims = claims;
         this.pools = pools;
@@ -166,6 +171,13 @@ public class PersonService {
 
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, List.of());
+    }
+
+    /** Add a person carrying the tags (normalised); each counts among the tags used on the sheet. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            List<String> tags) {
         requireSheet(sheetId);
         requireFreeName(sheetId, name.trim(), null);
         requireFreeInTree(sheetId, List.of(name.trim()), null);
@@ -175,7 +187,9 @@ public class PersonService {
         Person person = new Person(sheetId, name.trim(), grade);
         person.setTerms(terms);
         person.setContact(key);
+        person.setTags(tags);
         person = saved(person);
+        recordTags(sheetId, tags);
         audit("PERSON_ADDED", person, user, today(sheetId), (terms == null ? "" : " terms=" + terms)
                 + (key == null ? "" : " contact=" + key));
         rollup.recordChanges(sheetId, user, before);
@@ -254,7 +268,7 @@ public class PersonService {
                             .orElseThrow(PersonNotFoundException::new);
                     updated.add(update(sheetId, user, now.getId(), now.getVersion(), now.getName(), line.grade(),
                             null, line.terms() != null ? line.terms() : now.getTerms(),
-                            line.contact() != null ? line.contact() : now.getContact(), true));
+                            line.contact() != null ? line.contact() : now.getContact(), null, true));
                 }
             } catch (PersonNameTakenException | PersonContactTakenException | PersonNotFoundException
                     | PersonVersionConflictException e) {
@@ -301,13 +315,20 @@ public class PersonService {
      *  contact to the one given (blank clears it). */
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
-        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, true);
+        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, null, true);
+    }
+
+    /** As {@link #update}, also setting the tags they carry (normalised; none: kept as they are). */
+    @Transactional
+    public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, List<String> tags) {
+        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, tags, true);
     }
 
     /** As the person form saves, which (form) also refuses a name or alias some other sheet of the tree
      *  uses, so a person who clashes keeps being refused until a rename leaves them clashing with no one. */
     private Person update(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, boolean form) {
+            LocalDate gradeFrom, Integer terms, String contact, List<String> tags, boolean form) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonVersionConflictException(person);
@@ -328,6 +349,10 @@ public class PersonService {
         person.setTerms(terms);
         boolean contactChanged = !Objects.equals(key, person.getContact());
         person.setContact(key);
+        if (tags != null) {
+            person.setTags(tags);
+            recordTags(sheetId, tags);
+        }
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
@@ -354,7 +379,7 @@ public class PersonService {
             throw new PersonNotFoundException();
         }
         return picked.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade, from,
-                p.getTerms(), p.getContact(), false)).toList();
+                p.getTerms(), p.getContact(), null, false)).toList();
     }
 
     /** Give a person an alias, stored trimmed: refused when blank, or when it equals, ignoring case, any
@@ -751,6 +776,15 @@ public class PersonService {
     public static boolean clashing(Person person, Set<String> treeNames) {
         return treeNames.contains(person.getName().toLowerCase(Locale.ROOT))
                 || person.getAliases().stream().anyMatch(a -> treeNames.contains(a.toLowerCase(Locale.ROOT)));
+    }
+
+    /** Keep the tags a person now carries among those used on the sheet. */
+    private void recordTags(String sheetId, List<String> tags) {
+        for (String tag : tags) {
+            if (!sheetTags.existsBySheetIdAndTag(sheetId, tag)) {
+                sheetTags.save(new SheetTag(sheetId, tag));
+            }
+        }
     }
 
     /** A contact as stored: trimmed and lower-cased; none when blank. */
