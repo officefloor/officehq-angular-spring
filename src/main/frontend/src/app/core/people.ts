@@ -143,7 +143,7 @@ export class People {
   readonly people = signal<Person[]>([]);
   /** Whether the list shows retired people; belongs to the screen, so loading a sheet leaves it. */
   readonly showRetired = signal(false);
-  /** The ids of the people chosen for a bulk grade or retire. */
+  /** The ids of the people chosen for a bulk grade, retire or hold. */
   readonly selected = signal<ReadonlySet<number>>(new Set());
   /** The ids of the people the last load read; anyone else was added on this screen since. */
   readonly loadedIds = signal<ReadonlySet<number>>(new Set());
@@ -242,7 +242,7 @@ export class People {
     }
   }
 
-  /** Choose a person for a bulk grade or retire, or leave them out. */
+  /** Choose a person for a bulk grade, retire or hold, or leave them out. */
   select(id: number, on: boolean): void {
     this.selected.update((s) => {
       const next = new Set(s);
@@ -313,6 +313,41 @@ export class People {
         return e.error.message;
       }
       return e instanceof HttpErrorResponse ? `Could not merge the grade (${e.status}).` : 'Could not merge the grade.';
+    }
+  }
+
+  /** Put the chosen people on hold from a date (blank takes the sheet's today) to a date (blank: no end)
+   *  together, the server holding them in list order as each row's hold would; how many were held, or an
+   *  error message. */
+  async bulkHold(from: string, to: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const personIds = [...this.selected()];
+    if (personIds.length === 0) return 'Select the people to hold.';
+    const f = from.trim();
+    const t = to.trim();
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    if ((f && !date.test(f)) || (t && !date.test(t))) return 'Enter a date as YYYY-MM-DD.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ held: number; people: Person[] }>(
+          `${this.url(sid)}/bulk-hold`,
+          { personIds, from: f || null, to: t || null },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        const byId = new Map(done.people.map((p) => [p.id, p]));
+        this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
+        this.selected.set(new Set());
+      }
+      return done.held;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && (e.status === 409 || e.status === 422) && typeof e.error?.message === 'string') {
+        return e.error.message;
+      }
+      return e instanceof HttpErrorResponse ? `Could not hold people (${e.status}).` : 'Could not hold people.';
     }
   }
 

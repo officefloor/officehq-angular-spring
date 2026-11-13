@@ -926,6 +926,24 @@ public class PersonService {
         return picked.stream().map(p -> retire(sheetId, user, p.getId(), from)).toList();
     }
 
+    /** Put each of the chosen people on hold from a date (the sheet's today when none is given) to a date
+     *  when one is given, in list order, exactly as their row's hold would; the people held, in list order.
+     *  A hold ending before it starts is refused for them all. A viewer's goes through with no one held. */
+    @Transactional
+    public List<Person> bulkHold(String sheetId, String user, List<Long> personIds, LocalDate from, LocalDate to) {
+        requireSheet(sheetId);
+        if (roles.isViewer(sheetId, user)) {
+            return List.of();
+        }
+        Set<Long> chosen = Set.copyOf(personIds);
+        List<Person> picked = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> chosen.contains(p.getId())).toList();
+        if (picked.size() != chosen.size()) {
+            throw new PersonNotFoundException();
+        }
+        return picked.stream().map(p -> hold(sheetId, user, p.getId(), from, to)).toList();
+    }
+
     /** Put a person on hold from a date (the sheet's today when none is given) to a date when one is
      *  given; a hold ending before it starts is refused. */
     @Transactional

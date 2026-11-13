@@ -179,6 +179,16 @@ public class PersonController {
     public record BulkRetireView(int retired, List<PersonView> people) {
     }
 
+    /** The people to put on hold together, from a date (none: the sheet's today) to a date (none: no end). */
+    public record BulkHoldRequest(
+            @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> personIds,
+            LocalDate from, LocalDate to) {
+    }
+
+    /** How many a bulk hold held, and the people it held. */
+    public record BulkHoldView(int held, List<PersonView> people) {
+    }
+
     /** The person to name as a patron. */
     public record PatronRequest(@NotNull Long patronId) {
     }
@@ -351,6 +361,21 @@ public class PersonController {
             List<Person> retired = service.bulkRetire(sheetId.trim(), user.trim(), request.personIds(),
                     request.from());
             return new BulkRetireView(retired.size(), retired.stream().map(p -> view(p, user.trim())).toList());
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // one of them was saved by someone else at the same moment
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone else changed one of them; try again.");
+        }
+    }
+
+    /** Put the chosen people on hold from a date to a date together, in list order. */
+    @PostMapping("/bulk-hold")
+    public BulkHoldView bulkHold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkHoldRequest request) {
+        try {
+            List<Person> held = service.bulkHold(sheetId.trim(), user.trim(), request.personIds(),
+                    request.from(), request.to());
+            return new BulkHoldView(held.size(), held.stream().map(p -> view(p, user.trim())).toList());
         } catch (ObjectOptimisticLockingFailureException e) {
             // one of them was saved by someone else at the same moment
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone else changed one of them; try again.");

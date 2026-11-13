@@ -185,7 +185,7 @@ function compareKeys(a: string, b: string): number {
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
-      <section aria-label="Grade or retire selected people">
+      <section aria-label="Grade, retire or hold selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select
           id="bulk-grade"
@@ -224,6 +224,28 @@ function compareKeys(a: string, b: string): number {
         </button>
         @if (bulkRetired() !== null) {
           <p>Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span></p>
+        }
+        <label for="bulk-hold-from">Hold selected people from</label>
+        <input
+          id="bulk-hold-from"
+          data-testid="bulk-hold-from"
+          placeholder="YYYY-MM-DD"
+          [value]="bulkHoldFrom()"
+          (input)="bulkHoldFrom.set(value($event)); bulkError.set(null)"
+        />
+        <label for="bulk-hold-to">to</label>
+        <input
+          id="bulk-hold-to"
+          data-testid="bulk-hold-to"
+          placeholder="YYYY-MM-DD"
+          [value]="bulkHoldTo()"
+          (input)="bulkHoldTo.set(value($event)); bulkError.set(null)"
+        />
+        <button type="button" data-testid="bulk-hold" [disabled]="bulkRunning()" (click)="applyBulkHold()">
+          Hold selected
+        </button>
+        @if (bulkHeld() !== null) {
+          <p>Held <span data-testid="bulk-held">{{ bulkHeld() }}</span></p>
         }
         @if (bulkError(); as err) {
           <p role="alert" data-testid="person-error">{{ err }}</p>
@@ -806,6 +828,28 @@ export class PeopleList {
       const done = await this.people.bulkRetire(this.bulkRetireFrom());
       if (typeof done === 'string') this.bulkError.set(done);
       else this.bulkRetired.set(done);
+    } finally {
+      this.bulkRunning.set(false);
+    }
+  }
+
+  /** The dates the bulk hold covers: blank from takes the sheet's today, blank to has no end. */
+  protected readonly bulkHoldFrom = signal('');
+  protected readonly bulkHoldTo = signal('');
+  /** How many the last bulk hold held; gone while the next runs. */
+  protected readonly bulkHeld = signal<number | null>(null);
+
+  protected async applyBulkHold(): Promise<void> {
+    if (this.bulkRunning()) return;
+    this.bulkHeld.set(null);
+    this.bulkError.set(null);
+    const err = this.actionError();
+    if (err && this.people.selected().has(err.id)) this.actionError.set(null);
+    this.bulkRunning.set(true);
+    try {
+      const done = await this.people.bulkHold(this.bulkHoldFrom(), this.bulkHoldTo());
+      if (typeof done === 'string') this.bulkError.set(done);
+      else this.bulkHeld.set(done);
     } finally {
       this.bulkRunning.set(false);
     }
