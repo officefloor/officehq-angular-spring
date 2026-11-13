@@ -1,0 +1,64 @@
+{
+  "checkpoint": 243,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp243_person-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button on each person's row downloads their row as a CSV file: a header line cell,value then one\nline per cell for person-name, person-grade, person-claimed, person-due-total, person-statement-count,\nperson-overdue-total, person-hold, person-retired, person-aliases and person-score, in that order,\neach with the value as the row shows it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button on each person's row downloads their row as a CSV file: a header line cell,value then one\nline per cell for person-name, person-grade, person-claimed, person-due-total, person-statement-count,\nperson-overdue-total, person-hold, person-retired, person-aliases and person-score, in that order,\neach with the value as the row shows it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a11dd94ede742436425f39b1d208bece0ba9aa9a",
+  "reset_sha": "",
+  "preagent_sha": "2d267553f60b11378c802f302405d91dbd3254d0",
+  "prev_sha": "2d267553f60b11378c802f302405d91dbd3254d0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3618673999999999,
+    "input_tokens": 30,
+    "output_tokens": 3282,
+    "cache_read_tokens": 394617,
+    "cache_creation_tokens": 27148,
+    "num_turns": 15,
+    "duration_ms": 326655,
+    "duration_api_ms": 42573,
+    "model": "claude-opus-5-5",
+    "session_id": "1fe4f2a1-cc9c-42e8-9c55-b9c9b2121723",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has an \"Export row (CSV)\" button that downloads `person.csv`. `bin/e2e` passes all 4 tests in the spec.\n\nThe file starts with a `cell,value` header line, then one line for each of the ten cells in the requested order, from `person-name` to `person-score`. Each value comes from the same function the row uses to display it. Values that contain a comma are quoted, so \"Lee, Jo (B)\" stays in one field.\n\nThe only file I changed is `src/main/frontend/src/app/features/people/people.ts`. It has the new `person-export` button next to the existing \"Export statement\" button, and a new `exportPerson()` method that uses the existing CSV download helper. The export is built in the browser from data the screen already holds, so there are no server or database changes and nothing is written to the audit file.\n\nSome of these cells can be switched off as columns on the screen. The export still includes all ten whether or not they're showing.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3618673999999999,
+        "num_turns": 15,
+        "duration_ms": 326655,
+        "duration_api_ms": 42573,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp243.agent.jsonl",
+  "agent_diff_file": "cp243.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
