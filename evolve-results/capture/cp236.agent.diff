@@ -1,0 +1,73 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index d4a7f6b0f..1f5904391 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -38,7 +38,7 @@ export interface Claim {
+   /** Its status log: one line per status it has had, oldest first. */
+   statusLog: StatusLine[];
+   /** The date it was deferred until (YYYY-MM-DD); null when never deferred. It is deferred only while
+-   *  OPEN and the sheet's today is before it (see `Claims.deferred`). */
++   *  counting, bound by no statement, and the sheet's today is before it (see `Claims.deferred`). */
+   deferredUntil: string | null;
+   /** How many proofs it has. One whose due is above the proof threshold in force on its date cannot be
+    *  settled or approved with none. */
+@@ -284,18 +284,18 @@ export class Claims {
+     return went !== undefined && addDays(went.on, sla) < today;
+   }
+ 
+-  /** Whether a claim shows as deferred: its deferred-until date is after the sheet's today, whatever its
+-   *  status (a deferred claim voided keeps showing it). Only an OPEN one is left out of totals (`deferred`). */
++  /** Whether a claim shows as deferred: bound by no statement, its deferred-until date after the sheet's
++   *  today, whatever its status (a deferred claim voided keeps showing it). While a statement binds it the
++   *  deferral waits, taking effect once the binding ends. Only a counting one is left out of totals (`deferred`). */
+   deferredShown(c: Claim): boolean {
+     const today = this.session.shownToday();
+-    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++    return !c.stated && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+   }
+ 
+-  /** Whether a claim is deferred: OPEN, with a deferred-until date after the sheet's today. Until then it
+-   *  counts in no total, is not overdue and cannot be settled. */
++  /** Whether a claim is deferred: counting by its status, bound by no statement, with a deferred-until date
++   *  after the sheet's today. Until then it counts in no total, is not overdue and cannot be settled. */
+   deferred(c: Claim): boolean {
+-    const today = this.session.shownToday();
+-    return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++    return counts(c) && this.deferredShown(c);
+   }
+ 
+   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, for each full 30 days
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 1ed5c4a06..6ba63ab1e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -409,10 +409,12 @@ public class Claim {
+         this.deferredUntil = deferredUntil;
+     }
+ 
+-    /** Deferred on a day: OPEN, with a deferred-until date after it. From that date on it is an OPEN claim
+-     *  like any other. */
++    /** Deferred on a day: counting by its status, bound by no statement, with a deferred-until date after it.
++     *  While a statement binds it the deferral waits: it counts, can be settled and stays bound; once the
++     *  binding ends (the statement is cancelled, or the next one leaves it unbound) the deferral takes effect.
++     *  From its date on it is a claim like any other. */
+     public boolean deferredOn(LocalDate today) {
+-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
++        return status.counts() && !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+     }
+ 
+     public int getProofs() {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 743a312e5..a7838d6a6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -769,7 +769,8 @@ public class ClaimService {
+     }
+ 
+     /** Defer an OPEN claim to a date after the sheet's today: until the sheet's today reaches it, the claim
+-     *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. Refused for
++     *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. A claim a
++     *  statement already binds stays in until that binding ends, then the deferral takes effect. Refused for
+      *  a claim that is not OPEN, a date not after the sheet's today, and a claim in a closed period. */
+     @Transactional
+     public Claim defer(String sheetId, String user, long claimId, LocalDate until) {
