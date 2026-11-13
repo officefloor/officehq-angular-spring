@@ -58,6 +58,27 @@ public class ClaimService {
         return saved;
     }
 
+    /** Move a claim to a new status; a change its status does not allow is refused. */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
+        Person person = person(sheetId, personId);
+        Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
+                .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
+        if (!claim.getStatus().canMoveTo(to)) {
+            throw new StatusChangeRefusedException(claim.getStatus(), to);
+        }
+        claim.setStatus(to);
+        Claim saved = claims.saveAndFlush(claim);
+        String event = switch (to) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalStateException("A claim never returns to DRAFT");
+        };
+        record(event, sheetId, user, person, saved);
+        return saved;
+    }
+
     private Person person(String sheetId, Long personId) {
         return people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));

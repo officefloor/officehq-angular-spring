@@ -30,10 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as the screen shows it; the amount is a string with two decimals. */
-    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
+            ClaimStatus status) {
         static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
-                    claim.getDate(), claim.getNote());
+                    claim.getDate(), claim.getNote(), claim.getStatus());
         }
     }
 
@@ -73,6 +74,37 @@ public class ClaimController {
             @RequestBody @Validated ClaimRequest request) {
         return ClaimView.of(service.update(sheetId.trim(), SignedInUser.decode(user), personId, id,
                 request.amount(), request.date(), request.note()));
+    }
+
+    /** Open a DRAFT claim. */
+    @PostMapping("/people/{personId}/claims/{id}/open")
+    public ClaimView open(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return changeStatus(sheetId, user, personId, id, ClaimStatus.OPEN);
+    }
+
+    /** Settle an OPEN claim. */
+    @PostMapping("/people/{personId}/claims/{id}/settle")
+    public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED);
+    }
+
+    /** Void a DRAFT or OPEN claim. */
+    @PostMapping("/people/{personId}/claims/{id}/void")
+    public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return changeStatus(sheetId, user, personId, id, ClaimStatus.VOID);
+    }
+
+    private ClaimView changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
+        return ClaimView.of(service.changeStatus(sheetId.trim(), SignedInUser.decode(user), personId, id, to));
+    }
+
+    /** A status change the claim's status does not allow is refused. */
+    @ExceptionHandler(StatusChangeRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public void refused() {
     }
 
     @ExceptionHandler(NoSuchElementException.class)

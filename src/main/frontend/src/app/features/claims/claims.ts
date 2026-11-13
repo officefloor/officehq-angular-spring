@@ -4,6 +4,12 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { NO_RATE, dueCents } from '../rates/rates';
 
+/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** A status change a claim's buttons ask for. */
+type ClaimAction = 'open' | 'settle' | 'void';
+
 export interface Claim {
   id: number;
   personId: number;
@@ -11,6 +17,12 @@ export interface Claim {
   amount: string;
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+/** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
+export function counts(claim: Claim): boolean {
+  return claim.status === 'OPEN' || claim.status === 'SETTLED';
 }
 
 /** An amount in cents, from the two-decimal string the server sends. */
@@ -22,6 +34,8 @@ export function cents(amount: string): number {
 export function money(total: number): string {
   return (total / 100).toFixed(2);
 }
+
+const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
@@ -68,11 +82,26 @@ const AMOUNT = /^\d+(\.\d{1,2})?$/;
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
+          <span data-testid="claim-status">{{ c.status }}</span>
+          <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
+            Open
+          </button>
+          <button type="button" data-testid="claim-settle" [attr.aria-label]="'Settle claim ' + c.id" (click)="act(c, 'settle')">
+            Settle
+          </button>
+          <button type="button" data-testid="claim-void" [attr.aria-label]="'Void claim ' + c.id" (click)="act(c, 'void')">
+            Void
+          </button>
           <button type="button" data-testid="claim-edit" [attr.aria-label]="'Edit claim ' + c.id" (click)="edit(c)">
             Edit
           </button>
           @if (editingId() === c.id) {
             <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+          }
+          @if (rowError(); as e) {
+            @if (e.id === c.id) {
+              <p role="alert" data-testid="claim-error">{{ e.message }}</p>
+            }
           }
         </li>
       }
@@ -94,6 +123,8 @@ export class PersonClaims {
   protected readonly note = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** The error from the last status change refused, and the claim it belongs to. */
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -106,6 +137,7 @@ export class PersonClaims {
   }
 
   protected edit(claim: Claim): void {
+    this.rowError.set(null);
     this.editingId.set(claim.id);
     this.amount.set(claim.amount);
     this.date.set(claim.date);
@@ -121,9 +153,26 @@ export class PersonClaims {
     this.error.set(null);
   }
 
+  /** Open, settle or void a claim; a change its status does not allow is refused on the row. */
+  protected async act(claim: Claim, action: ClaimAction): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url =
+      `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/${action}`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, null));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch {
+      this.rowError.set({ id: claim.id, message: `The claim could not be ${PAST[action]}.` });
+    }
+  }
+
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
     this.error.set(null);
+    this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const amount = this.amount().trim();

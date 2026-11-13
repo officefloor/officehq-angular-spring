@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, PersonClaims, cents, money } from '../claims/claims';
+import { Claim, PersonClaims, cents, counts, money } from '../claims/claims';
 import { NO_RATE, RateStore, Rates, dueCents } from '../rates/rates';
 
 interface Person {
@@ -105,6 +105,12 @@ export class People {
   protected readonly people = signal<Person[]>([]);
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
+  /** Each person's claims that count toward what is claimed and due, by person id. */
+  private readonly countedByPerson = computed(() => {
+    const map = new Map<number, Claim[]>();
+    for (const c of this.claims().filter(counts)) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
+    return map;
+  });
   /** Each person's claims, newest first, by person id. */
   private readonly claimsByPerson = computed(() => {
     const map = new Map<number, Claim[]>();
@@ -112,7 +118,7 @@ export class People {
     return map;
   });
   protected readonly claimedTotal = computed(() =>
-    money(this.claims().reduce((sum, c) => sum + cents(c.amount), 0)),
+    money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)),
   );
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = computed(() =>
@@ -147,8 +153,13 @@ export class People {
     return this.claimsByPerson().get(personId) ?? [];
   }
 
+  /** A person's OPEN and SETTLED claims; drafts and voided claims do not count. */
+  private countedOf(personId: number): Claim[] {
+    return this.countedByPerson().get(personId) ?? [];
+  }
+
   protected claimedBy(personId: number): string {
-    return money(this.claimsOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+    return money(this.countedOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
   }
 
   /** What a person has claimed times their grade's rate, or n/a when the grade has no rate. */
@@ -160,7 +171,7 @@ export class People {
   private dueCentsBy(person: Person): number | null {
     const rate = this.rates.byGrade().get(person.grade);
     if (rate === undefined) return null;
-    return dueCents(this.claimsOf(person.id).reduce((sum, c) => sum + cents(c.amount), 0), rate);
+    return dueCents(this.countedOf(person.id).reduce((sum, c) => sum + cents(c.amount), 0), rate);
   }
 
   /** A claim added (listed first) or saved in place. */
