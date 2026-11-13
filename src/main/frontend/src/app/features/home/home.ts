@@ -240,11 +240,12 @@ export class Home {
   }
 
   /** Load a sheet and everything on it, as of the screen's as-of date while one is set. */
-  private async loadSheet(id: string): Promise<string | null> {
-    return (
-      (await this.session.loadSheet(id)) ??
-      (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
-      null
+  private loadSheet(id: string): Promise<string | null> {
+    return this.session.trackLoad(
+      (async () =>
+        (await this.session.loadSheet(id)) ??
+        (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
+        null)(),
     );
   }
 

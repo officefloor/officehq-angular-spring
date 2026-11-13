@@ -193,8 +193,8 @@ public class PoolController {
         this.asOf = asOf;
     }
 
-    /** The sheet's pools, in the order they were added; reckoned on the date, with its people as they stood then,
-     *  when the screen views the sheet as of one. */
+    /** The sheet's pools, in the order they were added; reckoned on the date, with its people and its pot as they
+     *  stood then, when the screen views the sheet as of one. */
     @GetMapping
     @Transactional(readOnly = true)
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -206,7 +206,7 @@ public class PoolController {
         }
         Map<Long, Person> then = this.asOf.people(sid, asOf).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        return PoolView.of(service.list(sid), then, sheets.pot(sid), asOf);
+        return PoolView.of(service.list(sid), then, this.asOf.sheet(sid, asOf).getPot(), asOf);
     }
 
     /** Add a pool to the sheet. */

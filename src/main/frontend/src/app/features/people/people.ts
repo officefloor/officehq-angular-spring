@@ -5,6 +5,7 @@ import { Figures } from '../../core/figures';
 import { GRADES, People, Person } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Pools } from '../../core/pools';
+import { Session } from '../../core/session';
 import { COLUMNS, ColumnKey, UserColumns } from '../../core/user-columns';
 import { NO_RATE, halfEven, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
@@ -554,6 +555,7 @@ export class PeopleList {
   protected readonly money = money;
   protected readonly periods = inject(Periods);
   private readonly pools = inject(Pools);
+  private readonly session = inject(Session);
   protected readonly userColumns = inject(UserColumns);
   protected readonly columnKeys = COLUMNS;
   /** The last refused switch of a column, until the next switch. */
@@ -839,7 +841,8 @@ export class PeopleList {
 
   /** Download everyone, retired included, in list order as CSV: name, grade in force today,
    *  retired-from date or nothing, and the due-total as the list shows it. */
-  protected exportCsv(): void {
+  protected async exportCsv(): Promise<void> {
+    await this.session.loaded();
     const lines = [['name', 'grade', 'retired-from', 'due-total']];
     for (const p of this.people.people()) lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', this.due(p)]);
     download(lines, 'people.csv');
@@ -847,7 +850,8 @@ export class PeopleList {
 
   /** Download every claim as CSV: people in list order, retired included, each person's claims
    *  oldest first, with number, due and period as their rows show them. */
-  protected exportClaims(): void {
+  protected async exportClaims(): Promise<void> {
+    await this.session.loaded();
     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
     for (const p of this.people.people()) {
       for (const c of [...this.claims.of(p.id)].reverse()) {

@@ -199,6 +199,25 @@ export class Session {
    *  the screen shows the sheet as it is. Kept for this screen only, across sheet loads. */
   readonly asOf = signal<string | null>(null);
 
+  /** The sheet load running now (resolved when none): what reads the loaded rows at once, an export, waits
+   *  for it, so a load started by setting or clearing the as-of date is not read half done. */
+  private loading: Promise<unknown> = Promise.resolve();
+
+  /** Keep this load as the one running now, and hand it back. */
+  trackLoad<T>(load: Promise<T>): Promise<T> {
+    this.loading = load.catch(() => null);
+    return load;
+  }
+
+  /** Once the sheet load running now, if any, is done. */
+  async loaded(): Promise<void> {
+    let was: Promise<unknown>;
+    do {
+      was = this.loading;
+      await was;
+    } while (was !== this.loading);
+  }
+
   signIn(name: string): boolean {
     const n = name.trim();
     if (!n) return false;

@@ -2,6 +2,7 @@ import { Component, inject, input, signal } from '@angular/core';
 import { download } from '../../core/csv';
 import { People } from '../../core/people';
 import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
+import { Session } from '../../core/session';
 
 // One pool's row: its members with their shares, its total share and whether it is balanced (exactly
 // 100.00; a retired member counts 0.00), each member's cut of the pool's pot while balanced (the sheet's pot, or
@@ -161,6 +162,7 @@ export class PoolRow {
 })
 export class PoolsPanel {
   protected readonly pools = inject(Pools);
+  private readonly session = inject(Session);
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
@@ -172,6 +174,7 @@ export class PoolsPanel {
   /** Download the pools as CSV, re-read first: pools and their members in the order added, a pool member
    *  as pool:<name>, the cut as shown (empty when none). */
   protected async exportCsv(): Promise<void> {
+    await this.session.loaded();
     await this.pools.reread();
     const lines = [['pool', 'member', 'share', 'cut']];
     for (const p of this.pools.pools()) {
