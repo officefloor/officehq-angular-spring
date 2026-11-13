@@ -1,0 +1,229 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 9762844b9..043d2398e 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -1,7 +1,7 @@
+ import { Injectable, computed, inject } from '@angular/core';
+ import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
+ import { CrewView, Crews } from './crews';
+-import { People, Person, gradeOn } from './people';
++import { GRADES, People, Person, gradeOn } from './people';
+ import { Period, Periods } from './periods';
+ import { NO_RATE, Rates, halfEven, hundredths, money, rounded } from './rates';
+ import { Roles } from './roles';
+@@ -108,6 +108,18 @@ export class Figures {
+     money(trimmed(this.people.people().map((p) => this.dueCents(p)).filter((d): d is bigint => d !== null))),
+   );
+ 
++  /** By grade (every grade, in order), the due-totals of the people on it today added up, retired people left
++   *  out and a due-total of n/a adding nothing, as the summary shows them. */
++  readonly gradeDueTotals = computed(() => {
++    const current = this.people.people().filter((p) => !p.retired);
++    return GRADES.map((grade) => ({
++      grade,
++      dueTotal: money(
++        current.filter((p) => this.gradeToday(p) === grade).reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n),
++      ),
++    }));
++  });
++
+   /** The due of everyone's overdue claims that count, added up, trimmed. */
+   readonly overdueTotal = computed(() =>
+     money(trimmed(this.people.people().map((p) => this.overdueCents(p)))),
+diff --git a/src/main/frontend/src/app/core/sheet-compare.ts b/src/main/frontend/src/app/core/sheet-compare.ts
+new file mode 100644
+index 000000000..3fd40ed14
+--- /dev/null
++++ b/src/main/frontend/src/app/core/sheet-compare.ts
+@@ -0,0 +1,31 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from './session';
++
++// Reads another sheet's summary due-totals by grade, for comparing the active sheet with it.
++@Injectable({ providedIn: 'root' })
++export class SheetCompare {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** The other sheet's due-totals (two decimals) by grade, a grade with no one on it absent; null when that
++   *  sheet does not exist. An error message when the read failed. */
++  async gradeDueTotals(other: string): Promise<{ totals: Record<string, string> | null } | { error: string }> {
++    const user = this.session.user();
++    if (!user || !this.session.sheetId()) return { error: 'Load a sheet first.' };
++    const sid = other.trim();
++    if (!sid) return { error: 'Enter a sheet id.' };
++    try {
++      const totals = await firstValueFrom(
++        this.http.get<Record<string, string>>(`/api/sheets/${encodeURIComponent(sid)}/grade-due-totals`, {
++          headers: { 'X-User': user },
++        }),
++      );
++      return { totals };
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 404) return { totals: null };
++      return { error: e instanceof HttpErrorResponse ? `Could not compare (${e.status}).` : 'Could not compare.' };
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index eae7dfa17..981f8d5fe 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -41,13 +41,14 @@ import { SnapshotComparePanel } from '../snapshots/snapshot-compare';
+ import { SettingsPanel } from '../settings/settings';
+ import { SummaryPanel } from '../summary/summary';
+ import { ClassicSummaryPanel } from '../summary/classic-summary';
++import { SheetComparePanel } from '../summary/sheet-compare';
+ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ 
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
+   hostDirectives: [LocaleFigures],
+-  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
++  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SheetComparePanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
+   template: `
+     @if (session.user(); as user) {
+       @if (session.sheetId()) {
+@@ -157,6 +158,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+         <app-bulk-void />
+         <app-summary />
+         <app-classic-summary />
++        <app-sheet-compare />
+         <app-duplicates />
+         <app-search />
+         <app-snapshot-compare />
+diff --git a/src/main/frontend/src/app/features/summary/sheet-compare.ts b/src/main/frontend/src/app/features/summary/sheet-compare.ts
+new file mode 100644
+index 000000000..6ae08e00e
+--- /dev/null
++++ b/src/main/frontend/src/app/features/summary/sheet-compare.ts
+@@ -0,0 +1,68 @@
++import { Component, computed, inject, signal } from '@angular/core';
++import { Figures } from '../../core/figures';
++import { SheetCompare } from '../../core/sheet-compare';
++import { Session } from '../../core/session';
++
++// Compare this sheet with another: one line per grade of this sheet, <grade> <this sheet's summary due-total>
++// <the other sheet's> (0.00 for a grade the other sheet has no one on); no lines for a sheet that does not exist.
++@Component({
++  selector: 'app-sheet-compare',
++  template: `
++    <section aria-label="Compare sheets" data-testid="sheet-compare-panel">
++      <h2>Compare sheets</h2>
++      <form (submit)="compare($event)">
++        <label for="compare-sheet">Other sheet id</label>
++        <input
++          id="compare-sheet"
++          data-testid="compare-sheet"
++          [value]="other()"
++          (input)="other.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="compare">Compare</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="compare-error">{{ err }}</p>
++        }
++      </form>
++      <ol aria-label="Sheet comparison">
++        @for (line of lines(); track $index) {
++          <li data-testid="compare-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class SheetComparePanel {
++  private readonly comparer = inject(SheetCompare);
++  private readonly figures = inject(Figures);
++  private readonly session = inject(Session);
++  protected readonly other = signal('');
++  protected readonly error = signal<string | null>(null);
++  private readonly shown = signal<{ sheet: string | null; totals: Record<string, string> | null }>({
++    sheet: null,
++    totals: null,
++  });
++  /** The lines of the last comparison, while it is of the sheet loaded now, this sheet's side kept live. */
++  protected readonly lines = computed(() => {
++    const s = this.shown();
++    const totals = s.totals;
++    if (s.sheet !== this.session.sheetId() || totals === null) return [];
++    return this.figures.gradeDueTotals().map((g) => `${g.grade} ${g.dueTotal} ${totals[g.grade] ?? '0.00'}`);
++  });
++  private compares = 0;
++
++  protected value(e: Event): string {
++    return (e.target as HTMLInputElement).value;
++  }
++
++  protected async compare(e: Event): Promise<void> {
++    e.preventDefault();
++    const compare = ++this.compares;
++    const sheet = this.session.sheetId();
++    this.error.set(null);
++    this.shown.set({ sheet: null, totals: null });
++    const res = await this.comparer.gradeDueTotals(this.other());
++    if (compare !== this.compares) return; // a later press has taken over
++    if ('error' in res) this.error.set(res.error);
++    else this.shown.set({ sheet, totals: res.totals });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/GradeDueTotalsController.java b/src/main/java/net/officefloor/hq/app/rollup/GradeDueTotalsController.java
+new file mode 100644
+index 000000000..658bc869a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rollup/GradeDueTotalsController.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.rollup;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.LinkedHashMap;
++import java.util.Map;
++import net.officefloor.hq.app.history.AsOf;
++import net.officefloor.hq.app.sheet.SheetRepository;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.http.ResponseEntity;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++/** A sheet's summary due-totals by grade, for another sheet's screen to compare with its own. The signed-in
++ *  user's name comes in the X-User header. */
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/grade-due-totals")
++public class GradeDueTotalsController {
++
++    private final Rollup rollup;
++    private final SheetRepository sheets;
++
++    public GradeDueTotalsController(Rollup rollup, SheetRepository sheets) {
++        this.rollup = rollup;
++        this.sheets = sheets;
++    }
++
++    /** By grade, the due-totals (two decimals) of the people on it (retired people left out, a due-total of n/a
++     *  adding nothing), as the sheet stood at the end of the as-of date when one is given; a grade with none
++     *  absent. 404 for a sheet that does not exist. */
++    @GetMapping
++    @Transactional(readOnly = true)
++    public ResponseEntity<Map<String, String>> gradeDueTotals(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        String sid = sheetId.trim();
++        if (!sheets.existsById(sid)) {
++            return ResponseEntity.notFound().build();
++        }
++        Rollup.Snapshot snapshot = asOf == null ? rollup.take(sid) : rollup.take(sid, asOf);
++        Map<String, String> shown = new LinkedHashMap<>();
++        rollup.breakdown(sid, asOf, snapshot).gradeDueTotals().forEach((g, d) -> shown.put(g, d.toPlainString()));
++        return ResponseEntity.ok(shown);
++    }
++}
