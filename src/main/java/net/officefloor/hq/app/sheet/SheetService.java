@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -331,12 +333,17 @@ public class SheetService {
 
     /** The next number for a claim due by a date: while the sheet numbers by period, the next in the
      *  sequence of the period containing the date (<period name>-1, -2, ...), or of no period (X-1, ...);
-     *  otherwise the sheet-wide one (1, 2, ...). None is ever given twice. */
+     *  otherwise the sheet-wide one (1, 2, ...), which the sheets of a tree share: the next after the last
+     *  given on any of them. None is ever given twice. */
     @Transactional
     public String nextClaimNumber(String id, LocalDate date) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
         if (!sheet.numbersByPeriod()) {
-            return sheet.nextClaimNumber();
+            // lock the others of the tree in id order, so two users on the tree number one after the other
+            List<Sheet> tree = sheets.tree(id).stream().sorted()
+                    .map(other -> sheets.findForUpdateById(other).orElse(null))
+                    .filter(Objects::nonNull).toList();
+            return sheet.nextClaimNumber(tree);
         }
         String prefix = periodPrefix(id, date);
         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(id, prefix)

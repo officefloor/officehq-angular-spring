@@ -414,6 +414,14 @@ public class Sheet {
         return String.valueOf(++lastClaimNumber);
     }
 
+    /** Give out the next claim number after the last given on this sheet or any of the others of its tree. */
+    public String nextClaimNumber(List<Sheet> tree) {
+        for (Sheet other : tree) {
+            lastClaimNumber = Math.max(lastClaimNumber, other.lastClaimNumber);
+        }
+        return nextClaimNumber();
+    }
+
     public int getLastSettleBatch() {
         return lastSettleBatch;
     }
