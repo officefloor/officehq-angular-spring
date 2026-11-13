@@ -1,7 +1,8 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Plans } from '../../core/plans';
 
-// A person's plans, each with how many claims it has made so far and its next five dates, and a form adding one, run every so many days
+// A person's plans, each with how many claims it has made so far, its next five dates and whether it is paused
+// (with buttons pausing and resuming it, a refusal shown on its row), and a form adding one, run every so many days
 // or monthly on a day of the month (a bad amount, interval or day, or an end before the start, is refused with
 // an error on the row).
 @Component({
@@ -19,7 +20,17 @@ import { Plans } from '../../core/plans';
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>,
           made <span data-testid="plan-generated">{{ pl.generated }}</span>;
-          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
+          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>;
+          paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="plan-pause" [disabled]="busy() === pl.id" (click)="setPaused(pl.id, true)">
+            Pause<span class="visually-hidden"> plan from {{ pl.start }}</span>
+          </button>
+          <button type="button" data-testid="plan-resume" [disabled]="busy() === pl.id" (click)="setPaused(pl.id, false)">
+            Resume<span class="visually-hidden"> plan from {{ pl.start }}</span>
+          </button>
+          @if (rowErrors()[pl.id]; as err) {
+            <p role="alert" data-testid="plan-error">{{ err }}</p>
+          }
         </li>
       }
     </ul>
@@ -85,9 +96,25 @@ export class PersonPlans {
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** Each plan row's error from its last action, by plan id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The plan whose pause or resume is under way. */
+  protected readonly busy = signal<number | null>(null);
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  protected async setPaused(planId: number, paused: boolean): Promise<void> {
+    if (this.busy() !== null) return;
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+    this.busy.set(planId);
+    try {
+      const err = await this.plans.setPaused(planId, paused);
+      if (err) this.rowErrors.update((es) => ({ ...es, [planId]: err }));
+    } finally {
+      this.busy.set(null);
+    }
   }
 
   protected async add(e: Event): Promise<void> {

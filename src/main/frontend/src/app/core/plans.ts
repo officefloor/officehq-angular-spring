@@ -19,6 +19,8 @@ export interface Plan {
   generated: number;
   /** The first five plan dates after the sheet's today and on or before the end, earliest first. */
   nextDates: string[];
+  /** Paused and not yet resumed: its dates from the day paused until the day resumed are skipped. */
+  paused: boolean;
 }
 
 /** A plan's fields as typed. */
@@ -88,6 +90,24 @@ export class Plans {
       return null;
     } catch (e) {
       return failed('add plan', e);
+    }
+  }
+
+  /** Pause a running plan or resume a paused one from the sheet's today; an error message when refused. */
+  async setPaused(planId: number, paused: boolean): Promise<string | null> {
+    const user = this.session.user();
+    const sid = this.session.sheetId();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const plan = await firstValueFrom(
+        this.http.post<Plan>(`${this.url(sid)}/${planId}/${paused ? 'pause' : 'resume'}`, {}, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.session.sheetId() === sid) this.plans.update((ps) => ps.map((p) => (p.id === plan.id ? plan : p)));
+      return null;
+    } catch (e) {
+      return failed(paused ? 'pause plan' : 'resume plan', e);
     }
   }
 

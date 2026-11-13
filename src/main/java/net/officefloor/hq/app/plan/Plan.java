@@ -57,6 +57,10 @@ public class Plan {
     @Column(name = "on_date")
     private Set<LocalDate> generated = new HashSet<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+    private List<PlanPause> pauses = new ArrayList<>();
+
     protected Plan() {
     }
 
@@ -108,19 +112,42 @@ public class Plan {
         return generated.size();
     }
 
-    /** The plan dates up to its end and the given day that it has made no claim for yet, earliest first. */
+    /** Whether the plan is paused and not yet resumed. */
+    public boolean isPaused() {
+        return pauses.stream().anyMatch(p -> p.getResumedOn() == null);
+    }
+
+    /** Pause the plan from the given day. */
+    public void pause(LocalDate on) {
+        pauses.add(new PlanPause(on));
+    }
+
+    /** Resume the paused plan from the given day. */
+    public void resume(LocalDate on) {
+        pauses.stream().filter(p -> p.getResumedOn() == null).forEach(p -> p.resume(on));
+    }
+
+    /** The plan dates up to its end and the given day that it has made no claim for yet and that no pause
+     *  skips, earliest first. */
     public List<LocalDate> datesDue(LocalDate today) {
         LocalDate last = end.isBefore(today) ? end : today;
         return dates(start, last, Integer.MAX_VALUE).stream().filter(d -> !generated.contains(d)).toList();
     }
 
-    /** The first so many plan dates after the given day and on or before its end, earliest first, whether or
-     *  not it has made a claim for them. */
+    /** The first so many plan dates after the given day and on or before its end that no pause skips,
+     *  earliest first, whether or not it has made a claim for them. A plan still paused has none. */
     public List<LocalDate> nextDates(LocalDate today, int count) {
+        if (isPaused()) {
+            return List.of();
+        }
         return dates(today.plusDays(1), end, count);
     }
 
-    /** The plan dates from the given first to last day, earliest first, at most so many. A monthly plan's dates
+    private boolean skipped(LocalDate date) {
+        return pauses.stream().anyMatch(p -> p.skips(date));
+    }
+
+    /** The plan dates from the given first to last day that no pause skips, earliest first, at most so many. A monthly plan's dates
      *  are its day in every month from the start's month, a day beyond the month's length falling on its last
      *  day, dates before the start left out. */
     private List<LocalDate> dates(LocalDate first, LocalDate last, int max) {
@@ -129,7 +156,7 @@ public class Plan {
             for (YearMonth m = YearMonth.from(start); !m.atDay(1).isAfter(last) && out.size() < max;
                     m = m.plusMonths(1)) {
                 LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
-                if (!d.isBefore(start) && !d.isBefore(first) && !d.isAfter(last)) {
+                if (!d.isBefore(start) && !d.isBefore(first) && !d.isAfter(last) && !skipped(d)) {
                     out.add(d);
                 }
             }
@@ -141,7 +168,9 @@ public class Plan {
             d = start.plusDays(steps * every);
         }
         for (; !d.isAfter(last) && out.size() < max; d = d.plusDays(every)) {
-            out.add(d);
+            if (!skipped(d)) {
+                out.add(d);
+            }
         }
         return out;
     }

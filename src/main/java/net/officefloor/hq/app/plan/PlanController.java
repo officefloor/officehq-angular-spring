@@ -30,14 +30,15 @@ public class PlanController {
 
     /** A plan as the screen shows it: the amount with two decimals, dates YYYY-MM-DD, every so many days or
      *  the day of the month (the other null), how many claims it has made so far, and its next dates: the first
-     *  five plan dates after the sheet's today and on or before its end. */
+     *  five plan dates after the sheet's today and on or before its end that no pause skips, and whether it is
+     *  paused. */
     public record PlanView(long id, long personId, String amount, String start, Integer every, Integer day,
-            String end, int generated, List<String> nextDates) {
+            String end, int generated, List<String> nextDates, boolean paused) {
 
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart().toString(),
                     p.getEvery(), p.getDay(), p.getEnd().toString(), p.getGeneratedCount(),
-                    p.nextDates(today, 5).stream().map(LocalDate::toString).toList());
+                    p.nextDates(today, 5).stream().map(LocalDate::toString).toList(), p.isPaused());
         }
     }
 
@@ -78,6 +79,22 @@ public class PlanController {
         Plan plan = service.add(sid, user.trim(), personId, request.amount(), request.start(), request.every(),
                 request.day(), request.end());
         return PlanView.of(plan, service.today(sid));
+    }
+
+    /** Pause a plan. */
+    @PostMapping("/plans/{planId}/pause")
+    public PlanView pause(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        String sid = sheetId.trim();
+        return PlanView.of(service.setPaused(sid, user.trim(), planId, true), service.today(sid));
+    }
+
+    /** Resume a paused plan. */
+    @PostMapping("/plans/{planId}/resume")
+    public PlanView resume(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        String sid = sheetId.trim();
+        return PlanView.of(service.setPaused(sid, user.trim(), planId, false), service.today(sid));
     }
 
     /** Make the plans' claims due by the sheet's today. */

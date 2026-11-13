@@ -81,6 +81,29 @@ public class PlanService {
         return plan;
     }
 
+    /** Pause a running plan, or resume a paused one, from the sheet's today: plan dates from the day paused
+     *  until the day resumed are skipped. Pausing a paused plan or resuming a running one is refused. */
+    @Transactional
+    public Plan setPaused(String sheetId, String user, long planId, boolean paused) {
+        LocalDate today = sheets.today(sheetId);
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new PlanRefusedException("No such plan."));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        if (paused == plan.isPaused()) {
+            throw new PlanRefusedException(paused ? "The plan is already paused." : "The plan is not paused.");
+        }
+        if (paused) {
+            plan.pause(today);
+        } else {
+            plan.resume(today);
+        }
+        plan = plans.saveAndFlush(plan);
+        audit.recordOnCommit((paused ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " start=" + plan.getStart());
+        return plan;
+    }
+
     /** What a generate did: the claims it made, in the order made, the sheet's plans, and its today. */
     public record Generated(List<Claim> claims, List<Plan> plans, LocalDate today) {
     }
