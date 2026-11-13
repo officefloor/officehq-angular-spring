@@ -26,4 +26,21 @@ export class AuditLog {
       return { error: e instanceof HttpErrorResponse ? `Could not read the audit (${e.status}).` : 'Could not read the audit.' };
     }
   }
+
+  /** A claim's timeline: the audit lines about it, newest first. An error message when that failed. */
+  async claimLines(claimId: number): Promise<{ lines: string[] } | { error: string }> {
+    const user = this.session.user();
+    const sid = this.session.sheetId();
+    if (!user || !sid) return { error: 'Load a sheet first.' };
+    try {
+      const lines = await firstValueFrom(
+        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sid)}/audit/claims/${claimId}`, {
+          headers: { 'X-User': user },
+        }),
+      );
+      return { lines };
+    } catch (e) {
+      return { error: e instanceof HttpErrorResponse ? `Could not read the timeline (${e.status}).` : 'Could not read the timeline.' };
+    }
+  }
 }

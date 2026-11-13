@@ -1,4 +1,5 @@
 import { Component, ElementRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { AuditLog } from '../../core/audit';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { Claim, ClaimAction, Claims, bound } from '../../core/claims';
 import { Periods } from '../../core/periods';
@@ -272,6 +273,16 @@ import { VoidReasons } from '../../core/void-reasons';
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
             </button>
           }
+          <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)">
+            Timeline<span class="visually-hidden"> of claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
+          @if (timeline()?.id === c.id) {
+            <ol data-testid="claim-timeline-list" aria-label="Claim timeline">
+              @for (line of timeline()?.lines; track $index) {
+                <li data-testid="claim-timeline-line">{{ line }}</li>
+              }
+            </ol>
+          }
           @if (actionError()?.id === c.id) {
             <p role="alert" data-testid="claim-error">{{ actionError()?.message }}</p>
           }
@@ -314,6 +325,10 @@ export class PersonClaims {
   private locking: Promise<boolean> | null = null;
   /** The id of the claim whose editor is open, or null when the form adds. */
   protected readonly editing = signal<number | null>(null);
+  private readonly audit = inject(AuditLog);
+  /** The timeline last shown, of the claim it is about: the audit lines about it, newest first. */
+  protected readonly timeline = signal<{ id: number; lines: string[] } | null>(null);
+  private timelineShows = 0;
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly actions: { action: ClaimAction; label: string }[] = [
@@ -464,6 +479,16 @@ export class PersonClaims {
     } finally {
       this.acting.set(null);
     }
+  }
+
+  protected async showTimeline(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    const show = ++this.timelineShows;
+    this.timeline.set(null);
+    const res = await this.audit.claimLines(c.id);
+    if (show !== this.timelineShows) return; // a later press has taken over
+    if ('error' in res) this.actionError.set({ id: c.id, message: res.error });
+    else this.timeline.set({ id: c.id, lines: res.lines });
   }
 
   protected async remind(c: Claim): Promise<void> {

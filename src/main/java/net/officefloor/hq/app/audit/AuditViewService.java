@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimNotFoundException;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -24,11 +27,50 @@ public class AuditViewService {
     private final Audit audit;
     private final PersonRepository people;
     private final SheetRepository sheets;
+    private final ClaimRepository claims;
 
-    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets) {
+    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets, ClaimRepository claims) {
         this.audit = audit;
         this.people = people;
         this.sheets = sheets;
+        this.claims = claims;
+    }
+
+    /**
+     * A claim's timeline: the sheet's audit lines about it, newest first, as the file holds them. A claim
+     * with a number has the lines carrying number=&lt;its number&gt;; one with no number has the lines,
+     * carrying no number, that name its person, amount and date together.
+     */
+    public List<String> claimLines(String sheetId, Long claimId) {
+        Claim claim = claims.findByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        Pattern sheet = field("sheet", sheetId);
+        List<Pattern> about;
+        Pattern numbered = Pattern.compile("(?:^| )number=");
+        if (claim.getNumber() != null) {
+            about = List.of(field("number", claim.getNumber()));
+            numbered = null;
+        } else {
+            String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse(null);
+            if (person == null) {
+                return new ArrayList<>();
+            }
+            about = List.of(field("person", person), field("amount", claim.getAmount().toPlainString()),
+                    field("date", claim.getDate().toString()));
+        }
+        List<String> lines = new ArrayList<>();
+        for (String line : audit.lines()) {
+            if (sheet.matcher(line).find() && (numbered == null || !numbered.matcher(line).find())
+                    && about.stream().allMatch(p -> p.matcher(line).find())) {
+                lines.add(line);
+            }
+        }
+        Collections.reverse(lines);
+        return lines;
+    }
+
+    /** A key=value field of a line, the value running up to the next field or the line's end. */
+    private static Pattern field(String key, String value) {
+        return Pattern.compile("(?:^| )" + key + "=" + Pattern.quote(value) + "(?= [A-Za-z][\\w-]*=|$)");
     }
 
     /**

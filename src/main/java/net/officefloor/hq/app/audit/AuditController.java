@@ -30,4 +30,11 @@ public class AuditController {
             @RequestParam(defaultValue = "") @Size(max = 200) String name) {
         return service.lines(sheetId.trim(), name);
     }
+
+    /** A claim's timeline: the audit lines about it, newest first. */
+    @GetMapping("/claims/{claimId}")
+    public List<String> claim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return service.claimLines(sheetId.trim(), claimId);
+    }
 }
