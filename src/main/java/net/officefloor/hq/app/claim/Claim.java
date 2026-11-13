@@ -551,11 +551,6 @@ public class Claim {
         shares.add(new ClaimShare(personId, share));
     }
 
-    /** The parts of a due its holders hold, added up. */
-    public BigDecimal sharedPart(BigDecimal due) {
-        return getShares().stream().map(s -> s.part(due)).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-    }
-
     /** The share a person holds of it; none when they hold none. */
     public Optional<ClaimShare> shareOf(Long personId) {
         return getShares().stream().filter(s -> s.getPersonId().equals(personId)).findFirst();

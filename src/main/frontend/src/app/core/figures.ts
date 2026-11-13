@@ -1,5 +1,5 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { Claim, Claims, bound, countsAt, isOpen, partCents, statusAt } from './claims';
+import { Claim, ClaimShare, Claims, bound, countsAt, isOpen, partCents, statusAt } from './claims';
 import { CrewView, Crews } from './crews';
 import { People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
@@ -72,9 +72,9 @@ export class Figures {
       else if (!bound(c) && this.rates.inForceFor(gradeOn(p.grades, c.date), c.date, c.id) !== undefined) keptFigure = true;
       sum += this.ownCents(c, p);
     }
-    for (const { c, part } of this.heldParts(p)) {
-      // a part of a claim with a figure keeps a figure too
-      if (this.hasFigure(c)) keptFigure = true;
+    for (const { c, part, priced } of this.heldParts(p)) {
+      // a part of a claim with a figure, priced at the holder's rate (or frozen), keeps a figure too
+      if (priced && this.hasFigure(c)) keptFigure = true;
       sum += part;
     }
     const today = this.session.shownToday();
@@ -85,20 +85,34 @@ export class Figures {
   /** A claim's figure less the parts its holders hold of it: what its own person counts of it. */
   ownCents(c: Claim, p: Person): bigint {
     const due = this.figureCents(c, p);
-    return (c.shares ?? []).reduce((rest, s) => rest - partCents(due, s.share), due);
+    return (c.shares ?? []).reduce((rest, s) => rest - (this.partOf(c, s, due) ?? 0n), due);
   }
 
-  /** The parts a person holds of other people's claims that count live, each with its claim: the claim's
-   *  figure times their share divided by 100, rounded half to even. */
-  heldParts(p: Person): { c: Claim; part: bigint }[] {
-    const parts: { c: Claim; part: bigint }[] = [];
+  /** The parts a person holds of other people's claims that count live, each with its claim (see `partOf`). */
+  heldParts(p: Person): { c: Claim; part: bigint; priced: boolean }[] {
+    const parts: { c: Claim; part: bigint; priced: boolean }[] = [];
     for (const c of this.claims.live()) {
       const held = (c.shares ?? []).find((s) => s.personId === p.id);
       const owner = held && this.people.people().find((o) => o.id === c.personId);
       if (!held || !owner) continue;
-      parts.push({ c, part: partCents(this.figureCents(c, owner), held.share) });
+      const part = this.partOf(c, held, this.figureCents(c, owner));
+      parts.push({ c, part: part ?? 0n, priced: part !== null });
     }
     return parts;
+  }
+
+  /** A holder's part of a claim, in cents: its amount times their share divided by 100, times the rate of the
+   *  holder's own grade in force on its date divided by 100, rounded as the claim rounds; null (counting as 0)
+   *  when their grade has no rate then. A settled claim keeps its parts as frozen: its figure times the share divided by 100,
+   *  rounded half to even. */
+  private partOf(c: Claim, s: ClaimShare, figureCents: bigint): bigint | null {
+    if (c.settledDue !== null) return partCents(figureCents, s.share);
+    const holder = this.people.people().find((o) => o.id === s.personId);
+    const rate = holder && this.rates.inForceFor(gradeOn(holder.grades, c.date), c.date, c.id);
+    if (!rate) return null;
+    const roundOn = this.claims.roundingDate(c);
+    return rounded(hundredths(c.amount) * hundredths(s.share) * hundredths(rate.rate), 100000000n,
+      this.session.roundsHalfUp(roundOn));
   }
 
   /** Whether a claim has a figure: settled, bound to one, or priced at the grade in force on its date. */

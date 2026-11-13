@@ -197,7 +197,7 @@ public class Rollup {
                 }
                 if (figure != null) {
                     // the parts its holders hold are theirs, not its person's
-                    due = due.add(figure.subtract(claim.sharedPart(figure)));
+                    due = due.add(figure.subtract(sharedPart(sheet, claim, figure, byId, sheetClaims, sheetRates)));
                     if (overdue(sheet, claim, person, today)) {
                         overdue = overdue.add(figure);
                     }
@@ -217,9 +217,11 @@ public class Rollup {
                     continue;
                 }
                 BigDecimal figure = figure(sheet, claim, owner, sheetClaims, sheetRates);
-                if (figure != null) {
+                BigDecimal part = figure == null ? null
+                        : part(sheet, claim, held.get(), figure, person, sheetClaims, sheetRates);
+                if (part != null) {
                     keptFigure = true;
-                    due = due.add(held.get().part(figure));
+                    due = due.add(part);
                 }
             }
             sheetOverdueCount += overdueCount;
@@ -254,11 +256,40 @@ public class Rollup {
                 continue;
             }
             BigDecimal figure = figure(sheet, claim, owner, sheetClaims, sheetRates);
-            if (figure != null) {
-                held = (held == null ? ZERO : held).add(share.get().part(figure));
+            BigDecimal part = figure == null ? null
+                    : part(sheet, claim, share.get(), figure, byId.get(personId), sheetClaims, sheetRates);
+            if (part != null) {
+                held = (held == null ? ZERO : held).add(part);
             }
         }
         return held;
+    }
+
+    /** The parts a claim's holders hold of it, added up: what its own person's figure is less by. */
+    private static BigDecimal sharedPart(Optional<Sheet> sheet, Claim claim, BigDecimal figure, Map<Long, Person> byId,
+            List<Claim> sheetClaims, List<Rate> sheetRates) {
+        return claim.getShares().stream()
+                .map(s -> part(sheet, claim, s, figure, byId.get(s.getPersonId()), sheetClaims, sheetRates))
+                .filter(Objects::nonNull)
+                .reduce(ZERO, BigDecimal::add);
+    }
+
+    /** A holder's part of a claim: its amount times their share divided by 100, times the rate of the holder's
+     *  own grade in force on its date divided by 100, rounded as the claim rounds; none (counting as 0.00, and
+     *  keeping no figure for the holder) when their grade has no rate then. A settled claim keeps its parts as frozen: its settled figure times the share divided by 100. */
+    public static BigDecimal part(Optional<Sheet> sheet, Claim claim, ClaimShare share, BigDecimal figure,
+            Person holder, List<Claim> sheetClaims, List<Rate> sheetRates) {
+        if (claim.getSettledDue() != null) {
+            return share.part(figure);
+        }
+        if (holder == null) {
+            return null;
+        }
+        LocalDate on = roundingDate(claim, sheetClaims);
+        return inForce(sheetRates, holder.gradeOn(claim.getDate()), claim.getDate(), claim)
+                .map(rate -> claim.getAmount().multiply(share.getShare()).multiply(rate.getRate()).movePointLeft(4)
+                        .setScale(2, sheet.map(s -> s.rounding(on)).orElse(RoundingMode.HALF_EVEN)))
+                .orElse(null);
     }
 
     /** A claim's figure as its person's due-total counts it: its settled due, else the figure its statement
