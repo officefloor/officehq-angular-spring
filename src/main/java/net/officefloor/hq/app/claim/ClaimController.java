@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.SignedInUser;
 import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -59,16 +61,18 @@ public class ClaimController {
     @PostMapping("/people/{personId}/claims")
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimView add(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
-            @RequestBody @Validated ClaimRequest request) {
-        return ClaimView.of(service.add(sheetId.trim(), personId, request.amount(), request.date(), request.note()));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ClaimRequest request) {
+        return ClaimView.of(service.add(sheetId.trim(), SignedInUser.decode(user), personId, request.amount(),
+                request.date(), request.note()));
     }
 
     /** Change a claim's amount, date and note. */
     @PutMapping("/people/{personId}/claims/{id}")
     public ClaimView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
-            @PathVariable Long id, @RequestBody @Validated ClaimRequest request) {
-        return ClaimView.of(service.update(sheetId.trim(), personId, id, request.amount(), request.date(),
-                request.note()));
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ClaimRequest request) {
+        return ClaimView.of(service.update(sheetId.trim(), SignedInUser.decode(user), personId, id,
+                request.amount(), request.date(), request.note()));
     }
 
     @ExceptionHandler(NoSuchElementException.class)

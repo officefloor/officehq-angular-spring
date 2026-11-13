@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.util.List;
 import java.util.NoSuchElementException;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,10 +13,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     /** The sheet's people in the order they were added. */
@@ -25,23 +28,32 @@ public class PersonService {
 
     /** Add a person to the sheet. */
     @Transactional
-    public Person add(String sheetId, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId);
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, null);
-        return people.saveAndFlush(new Person(sheetId, trimmed, grade));
+        Person added = people.saveAndFlush(new Person(sheetId, trimmed, grade));
+        record("PERSON_ADDED", sheetId, user, added);
+        return added;
     }
 
     /** Change a person's name and grade. */
     @Transactional
-    public Person update(String sheetId, Long id, String name, String grade) {
+    public Person update(String sheetId, String user, Long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, id);
         person.setName(trimmed);
         person.setGrade(grade);
-        return people.saveAndFlush(person);
+        Person saved = people.saveAndFlush(person);
+        record("PERSON_EDITED", sheetId, user, saved);
+        return saved;
+    }
+
+    private void record(String event, String sheetId, String user, Person person) {
+        audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " grade=" + person.getGrade());
     }
 
     private void requireFreeName(String sheetId, String name, Long exceptId) {

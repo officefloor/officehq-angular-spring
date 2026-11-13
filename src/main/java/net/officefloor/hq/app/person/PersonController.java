@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import net.officefloor.hq.app.SignedInUser;
 import java.util.NoSuchElementException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -52,15 +54,16 @@ public class PersonController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestBody @Validated PersonRequest request) {
-        return PersonView.of(service.add(sheetId.trim(), request.name(), request.grade()));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonRequest request) {
+        return PersonView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name(), request.grade()));
     }
 
     /** Change a person's name and grade. */
     @PutMapping("/{id}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
-            @RequestBody @Validated PersonRequest request) {
-        return PersonView.of(service.update(sheetId.trim(), id, request.name(), request.grade()));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonRequest request) {
+        return PersonView.of(
+                service.update(sheetId.trim(), SignedInUser.decode(user), id, request.name(), request.grade()));
     }
 
     @ExceptionHandler(NoSuchElementException.class)
