@@ -1,0 +1,65 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 573c320ca..03efd9673 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -188,15 +188,18 @@ export class Claims {
+     };
+   });
+ 
++  /** The claims that count toward claimed: the live ones, leaving out claims that correct another. */
++  private readonly counted = computed(() => this.live().filter((c) => !c.corrects));
++
+   /** Each person's claimed, in cents, by person id. */
+   readonly claimedCents = computed(() => {
+     const out = new Map<number, number>();
+-    for (const c of this.live()) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
++    for (const c of this.counted()) out.set(c.personId, (out.get(c.personId) ?? 0) + cents(c.amount));
+     return out;
+   });
+ 
+   /** Everyone's claimed added up, with two decimals. */
+-  readonly total = computed(() => money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)));
++  readonly total = computed(() => money(this.counted().reduce((sum, c) => sum + cents(c.amount), 0)));
+ 
+   /** The date a claim is due by: fixed when it was added, from the terms of its person's grade then. */
+   dueBy(c: Claim): string {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 5764ebfb9..610acd31f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -655,14 +655,17 @@ public class PersonService {
+     }
+ 
+     /** Carry a person's snapshots to whom they merge into or arrive as (on that person's sheet), the two
+-     *  people's kept oldest first by the day each was written for. */
++     *  people's kept oldest first by the day each was written for; on a day both have one, the receiving
++     *  person's own is kept. */
+     private void carrySnapshots(Person from, Person into) {
+         List<PersonSnapshot> theirs = snapshots.findByPersonIdOrderByIdAsc(from.getId());
+         if (theirs.isEmpty()) {
+             return;
+         }
+         List<PersonSnapshot> own = snapshots.findByPersonIdOrderByIdAsc(into.getId());
+-        List<PersonSnapshot> all = new ArrayList<>(theirs);
++        Set<LocalDate> ownDays = own.stream().map(PersonSnapshot::getDay).collect(Collectors.toSet());
++        List<PersonSnapshot> all = new ArrayList<>(
++                theirs.stream().filter(s -> !ownDays.contains(s.getDay())).toList());
+         all.addAll(own);
+         all.sort(Comparator.comparing(PersonSnapshot::getDay));
+         snapshots.deleteAll(theirs);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 3a5a05ec4..abae73db5 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -85,7 +85,10 @@ public class Rollup {
+                 if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) {
+                     continue;
+                 }
+-                claimed = claimed.add(claim.getAmount());
++                if (claim.getCorrects() == null || claim.getCorrects().isEmpty()) {
++                    // a claim that corrects another is left out of claimed
++                    claimed = claimed.add(claim.getAmount());
++                }
+                 BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
+                         : claim.isBound() ? claim.getStatedDue() : null;
+                 BigDecimal figure = null;
