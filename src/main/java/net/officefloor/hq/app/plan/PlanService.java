@@ -104,6 +104,26 @@ public class PlanService {
         return plan;
     }
 
+    /** Change a plan's amount from the sheet's today: the claims it makes from then on carry the new amount,
+     *  those already made keep theirs. An amount a claim would refuse (below 0.00) is refused. */
+    @Transactional
+    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        LocalDate today = sheets.today(sheetId);
+        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
+                .orElseThrow(() -> new PlanRefusedException("No such plan."));
+        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        if (amount.signum() < 0) {
+            throw new PlanRefusedException("Enter an amount of 0.00 or more.");
+        }
+        BigDecimal a = amount.setScale(2);
+        plan.changeAmount(today, a);
+        plan = plans.saveAndFlush(plan);
+        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " start=" + plan.getStart() + " amount=" + a.toPlainString());
+        return plan;
+    }
+
     /** What a generate did: the claims it made, in the order made, the sheet's plans, and its today. */
     public record Generated(List<Claim> claims, List<Plan> plans, LocalDate today) {
     }

@@ -21,6 +21,8 @@ export interface Plan {
   nextDates: string[];
   /** Paused and not yet resumed: its dates from the day paused until the day resumed are skipped. */
   paused: boolean;
+  /** The changes of its amount, oldest first: the day made and the new amount. */
+  changes: { on: string; amount: string }[];
 }
 
 /** A plan's fields as typed. */
@@ -108,6 +110,25 @@ export class Plans {
       return null;
     } catch (e) {
       return failed(paused ? 'pause plan' : 'resume plan', e);
+    }
+  }
+
+  /** Change a plan's amount from the sheet's today, for the claims it makes from then on; an error message when
+   *  refused (a bad amount). */
+  async changeAmount(planId: number, amount: string): Promise<string | null> {
+    const user = this.session.user();
+    const sid = this.session.sheetId();
+    if (!user || !sid) return 'Load a sheet first.';
+    const a = amount.trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(a)) return 'Enter an amount of 0.00 or more with up to two decimals.';
+    try {
+      const plan = await firstValueFrom(
+        this.http.post<Plan>(`${this.url(sid)}/${planId}/amount`, { amount: a }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.plans.update((ps) => ps.map((p) => (p.id === plan.id ? plan : p)));
+      return null;
+    } catch (e) {
+      return failed('change plan amount', e);
     }
   }
 

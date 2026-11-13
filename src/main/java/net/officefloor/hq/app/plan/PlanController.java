@@ -31,15 +31,27 @@ public class PlanController {
     /** A plan as the screen shows it: the amount with two decimals, dates YYYY-MM-DD, every so many days or
      *  the day of the month (the other null), how many claims it has made so far, and its next dates: the first
      *  five plan dates after the sheet's today and on or before its end that no pause skips, and whether it is
-     *  paused. */
+     *  paused, and the changes of its amount, oldest first. */
     public record PlanView(long id, long personId, String amount, String start, Integer every, Integer day,
-            String end, int generated, List<String> nextDates, boolean paused) {
+            String end, int generated, List<String> nextDates, boolean paused, List<ChangeView> changes) {
 
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart().toString(),
                     p.getEvery(), p.getDay(), p.getEnd().toString(), p.getGeneratedCount(),
-                    p.nextDates(today, 5).stream().map(LocalDate::toString).toList(), p.isPaused());
+                    p.nextDates(today, 5).stream().map(LocalDate::toString).toList(), p.isPaused(),
+                    p.getChanges().stream().map(ChangeView::of).toList());
         }
+    }
+
+    /** A change of a plan's amount: the day it was made and the new amount with two decimals. */
+    public record ChangeView(String on, String amount) {
+
+        static ChangeView of(PlanChange c) {
+            return new ChangeView(c.getChangedOn().toString(), c.getAmount().toPlainString());
+        }
+    }
+
+    public record AmountRequest(@NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount) {
     }
 
     public record PlanRequest(
@@ -95,6 +107,15 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         String sid = sheetId.trim();
         return PlanView.of(service.setPaused(sid, user.trim(), planId, false), service.today(sid));
+    }
+
+    /** Change a plan's amount. */
+    @PostMapping("/plans/{planId}/amount")
+    public PlanView changeAmount(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable long planId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid AmountRequest request) {
+        String sid = sheetId.trim();
+        return PlanView.of(service.changeAmount(sid, user.trim(), planId, request.amount()), service.today(sid));
     }
 
     /** Make the plans' claims due by the sheet's today. */

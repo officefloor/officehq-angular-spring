@@ -2,7 +2,8 @@ import { Component, computed, inject, input, signal } from '@angular/core';
 import { Plans } from '../../core/plans';
 
 // A person's plans, each with how many claims it has made so far, its next five dates and whether it is paused
-// (with buttons pausing and resuming it, a refusal shown on its row), and a form adding one, run every so many days
+// (with buttons pausing and resuming it, a refusal shown on its row), an entry changing its amount for the claims
+// it makes from then on (a bad amount refused on its row) and the list of those changes, oldest first, and a form adding one, run every so many days
 // or monthly on a day of the month (a bad amount, interval or day, or an end before the start, is refused with
 // an error on the row).
 @Component({
@@ -28,6 +29,22 @@ import { Plans } from '../../core/plans';
           <button type="button" data-testid="plan-resume" [disabled]="busy() === pl.id" (click)="setPaused(pl.id, false)">
             Resume<span class="visually-hidden"> plan from {{ pl.start }}</span>
           </button>
+          <label [for]="'plan-amount-' + pl.id">New amount</label>
+          <input
+            [id]="'plan-amount-' + pl.id"
+            data-testid="plan-amount"
+            inputmode="decimal"
+            [value]="newAmounts()[pl.id] ?? ''"
+            (input)="setNewAmount(pl.id, value($event))"
+          />
+          <button type="button" data-testid="plan-amount-save" [disabled]="busy() === pl.id" (click)="changeAmount(pl.id)">
+            Save amount<span class="visually-hidden"> of plan from {{ pl.start }}</span>
+          </button>
+          <ul aria-label="Amount changes">
+            @for (c of pl.changes; track $index) {
+              <li data-testid="plan-change-line">{{ c.on }} amount={{ c.amount }}</li>
+            }
+          </ul>
           @if (rowErrors()[pl.id]; as err) {
             <p role="alert" data-testid="plan-error">{{ err }}</p>
           }
@@ -98,7 +115,9 @@ export class PersonPlans {
   protected readonly saving = signal(false);
   /** Each plan row's error from its last action, by plan id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
-  /** The plan whose pause or resume is under way. */
+  /** Each plan row's new amount as typed, by plan id. */
+  protected readonly newAmounts = signal<Record<number, string>>({});
+  /** The plan whose pause, resume or amount change is under way. */
   protected readonly busy = signal<number | null>(null);
 
   protected value(e: Event): string {
@@ -112,6 +131,24 @@ export class PersonPlans {
     try {
       const err = await this.plans.setPaused(planId, paused);
       if (err) this.rowErrors.update((es) => ({ ...es, [planId]: err }));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  protected setNewAmount(planId: number, amount: string): void {
+    this.newAmounts.update((amounts) => ({ ...amounts, [planId]: amount }));
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+  }
+
+  protected async changeAmount(planId: number): Promise<void> {
+    if (this.busy() !== null) return;
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+    this.busy.set(planId);
+    try {
+      const err = await this.plans.changeAmount(planId, this.newAmounts()[planId] ?? '');
+      if (err) this.rowErrors.update((es) => ({ ...es, [planId]: err }));
+      else this.newAmounts.update(({ [planId]: _, ...rest }) => rest);
     } finally {
       this.busy.set(null);
     }
