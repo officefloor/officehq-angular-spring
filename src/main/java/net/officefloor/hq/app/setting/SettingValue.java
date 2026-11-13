@@ -12,8 +12,9 @@ import java.time.LocalDate;
 import net.officefloor.hq.app.history.HistoryListener;
 
 /** A value recorded for one of a sheet's dated settings (floor, late-pct, terms, terms-&lt;grade&gt;,
- *  clerk-limit, cap, proof-threshold, note-threshold): in force from its from-date until the next one recorded for the
- *  key. Null only for the clerk limit, the cap, the proof threshold or the note threshold, where it means none. */
+ *  clerk-limit, cap, proof-threshold, proof-threshold-&lt;grade&gt;, note-threshold): in force from its from-date until the
+ *  next one recorded for the key. Null only for the clerk limit, the cap, a proof threshold or the note threshold, where
+ *  it means none. */
 @Entity
 @Table(name = "sheet_setting_value")
 @EntityListeners(HistoryListener.class)

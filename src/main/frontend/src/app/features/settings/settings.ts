@@ -284,6 +284,26 @@ export class SettingStore {
     return this.gradeTerms()[grade] ?? this.terms();
   }
 
+  /** A grade's proof threshold in force on the sheet's today; blank for none (the sheet's applies). */
+  proofThresholdOf(grade: string): string {
+    return this.onToday(`proof-threshold-${grade}`) ?? '';
+  }
+
+  /** Record a grade's proof threshold on the active sheet from a date (null for the sheet's today);
+   *  null records none (blank). */
+  async setGradeProofThreshold(grade: string, value: string | null, from: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/settings/proof-threshold/${encodeURIComponent(grade)}`,
+        { value, from },
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** A grade's grace days in force on the sheet's today as text; blank for none. */
   graceOf(grade: string): string {
     return this.onToday(`grace-${grade}`) ?? '';
@@ -631,6 +651,25 @@ export class SettingStore {
           />
         }
         @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (blank for the sheet's)</label>
+          <input
+            [id]="'setting-proof-threshold-' + g"
+            [attr.data-testid]="'setting-proof-threshold-' + g"
+            inputmode="decimal"
+            [value]="gradeProofThreshold()[g] ?? ''"
+            (focus)="typeGradeProofThreshold(g, gradeProofThreshold()[g] ?? '')"
+            (input)="typeGradeProofThreshold(g, value($event))"
+          />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from</label>
+          <input
+            [id]="'setting-proof-threshold-' + g + '-from'"
+            [attr.data-testid]="'setting-proof-threshold-' + g + '-from'"
+            placeholder="yyyy-mm-dd"
+            [value]="gradeProofThresholdFrom()[g] ?? ''"
+            (input)="typeGradeProofThresholdFrom(g, value($event))"
+          />
+        }
+        @for (g of grades; track g) {
           <label [for]="'setting-grace-' + g">Grace for grade {{ g }} (days; blank for none)</label>
           <input
             [id]="'setting-grace-' + g"
@@ -766,6 +805,15 @@ export class SettingStore {
       }
       @for (g of grades; track g) {
         <p>
+          Proof threshold in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ store.proofThresholdOf(g) }}</strong>
+          @if (store.proofThresholdOf(g) === '') {
+            <span>none (the sheet's)</span>
+          }
+        </p>
+      }
+      @for (g of grades; track g) {
+        <p>
           Grace in force for grade {{ g }}:
           <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ store.graceOf(g) }}</strong>
           @if (store.graceOf(g) === '') {
@@ -854,6 +902,10 @@ export class Settings {
   protected readonly gradeTerms = signal<Record<string, string>>({});
   /** The from-dates typed for the grades' terms, by grade; blank for the sheet's today. */
   protected readonly gradeTermsFrom = signal<Record<string, string>>({});
+  /** The grades' proof thresholds typed since the last save, by grade; blank records none. */
+  protected readonly gradeProofThreshold = signal<Record<string, string>>({});
+  /** The from-dates typed for the grades' proof thresholds, by grade; blank for the sheet's today. */
+  protected readonly gradeProofThresholdFrom = signal<Record<string, string>>({});
   /** The grades' grace days typed since the last save, by grade; blank records none. */
   protected readonly gradeGrace = signal<Record<string, string>>({});
   /** The from-dates typed for the grades' grace days, by grade; blank for the sheet's today. */
@@ -884,6 +936,16 @@ export class Settings {
 
   protected typeGradeTerms(grade: string, typed: string): void {
     this.gradeTerms.update((all) => ({ ...all, [grade]: typed }));
+    this.settingsError.set(null);
+  }
+
+  protected typeGradeProofThreshold(grade: string, typed: string): void {
+    this.gradeProofThreshold.update((all) => ({ ...all, [grade]: typed }));
+    this.settingsError.set(null);
+  }
+
+  protected typeGradeProofThresholdFrom(grade: string, typed: string): void {
+    this.gradeProofThresholdFrom.update((all) => ({ ...all, [grade]: typed }));
     this.settingsError.set(null);
   }
 
@@ -978,6 +1040,7 @@ export class Settings {
     const terms = this.terms().trim();
     const saveTerms = this.termsTyped();
     const gradeTerms = Object.entries(this.gradeTerms()).map(([grade, days]) => [grade, days.trim()] as const);
+    const gradeThreshold = Object.entries(this.gradeProofThreshold()).map(([grade, amount]) => [grade, amount.trim()] as const);
     const gradeGrace = Object.entries(this.gradeGrace()).map(([grade, days]) => [grade, days.trim()] as const);
     const latePct = this.latePct().trim();
     const saveLatePct = this.latePctTyped();
@@ -1002,6 +1065,9 @@ export class Settings {
     const gradeTermsFrom: Record<string, string> = Object.fromEntries(
       Object.entries(this.gradeTermsFrom()).map(([grade, from]) => [grade, from.trim()]),
     );
+    const gradeThresholdFrom: Record<string, string> = Object.fromEntries(
+      Object.entries(this.gradeProofThresholdFrom()).map(([grade, from]) => [grade, from.trim()]),
+    );
     const gradeGraceFrom: Record<string, string> = Object.fromEntries(
       Object.entries(this.gradeGraceFrom()).map(([grade, from]) => [grade, from.trim()]),
     );
@@ -1013,6 +1079,7 @@ export class Settings {
       [saveNoteThreshold, noteThresholdFrom, 'the note threshold'],
       [saveTerms, termsFrom, 'the terms'],
       ...gradeTerms.map(([grade]) => [true, gradeTermsFrom[grade] ?? '', `the terms for grade ${grade}`] as [boolean, string, string]),
+      ...gradeThreshold.map(([grade]) => [true, gradeThresholdFrom[grade] ?? '', `the proof threshold for grade ${grade}`] as [boolean, string, string]),
       ...gradeGrace.map(([grade]) => [true, gradeGraceFrom[grade] ?? '', `the grace for grade ${grade}`] as [boolean, string, string]),
       [saveLatePct, latePctFrom, 'the late percent'],
     ];
@@ -1030,6 +1097,11 @@ export class Settings {
     }
     if (saveThreshold && threshold !== '' && !AMOUNT.test(threshold)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    const badThreshold = gradeThreshold.find(([, amount]) => amount !== '' && !AMOUNT.test(amount));
+    if (badThreshold) {
+      this.settingsError.set(`Type a proof threshold for grade ${badThreshold[0]} of 0.00 or more, with up to two decimals, or leave it blank for the sheet's.`);
       return;
     }
     if (saveNoteThreshold && noteThreshold !== '' && !AMOUNT.test(noteThreshold)) {
@@ -1088,6 +1160,7 @@ export class Settings {
     this.noteThresholdTyped.set(false);
     this.termsTyped.set(false);
     this.gradeTerms.set({});
+    this.gradeProofThreshold.set({});
     this.gradeGrace.set({});
     this.latePctTyped.set(false);
     this.policyDateTyped.set(false);
@@ -1101,6 +1174,9 @@ export class Settings {
         if (saveFloor) await this.store.setFloor(floor, fromOf(floorFrom));
         if (saveCap) await this.store.setCap(cap === '' ? null : cap, fromOf(capFrom));
         if (saveThreshold) await this.store.setProofThreshold(threshold === '' ? null : threshold, fromOf(thresholdFrom));
+        for (const [grade, amount] of gradeThreshold) {
+          await this.store.setGradeProofThreshold(grade, amount === '' ? null : amount, fromOf(gradeThresholdFrom[grade] ?? ''));
+        }
         if (saveNoteThreshold) {
           await this.store.setNoteThreshold(noteThreshold === '' ? null : noteThreshold, fromOf(noteThresholdFrom));
         }
@@ -1126,6 +1202,7 @@ export class Settings {
         if (saveNoteThreshold) this.noteThresholdTyped.set(true);
         if (saveTerms) this.termsTyped.set(true);
         this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
+        this.gradeProofThreshold.update((typed) => ({ ...Object.fromEntries(gradeThreshold), ...typed }));
         this.gradeGrace.update((typed) => ({ ...Object.fromEntries(gradeGrace), ...typed }));
         if (saveLatePct) this.latePctTyped.set(true);
         if (savePolicyDate) this.policyDateTyped.set(true);

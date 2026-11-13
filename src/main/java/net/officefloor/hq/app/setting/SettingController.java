@@ -232,6 +232,17 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Set a grade's (A, B or C) proof threshold; blank leaves the sheet's to apply to the grade's claims. */
+    @PutMapping("/proof-threshold/{grade}")
+    public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ProofThresholdRequest request) {
+        String sheet = sheetId.trim();
+        service.setGradeProofThreshold(sheet, SignedInUser.decode(user), grade, request.value(), request.from());
+        return view(sheet);
+    }
+
     /** Change the sheet's note threshold. */
     @PutMapping("/note-threshold")
     public SettingsView setNoteThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,

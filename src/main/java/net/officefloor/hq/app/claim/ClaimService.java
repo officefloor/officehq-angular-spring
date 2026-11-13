@@ -264,7 +264,7 @@ public class ClaimService {
         // gathered by then.
         BigDecimal due = to == ClaimStatus.SETTLED ? dueOf(sheetId, person, claim) : null;
         if (to == ClaimStatus.SETTLED) {
-            refuseUnproved(sheetId, claim, due);
+            refuseUnproved(sheetId, person, claim, due);
         }
         if (to == ClaimStatus.OPEN) {
             refuseUnnoted(sheetId, person, claim);
@@ -380,7 +380,7 @@ public class ClaimService {
             throw new OwnClaimSettleRefusedException(user);
         }
         BigDecimal due = dueOf(sheetId, person, claim);
-        refuseUnproved(sheetId, claim, due);
+        refuseUnproved(sheetId, person, claim, due);
         claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
         Claim saved = claims.saveAndFlush(claim);
@@ -813,10 +813,12 @@ public class ClaimService {
         return settings.roleOf(sheetId, user) == Role.CLERK;
     }
 
-    /** A claim whose due is above the proof threshold in force on its date cannot be settled or
-     *  approved while it has no proofs; a due of n/a, or no threshold, asks for none. */
-    private void refuseUnproved(String sheetId, Claim claim, BigDecimal due) {
-        BigDecimal threshold = settings.proofThreshold(sheetId, claim.getDate());
+    /** A claim whose due is above the proof threshold in force on its date (its person's grade's in
+     *  force then when one is set, else the sheet's) cannot be settled or approved while it has no
+     *  proofs; a due of n/a, or no threshold, asks for none. */
+    private void refuseUnproved(String sheetId, Person person, Claim claim, BigDecimal due) {
+        String grade = grades.gradeOn(person.getId(), claim.getDate());
+        BigDecimal threshold = settings.proofThresholdFor(sheetId, grade, claim.getDate());
         if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
             throw new ProofRequiredException(due, threshold);
         }

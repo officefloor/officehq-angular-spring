@@ -33,6 +33,9 @@ public class SettingService {
     /** The key prefix of a grade's grace days: grace-A, grace-B, grace-C. */
     private static final String GRADE_GRACE = "grace-";
 
+    /** The key prefix of a grade's proof threshold: proof-threshold-A, proof-threshold-B, proof-threshold-C. */
+    private static final String GRADE_PROOF_THRESHOLD = "proof-threshold-";
+
     private final SheetService sheets;
     private final SheetRepository sheetRepository;
     private final SheetRoleRepository roles;
@@ -277,6 +280,18 @@ public class SettingService {
         return inForce(sheetId, "proof-threshold", on).map(SettingValue::getValue).orElse(null);
     }
 
+    /** The proof threshold in force on a date for a claim of the grade: the grade's own in force then
+     *  when one is set (not blank), else the sheet's; null when neither is. */
+    public BigDecimal proofThresholdFor(String sheetId, String grade, LocalDate on) {
+        if (grade != null) {
+            BigDecimal own = inForce(sheetId, GRADE_PROOF_THRESHOLD + grade, on).map(SettingValue::getValue).orElse(null);
+            if (own != null) {
+                return own;
+            }
+        }
+        return proofThreshold(sheetId, on);
+    }
+
     /** The sheet's note threshold in force on a date: a claim of that date whose due is above it cannot
      *  be opened while its note is empty; null when there is none. */
     public BigDecimal noteThreshold(String sheetId, LocalDate on) {
@@ -434,6 +449,14 @@ public class SettingService {
     @Transactional
     public SettingValue setProofThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
         return record(sheetId, by, "proof-threshold",
+                threshold != null ? threshold.setScale(2, RoundingMode.UNNECESSARY) : null, from);
+    }
+
+    /** Record a grade's proof threshold on the sheet from a date (null for the sheet's today); null
+     *  records none (blank: the sheet's applies). */
+    @Transactional
+    public SettingValue setGradeProofThreshold(String sheetId, String by, String grade, BigDecimal threshold, LocalDate from) {
+        return record(sheetId, by, GRADE_PROOF_THRESHOLD + grade,
                 threshold != null ? threshold.setScale(2, RoundingMode.UNNECESSARY) : null, from);
     }
 
