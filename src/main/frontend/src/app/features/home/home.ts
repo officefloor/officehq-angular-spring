@@ -41,13 +41,14 @@ import { SnapshotComparePanel } from '../snapshots/snapshot-compare';
 import { SettingsPanel } from '../settings/settings';
 import { SummaryPanel } from '../summary/summary';
 import { ClassicSummaryPanel } from '../summary/classic-summary';
+import { SheetComparePanel } from '../summary/sheet-compare';
 import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
   hostDirectives: [LocaleFigures],
-  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
+  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SheetComparePanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -157,6 +158,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-bulk-void />
         <app-summary />
         <app-classic-summary />
+        <app-sheet-compare />
         <app-duplicates />
         <app-search />
         <app-snapshot-compare />

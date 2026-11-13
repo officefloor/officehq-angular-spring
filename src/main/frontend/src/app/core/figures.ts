@@ -1,7 +1,7 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
 import { CrewView, Crews } from './crews';
-import { People, Person, gradeOn } from './people';
+import { GRADES, People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
 import { NO_RATE, Rates, halfEven, hundredths, money, rounded } from './rates';
 import { Roles } from './roles';
@@ -107,6 +107,18 @@ export class Figures {
   readonly dueTotal = computed(() =>
     money(trimmed(this.people.people().map((p) => this.dueCents(p)).filter((d): d is bigint => d !== null))),
   );
+
+  /** By grade (every grade, in order), the due-totals of the people on it today added up, retired people left
+   *  out and a due-total of n/a adding nothing, as the summary shows them. */
+  readonly gradeDueTotals = computed(() => {
+    const current = this.people.people().filter((p) => !p.retired);
+    return GRADES.map((grade) => ({
+      grade,
+      dueTotal: money(
+        current.filter((p) => this.gradeToday(p) === grade).reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n),
+      ),
+    }));
+  });
 
   /** The due of everyone's overdue claims that count, added up, trimmed. */
   readonly overdueTotal = computed(() =>
