@@ -1,0 +1,224 @@
+diff --git a/src/main/frontend/src/app/core/snapshot-compare.ts b/src/main/frontend/src/app/core/snapshot-compare.ts
+new file mode 100644
+index 000000000..4cb516e1d
+--- /dev/null
++++ b/src/main/frontend/src/app/core/snapshot-compare.ts
+@@ -0,0 +1,33 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from './session';
++
++// Compares the active sheet's snapshots of two dates, person by person.
++@Injectable({ providedIn: 'root' })
++export class SnapshotCompare {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** One line per person in list order, `<name> <then> <now>` (a blank to-date compares with now). An error
++   *  message when that failed. */
++  async compare(from: string, to: string): Promise<{ lines: string[] } | { error: string }> {
++    const user = this.session.user();
++    const sid = this.session.sheetId();
++    if (!user || !sid) return { error: 'Load a sheet first.' };
++    const params: Record<string, string> = {};
++    if (from.trim()) params['from'] = from.trim();
++    if (to.trim()) params['to'] = to.trim();
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sid)}/people/snapshot-compare`, {
++          headers: { 'X-User': user },
++          params,
++        }),
++      );
++      return { lines };
++    } catch (e) {
++      return { error: e instanceof HttpErrorResponse ? `Could not compare (${e.status}).` : 'Could not compare.' };
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index d4a205e85..eae7dfa17 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -37,6 +37,7 @@ import { CrewsPanel } from '../crews/crews';
+ import { ImportRates } from '../rates/import-rates';
+ import { RatesPanel } from '../rates/rates';
+ import { SearchPanel } from '../search/search';
++import { SnapshotComparePanel } from '../snapshots/snapshot-compare';
+ import { SettingsPanel } from '../settings/settings';
+ import { SummaryPanel } from '../summary/summary';
+ import { ClassicSummaryPanel } from '../summary/classic-summary';
+@@ -46,7 +47,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ @Component({
+   selector: 'app-home',
+   hostDirectives: [LocaleFigures],
+-  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
++  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
+   template: `
+     @if (session.user(); as user) {
+       @if (session.sheetId()) {
+@@ -158,6 +159,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+         <app-classic-summary />
+         <app-duplicates />
+         <app-search />
++        <app-snapshot-compare />
+         <app-audit />
+         <app-activity />
+       }
+diff --git a/src/main/frontend/src/app/features/snapshots/snapshot-compare.ts b/src/main/frontend/src/app/features/snapshots/snapshot-compare.ts
+new file mode 100644
+index 000000000..9e60b6504
+--- /dev/null
++++ b/src/main/frontend/src/app/features/snapshots/snapshot-compare.ts
+@@ -0,0 +1,71 @@
++import { Component, computed, inject, signal } from '@angular/core';
++import { SnapshotCompare } from '../../core/snapshot-compare';
++import { Session } from '../../core/session';
++
++// Compare two snapshot dates: one line per person in list order, <name> <then> <now>, each the due-total in the
++// snapshot written when the sheet's today moved on from that date (a blank to-date: their due-total now).
++@Component({
++  selector: 'app-snapshot-compare',
++  template: `
++    <section aria-label="Compare snapshots" data-testid="snapshot-compare-panel">
++      <h2>Compare snapshots</h2>
++      <form (submit)="compare($event)">
++        <label for="snapshot-from">From</label>
++        <input
++          id="snapshot-from"
++          placeholder="YYYY-MM-DD"
++          data-testid="snapshot-from"
++          [value]="from()"
++          (input)="from.set(value($event)); error.set(null)"
++        />
++        <label for="snapshot-to">To</label>
++        <input
++          id="snapshot-to"
++          placeholder="YYYY-MM-DD"
++          data-testid="snapshot-to"
++          [value]="to()"
++          (input)="to.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="snapshot-compare">Compare</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="snapshot-compare-error">{{ err }}</p>
++        }
++      </form>
++      <ol aria-label="Snapshot comparison">
++        @for (line of lines(); track $index) {
++          <li data-testid="snapshot-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class SnapshotComparePanel {
++  private readonly comparer = inject(SnapshotCompare);
++  private readonly session = inject(Session);
++  protected readonly from = signal('');
++  protected readonly to = signal('');
++  protected readonly error = signal<string | null>(null);
++  private readonly shown = signal<{ sheet: string | null; lines: string[] }>({ sheet: null, lines: [] });
++  /** The lines last compared, while they are of the sheet loaded now. */
++  protected readonly lines = computed(() => {
++    const s = this.shown();
++    return s.sheet === this.session.sheetId() ? s.lines : [];
++  });
++  private compares = 0;
++
++  protected value(e: Event): string {
++    return (e.target as HTMLInputElement).value;
++  }
++
++  protected async compare(e: Event): Promise<void> {
++    e.preventDefault();
++    const compare = ++this.compares;
++    const sheet = this.session.sheetId();
++    this.error.set(null);
++    this.shown.set({ sheet: null, lines: [] });
++    const res = await this.comparer.compare(this.from(), this.to());
++    if (compare !== this.compares) return; // a later press has taken over
++    if ('error' in res) this.error.set(res.error);
++    else this.shown.set({ sheet, lines: res.lines });
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index a6bbe67f3..63cc9edbd 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+ import org.springframework.web.server.ResponseStatusException;
+@@ -237,6 +238,16 @@ public class PersonController {
+                 .toList();
+     }
+ 
++    /** Compare two snapshot dates: one line per person in list order, `<name> <then> <now>` (no to-date
++     *  compares with now). */
++    @GetMapping("/snapshot-compare")
++    public List<String> compareSnapshots(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
++        return service.compareSnapshots(sheetId.trim(), from, to);
++    }
++
+     /** Add a person to the sheet. */
+     @PostMapping
+     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index af8f33401..7c6603e21 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.person;
+ 
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+@@ -111,6 +112,38 @@ public class PersonService {
+         return snapshots.findByPersonIdOrderByIdAsc(personId);
+     }
+ 
++    /** Compare two snapshot dates: one line per person in list order, `<name> <then> <now>`, then their
++     *  due-total in the snapshot written when the sheet's today moved on from the from-date and now that of
++     *  the to-date (their due-total now when there is no to-date); a figure is empty when there is no such
++     *  snapshot (n/a when the due-total was), and each line is trimmed. */
++    @Transactional(readOnly = true)
++    public List<String> compareSnapshots(String sheetId, LocalDate from, LocalDate to) {
++        Map<Long, List<PersonSnapshot>> bySheet = snapshots(sheetId);
++        List<String> lines = new ArrayList<>();
++        rollup.take(sheetId).people().forEach((personId, figures) -> {
++            List<PersonSnapshot> own = bySheet.getOrDefault(personId, List.of());
++            String then = snapshotFigure(own, from);
++            String now = to == null ? figure(figures.dueTotal()) : snapshotFigure(own, to);
++            lines.add((figures.name() + " " + then + " " + now).trim());
++        });
++        return lines;
++    }
++
++    /** The due-total of the latest snapshot of a day being left, empty when there is none. */
++    private static String snapshotFigure(List<PersonSnapshot> own, LocalDate day) {
++        PersonSnapshot found = null;
++        for (PersonSnapshot s : own) {
++            if (day != null && s.getDay().equals(day)) {
++                found = s;
++            }
++        }
++        return found == null ? "" : figure(found.getDueTotal());
++    }
++
++    private static String figure(BigDecimal value) {
++        return value == null ? "n/a" : value.toPlainString();
++    }
++
+     /** The sheet's patrons: each person's patrons' ids, by person id. */
+     @Transactional(readOnly = true)
+     public Map<Long, List<Long>> patrons(String sheetId) {
