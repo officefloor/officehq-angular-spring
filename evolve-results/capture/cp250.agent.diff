@@ -1,0 +1,71 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 1ef9cc268..987255420 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1,7 +1,10 @@
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { Claims } from '../../core/claims';
++import { download } from '../../core/csv';
++import { Figures } from '../../core/figures';
++import { People } from '../../core/people';
+ import { Pools } from '../../core/pools';
+-import { Rates } from '../../core/rates';
++import { money, Rates } from '../../core/rates';
+ import { ROLES, Roles } from '../../core/roles';
+ import { PERMISSION_ACTIONS, Session } from '../../core/session';
+ 
+@@ -26,7 +29,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
+ // starts in; 1 unless set; not dated), and
+ // the policy version (every change to the rounding mode, the floor, the cap, the terms, the late percent or the
+ // clerk limit makes a new one, numbered from 1) and, once shown, the versions oldest first, each as
+-// <version> <from-date or start> <key>=<value> <count of the sheet's claims whose policy version it is>, and
++// <version> <from-date or start> <key>=<value> <count of the sheet's claims whose policy version it is> (a button
++// downloads them as CSV, with the due of those claims that count live, added up), and
+ // the role each user name has on the sheet (clerk unless given another), and the delegations of the steward role
+ // (a steward gives a user the role from a date to a date, inclusive, by the sheet's today).
+ @Component({
+@@ -36,6 +40,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
+       <h2>Settings</h2>
+       <p>Policy version: <strong data-testid="policy-version">{{ session.policyVersion() }}</strong></p>
+       <button type="button" data-testid="policy-show" (click)="policyShown.set(true)">Show policy versions</button>
++      <button type="button" data-testid="export-policy" (click)="exportPolicy()">Export policy versions (CSV)</button>
+       @if (policyShown()) {
+         <ol aria-label="Policy versions" data-testid="policy-lines">
+           @for (line of policyLines(); track $index) {
+@@ -576,6 +581,8 @@ export class SettingsPanel {
+   private readonly pools = inject(Pools);
+   private readonly rates = inject(Rates);
+   private readonly claims = inject(Claims);
++  private readonly figures = inject(Figures);
++  private readonly people = inject(People);
+   /** Whether the policy versions are listed. */
+   protected readonly policyShown = signal(false);
+   /** The policy versions, oldest first, each with the number of the sheet's claims whose policy version it is. */
+@@ -589,6 +596,27 @@ export class SettingsPanel {
+       .policyVersions()
+       .map((v, i) => `${i + 1} ${v.from ?? 'start'} ${v.key}=${v.value ?? ''} ${counts.get(i + 1) ?? 0}`);
+   });
++  /** Download the policy versions as CSV, oldest first: each with the number of the sheet's claims whose
++   *  policy version it is, and the due of those of them that count live, added up (not capped or trimmed). */
++  protected async exportPolicy(): Promise<void> {
++    await this.session.loaded();
++    const byId = new Map(this.people.people().map((p) => [p.id, p]));
++    const live = new Set(this.claims.live().map((c) => c.id));
++    const counts = new Map<number, number>();
++    const dues = new Map<number, bigint>();
++    for (const c of this.claims.claims()) {
++      const n = this.session.policyVersionOn(c.date);
++      counts.set(n, (counts.get(n) ?? 0) + 1);
++      const p = byId.get(c.personId);
++      if (p && live.has(c.id)) dues.set(n, (dues.get(n) ?? 0n) + this.figures.figureCents(c, p));
++    }
++    const lines = [['version', 'from', 'key', 'value', 'claims', 'due-total']];
++    this.session.policyVersions().forEach((v, i) => {
++      const n = i + 1;
++      lines.push([String(n), v.from ?? '', v.key, v.value ?? '', String(counts.get(n) ?? 0), money(dues.get(n) ?? 0n)]);
++    });
++    download(lines, 'policy.csv');
++  }
+   protected readonly roleNames = ROLES.join(' or ');
+   protected readonly limit = signal('');
+   protected readonly limitTouched = signal(false);
