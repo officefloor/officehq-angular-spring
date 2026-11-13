@@ -1,0 +1,64 @@
+{
+  "checkpoint": 158,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp158_column-chooser",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "db0d239ae9e4925c023467fb5153844ba01741ec",
+  "reset_sha": "",
+  "preagent_sha": "a342e595838d01a098ab75820b1728f7dd7e0805",
+  "prev_sha": "a342e595838d01a098ab75820b1728f7dd7e0805",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.809165,
+    "input_tokens": 32,
+    "output_tokens": 12735,
+    "cache_read_tokens": 644485,
+    "cache_creation_tokens": 53180,
+    "num_turns": 16,
+    "duration_ms": 325172,
+    "duration_api_ms": 113276,
+    "model": "claude-opus-5-5",
+    "session_id": "4f28e054-17fe-4836-aaf4-ed89867f2fa7",
+    "stop_reason": "success",
+    "result_text": "I've added the column chooser, and all 4 acceptance tests pass with `bin/e2e`.\n\n**How it works:** above the people list there is now one checkbox per column (`column-<key>`). Turning a column off removes its cells, and its column heading in the table, from that user's screen. Each change is saved on the server for that user, so it lasts across sheets and when the sheet is reloaded, and other users' screens don't change. Totals, the app header counts, the summary and the CSV exports don't change. Switching columns writes nothing to the audit file.\n\n**Two things that differ from the request:**\n- **Extra `excess` column.** The test hides an `excess` column, which wasn't in your list, so I added it as a 15th switchable column.\n- **Statements split into three columns.** Statement count, last stated total and statement date used to share one cell. I split them into three cells so each can be switched off on its own; their `data-testid`s are unchanged.\n\n**Hiding a column hides its buttons too.** The aliases, patrons, hold and retired cells also contain the controls for adding aliases and patrons and the hold and retirement history. Hiding one of those columns hides its controls along with it, on that user's screen only.\n\n**Code changes:**\n- **Server:** a new table, `V88__user_hidden_column.sql`, and a small set of classes in `src/main/java/.../user/` (`UserHiddenColumn`, its repository, `UserColumnsService`, `UserColumnsController`). The endpoints are `GET /api/user/columns` and `PUT /api/user/columns/{column}`, and they work like the existing per-user locale setting.\n- **Front end:** a new `core/user-columns.ts` service, which is re-read on sign-in and on every sheet load (`features/home/home.ts`). The checkboxes and the conditional cells are in `features/people/people.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.809165,
+        "num_turns": 16,
+        "duration_ms": 325172,
+        "duration_api_ms": 113276,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp158.agent.jsonl",
+  "agent_diff_file": "cp158.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
