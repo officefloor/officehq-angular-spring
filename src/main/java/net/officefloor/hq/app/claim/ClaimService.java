@@ -35,6 +35,9 @@ public class ClaimService {
     /** Written for a due that has no rate to work from. */
     private static final String NO_RATE = "n/a";
 
+    /** How many days after its settlement a steward may still void a SETTLED claim. */
+    static final int VOID_WINDOW_DAYS = 7;
+
     /** The name a claim's period number takes when its date falls in no period. */
     private static final String NO_PERIOD = "X";
 
@@ -135,7 +138,11 @@ public class ClaimService {
             case DRAFT, PENDING -> throw new StatusChangeRefusedException(claim.getStatus(), to);
         });
         refuseClosed(sheetId, claim.getDate());
-        if (!claim.getStatus().canMoveTo(to)) {
+        // A SETTLED claim is voided only by a steward, within the void window of its settlement.
+        boolean reversing = to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+        if (reversing) {
+            refuseLateOrUnstewardedVoid(sheetId, user, claim);
+        } else if (!claim.getStatus().canMoveTo(to)) {
             throw new StatusChangeRefusedException(claim.getStatus(), to);
         }
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
@@ -172,6 +179,8 @@ public class ClaimService {
         String line = line(event, sheetId, user, person, saved, saved.getNumber());
         if (to == ClaimStatus.SETTLED) {
             line += " due=" + settledDueText(saved);
+        } else if (reversing) {
+            line += " reversed=" + settledDueText(saved);
         }
         audit.recordOnCommit(line);
         if (to == ClaimStatus.SETTLED) {
@@ -382,6 +391,23 @@ public class ClaimService {
         BigDecimal due = dueOf(sheetId, person, claim);
         logs.save(new ClaimLogEntry(sheetId, claim.getId(), claim.getStatus(), user, sheets.today(sheetId),
                 due != null ? due.toPlainString() : NO_RATE));
+    }
+
+    /** A SETTLED claim is voided only by a steward, and only while the sheet's today is within
+     *  {@value #VOID_WINDOW_DAYS} days of the date its status log last records it SETTLED. */
+    private void refuseLateOrUnstewardedVoid(String sheetId, String user, Claim claim) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new VoidRefusedException(user + " is not a steward: only a steward voids a settled claim");
+        }
+        LocalDate settledOn = logs.findByClaimIdOrderByIdAsc(claim.getId()).stream()
+                .filter(entry -> entry.getStatus() == ClaimStatus.SETTLED)
+                .map(ClaimLogEntry::getOn)
+                .reduce((first, last) -> last)
+                .orElseThrow(() -> new VoidRefusedException("Claim " + claim.getId() + " has no settlement"));
+        if (sheets.today(sheetId).isAfter(settledOn.plusDays(VOID_WINDOW_DAYS))) {
+            throw new VoidRefusedException("A settled claim is voided within " + VOID_WINDOW_DAYS
+                    + " days of its settlement on " + settledOn);
+        }
     }
 
     /** The PENDING claim a steward approves or rejects; refused when it is not PENDING, dated in a

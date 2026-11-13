@@ -257,7 +257,7 @@ public class ClaimController {
         return view(sheet, service.addProof(sheet, by, personId, id));
     }
 
-    /** Void a DRAFT, OPEN or PENDING claim. */
+    /** Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED one. */
     @PostMapping("/people/{personId}/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
@@ -279,8 +279,8 @@ public class ClaimController {
      *  correction that does not name a SETTLED claim of its person, a move the claim does not allow,
      *  a deferral the claim does not allow, a proof added to a SETTLED or VOID claim, or settling or
      *  approving a claim above the proof threshold with no proofs, or a split the claim or amount does
-     *  not allow, is refused. */
-    @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
+     *  not allow, or a void of a SETTLED claim by anyone but a steward or after its void window, is refused. */
+    @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class,
             SplitRefusedException.class})

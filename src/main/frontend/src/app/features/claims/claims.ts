@@ -7,7 +7,8 @@ import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, rateOn } from '../rate
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; an OPEN claim a clerk settles above
  *  the clerk limit is PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
- *  DRAFT, OPEN or PENDING claim can be VOID. */
+ *  DRAFT, OPEN or PENDING claim can be VOID, and a steward may void a SETTLED one within 7 days of
+ *  its settlement. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change a claim's buttons ask for. */
@@ -601,6 +602,8 @@ export class PersonClaims {
               ? `The claim could not be ${PAST[action]}: one due above the proof threshold needs a proof first, and its status must allow it.`
             : forbidden && action === 'resettle'
               ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
+              : !forbidden && action === 'void' && claim.status === 'SETTLED'
+                ? 'The claim could not be voided: only a steward voids a settled claim, within 7 days of its settlement and outside a closed period.'
               : forbidden
                 ? action === 'open' || action === 'void'
                   ? `The claim could not be ${PAST[action]}: your role may not ${action} a claim on this sheet.`
