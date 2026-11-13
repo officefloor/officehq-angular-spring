@@ -9,6 +9,8 @@ export interface Rate {
   rate: string;
   /** The date the rate applies from (yyyy-mm-dd); null when it applies from the beginning of time. */
   from: string | null;
+  /** The last date the rate applies on (yyyy-mm-dd); null when it has no end. */
+  to: string | null;
 }
 
 export const GRADES = ['A', 'B', 'C'];
@@ -29,13 +31,15 @@ export function dueCents(amountCents: number, rate: string, halfUp: boolean): nu
 }
 
 /** The rate in force on a date among a grade's rates: the one whose from-date is the latest on or
- *  before the date (no from-date applies from the beginning of time); null when none applies. */
+ *  before the date (no from-date applies from the beginning of time); null when none applies, or
+ *  when that one's to-date is before the date. */
 export function rateOn(rates: Rate[], date: string): string | null {
   let best: Rate | null = null;
   for (const r of rates) {
     if (r.from !== null && r.from > date) continue;
     if (best === null || (best.from ?? '') < (r.from ?? '')) best = r;
   }
+  if (best?.to && best.to < date) return null;
   return best?.rate ?? null;
 }
 
@@ -112,13 +116,13 @@ export class RateStore {
     });
   }
 
-  /** Set a grade's rate from a date (null: from the beginning of time) on the active sheet,
-   *  replacing the one the grade had from that date. */
-  async set(grade: string, rate: string, from: string | null): Promise<void> {
+  /** Set a grade's rate from a date (null: from the beginning of time) through a date (null: no
+   *  end) on the active sheet, replacing the one the grade had from that date. */
+  async set(grade: string, rate: string, from: string | null, to: string | null): Promise<void> {
     const sheet = this.session.sheetId();
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
-      this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { rate, from }),
+      this.http.put<Rate>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}`, { rate, from, to }),
     );
     if (this.session.sheetId() !== sheet) return;
     this.rates.update((list) =>
@@ -170,6 +174,14 @@ export class RateStore {
           [value]="from()"
           (input)="from.set(value($event)); error.set(null)"
         />
+        <label for="rate-form-to">To (blank: no end)</label>
+        <input
+          id="rate-form-to"
+          type="date"
+          data-testid="rate-form-to"
+          [value]="to()"
+          (input)="to.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
       </form>
       @if (error(); as message) {
@@ -198,6 +210,7 @@ export class RateStore {
           <tr>
             <th scope="col">Grade</th>
             <th scope="col">From</th>
+            <th scope="col">To</th>
             <th scope="col">Rate (%)</th>
           </tr>
         </thead>
@@ -206,6 +219,7 @@ export class RateStore {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.rate }}</td>
             </tr>
           }
@@ -221,6 +235,7 @@ export class Rates {
   protected readonly grade = signal('A');
   protected readonly pct = signal('');
   protected readonly from = signal('');
+  protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -238,9 +253,15 @@ export class Rates {
       this.error.set('Type a rate of 0.00 or more, with up to two decimals.');
       return;
     }
+    const from = this.from().trim() || null;
+    const to = this.to().trim() || null;
+    if (from !== null && to !== null && to < from) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     this.busy.set(true);
     try {
-      await this.store.set(this.grade(), pct, this.from().trim() || null);
+      await this.store.set(this.grade(), pct, from, to);
     } catch {
       this.error.set('The rate could not be set.');
     } finally {

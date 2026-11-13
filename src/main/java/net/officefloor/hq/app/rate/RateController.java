@@ -32,16 +32,16 @@ public class RateController {
 
     /** A grade's rate as the screen shows it; the rate is a percent string with two decimals, the
      *  from-date null when the rate applies from the beginning of time. */
-    public record RateView(String grade, String rate, LocalDate from) {
+    public record RateView(String grade, String rate, LocalDate from, LocalDate to) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFrom());
+            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFrom(), rate.getTo());
         }
     }
 
     /** A rate: a percent of 0.00 or more with up to two decimals, and the date it applies from
-     *  (blank: from the beginning of time). */
+     *  (blank: from the beginning of time) and the last date it applies on (blank: no end). */
     public record RateRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 5, fraction = 2) BigDecimal rate,
-            LocalDate from) {
+            LocalDate from, LocalDate to) {
     }
 
     private final RateService service;
@@ -66,13 +66,19 @@ public class RateController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return RateView.of(rollups.track(sheet, by, () -> service.set(sheet, by, grade, request.from(),
-                request.rate())));
+                request.to(), request.rate())));
     }
 
     /** A rate that is not a number or a from-date that is not a real date is refused. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
+    }
+
+    /** A to-date before the from-date is refused. */
+    @ExceptionHandler(RateRefusedException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public void refused() {
     }
 
     /** The grade's rate from that date was first set concurrently; caught by the unique index. */
