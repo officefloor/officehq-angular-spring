@@ -130,13 +130,13 @@ public class PeriodService {
 
     /** Close, as a close by hand would, every open period whose to-date plus the sheet's grace days is
      *  before the sheet's today, in order of their to-dates, each recorded with auto=yes; nothing when
-     *  the grace days are blank (off) or the user's role may not close. Made when the sheet's today is
-     *  changed, after it is set. */
+     *  the grace days are blank (off). The sheet's permission matrix governs a close by hand, not this
+     *  one. Made when the sheet's today is changed, after it is set. */
     @Transactional
     public void autoClose(String sheetId, String user) {
         sheets.lock(sheetId);
         Integer grace = settings.graceDays(sheetId);
-        if (grace == null || !settings.allows(sheetId, user, Permission.CLOSE)) {
+        if (grace == null) {
             return;
         }
         LocalDate today = sheets.today(sheetId);
