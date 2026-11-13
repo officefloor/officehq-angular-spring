@@ -71,7 +71,7 @@ const DAYS = /^\d{1,5}$/;
 /** A date, yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-const ROLES = ['clerk', 'steward'];
+const ROLES = ['clerk', 'steward', 'viewer'];
 
 /** The actions the permission matrix governs, each with the roles its standing rule allows. */
 const PERMISSIONS: { action: string; label: string; standing: string }[] = [
@@ -302,7 +302,8 @@ export class SettingStore {
   }
 }
 
-// The sheet's settings: the role given each user name (clerk, the default, or steward) and the
+// The sheet's settings: the role given each user name (clerk, the default, steward, or viewer, who
+// sees everything and can change nothing) and the
 // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
 // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
 // in force on its date) cannot be settled or approved until the claim has a proof,

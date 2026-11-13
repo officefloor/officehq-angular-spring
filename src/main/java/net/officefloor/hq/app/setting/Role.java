@@ -3,9 +3,10 @@ package net.officefloor.hq.app.setting;
 import java.util.Arrays;
 import java.util.Optional;
 
-/** The role a sheet's settings give a user name; any name not given one is a clerk. */
+/** The role a sheet's settings give a user name; any name not given one is a clerk. A viewer sees
+ *  everything and can change nothing. */
 public enum Role {
-    CLERK, STEWARD;
+    CLERK, STEWARD, VIEWER;
 
     /** The name the screen and the audit use for the role. */
     public String label() {

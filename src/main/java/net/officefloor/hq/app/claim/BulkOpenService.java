@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.setting.PermissionRefusedException;
+import net.officefloor.hq.app.setting.SettingService;
 import java.util.Set;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -21,11 +22,13 @@ public class BulkOpenService {
     private final ClaimListOrder order;
     private final ClaimService service;
     private final RollupService rollups;
+    private final SettingService settings;
 
-    public BulkOpenService(ClaimListOrder order, ClaimService service, RollupService rollups) {
+    public BulkOpenService(ClaimListOrder order, ClaimService service, RollupService rollups, SettingService settings) {
         this.order = order;
         this.service = service;
         this.rollups = rollups;
+        this.settings = settings;
     }
 
     /** Open each selected claim that can be opened, in list order (people in the order they were
@@ -34,6 +37,10 @@ public class BulkOpenService {
      *  own, so a refused one writes nothing. */
     public Result open(String sheetId, String user, Set<Long> ids) {
         List<Claim> opened = new ArrayList<>();
+        if (settings.isViewer(sheetId, user)) {
+            // A viewer changes nothing: every selected claim is refused.
+            return new Result(opened, ids.size());
+        }
         for (Claim claim : order.selected(sheetId, ids)) {
             try {
                 opened.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,

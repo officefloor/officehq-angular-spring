@@ -55,6 +55,11 @@ public class SettingService {
         return roles.findBySheetIdAndUser(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
     }
 
+    /** Whether the user is a viewer on the sheet: one who can change nothing. */
+    public boolean isViewer(String sheetId, String user) {
+        return roleOf(sheetId, user) == Role.VIEWER;
+    }
+
     /** The sheet's permission matrix as set, by action label, every action listed: its roles comma
      *  separated, blank when it keeps the standing rule. */
     public Map<String, String> permissions(String sheetId) {
@@ -70,6 +75,9 @@ public class SettingService {
      *  else by the standing rule. */
     public boolean allows(String sheetId, String user, Permission action) {
         Role role = roleOf(sheetId, user);
+        if (role == Role.VIEWER) {
+            return false;
+        }
         return permissions.findBySheetIdAndAction(sheetId, action.label())
                 .map(p -> Arrays.stream(p.getRoles().split(",")).anyMatch(r -> r.equals(role.label())))
                 .orElseGet(() -> action.standing().contains(role));
