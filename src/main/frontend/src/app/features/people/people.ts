@@ -419,13 +419,14 @@ export class People {
   protected readonly claimedTotal = computed(() =>
     money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)),
   );
-  /** Everyone's due-total added up, skipping those whose grade has no rate. */
+  /** Everyone's due-total added up, skipping those whose grade has no rate, trimmed. */
   protected readonly dueTotal = computed(() =>
     money(
-      this.people().reduce((sum, p) => {
-        const due = this.dueCentsBy(p);
-        return due === null ? sum : sum + due;
-      }, 0),
+      trimmedSum(
+        this.people()
+          .map((p) => this.dueCentsBy(p))
+          .filter((due) => due !== null),
+      ),
     ),
   );
   /** Each person's claims that count and are overdue, by person id. */
@@ -441,9 +442,9 @@ export class People {
   protected readonly overdueCount = computed(() =>
     [...this.overdueByPerson().values()].reduce((n, list) => n + list.length, 0),
   );
-  /** The dues of the sheet's overdue claims that count added up. */
+  /** Everyone's overdue-total added up, trimmed. */
   protected readonly overdueTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + this.overdueCentsOf(p), 0)),
+    money(trimmedSum(this.people().map((p) => this.overdueCentsOf(p)))),
   );
   /** Each person's due-total for each period, in cents, by period id then person id: while the
    *  period is open, the dues shown now on their claims whose date falls in it and that counted by the
@@ -1071,4 +1072,11 @@ export class People {
     this.people.set(list);
     this.claims.set(claims);
   }
+}
+
+/** The figures added up, leaving out the single highest and the single lowest when there are three
+ *  or more. */
+function trimmedSum(figures: number[]): number {
+  const sum = figures.reduce((total, figure) => total + figure, 0);
+  return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
 }

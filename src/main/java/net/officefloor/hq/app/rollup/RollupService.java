@@ -2,6 +2,8 @@ package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,18 +108,28 @@ public class RollupService {
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;
-        BigDecimal dueTotal = NONE;
-        BigDecimal overdueTotal = NONE;
+        List<BigDecimal> dues = new ArrayList<>();
+        List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : sheetPeople) {
             Figures f = figuresOf(sheetId, today, person, counted.getOrDefault(person.getId(), List.of()));
             figures.put(person.getId(), f);
             claimedTotal = claimedTotal.add(f.claimed());
             if (f.due() != null) {
-                dueTotal = dueTotal.add(f.due());
+                dues.add(f.due());
             }
-            overdueTotal = overdueTotal.add(f.overdue());
+            overdues.add(f.overdue());
         }
-        return new Rollup(figures, claimedTotal, dueTotal, overdueTotal);
+        return new Rollup(figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+    }
+
+    /** The figures added up, leaving out the single highest and the single lowest when there are
+     *  three or more. */
+    private static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        BigDecimal sum = figures.stream().reduce(NONE, BigDecimal::add);
+        if (figures.size() < 3) {
+            return sum;
+        }
+        return sum.subtract(Collections.max(figures)).subtract(Collections.min(figures));
     }
 
     /** A person's figures from their claims that count: the sum of their amounts, and the sum of the
