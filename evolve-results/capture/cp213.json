@@ -1,0 +1,64 @@
+{
+  "checkpoint": 213,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp213_parent-plans",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan on a sheet may name one of the sheet's descendants (a sheet id on the plan form; PLAN_ADDED\ngains sheet=<id> at its end; a sheet that is not a descendant is refused). Its claims are then\ngenerated for the person of the same name on that sheet (none when there is no such person), by\nthat sheet's rules and written in that sheet's audit; the plan still counts what it made.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan on a sheet may name one of the sheet's descendants (a sheet id on the plan form; PLAN_ADDED\ngains sheet=<id> at its end; a sheet that is not a descendant is refused). Its claims are then\ngenerated for the person of the same name on that sheet (none when there is no such person), by\nthat sheet's rules and written in that sheet's audit; the plan still counts what it made.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2cf9eb262e1122253ca010888faea00af9b9b025",
+  "reset_sha": "",
+  "preagent_sha": "75bf17b8e88b6442d1068384cbfd0d4bc6665a27",
+  "prev_sha": "75bf17b8e88b6442d1068384cbfd0d4bc6665a27",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8383814,
+    "input_tokens": 38,
+    "output_tokens": 8961,
+    "cache_read_tokens": 840247,
+    "cache_creation_tokens": 61370,
+    "num_turns": 20,
+    "duration_ms": 323462,
+    "duration_api_ms": 95120,
+    "model": "claude-opus-5-5",
+    "session_id": "8f5d7f84-b9cd-4840-b454-c1bd20add0be",
+    "stop_reason": "success",
+    "result_text": "A plan can now name one of its sheet's descendants, and `bin/e2e` passes all 4 tests (the new \"parent plans\" test plus the 3 existing scenarios).\n\n**What it does:**\n- The plan form has a new optional sheet field (`plan-form-sheet`). If you enter a sheet id that isn't a descendant of the current sheet, the plan is refused with an error and nothing is written.\n- `PLAN_ADDED` ends with `sheet=<id>` when the plan names a sheet. Plans without one write the same line as before.\n- When plans are generated, a plan that names a sheet makes its claims on that sheet. They go to the person with the same name there (case ignored), follow that sheet's rules, and are recorded in that sheet's audit.\n- If no one there has that name, nothing is made. Those dates aren't marked as done, so a later generate will try them again.\n- Plan dates still come from the plan's own sheet's \"today\", not the target sheet's. The test depends on this.\n- The plan's count of claims made includes claims made on the other sheet.\n\n**Two choices the request didn't cover:**\n- A plan's own sheet doesn't count as its descendant, and the descendant must be a sheet that has been loaded before.\n- Whether the target is a descendant is checked only when the plan is added. If the parent link is changed later, generate still makes claims on the named sheet.\n\n**Changes:**\n- **Database:** new migration `V112__plan_target_sheet.sql` adds a `target_sheet` column to `plan`.\n- **Server:**\n  - `Plan.java` stores the target sheet.\n  - `SheetService.isDescendant` does the descendant check.\n  - `PlanService.java` handles the add and generate behaviour.\n  - `PlanController.java` accepts and returns `sheet`.\n- **Front end:**\n  - `core/plans.ts` sends the sheet field.\n  - `person-plans.ts` adds the input and shows the plan's sheet on its row (`plan-sheet`).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8383814,
+        "num_turns": 20,
+        "duration_ms": 323462,
+        "duration_api_ms": 95120,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp213.agent.jsonl",
+  "agent_diff_file": "cp213.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
