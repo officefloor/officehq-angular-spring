@@ -660,8 +660,8 @@ public class ClaimService {
     /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by
      *  plus its grace, see overdueFrom, is before the sheet's today) or a correction, else the late percent of
      *  the figure for every 30-day boundary it is overdue past (its due-by plus its grace plus 30, 60, 90 ...
-     *  days), the late percent in force on that
-     *  boundary date of the figure, rounded to two decimals as the claim's date decides (see roundingOf), the
+     *  days), compounding: the late percent in force on that boundary date of the figure plus the charges
+     *  of the boundaries before it, rounded to two decimals as the claim's date decides (see roundingOf), the
      *  charges added up. Never bound by a statement: it follows the
      *  sheet's today. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
      *  claim as if it were still OPEN. */
@@ -681,7 +681,7 @@ public class ClaimService {
         for (long boundary = 1; boundary <= days / 30; boundary++) {
             BigDecimal pct = settings.latePct(sheetId, from.plusDays(30 * boundary), asOf);
             if (pct.signum() != 0) {
-                charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
+                charge = charge.add(figure.add(charge).multiply(pct).movePointLeft(2).setScale(2, rounding));
             }
         }
         return charge;

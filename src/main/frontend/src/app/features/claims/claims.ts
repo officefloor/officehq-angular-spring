@@ -134,7 +134,8 @@ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | nul
 /** A claim's due in cents: the due fixed when it was settled; otherwise the greater of the sheet's floor
  *  in force on its date (none for a correction) and its figure plus its late charge: for every full 30
  *  days an OPEN or PENDING claim is overdue, the late percent in force on that boundary (its due-by plus
- *  30, 60, 90 ... days) of the figure, rounded like a due, the charges added up (a statement never binds
+ *  30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding), rounded
+ *  like a due, the charges added up (a statement never binds
  *  the charge; settling freezes the due; a correction has none); null when it has no figure. */
 export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string) => number, late: Late): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
@@ -147,7 +148,7 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
   let charge = 0;
   for (let boundary = 1; boundary <= periods; boundary++) {
     const pct = late.pct(plusDays(claim.dueBy, grace + 30 * boundary));
-    if (cents(pct) !== 0) charge += dueCents(figure, pct, halfUp);
+    if (cents(pct) !== 0) charge += dueCents(figure + charge, pct, halfUp);
   }
   return Math.max(figure + charge, floor(claim.date));
 }
