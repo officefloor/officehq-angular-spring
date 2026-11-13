@@ -7,6 +7,7 @@ import jakarta.persistence.PostRemove;
 import jakarta.persistence.PostUpdate;
 import java.sql.Date;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -124,6 +125,29 @@ public class History {
         latest.forEach((id, state) -> {
             if (state != null) {
                 rows.put(id, json.readValue(state, type));
+            }
+        });
+        return rows;
+    }
+
+    /** Another sheet's rows of a kind as they stood when the sheet last changed while its today was on or
+     *  before a date: each one's latest version kept by then, whatever that other sheet's today; none when the
+     *  sheet made no change by then. In the order first kept. */
+    public <T> List<T> listAsOfSheet(Class<T> type, String otherSheetId, String sheetId, LocalDate date) {
+        Long upTo = jdbc.queryForObject("SELECT MAX(id) FROM entity_version WHERE sheet_id = ? AND recorded_on <= ?",
+                Long.class, sheetId, Date.valueOf(date));
+        if (upTo == null) {
+            return List.of();
+        }
+        Map<String, String> latest = new LinkedHashMap<>();
+        jdbc.query("SELECT entity_id, state FROM entity_version WHERE sheet_id = ? AND kind = ? AND id <= ?"
+                + " ORDER BY id", rs -> {
+                    latest.put(rs.getString(1), rs.getString(2));
+                }, otherSheetId, type.getSimpleName(), upTo);
+        List<T> rows = new ArrayList<>();
+        latest.forEach((id, state) -> {
+            if (state != null) {
+                rows.add(json.readValue(state, type));
             }
         });
         return rows;

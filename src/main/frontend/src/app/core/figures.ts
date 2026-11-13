@@ -4,6 +4,7 @@ import { CrewView, Crews } from './crews';
 import { People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
 import { NO_RATE, Rates, hundredths, money, rounded } from './rates';
+import { Roles } from './roles';
 import { Session, addDays } from './session';
 
 /** The statuses claims are counted by, in the order the screen shows them. */
@@ -28,6 +29,7 @@ export class Figures {
   private readonly people = inject(People);
   private readonly periods = inject(Periods);
   private readonly rates = inject(Rates);
+  private readonly roles = inject(Roles);
   private readonly session = inject(Session);
 
   /** A person's due-total: the sum of their figures, at most the sheet's cap. Null (n/a) is not capped. */
@@ -120,6 +122,28 @@ export class Figures {
     if (!p) return null;
     const due = this.dueCents(p);
     return { dueTotal: due === null ? NO_RATE : money(due), overdueTotal: money(this.overdueCents(p)) };
+  });
+
+  /** Whether the signed-in user is a steward on the sheet: given the role, or delegated it for the sheet's
+   *  today (under an as-of date, the roles and delegations as they stood then). */
+  private readonly steward = computed(() => {
+    const user = this.session.user();
+    const today = this.session.today();
+    if (!user) return false;
+    if (this.roles.roles().some((r) => r.user === user && r.role === 'steward')) return true;
+    return today !== null && this.roles.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
+  });
+
+  /** A steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count,
+   *  counted; null when the signed-in user is not a steward. */
+  readonly dashboard = computed(() => {
+    if (!this.steward()) return null;
+    const claims = this.claims.claims();
+    return {
+      pending: claims.filter((c) => c.status === 'PENDING').length,
+      review: claims.filter((c) => c.status === 'REVIEW').length,
+      overdue: this.claims.live().filter((c) => this.claims.overdue(c)).length,
+    };
   });
 
   /** A crew's due-total: the lead's and the members' due-totals as the people list shows them, added up,

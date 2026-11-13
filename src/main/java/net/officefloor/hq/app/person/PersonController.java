@@ -71,10 +71,10 @@ public class PersonController {
                     statementLines(statements));
         }
 
-        /** One line per statement standing, oldest first by the date it was taken (in the order taken on
-         *  one date), as `<date> <due-total>` (n/a when it was). */
+        /** One line per statement standing, in the order they were taken (one taken as of an earlier date
+         *  where it was taken, not by that date), as `<date> <due-total>` (n/a when it was). */
         private static List<String> statementLines(List<Statement> statements) {
-            return statements.stream().sorted(Comparator.comparing(Statement::getTakenOn))
+            return statements.stream().sorted(Comparator.comparing(Statement::getId))
                     .map(s -> s.getTakenOn() + " " + (s.getDueTotal() == null ? "n/a" : s.getDueTotal().toPlainString()))
                     .toList();
         }

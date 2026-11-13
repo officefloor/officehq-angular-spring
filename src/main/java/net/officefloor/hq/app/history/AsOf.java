@@ -72,6 +72,14 @@ public class AsOf {
         return sorted(Rate.class, sheetId, asOf, Comparator.comparing(Rate::getGrade));
     }
 
+    /** An ancestor's rates, by grade, as they stood when the sheet last changed while its today was on or
+     *  before the date: the ancestor's own today does not date them, the sheet's does. */
+    public List<Rate> inheritedRates(String sheetId, String ancestor, LocalDate asOf) {
+        sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        return history.listAsOfSheet(Rate.class, ancestor, sheetId, asOf).stream()
+                .sorted(Comparator.comparing(Rate::getGrade)).toList();
+    }
+
     /** The periods, by from-date. */
     public List<Period> periods(String sheetId, LocalDate asOf) {
         return sorted(Period.class, sheetId, asOf, Comparator.comparing(Period::getFromDate));

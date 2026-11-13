@@ -10,7 +10,8 @@ import { Session } from '../../core/session';
 // descendant's as that sheet shows them, added to this sheet's own; while the screen shows the sheet as
 // of a date, every sheet of the tree as it stood at the end of that date. And the signed-in user's own due- and overdue-totals, when a
 // person on the sheet has their name or an alias equal to it; blank otherwise. And the user's crew total: the due-totals of
-// the crews that person leads, added up; blank when they lead none.
+// the crews that person leads, added up; blank when they lead none. And, for a steward, a dashboard: the
+// sheet's PENDING and REVIEW claims and its overdue claims that count, counted; blank for anyone else.
 @Component({
   selector: 'app-header',
   template: `
@@ -25,6 +26,11 @@ import { Session } from '../../core/session';
         <div><dt>My due total</dt><dd data-testid="my-due-total">{{ figures.mine()?.dueTotal }}</dd></div>
         <div><dt>My overdue total</dt><dd data-testid="my-overdue-total">{{ figures.mine()?.overdueTotal }}</dd></div>
         <div><dt>My crew due total</dt><dd data-testid="my-crew-due-total">{{ figures.myCrewDueTotal() }}</dd></div>
+      </dl>
+      <dl aria-label="Steward dashboard">
+        <div><dt>Pending to approve</dt><dd data-testid="dash-pending-count">{{ figures.dashboard()?.pending }}</dd></div>
+        <div><dt>To review</dt><dd data-testid="dash-review-count">{{ figures.dashboard()?.review }}</dd></div>
+        <div><dt>Overdue</dt><dd data-testid="dash-overdue-count">{{ figures.dashboard()?.overdue }}</dd></div>
       </dl>
       <dl aria-label="Consolidated with descendant sheets">
         <div><dt>Consolidated people</dt><dd data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</dd></div>
