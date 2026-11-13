@@ -173,6 +173,13 @@ const NUMBER = /^\d+$/;
     <ul>
       @for (c of claims(); track c.id) {
         <li [attr.data-testid]="'claim-row-' + c.id">
+          <input
+            type="checkbox"
+            data-testid="claim-select"
+            [attr.aria-label]="'Select claim ' + c.id"
+            [checked]="selectedIds().has(c.id)"
+            (change)="selectedChange.emit({ id: c.id, selected: checked($event) })"
+          />
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
@@ -228,7 +235,11 @@ export class PersonClaims {
   readonly latePct = input.required<string>();
   /** The sheet's policy date (yyyy-mm-dd); blank for its today. */
   readonly policyDate = input.required<string>();
+  /** The ids of the claims selected to act on together. */
+  readonly selectedIds = input.required<ReadonlySet<number>>();
   readonly saved = output<Claim>();
+  /** A claim's checkbox ticked or cleared. */
+  readonly selectedChange = output<{ id: number; selected: boolean }>();
 
   protected readonly amount = signal('');
   protected readonly date = signal('');
@@ -243,6 +254,10 @@ export class PersonClaims {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected checked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
   }
 
   /** The claim's due (see claimDueCents), or n/a when it has no figure. */

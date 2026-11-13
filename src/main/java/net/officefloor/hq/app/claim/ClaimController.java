@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonRetiredException;
@@ -61,12 +62,23 @@ public class ClaimController {
             @Positive Long corrects) {
     }
 
+    /** The claims selected to open together. */
+    public record BulkOpenRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds) {
+    }
+
+    /** What a bulk open did: the claims it opened, in the order it numbered them, and how many of the
+     *  selected claims it refused. */
+    public record BulkOpenView(List<ClaimView> opened, int refused) {
+    }
+
     private final ClaimService service;
     private final RollupService rollups;
+    private final BulkOpenService bulkOpen;
 
-    public ClaimController(ClaimService service, RollupService rollups) {
+    public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen) {
         this.service = service;
         this.rollups = rollups;
+        this.bulkOpen = bulkOpen;
     }
 
     /** The sheet's claims, newest first. */
@@ -103,6 +115,16 @@ public class ClaimController {
     public ClaimView open(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return changeStatus(sheetId, user, personId, id, ClaimStatus.OPEN);
+    }
+
+    /** Open the selected claims that can be opened, numbered in list order; the rest are refused
+     *  and left as they are. */
+    @PostMapping("/claims/open")
+    public BulkOpenView openAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkOpenRequest request) {
+        String sheet = sheetId.trim();
+        BulkOpenService.Result result = bulkOpen.open(sheet, SignedInUser.decode(user), request.claimIds());
+        return new BulkOpenView(result.opened().stream().map(claim -> view(sheet, claim)).toList(), result.refused());
     }
 
     /** Settle an OPEN claim; the user who opened it cannot. */

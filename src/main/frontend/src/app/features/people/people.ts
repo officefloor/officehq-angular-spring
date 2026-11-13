@@ -121,6 +121,16 @@ interface StatementTaken {
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+      <p>
+        <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
+        @if (bulkOpenResult(); as r) {
+          Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>, refused
+          <strong data-testid="bulk-refused">{{ r.refused }}</strong>
+        }
+      </p>
+      @if (bulkOpenError(); as message) {
+        <p role="alert" data-testid="bulk-open-error">{{ message }}</p>
+      }
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -173,7 +183,9 @@ interface StatementTaken {
                   [terms]="settings.terms()"
                   [latePct]="settings.latePct()"
                   [policyDate]="settings.policyDate()"
+                  [selectedIds]="selectedClaims()"
                   (saved)="claimSaved($event)"
+                  (selectedChange)="selectClaim($event.id, $event.selected)"
                 />
               </td>
               <td>
@@ -385,6 +397,14 @@ export class People {
   protected readonly quickError = signal<string | null>(null);
   /** The error from the last action on a person's row refused, and the person it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string; testId?: string } | null>(null);
+  /** The ids of the claims selected to open together. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** How many claims the last bulk open opened and refused; null while it runs or before one. */
+  protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
+  /** Why the last bulk open could not be done at all; null when it was. */
+  protected readonly bulkOpenError = signal<string | null>(null);
+  /** Whether a bulk open is waiting for its answer; a second press meanwhile is dropped. */
+  private readonly bulkOpenBusy = signal(false);
   /** The patron chosen on each person's row (a person id, or blank), by person id. */
   protected readonly patronChoices = signal<Record<number, string>>({});
 
@@ -397,6 +417,9 @@ export class People {
       this.rowError.set(null);
       this.retireDates.set({});
       this.patronChoices.set({});
+      this.selectedClaims.set(new Set());
+      this.bulkOpenResult.set(null);
+      this.bulkOpenError.set(null);
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -592,6 +615,43 @@ export class People {
         ? list.map((c) => (c.id === saved.id ? saved : c))
         : [saved, ...list],
     );
+  }
+
+  protected selectClaim(id: number, selected: boolean): void {
+    this.selectedClaims.update((ids) => {
+      const next = new Set(ids);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Open the selected claims together: each that can be opened is, numbered in list order, and
+   *  each that cannot is left as it is; the screen shows how many were opened and refused. */
+  protected async openSelected(): Promise<void> {
+    if (this.bulkOpenBusy()) return;
+    this.bulkOpenResult.set(null);
+    this.bulkOpenError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = [...this.selectedClaims()];
+    this.bulkOpenBusy.set(true);
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ opened: Claim[]; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/open`,
+          { claimIds: ids },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.opened) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkOpenResult.set({ opened: result.opened.length, refused: result.refused });
+    } catch {
+      this.bulkOpenError.set('The selected claims could not be opened.');
+    } finally {
+      this.bulkOpenBusy.set(false);
+    }
   }
 
   /** Take a statement for a person: their row and claims then show what it recorded and bound. */
