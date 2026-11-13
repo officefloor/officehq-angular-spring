@@ -1,0 +1,292 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c0f6d6dfd..74a36bd65 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -145,6 +145,16 @@ interface StatementTaken {
+       @if (bulkOpenError(); as message) {
+         <p role="alert" data-testid="bulk-open-error">{{ message }}</p>
+       }
++      <p>
++        <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
++        @if (bulkSettleResult(); as r) {
++          Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>, refused
++          <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
++        }
++      </p>
++      @if (bulkSettleError(); as message) {
++        <p role="alert" data-testid="bulk-settle-error">{{ message }}</p>
++      }
+       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+@@ -447,7 +457,7 @@ export class People {
+   protected readonly quickError = signal<string | null>(null);
+   /** The error from the last action on a person's row refused, and the person it belongs to. */
+   protected readonly rowError = signal<{ id: number; message: string; testId?: string } | null>(null);
+-  /** The ids of the claims selected to open together. */
++  /** The ids of the claims selected to open or settle together. */
+   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+   /** How many claims the last bulk open opened and refused; null while it runs or before one. */
+   protected readonly bulkOpenResult = signal<{ opened: number; refused: number } | null>(null);
+@@ -455,6 +465,12 @@ export class People {
+   protected readonly bulkOpenError = signal<string | null>(null);
+   /** Whether a bulk open is waiting for its answer; a second press meanwhile is dropped. */
+   private readonly bulkOpenBusy = signal(false);
++  /** How many claims the last bulk settle settled and refused; null while it runs or before one. */
++  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
++  /** Why the last bulk settle could not be done at all; null when it was. */
++  protected readonly bulkSettleError = signal<string | null>(null);
++  /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
++  private readonly bulkSettleBusy = signal(false);
+   /** The patron chosen on each person's row (a person id, or blank), by person id. */
+   protected readonly patronChoices = signal<Record<number, string>>({});
+ 
+@@ -471,6 +487,8 @@ export class People {
+       this.selectedClaims.set(new Set());
+       this.bulkOpenResult.set(null);
+       this.bulkOpenError.set(null);
++      this.bulkSettleResult.set(null);
++      this.bulkSettleError.set(null);
+       this.reset();
+       this.quickName.set('');
+       this.quickAmount.set('');
+@@ -732,6 +750,35 @@ export class People {
+     }
+   }
+ 
++  /** Settle the selected claims together, in list order, each by the rules of settling one: a claim
++   *  that goes PENDING counts as settled, and each that cannot be settled is left as it is; the
++   *  screen shows how many were settled and refused. */
++  protected async settleSelected(): Promise<void> {
++    if (this.bulkSettleBusy()) return;
++    this.bulkSettleResult.set(null);
++    this.bulkSettleError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const ids = [...this.selectedClaims()];
++    this.bulkSettleBusy.set(true);
++    try {
++      const result = await firstValueFrom(
++        this.http.post<{ settled: Claim[]; refused: number }>(
++          `/api/sheets/${encodeURIComponent(sheet)}/claims/settle`,
++          { claimIds: ids },
++        ),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      for (const c of result.settled) this.claimSaved(c);
++      this.selectedClaims.set(new Set());
++      this.bulkSettleResult.set({ settled: result.settled.length, refused: result.refused });
++    } catch {
++      this.bulkSettleError.set('The selected claims could not be settled.');
++    } finally {
++      this.bulkSettleBusy.set(false);
++    }
++  }
++
+   /** Take a statement for a person: their row and claims then show what it recorded and bound. */
+   protected async takeStatement(person: Person): Promise<void> {
+     this.rowError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+index 3f752674b..c74ff59d2 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+@@ -1,15 +1,10 @@
+ package net.officefloor.hq.app.claim;
+ 
+ import java.util.ArrayList;
+-import java.util.Comparator;
+-import java.util.HashMap;
+ import java.util.List;
+-import java.util.Map;
+ import java.util.NoSuchElementException;
+ import java.util.Set;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+-import net.officefloor.hq.app.person.Person;
+-import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import org.springframework.stereotype.Service;
+ 
+@@ -22,15 +17,12 @@ public class BulkOpenService {
+     public record Result(List<Claim> opened, int refused) {
+     }
+ 
+-    private final ClaimRepository claims;
+-    private final PersonRepository people;
++    private final ClaimListOrder order;
+     private final ClaimService service;
+     private final RollupService rollups;
+ 
+-    public BulkOpenService(ClaimRepository claims, PersonRepository people, ClaimService service,
+-            RollupService rollups) {
+-        this.claims = claims;
+-        this.people = people;
++    public BulkOpenService(ClaimListOrder order, ClaimService service, RollupService rollups) {
++        this.order = order;
+         this.service = service;
+         this.rollups = rollups;
+     }
+@@ -40,17 +32,8 @@ public class BulkOpenService {
+      *  cannot, or is not on the sheet, is refused and left as it is. Each claim is opened on its
+      *  own, so a refused one writes nothing. */
+     public Result open(String sheetId, String user, Set<Long> ids) {
+-        Map<Long, Integer> personOrder = new HashMap<>();
+-        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+-        for (int i = 0; i < sheetPeople.size(); i++) {
+-            personOrder.put(sheetPeople.get(i).getId(), i);
+-        }
+-        List<Claim> selected = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
+-                .filter(claim -> ids.contains(claim.getId()))
+-                .sorted(Comparator.comparing((Claim claim) -> personOrder.getOrDefault(claim.getPersonId(), Integer.MAX_VALUE)))
+-                .toList();
+         List<Claim> opened = new ArrayList<>();
+-        for (Claim claim : selected) {
++        for (Claim claim : order.selected(sheetId, ids)) {
+             try {
+                 opened.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
+                         claim.getPersonId(), claim.getId(), ClaimStatus.OPEN)));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+new file mode 100644
+index 000000000..aba8d3acd
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.NoSuchElementException;
++import java.util.Set;
++import net.officefloor.hq.app.period.PeriodClosedException;
++import net.officefloor.hq.app.rollup.RollupService;
++import org.springframework.stereotype.Service;
++
++/** Settles a selection of claims together. */
++@Service
++public class BulkSettleService {
++
++    /** What a bulk settle did: the claims it settled (SETTLED, or PENDING a steward's approval), in
++     *  the order it settled them, and how many of the selected claims it refused. */
++    public record Result(List<Claim> settled, int refused) {
++    }
++
++    private final ClaimListOrder order;
++    private final ClaimService service;
++    private final RollupService rollups;
++
++    public BulkSettleService(ClaimListOrder order, ClaimService service, RollupService rollups) {
++        this.order = order;
++        this.service = service;
++        this.rollups = rollups;
++    }
++
++    /** Settle each selected claim that can be settled, in list order (people in the order they were
++     *  added, each person's claims newest first), by exactly the rules of settling one: a clerk's
++     *  claim above the clerk limit goes PENDING and counts as settled. Each that cannot, or is not
++     *  on the sheet, is refused and left as it is. Each claim is settled on its own, so a refused
++     *  one writes nothing. */
++    public Result settle(String sheetId, String user, Set<Long> ids) {
++        List<Claim> settled = new ArrayList<>();
++        for (Claim claim : order.selected(sheetId, ids)) {
++            try {
++                settled.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
++                        claim.getPersonId(), claim.getId(), ClaimStatus.SETTLED)));
++            } catch (StatusChangeRefusedException | OwnClaimSettleRefusedException | PeriodClosedException
++                    | NoSuchElementException refused) {
++                // Left as it is: its change rolled back with its own transaction.
++            }
++        }
++        return new Result(settled, ids.size() - settled.size());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 0667a365f..c8b7ed16f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -80,14 +80,26 @@ public class ClaimController {
+     public record BulkOpenView(List<ClaimView> opened, int refused) {
+     }
+ 
++    /** The claims selected to settle together. */
++    public record BulkSettleRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds) {
++    }
++
++    /** What a bulk settle did: the claims it settled (SETTLED, or PENDING a steward's approval), in
++     *  list order, and how many of the selected claims it refused. */
++    public record BulkSettleView(List<ClaimView> settled, int refused) {
++    }
++
+     private final ClaimService service;
+     private final RollupService rollups;
+     private final BulkOpenService bulkOpen;
++    private final BulkSettleService bulkSettle;
+ 
+-    public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen) {
++    public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
++            BulkSettleService bulkSettle) {
+         this.service = service;
+         this.rollups = rollups;
+         this.bulkOpen = bulkOpen;
++        this.bulkSettle = bulkSettle;
+     }
+ 
+     /** The sheet's claims, newest first. */
+@@ -147,6 +159,16 @@ public class ClaimController {
+         return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED);
+     }
+ 
++    /** Settle the selected claims that can be settled, in list order, each by the rules of settling
++     *  one; the rest are refused and left as they are. */
++    @PostMapping("/claims/settle")
++    public BulkSettleView settleAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkSettleRequest request) {
++        String sheet = sheetId.trim();
++        BulkSettleService.Result result = bulkSettle.settle(sheet, SignedInUser.decode(user), request.claimIds());
++        return new BulkSettleView(result.settled().stream().map(claim -> view(sheet, claim)).toList(), result.refused());
++    }
++
+     /** Approve a PENDING claim: a steward other than whoever opened it settles it. */
+     @PostMapping("/people/{personId}/claims/{id}/approve")
+     public ClaimView approve(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimListOrder.java b/src/main/java/net/officefloor/hq/app/claim/ClaimListOrder.java
+new file mode 100644
+index 000000000..d5367e8bb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimListOrder.java
+@@ -0,0 +1,37 @@
++package net.officefloor.hq.app.claim;
++
++import java.util.Comparator;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import org.springframework.stereotype.Component;
++
++/** Puts a selection of a sheet's claims in list order: people in the order they were added, each
++ *  person's claims newest first. */
++@Component
++public class ClaimListOrder {
++
++    private final ClaimRepository claims;
++    private final PersonRepository people;
++
++    public ClaimListOrder(ClaimRepository claims, PersonRepository people) {
++        this.claims = claims;
++        this.people = people;
++    }
++
++    /** The selected claims on the sheet, in list order; an id not on the sheet is left out. */
++    public List<Claim> selected(String sheetId, Set<Long> ids) {
++        Map<Long, Integer> personOrder = new HashMap<>();
++        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
++        for (int i = 0; i < sheetPeople.size(); i++) {
++            personOrder.put(sheetPeople.get(i).getId(), i);
++        }
++        return claims.findBySheetIdOrderByListedDesc(sheetId).stream()
++                .filter(claim -> ids.contains(claim.getId()))
++                .sorted(Comparator.comparing((Claim claim) -> personOrder.getOrDefault(claim.getPersonId(), Integer.MAX_VALUE)))
++                .toList();
++    }
++}
