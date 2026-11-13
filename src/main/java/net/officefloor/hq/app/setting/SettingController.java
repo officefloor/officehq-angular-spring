@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.setting;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -36,8 +38,8 @@ public class SettingController {
     }
 
     /** The sheet's settings: the roles assigned, the clerk limit (two decimals; null for none) and
-     *  the floor (two decimals). */
-    public record SettingsView(List<RoleView> roles, String clerkLimit, String floor) {
+     *  the floor (two decimals) and the terms (whole days). */
+    public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, int terms) {
     }
 
     /** A role for a user name: clerk or steward. */
@@ -50,6 +52,10 @@ public class SettingController {
 
     /** A floor of 0.00 or more with up to two decimals. */
     public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    }
+
+    /** Terms of 0 or more whole days. */
+    public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer value) {
     }
 
     private final SettingService service;
@@ -97,10 +103,20 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's terms. */
+    @PutMapping("/terms")
+    public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated TermsRequest request) {
+        String sheet = sheetId.trim();
+        service.setTerms(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     private SettingsView view(String sheet) {
         BigDecimal limit = service.clerkLimit(sheet);
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
-                limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString());
+                limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString(), service.terms(sheet));
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

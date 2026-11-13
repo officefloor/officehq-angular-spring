@@ -53,6 +53,17 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: number): numbe
   return rate === null ? null : Math.max(dueCents(cents(claim.amount), rate), floor);
 }
 
+/** The date a claim is due by (yyyy-mm-dd): its date plus the terms in days. */
+export function dueByOf(claim: Claim, terms: number): string {
+  const [y, m, d] = claim.date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+}
+
+/** Whether a claim is overdue: it is OPEN and its due-by is before the sheet's today. */
+export function overdue(claim: Claim, terms: number, today: string | null): boolean {
+  return claim.status === 'OPEN' && today !== null && dueByOf(claim, terms) < today;
+}
+
 /** Cents shown with two decimals. */
 export function money(total: number): string {
   return (total / 100).toFixed(2);
@@ -106,6 +117,8 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
+          <span data-testid="claim-due-by">{{ dueBy(c) }}</span>
+          <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-status">{{ c.status }}</span>
           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
@@ -147,6 +160,8 @@ export class PersonClaims {
   readonly rates = input.required<Rate[]>();
   /** The sheet's floor in cents: the least a live due can be. */
   readonly floor = input.required<number>();
+  /** The sheet's terms in days: a claim is due by its date plus them. */
+  readonly terms = input.required<number>();
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -167,6 +182,14 @@ export class PersonClaims {
   protected dueOf(claim: Claim): string {
     const due = claimDueCents(claim, this.rates(), this.floor());
     return due === null ? NO_RATE : money(due);
+  }
+
+  protected dueBy(claim: Claim): string {
+    return dueByOf(claim, this.terms());
+  }
+
+  protected isOverdue(claim: Claim): boolean {
+    return overdue(claim, this.terms(), this.session.today());
   }
 
   /** The name of the period the claim's date falls in; empty when it falls in none. */

@@ -10,7 +10,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** A sheet's settings: the role each user name has on it, and its clerk limit and its floor. */
+/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor and its terms. */
 @Service
 public class SettingService {
 
@@ -45,6 +45,11 @@ public class SettingService {
     /** The sheet's floor: the least a claim's live due can be. */
     public BigDecimal floor(String sheetId) {
         return sheets.load(sheetId).getFloor();
+    }
+
+    /** The sheet's terms in days: a claim is due by its date plus them. */
+    public int terms(String sheetId) {
+        return sheets.load(sheetId).getTerms();
     }
 
     /** Assign a user name a role on the sheet. */
@@ -85,6 +90,17 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=floor value="
                 + scaled.toPlainString());
+        return saved;
+    }
+
+    /** Change the sheet's terms. */
+    @Transactional
+    public Sheet setTerms(String sheetId, String by, int terms) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setTerms(terms);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
         return saved;
     }
 }

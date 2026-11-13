@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, PersonClaims, cents, claimDueCents, counts, money } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, claimDueCents, counts, money, overdue } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, RateStore, Rates } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -107,6 +107,8 @@ interface StatementTaken {
       </label>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+      <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
 
       <table>
         <thead>
@@ -115,6 +117,8 @@ interface StatementTaken {
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Overdue</th>
+            <th scope="col">Overdue due</th>
             <th scope="col">Statements</th>
             <th scope="col">Last stated</th>
             <th scope="col">Stated on</th>
@@ -132,6 +136,8 @@ interface StatementTaken {
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
+              <td data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</td>
+              <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
@@ -144,6 +150,7 @@ interface StatementTaken {
                   [claims]="claimsOf(p.id)"
                   [rates]="rates.of(p.grade)"
                   [floor]="floor()"
+                  [terms]="settings.terms()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -206,7 +213,7 @@ export class People {
   private readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
   private readonly periods = inject(PeriodStore);
-  private readonly settings = inject(SettingStore);
+  protected readonly settings = inject(SettingStore);
   /** The sheet's floor in cents. */
   protected readonly floor = computed(() => cents(this.settings.floor()));
 
@@ -251,6 +258,24 @@ export class People {
         return due === null ? sum : sum + due;
       }, 0),
     ),
+  );
+  /** Each person's claims that count and are overdue, by person id. */
+  private readonly overdueByPerson = computed(() => {
+    const terms = this.settings.terms();
+    const today = this.session.today();
+    const map = new Map<number, Claim[]>();
+    for (const c of this.live()) {
+      if (overdue(c, terms, today)) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
+    }
+    return map;
+  });
+  /** How many claims that count are overdue on the sheet. */
+  protected readonly overdueCount = computed(() =>
+    [...this.overdueByPerson().values()].reduce((n, list) => n + list.length, 0),
+  );
+  /** The dues of the sheet's overdue claims that count added up. */
+  protected readonly overdueTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + this.overdueCentsOf(p), 0)),
   );
   /** Each period's due-total, by period id: the dues shown on the claims that count in live totals
    *  whose date falls in the period (a claim with no figure adds nothing). */
@@ -376,6 +401,21 @@ export class People {
     const rates = this.rates.of(person.grade);
     const floor = this.floor();
     return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
+  }
+
+  protected overdueOf(personId: number): Claim[] {
+    return this.overdueByPerson().get(personId) ?? [];
+  }
+
+  /** The dues of a person's overdue claims that count added up (a claim with no figure adds nothing). */
+  protected overdueTotalOf(person: Person): string {
+    return money(this.overdueCentsOf(person));
+  }
+
+  private overdueCentsOf(person: Person): number {
+    const rates = this.rates.of(person.grade);
+    const floor = this.floor();
+    return this.overdueOf(person.id).reduce((sum, c) => sum + (claimDueCents(c, rates, floor) ?? 0), 0);
   }
 
   /** A claim added (listed first) or saved in place. */

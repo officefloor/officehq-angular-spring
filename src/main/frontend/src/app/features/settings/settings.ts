@@ -16,10 +16,18 @@ interface SettingsView {
   clerkLimit: string | null;
   /** The floor (two decimals): the least a claim's live due can be. */
   floor: string;
+  /** The terms in whole days: a claim is due by its date plus them. */
+  terms: number;
 }
 
 /** The floor a sheet starts with. */
 const FLOOR = '1.00';
+
+/** The terms a sheet starts with, in days. */
+const TERMS = 14;
+
+/** Terms of 0 or more whole days. */
+const DAYS = /^\d{1,5}$/;
 
 const ROLES = ['clerk', 'steward'];
 
@@ -32,6 +40,7 @@ export class SettingStore {
   readonly roles = signal<RoleView[]>([]);
   readonly clerkLimit = signal<string | null>(null);
   readonly floor = signal(FLOOR);
+  readonly terms = signal(TERMS);
 
   constructor() {
     effect(() => {
@@ -40,6 +49,7 @@ export class SettingStore {
       this.roles.set([]);
       this.clerkLimit.set(null);
       this.floor.set(FLOOR);
+      this.terms.set(TERMS);
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -79,6 +89,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's terms. */
+  async setTerms(value: number): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/terms`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const settings = await firstValueFrom(
       this.http.get<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings`),
@@ -91,11 +112,13 @@ export class SettingStore {
     this.roles.set(settings.roles);
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
+    this.terms.set(settings.terms);
   }
 }
 
 // The sheet's settings: the role given each user name (clerk, the default, or steward) and the
-// clerk limit, the highest due a clerk can settle, and the floor, the least a claim's live due can be.
+// clerk limit, the highest due a clerk can settle, the floor, the least a claim's live due can be,
+// and the terms, the days after its date a claim is due by.
 // Saving sends only the settings typed into since the last save.
 @Component({
   selector: 'app-settings',
@@ -162,6 +185,14 @@ export class SettingStore {
           [value]="floor()"
           (input)="floor.set(value($event)); floorTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-terms">Terms (days)</label>
+        <input
+          id="setting-terms"
+          data-testid="setting-terms"
+          inputmode="numeric"
+          [value]="terms()"
+          (input)="terms.set(value($event)); termsTyped.set(true); settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as message) {
@@ -178,6 +209,10 @@ export class SettingStore {
         Floor in force:
         <strong data-testid="setting-floor-current">{{ store.floor() }}</strong>
       </p>
+      <p>
+        Terms in force:
+        <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days
+      </p>
     </section>
   `,
 })
@@ -192,6 +227,8 @@ export class Settings {
   protected readonly clerkLimitTyped = signal(false);
   protected readonly floor = signal('');
   protected readonly floorTyped = signal(false);
+  protected readonly terms = signal('');
+  protected readonly termsTyped = signal(false);
   protected readonly settingsError = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -232,12 +269,18 @@ export class Settings {
     const floor = this.floor().trim();
     const saveLimit = this.clerkLimitTyped();
     const saveFloor = this.floorTyped();
+    const terms = this.terms().trim();
+    const saveTerms = this.termsTyped();
     if (saveLimit && limit !== '' && !AMOUNT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
     if (saveFloor && !AMOUNT.test(floor)) {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (saveTerms && !DAYS.test(terms)) {
+      this.settingsError.set('Type terms of 0 or more whole days.');
       return;
     }
     this.busy.set(true);
@@ -249,6 +292,10 @@ export class Settings {
       if (saveFloor) {
         await this.store.setFloor(floor);
         this.floorTyped.set(false);
+      }
+      if (saveTerms) {
+        await this.store.setTerms(Number(terms));
+        this.termsTyped.set(false);
       }
     } catch {
       this.settingsError.set('The settings could not be saved.');

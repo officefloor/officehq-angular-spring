@@ -31,6 +31,10 @@ public class Sheet {
     @Column(name = "due_floor", nullable = false)
     private BigDecimal floor = new BigDecimal("1.00");
 
+    /** The terms in days: a claim is due by its date plus them. */
+    @Column(name = "terms", nullable = false)
+    private int terms = 14;
+
     protected Sheet() {
     }
 
@@ -65,6 +69,14 @@ public class Sheet {
 
     public void setFloor(BigDecimal floor) {
         this.floor = floor;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
     }
 
     /** Take the sheet's next claim number. */
