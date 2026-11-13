@@ -44,6 +44,8 @@ export interface SheetView {
   pot: string | null;
   /** The parent sheet's id: a grade with no rate in force on a date takes the parent's; null for none. */
   parent: string | null;
+  /** The month (1 to 12) a fiscal year starts in. */
+  fiscalStartMonth: number;
 }
 
 /** The figures of a sheet's descendants (its children, their children and so on), each sheet's as that
@@ -167,6 +169,9 @@ export class Session {
   /** The parent sheet's id; null for none. A grade with no rate in force on a date on this sheet takes the
    *  parent's, then the parent's parent's, up to three levels up. Not dated. */
   readonly parent = signal<string | null>(null);
+  /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. A fiscal year is named FY<yyyy> by
+   *  the calendar year its first day falls in. Not dated. */
+  readonly fiscalStartMonth = signal(1);
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** The figures of the sheet's descendants as the store held them when the sheet was loaded. */
@@ -212,6 +217,7 @@ export class Session {
       this.entryDate.set(sheet.entryDate);
       this.pot.set(sheet.pot);
       this.parent.set(sheet.parent);
+      this.fiscalStartMonth.set(sheet.fiscalStartMonth);
       this.archived.set(sheet.archived);
       this.lastSettleBatch.set(sheet.lastSettleBatch);
       return null;
@@ -606,6 +612,25 @@ export class Session {
           { graceDays: d ? Number(d) : null }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.graceDays.set(sheet.graceDays);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's fiscal start month (1 to 12); an error message when refused. */
+  async setFiscalStartMonth(month: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const m = month.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!/^\d{1,2}$/.test(m) || Number(m) < 1 || Number(m) > 12) return 'Enter the fiscal start month as 1 to 12.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/fiscal-start-month`,
+          { fiscalStartMonth: Number(m) }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.fiscalStartMonth.set(sheet.fiscalStartMonth);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

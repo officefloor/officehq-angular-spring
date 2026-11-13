@@ -112,6 +112,35 @@ export class Periods {
     }
   }
 
+  /** Generate the twelve monthly periods of a fiscal year (named by the calendar year its first day falls
+   *  in) as the generator does: how many were made, or an error message when refused. */
+  async generateFiscalYear(year: string): Promise<number | string> {
+    if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
+    const y = year.trim();
+    if (!/^\d{4}$/.test(y) || Number(y) < 1 || Number(y) > 9998) return 'Enter the fiscal year as YYYY.';
+    const sid = this.session.sheetId()!;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(`${this.url(sid)}/generate-fiscal-year`, { year: Number(y) },
+          { headers: { 'X-User': this.session.user()! } }),
+      );
+      if (this.session.sheetId() === sid) this.periods.update((ps) => [...ps, ...made].sort(byFrom));
+      return made.length;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not add periods.';
+      if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the fiscal year as YYYY.';
+      return e instanceof HttpErrorResponse ? `Could not generate periods (${e.status}).` : 'Could not generate periods.';
+    }
+  }
+
+  /** The fiscal year (FY<yyyy>) a date (YYYY-MM-DD) falls in, by the sheet's fiscal start month: named by the
+   *  calendar year its first day falls in. */
+  fiscalYearOf(date: string): string {
+    const year = Number(date.slice(0, 4));
+    const month = Number(date.slice(5, 7));
+    return 'FY' + String(month >= this.session.fiscalStartMonth() ? year : year - 1).padStart(4, '0');
+  }
+
   /** Close a period, fixing its due-total; an error message when refused. */
   async close(id: number): Promise<string | null> {
     const sid = this.session.sheetId();

@@ -19,7 +19,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // period; blank for off), the grace days (a today change closes each open period whose to-date plus these days
 // is before the new today; blank for off; not dated), the permission matrix (for each action, the roles that may take it, comma separated;
 // blank keeps the standing rule; not dated), the entry date (while set, the default date of a new claim in
-// place of the sheet's today; blank for off; not dated), and
+// place of the sheet's today; blank for off; not dated), the fiscal start month (the month, 1 to 12, a fiscal year
+// starts in; 1 unless set; not dated), and
 // the role each user name has on the sheet (clerk unless given another), and the delegations of the steward role
 // (a steward gives a user the role from a date to a date, inclusive, by the sheet's today).
 @Component({
@@ -258,6 +259,15 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="graceDaysTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-grace-days-current">{{ session.graceDays() ?? '' }}</strong></p>
+        <label for="setting-fiscal-start-month">Fiscal start month (1 to 12)</label>
+        <input
+          id="setting-fiscal-start-month"
+          data-testid="setting-fiscal-start-month"
+          inputmode="numeric"
+          [value]="fiscalStartMonth()"
+          (input)="fiscalStartMonth.set(value($event)); fiscalStartMonthTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</strong></p>
         <label for="setting-pot">Pot (shared out among the members of each balanced pool that is in no other pool; blank for none)</label>
         <input
           id="setting-pot"
@@ -414,6 +424,8 @@ export class SettingsPanel {
   protected readonly graceDaysTouched = signal(false);
   protected readonly entryDate = signal('');
   protected readonly entryDateTouched = signal(false);
+  protected readonly fiscalStartMonth = signal('');
+  protected readonly fiscalStartMonthTouched = signal(false);
   protected readonly pot = signal('');
   protected readonly potTouched = signal(false);
   protected readonly parent = signal('');
@@ -501,6 +513,7 @@ export class SettingsPanel {
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
         && !this.graceDaysTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
+        && !this.fiscalStartMonthTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
         && this.gradeProofThresholdTouched().size === 0
         && this.permsTouched().size === 0;
@@ -533,9 +546,10 @@ export class SettingsPanel {
         || (guess && this.pot().trim() !== (this.session.pot() ?? ''));
       const parent = this.parentTouched() || pick === 'parent'
         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
+      const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
         || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
-          && !entryDate && !pot && !parent)
+          && !entryDate && !pot && !parent && !fiscalStartMonth)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
@@ -556,6 +570,7 @@ export class SettingsPanel {
         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null)
         ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null)
         ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null)
+        ?? (fiscalStartMonth ? await this.session.setFiscalStartMonth(this.fiscalStartMonth()) : null)
         ?? (pot ? await this.savePot() : null)
         ?? (parent ? await this.saveParent() : null);
       if (err) this.error.set(err);
@@ -591,6 +606,8 @@ export class SettingsPanel {
         this.graceDaysTouched.set(false);
         this.entryDate.set('');
         this.entryDateTouched.set(false);
+        this.fiscalStartMonth.set('');
+        this.fiscalStartMonthTouched.set(false);
         this.pot.set('');
         this.potTouched.set(false);
         this.parent.set('');

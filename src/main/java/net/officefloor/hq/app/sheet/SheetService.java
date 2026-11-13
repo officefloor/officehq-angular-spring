@@ -255,6 +255,15 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's fiscal start month (1 to 12). Not dated. */
+    @Transactional
+    public Sheet setFiscalStartMonth(String id, String user, int month) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setFiscalStartMonth(month);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=fiscal-start-month value=" + month);
+        return sheet;
+    }
+
     /** Change the sheet's pot (none: no pot). Not dated. */
     @Transactional
     public Sheet setPot(String id, String user, BigDecimal pot) {

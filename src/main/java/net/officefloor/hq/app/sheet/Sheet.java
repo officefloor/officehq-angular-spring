@@ -99,6 +99,11 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The month (1 to 12) a fiscal year starts in; a fiscal year is named by the calendar year its first
+     *  day falls in. Not dated. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** The entry date: while set, the default date of a new claim in place of the sheet's today; none means
      *  off. Not dated. */
     @Column(name = "entry_date")
@@ -368,6 +373,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
     }
 
     /** Whether a claim opened now is numbered within its period: the setting is a date and today is on or

@@ -99,6 +99,17 @@ public class PeriodService {
         return made;
     }
 
+    /** Generate the twelve monthly periods of a fiscal year, exactly as {@link #generate} does from the
+     *  first month of the year to its last: the fiscal year starts on the first day of the sheet's fiscal
+     *  start month in the year it is named by. The periods made, in order. */
+    @Transactional
+    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
+        // Locking the sheet first reads the fiscal start month as it stands while the periods are made.
+        Sheet sheet = sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
+        LocalDate first = LocalDate.of(year, sheet.getFiscalStartMonth(), 1);
+        return generate(sheetId, user, first, first.plusYears(1).minusDays(1));
+    }
+
     /** Close a period, fixing each person's due-total for it and its own as it is now; refused when the user's role may not
      *  close it, or it is already closed. A soft-closed period can be closed, fixing its figures afresh. */
     @Transactional

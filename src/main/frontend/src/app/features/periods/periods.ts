@@ -2,7 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { Figures } from '../../core/figures';
 import { Period, Periods } from '../../core/periods';
 
-// The sheet's periods: one form adds a period, another generates one per calendar month, and the list shows each with its dates and its
+// The sheet's periods: one form adds a period, another generates one per calendar month, a third the twelve of a fiscal year,
+// and the list shows each with its dates, the fiscal year its from-date falls in, and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
 // whether it is closed or soft-closed, with buttons to close it, soft-close it and reopen it (by the roles the sheet allows).
 @Component({
@@ -57,16 +58,28 @@ import { Period, Periods } from '../../core/periods';
           (input)="genTo.set(value($event)); genError.set(null)"
         />
         <button type="submit" data-testid="period-generate" [disabled]="generating()">Generate periods</button>
-        @if (generated() !== null) {
-          <p>Made <span data-testid="period-generated">{{ generated() }}</span> period(s)</p>
-        }
-        @if (genError(); as err) {
-          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
-        }
       </form>
+      <form (submit)="generateFy($event)" data-testid="period-generate-fy-form">
+        <label for="period-generate-fy-year">Generate the monthly periods of fiscal year (YYYY)</label>
+        <input
+          id="period-generate-fy-year"
+          data-testid="period-generate-fy-year"
+          inputmode="numeric"
+          placeholder="YYYY"
+          [value]="fyYear()"
+          (input)="fyYear.set(value($event)); genError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-fy" [disabled]="generating()">Generate fiscal year</button>
+      </form>
+      @if (generated() !== null) {
+        <p>Made <span data-testid="period-generated">{{ generated() }}</span> period(s)</p>
+      }
+      @if (genError(); as err) {
+        <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+      }
       <table data-testid="period-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Actions</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Actions</th></tr>
         </thead>
         <tbody>
           @for (p of periods.periods(); track p.id) {
@@ -74,6 +87,7 @@ import { Period, Periods } from '../../core/periods';
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
+              <td data-testid="period-fy">{{ periods.fiscalYearOf(p.from) }}</td>
               <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.soft ? 'soft' : 'no' }}</td>
               <td>
@@ -110,6 +124,8 @@ export class PeriodsPanel {
   protected readonly generating = signal(false);
   protected readonly generated = signal<number | null>(null);
   protected readonly genError = signal<string | null>(null);
+  /** The fiscal year typed for the fiscal-year generator, which shares the count and refusal above. */
+  protected readonly fyYear = signal('');
   /** The period whose action is under way, and the last action's refusal, by period. */
   protected readonly acting = signal<number | null>(null);
   protected readonly actionError = signal<{ id: number; message: string } | null>(null);
@@ -154,6 +170,21 @@ export class PeriodsPanel {
     this.generating.set(true);
     try {
       const made = await this.periods.generate(this.genFrom(), this.genTo());
+      if (typeof made === 'string') this.genError.set(made);
+      else this.generated.set(made);
+    } finally {
+      this.generating.set(false);
+    }
+  }
+
+  protected async generateFy(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.generating()) return;
+    this.generated.set(null);
+    this.genError.set(null);
+    this.generating.set(true);
+    try {
+      const made = await this.periods.generateFiscalYear(this.fyYear());
       if (typeof made === 'string') this.genError.set(made);
       else this.generated.set(made);
     } finally {
