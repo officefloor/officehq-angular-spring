@@ -1,0 +1,64 @@
+{
+  "checkpoint": 94,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp94_proof-threshold-per-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The proof threshold can be set per grade (settings, SETTING_CHANGED key=proof-threshold-<grade>\nvalue=<amount>, dated like the floor; blank means none). For a claim, the threshold in force is\nits person's grade's threshold in force on the claim's date when one is set, else the sheet's.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe proof threshold can be set per grade (settings, SETTING_CHANGED key=proof-threshold-<grade>\nvalue=<amount>, dated like the floor; blank means none). For a claim, the threshold in force is\nits person's grade's threshold in force on the claim's date when one is set, else the sheet's.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "58a7462488304f0e04db2647a3c5787f46633a39",
+  "reset_sha": "",
+  "preagent_sha": "b851e7f85825fc06cf144906bf59949bb236f2d2",
+  "prev_sha": "b851e7f85825fc06cf144906bf59949bb236f2d2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.07103,
+    "input_tokens": 6,
+    "output_tokens": 711,
+    "cache_read_tokens": 182435,
+    "cache_creation_tokens": 4125,
+    "num_turns": 2,
+    "duration_ms": 8886,
+    "duration_api_ms": 98971,
+    "model": "claude-opus-5-5",
+    "session_id": "db66f11f-1841-47f3-8de0-fde77c4cdafb",
+    "stop_reason": "success",
+    "result_text": "You can now set the proof threshold separately for each grade, and all 4 tests in `bin/e2e` pass.\n\n**How it behaves**\n- Each grade's threshold is saved with a from-date and logged as `SETTING_CHANGED key=proof-threshold-<grade> value=<amount>`, plus `from=<date>` when one is given. This works the same way as the floor.\n- Saving a grade's threshold blank means that grade has none, so the sheet's threshold applies.\n- When a claim is settled or approved, the app checks the threshold for the person's grade on the claim's date. If that grade has no threshold in force on that date, the sheet's threshold is used.\n\n**What changed**\n- **Server, settings** (`SettingService.java`, `SettingController.java`): a new `PUT \u2026/settings/proof-threshold/{grade}` endpoint (A, B or C) that saves the threshold, and a lookup that picks the grade's threshold or falls back to the sheet's. Thresholds go in the existing dated-settings store, so no database change was needed.\n- **Server, claims** (`ClaimService.java`): the settle and approve check now looks up the person's grade before choosing the threshold.\n- **Settings screen** (`settings.ts`): for each grade, a threshold field, a from-date field and the value in force today (`setting-proof-threshold-<grade>`, `-from`, `-current`). It checks the input the same way as the other amount settings and saves with the rest of the form.\n\nThe test also confirms that a threshold doesn't apply to claims dated before its from-date. A grade-B claim dated 2026-03-01 settled even though both the grade's and the sheet's thresholds only start later.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.07103,
+        "num_turns": 2,
+        "duration_ms": 8886,
+        "duration_api_ms": 98971,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp94.agent.jsonl",
+  "agent_diff_file": "cp94.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
