@@ -1,12 +1,14 @@
 package net.officefloor.hq.app.search;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,8 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class TreeSearchService {
 
-    /** A person found: their sheet, their name and their due-total as their sheet shows it (null for n/a). */
-    public record Found(String sheetId, String name, BigDecimal dueTotal) {
+    /** A person found: their sheet, their name, their grade in force on their sheet's today and their due-total as their sheet shows it (null for n/a). */
+    public record Found(String sheetId, String name, String grade, BigDecimal dueTotal) {
     }
 
     private final PersonRepository people;
@@ -42,10 +44,11 @@ public class TreeSearchService {
         sheets.tree(sheetId).stream().filter(s -> !s.equals(sheetId)).sorted().forEach(order::add);
         for (String sheet : order) {
             Rollup.Snapshot snapshot = rollup.take(sheet);
+            LocalDate today = sheets.findById(sheet).map(Sheet::getToday).orElseThrow();
             for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheet)) {
                 if (matches(person, key)) {
                     Rollup.Figures figures = snapshot.people().get(person.getId());
-                    found.add(new Found(sheet, person.getName(), figures == null ? null : figures.dueTotal()));
+                    found.add(new Found(sheet, person.getName(), person.gradeOn(today), figures == null ? null : figures.dueTotal()));
                 }
             }
         }

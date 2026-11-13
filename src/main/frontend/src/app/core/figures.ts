@@ -304,6 +304,11 @@ export class Figures {
     return today ? gradeOn(p.grades, today) : p.grade;
   }
 
+  /** A person's name as the screen shows it: <name> (<grade in force on the sheet's today>). */
+  shownName(p: Person): string {
+    return `${p.name} (${this.gradeToday(p)})`;
+  }
+
   /** Each period's live due-total for each person, in cents, by period id then person id: the figures
    *  of the person's claims whose due-by falls in it and that counted by the status they had at the end of
    *  the period's last day, as their status log records it (one added after then does not count), and

@@ -257,7 +257,7 @@ function compareKeys(a: string, b: string): number {
                   (change)="people.select(p.id, checked($event)); bulkError.set(null); clearActionError(p.id)"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-name">{{ figures.shownName(p) }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               @if (col('aliases')) {
                 <td>
@@ -832,11 +832,11 @@ export class PeopleList {
     return named.map((patron, i) => ({ patron, share: i === 0 ? first : each }));
   }
 
-  /** A person's patrons as <name> <share>, sorted by name, comma and space separated. */
+  /** A person's patrons as <name> (<grade>) <share>, sorted by name, comma and space separated. */
   protected patrons(p: Person): string {
     return this.patronsOf(p)
       .sort((a, b) => (a.patron.name < b.patron.name ? -1 : a.patron.name > b.patron.name ? 1 : 0))
-      .map((o) => o.patron.name + ' ' + money(o.share))
+      .map((o) => this.figures.shownName(o.patron) + ' ' + money(o.share))
       .join(', ');
   }
 

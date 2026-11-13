@@ -3,7 +3,7 @@ import { Found, TreeSearch } from '../../core/search';
 import { Session } from '../../core/session';
 
 // Search over this sheet and every other sheet of its tree: everyone whose name or an alias contains the
-// text (case ignored), one line each as <sheet id> <name> <due-total>, this sheet's people first in list
+// text (case ignored), one line each as <sheet id> <name> (<grade>) <due-total>, this sheet's people first in list
 // order, then the other sheets' by sheet id.
 @Component({
   selector: 'app-search',
@@ -26,7 +26,7 @@ import { Session } from '../../core/session';
       <p>Found: <strong data-testid="search-count">{{ count() }}</strong></p>
       <ol aria-label="Search results">
         @for (f of found(); track $index) {
-          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} {{ f.dueTotal }}</li>
+          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} ({{ f.grade }}) {{ f.dueTotal }}</li>
         }
       </ol>
     </section>

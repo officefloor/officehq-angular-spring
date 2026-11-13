@@ -13,7 +13,7 @@ import { money } from '../../core/rates';
     @let c = crew();
     <h3 data-testid="crew-name">{{ c.name }}</h3>
     <p>
-      Lead: <strong data-testid="crew-lead">{{ c.lead ? name(c.lead) : '' }}</strong>
+      Lead: <strong data-testid="crew-lead">{{ c.lead ? leadName(c.lead) : '' }}</strong>
       Due total: <strong data-testid="crew-due-total">{{ dueTotal() }}</strong>
     </p>
     <ul [attr.aria-label]="'Members of ' + c.name">
@@ -56,6 +56,13 @@ export class CrewRow {
   /** A person's name as the people list has it now; as the crew was read when they are not on it. */
   protected name(m: { personId: number; name: string }): string {
     return this.people.people().find((p) => p.id === m.personId)?.name ?? m.name;
+  }
+
+  /** The lead's name with their grade in force today, as the people list has them; the plain name as the
+   *  crew was read when they are not on it. */
+  protected leadName(m: { personId: number; name: string }): string {
+    const p = this.people.people().find((o) => o.id === m.personId);
+    return p ? this.figures.shownName(p) : m.name;
   }
 
   protected selected(e: Event): string {

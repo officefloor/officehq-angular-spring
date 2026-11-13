@@ -3,10 +3,12 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from './session';
 
-/** A person found over the sheet's tree: their sheet, name and due-total (n/a when they have none). */
+/** A person found over the sheet's tree: their sheet, name, grade and due-total (n/a when they have none). */
 export interface Found {
   sheetId: string;
   name: string;
+  /** Their grade in force on their sheet's today. */
+  grade: string;
   dueTotal: string;
 }
 

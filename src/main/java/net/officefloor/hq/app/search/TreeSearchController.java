@@ -17,8 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/search")
 public class TreeSearchController {
 
-    /** A person found: their sheet id, name and due-total (two decimals; n/a when they have none). */
-    public record FoundView(String sheetId, String name, String dueTotal) {
+    /** A person found: their sheet id, name, grade in force on their sheet's today and due-total (two decimals; n/a when they have none). */
+    public record FoundView(String sheetId, String name, String grade, String dueTotal) {
     }
 
     private final TreeSearchService service;
@@ -33,7 +33,7 @@ public class TreeSearchController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestParam(defaultValue = "") @Size(max = 200) String text) {
         return service.search(sheetId.trim(), text).stream()
-                .map(f -> new FoundView(f.sheetId(), f.name(),
+                .map(f -> new FoundView(f.sheetId(), f.name(), f.grade(),
                         f.dueTotal() == null ? "n/a" : f.dueTotal().toPlainString()))
                 .toList();
     }
