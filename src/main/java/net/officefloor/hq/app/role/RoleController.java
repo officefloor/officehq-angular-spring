@@ -42,8 +42,8 @@ public class RoleController {
         this.asOf = asOf;
     }
 
-    /** The names given a role on the sheet, by name; any other name is a clerk.; as they stood at the end of a date when the screen views the
-     *  sheet as of one. */
+    /** The names given a role on the sheet, by name; any other name is a clerk. As they stood at the end of a date when the
+     *  screen views the sheet as of one. */
     @GetMapping
     public List<RoleView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
