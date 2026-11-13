@@ -102,7 +102,7 @@ public class ClaimService {
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
-        refuseCorrection(sheetId, personId, amount, corrects);
+        refuseCorrection(sheetId, personId, amount, corrects, null);
         refuseRefUsed(sheetId, ref, null);
         Rollup.Snapshot before = rollup.take(sheetId);
         Claim claim = new Claim(sheetId, personId, amount.setScale(2), on, dueBy, note, corrects);
@@ -150,7 +150,7 @@ public class ClaimService {
         refuseClosed(sheetId, claim.getDueBy());
         refuseRetired(people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new), on);
-        refuseCorrection(sheetId, claim.getPersonId(), amount, corrects);
+        refuseCorrection(sheetId, claim.getPersonId(), amount, corrects, claim.getId());
         refuseRefUsed(sheetId, ref, claim.getId());
         if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
             throw new ClaimLineException("A claim with lines takes its amount from its lines.");
@@ -1106,9 +1106,11 @@ public class ClaimService {
         return limit != null && due != null && due.compareTo(limit) > 0 && !roles.isSteward(sheetId, user);
     }
 
-    /** Refuse a negative amount that does not name a SETTLED claim of the person by number, and a claim of
-     *  0.00 or more that names one. */
-    private void refuseCorrection(String sheetId, long personId, BigDecimal amount, String corrects) {
+    /** Refuse a negative amount that does not name a SETTLED claim of the person by number, or that exceeds
+     *  what remains of it (its amount less the corrections already made against it, VOID or DELETED ones
+     *  and the excluded claim left out), and a claim of 0.00 or more that names one. */
+    private void refuseCorrection(String sheetId, long personId, BigDecimal amount, String corrects,
+            Long excluded) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new ClaimCorrectionException("Only a negative amount corrects a claim.");
@@ -1121,6 +1123,17 @@ public class ClaimService {
         }
         if (!claims.existsBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects, ClaimStatus.SETTLED)) {
             throw new ClaimCorrectionException("A correction must name a settled claim of the same person.");
+        }
+        BigDecimal remains = claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .orElseThrow(ClaimNotFoundException::new).getAmount();
+        for (Claim made : claims.correctionsOf(sheetId, personId, corrects, excluded)) {
+            if (made.getStatus() != ClaimStatus.VOID && made.getStatus() != ClaimStatus.DELETED) {
+                remains = remains.add(made.getAmount());
+            }
+        }
+        if (amount.negate().compareTo(remains) > 0) {
+            throw new ClaimCorrectionException("A correction may not exceed what remains of the claim it corrects ("
+                    + remains.setScale(2) + ").");
         }
     }
 

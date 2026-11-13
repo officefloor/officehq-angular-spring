@@ -42,6 +42,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
             ClaimStatus status);
 
+    /** A person's corrections naming a claim's number, but for one (none: no exclusion). */
+    @Query("select c from Claim c where c.sheetId = :sheetId and c.personId = :personId and c.corrects = :number"
+            + " and (:excluded is null or c.id <> :excluded)")
+    List<Claim> correctionsOf(@Param("sheetId") String sheetId, @Param("personId") Long personId,
+            @Param("number") String number, @Param("excluded") Long excluded);
+
     /** A person's claim by its number. */
     Optional<Claim> findBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 
