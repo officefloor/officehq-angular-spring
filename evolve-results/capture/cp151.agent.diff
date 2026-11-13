@@ -1,0 +1,300 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 99d701c50..27a3f0d4e 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -15,6 +15,8 @@ export interface SheetView {
+   latePct: string;
+   /** The policy date (YYYY-MM-DD); null when it is the sheet's today. */
+   policyDate: string | null;
++  /** The rounding mode (half-up or half-even) in force on the sheet's today; null when none. */
++  rounding: string | null;
+   /** The period numbering from-date (YYYY-MM-DD); null when off. */
+   periodNumberingFrom: string | null;
+   /** The terms of each grade that has its own; a grade without uses the sheet's terms. */
+@@ -77,7 +79,7 @@ const NO_DESCENDANTS: DescendantFigures = {
+  *  clerk and steward; reassign and reopen by steward. */
+ export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
+ 
+-/** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade> or note-threshold) takes from a date
++/** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding) takes from a date
+  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
+ export interface DatedSetting {
+   key: string;
+@@ -113,6 +115,9 @@ export class Session {
+   /** The sheet's note threshold (two decimals) in force on its today: a claim dated then whose due is above
+    *  it cannot be opened with an empty note; null when there is none. */
+   readonly noteThreshold = computed(() => this.onToday('note-threshold'));
++  /** The sheet's rounding mode (half-up or half-even) in force on its today; null when there is none (a
++   *  claim rounds by the policy date). */
++  readonly rounding = computed(() => this.onToday('rounding'));
+   /** The sheet's terms in force on its today: the number of days after a claim's date it is due by. */
+   readonly terms = computed(() => Number(this.onToday('terms') ?? STARTING['terms']));
+   /** The terms of each grade that has its own in force on the sheet's today (a claim added for it is due
+@@ -332,6 +337,29 @@ export class Session {
+     }
+   }
+ 
++  /** Record the sheet's rounding mode (half-up or half-even; blank: none) from a date (blank: the sheet's
++   *  today); an error message when refused. */
++  async setRounding(rounding: string, from = ''): Promise<string | null> {
++    const user = this.user();
++    const sid = this.sheetId();
++    const r = rounding.trim();
++    if (!user || !sid) return 'Load a sheet first.';
++    const d = from.trim();
++    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
++    if (r && r !== 'half-up' && r !== 'half-even') return 'Enter a rounding mode of half-up or half-even, or leave it blank.';
++    try {
++      const sheet = await firstValueFrom(
++        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/rounding`, { rounding: r || null, from: d || null }, {
++          headers: { 'X-User': user },
++        }),
++      );
++      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
++      return null;
++    } catch (e) {
++      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
++    }
++  }
++
+   /** Record the sheet's cap (blank: no cap) from a date (blank: the sheet's today); an error message when refused. */
+   async setCap(cap: string, from = ''): Promise<string | null> {
+     const user = this.user();
+@@ -536,9 +564,12 @@ export class Session {
+     return today === null ? null : this.valueOn(key, today);
+   }
+ 
+-  /** Whether a claim dated on a date rounds half up: it is before the policy date (the sheet's today when
+-   *  there is none); otherwise it rounds half to even. */
++  /** Whether a claim dated on a date rounds half up: by the rounding mode in force on that date; with none,
++   *  it is before the policy date (the sheet's today when there is none); otherwise it rounds half to even. */
+   roundsHalfUp(date: string): boolean {
++    const mode = this.valueOn('rounding', date);
++    if (mode === 'half-up') return true;
++    if (mode === 'half-even') return false;
+     const policy = this.policyDate() ?? this.today();
+     return policy !== null && date < policy;
+   }
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 1eb4b7e4e..5e41a7c4e 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -6,9 +6,10 @@ import { ROLES, Roles } from '../../core/roles';
+ import { PERMISSION_ACTIONS, Session } from '../../core/session';
+ 
+ // The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the proof threshold, each grade's proof threshold, the note threshold, the terms, each grade's
+-// terms and the late percent) are saved from a from-date (blank for the sheet's today), keeping the values
++// terms, the late percent and the rounding mode) are saved from a from-date (blank for the sheet's today), keeping the values
+ // already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
+-// floor (the least a claim's live due can be), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
++// floor (the least a claim's live due can be), the rounding mode (half-up or half-even: how a claim dated while it is in force rounds every
++// live figure; blank for none, rounding by the policy date), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
+ // the one in force on its date needs a proof to be settled or approved; blank for none), the note threshold (a claim whose due
+ // is above the one in force on its date cannot be opened with an empty note; blank for none), the terms (the business days after a claim's date it is due by, fixed
+ // when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), each grade's
+@@ -62,6 +63,24 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
+           (input)="setFrom('floor', value($event))"
+         />
+         <p>In force: <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
++        <label for="setting-rounding">Rounding mode (half-up or half-even; blank for none: by the policy date)</label>
++        <input
++          id="setting-rounding"
++          data-testid="setting-rounding"
++          [value]="rounding()"
++          (input)="rounding.set(value($event)); roundingTouched.set(true); error.set(null)"
++          (focus)="focused.set('rounding')"
++          (keydown.delete)="roundingTouched.set(true); error.set(null)"
++          (keydown.backspace)="roundingTouched.set(true); error.set(null)"
++        />
++        <label for="setting-rounding-from">Rounding mode from (YYYY-MM-DD; blank for the sheet's today)</label>
++        <input
++          id="setting-rounding-from"
++          data-testid="setting-rounding-from"
++          [value]="fromOf('rounding')"
++          (input)="setFrom('rounding', value($event))"
++        />
++        <p>In force: <strong data-testid="setting-rounding-current">{{ session.rounding() ?? '' }}</strong></p>
+         <label for="setting-cap">Cap (the most a person's due-total can be; blank for none)</label>
+         <input
+           id="setting-cap"
+@@ -402,6 +421,8 @@ export class SettingsPanel {
+   protected readonly limitTouched = signal(false);
+   protected readonly floor = signal('');
+   protected readonly floorTouched = signal(false);
++  protected readonly rounding = signal('');
++  protected readonly roundingTouched = signal(false);
+   protected readonly cap = signal('');
+   protected readonly capTouched = signal(false);
+   protected readonly proofThreshold = signal('');
+@@ -522,7 +543,7 @@ export class SettingsPanel {
+       // counts: it saves the blank). With none, the setting that may be blank whose field was focused last is
+       // saved; with none focused, those that differ from the value in force (a blank field clears one), else
+       // the clerk limit.
+-      const untouched = !this.limitTouched() && !this.floorTouched() && !this.capTouched() && !this.proofThresholdTouched()
++      const untouched = !this.limitTouched() && !this.floorTouched() && !this.roundingTouched() && !this.capTouched() && !this.proofThresholdTouched()
+         && !this.noteThresholdTouched()
+         && !this.termsTouched()
+         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
+@@ -540,6 +561,7 @@ export class SettingsPanel {
+       if (proofGrade) this.touchGradeProofThreshold(proofGrade);
+       const guess = untouched && pick === null;
+       const floor = this.floorTouched();
++      const rounding = this.roundingTouched() || pick === 'rounding' || (guess && this.fromOf('rounding').trim() !== '');
+       const cap = this.capTouched() || pick === 'cap'
+         || (guess && this.cap().trim() !== (this.session.cap() ?? ''));
+       const proofThreshold = this.proofThresholdTouched() || pick === 'proof-threshold'
+@@ -564,11 +586,12 @@ export class SettingsPanel {
+         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
+       const fiscalStartMonth = this.fiscalStartMonthTouched();
+       const limit = this.limitTouched() || pick === 'limit'
+-        || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
++        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
+           && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth)
+         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
+       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
+         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
++        ?? (rounding ? await this.session.setRounding(this.rounding(), this.fromOf('rounding')) : null)
+         ?? (cap ? await this.session.setCap(this.cap(), this.fromOf('cap')) : null)
+         ?? (proofThreshold
+           ? await this.session.setProofThreshold(this.proofThreshold(), this.fromOf('proof-threshold'))
+@@ -596,6 +619,8 @@ export class SettingsPanel {
+         this.limitTouched.set(false);
+         this.floor.set('');
+         this.floorTouched.set(false);
++        this.rounding.set('');
++        this.roundingTouched.set(false);
+         this.cap.set('');
+         this.capTouched.set(false);
+         this.proofThreshold.set('');
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 6e5b69df0..fc753d8c6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -39,6 +39,10 @@ public class Sheet {
+     public static final String CAP = "cap";
+     public static final String PROOF_THRESHOLD = "proof-threshold";
+     public static final String NOTE_THRESHOLD = "note-threshold";
++    public static final String ROUNDING = "rounding";
++    /** The rounding modes a sheet can set: each value, and how it rounds. */
++    public static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
++            "half-up", RoundingMode.HALF_UP, "half-even", RoundingMode.HALF_EVEN);
+     /** The actions the permission matrix covers, and the roles that may take each by the standing rule. */
+     public static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
+             "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
+@@ -72,7 +76,7 @@ public class Sheet {
+ 
+     /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
+      *  each grade's terms (terms-<grade>), each grade's grace days (grace-<grade>), the clerk limit, the cap, the proof threshold, each grade's proof
+-     *  threshold (proof-threshold-<grade>) and the note threshold. */
++     *  threshold (proof-threshold-<grade>), the note threshold and the rounding mode. */
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
+     private List<SheetSetting> settings = new ArrayList<>();
+@@ -403,9 +407,23 @@ public class Sheet {
+         return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
+     }
+ 
+-    /** How a claim dated on a date rounds its figures: half up before the policy date (the sheet's today
+-     *  when it has none), half to even on or after it. */
++    /** The rounding mode (half-up or half-even) in force on a date; none when none is set then. */
++    public String roundingModeOn(LocalDate date) {
++        return inForce(ROUNDING, date).map(SheetSetting::getValue).orElse(null);
++    }
++
++    /** The rounding mode in force on the sheet's today; none when none is set. */
++    public String getRoundingMode() {
++        return roundingModeOn(today);
++    }
++
++    /** How a claim dated on a date rounds its figures: by the rounding mode in force on that date; with none,
++     *  half up before the policy date (the sheet's today when it has none), half to even on or after it. */
+     public RoundingMode rounding(LocalDate date) {
++        String mode = roundingModeOn(date);
++        if (mode != null && ROUNDING_MODES.containsKey(mode)) {
++            return ROUNDING_MODES.get(mode);
++        }
+         LocalDate policy = policyDate == null ? today : policyDate;
+         return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 1b6ea9a31..6967504fc 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -31,14 +31,14 @@ import org.springframework.web.bind.annotation.RestController;
+ public class SheetController {
+ 
+     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
+-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off).
++     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date).
+      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
+      *  settings. */
+     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
+             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+             List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
+             boolean archived, String noteThreshold, LocalDate entryDate, Integer lastSettleBatch, String pot,
+-            String parent, int fiscalStartMonth, String alertThreshold) {
++            String parent, int fiscalStartMonth, String alertThreshold, String rounding) {
+ 
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(),
+@@ -54,11 +54,12 @@ public class SheetController {
+                     sheet.getEntryDate(), sheet.getLastSettleBatch() == 0 ? null : sheet.getLastSettleBatch(),
+                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParent(),
+                     sheet.getFiscalStartMonth(),
+-                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString());
++                    sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
++                    sheet.getRoundingMode());
+         }
+     }
+ 
+-    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade> or note-threshold)
++    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding)
+      *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
+     public record SettingView(String key, LocalDate from, String value) {
+ 
+@@ -119,6 +120,11 @@ public class SheetController {
+             LocalDate from) {
+     }
+ 
++    /** The sheet's rounding mode from a date (missing: the sheet's today): half-up or half-even; a missing or
++     *  blank one means none (a claim rounds by the policy date). */
++    public record RoundingRequest(@Pattern(regexp = "|half-up|half-even") String rounding, LocalDate from) {
++    }
++
+     /** The sheet's policy date; a missing one means the sheet's today. */
+     public record PolicyDateRequest(LocalDate policyDate) {
+     }
+@@ -291,6 +297,15 @@ public class SheetController {
+         return SheetView.of(service.setLatePct(id.trim(), user.trim(), request.latePct(), request.from()));
+     }
+ 
++    /** Change the sheet's rounding mode. */
++    @PutMapping("/{id}/settings/rounding")
++    public SheetView setRounding(@PathVariable @NotBlank @Size(max = 200) String id,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid RoundingRequest request) {
++        String mode = request.rounding() == null || request.rounding().isEmpty() ? null : request.rounding();
++        return SheetView.of(service.setRounding(id.trim(), user.trim(), mode, request.from()));
++    }
++
+     /** Change the sheet's policy date. */
+     @PutMapping("/{id}/settings/policy-date")
+     public SheetView setPolicyDate(@PathVariable @NotBlank @Size(max = 200) String id,
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 9226ba0b9..34385ea86 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -208,6 +208,13 @@ public class SheetService {
+         return setDated(id, user, Sheet.GRACE + "-" + grade, days == null ? null : days.toString(), from, true);
+     }
+ 
++    /** Record the sheet's rounding mode (half-up or half-even; none: rounding by the policy date) from a date
++     *  (none: the sheet's today), recording the figures it moves. */
++    @Transactional
++    public Sheet setRounding(String id, String user, String mode, LocalDate from) {
++        return setDated(id, user, Sheet.ROUNDING, mode, from, true);
++    }
++
+     /** Record the sheet's late percent from a date (none: the sheet's today), recording the figures it
+      *  moves. */
+     @Transactional
