@@ -255,6 +255,17 @@ export class Figures {
     return money(led.reduce((sum, c) => sum + this.crewDueCents(c), 0n));
   });
 
+  /** The signed-in user's watched total: the due-totals of the people they watch as the people list shows
+   *  them, added up, n/a skipped; 0.00 when they watch no one. */
+  readonly watchedDueTotal = computed(() =>
+    money(
+      this.people
+        .people()
+        .filter((p) => p.watched)
+        .reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n),
+    ),
+  );
+
   /** Each tag ever used on the sheet (on a claim or a person), sorted, with the due of the claims that
    *  count live and carry it, or whose person carries it, once each (a claim with two tags counts in both),
    *  not capped or trimmed. */
