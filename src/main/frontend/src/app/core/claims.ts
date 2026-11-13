@@ -704,6 +704,30 @@ export class Claims {
     }
   }
 
+  /** Part-settle an OPEN claim: split the amount off it as a split does and settle the new claim at once
+   *  (PENDING when over the clerk limit); an error message when refused. */
+  async settlePart(id: number, amount: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!/^\d+(\.\d{1,2})?$/.test(amount.trim())) return 'Enter the amount to settle, like 12.50.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ kept: Claim; split: Claim }>(
+          `${this.url(sid)}/claims/${id}/settle-part`,
+          { amount: amount.trim() },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        this.claims.update((cs) => [done.split, ...cs.map((c) => (c.id === id ? done.kept : c))]);
+      }
+      return null;
+    } catch (e) {
+      return failed('part-settle', e);
+    }
+  }
+
   /** Move a DRAFT, OPEN or PENDING claim to another person (a steward's action): it becomes their newest
    *  claim, unbound from any statement; an error message when refused. */
   async reassign(id: number, personId: number | null): Promise<string | null> {

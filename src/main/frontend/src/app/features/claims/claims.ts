@@ -264,6 +264,17 @@ import { VoidReasons } from '../../core/void-reasons';
           <button type="button" data-testid="claim-split" [disabled]="acting() === c.id" (click)="split(c)">
             Split<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
           </button>
+          <label [for]="'claim-settle-part-amount-' + c.id">Settle part</label>
+          <input
+            [id]="'claim-settle-part-amount-' + c.id"
+            data-testid="claim-settle-part-amount"
+            inputmode="decimal"
+            [value]="settlePartAmounts()[c.id] ?? ''"
+            (input)="setSettlePartAmount(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-settle-part" [disabled]="acting() === c.id" (click)="settlePart(c)">
+            Part-settle<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select
             [id]="'claim-reassign-to-' + c.id"
@@ -374,6 +385,8 @@ export class PersonClaims {
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The amount typed to part-settle each claim, by claim id. */
+  protected readonly settlePartAmounts = signal<Record<number, string>>({});
   /** The amount typed in each claim's row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The comment typed on each claim, by claim id. */
@@ -658,6 +671,22 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.split(c.id, this.splitAmounts()[c.id] ?? '');
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setSettlePartAmount(id: number, amount: string): void {
+    this.clearActionError(id);
+    this.settlePartAmounts.update((a) => ({ ...a, [id]: amount }));
+  }
+
+  protected async settlePart(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.settlePart(c.id, this.settlePartAmounts()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

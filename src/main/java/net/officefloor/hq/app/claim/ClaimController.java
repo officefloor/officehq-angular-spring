@@ -508,6 +508,16 @@ public class ClaimController {
         return new SplitView(ClaimView.of(done.kept()), ClaimView.of(done.split()));
     }
 
+    /** Part-settle an OPEN claim: split the amount off it and settle the new claim at once. */
+    @PostMapping("/claims/{claimId}/settle-part")
+    public SplitView settlePart(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid SplitRequest request) {
+        ClaimService.Split done = service.settlePart(sheetId.trim(), user.trim(), claimId, request.amount());
+        return new SplitView(ClaimView.of(done.kept()), ClaimView.of(done.split()));
+    }
+
     /** The person a claim is moved to. */
     public record ReassignRequest(@NotNull Long personId) {
     }

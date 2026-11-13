@@ -227,6 +227,13 @@ public class ClaimService {
     }
 
     private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String voidReason) {
+        return changeStatus(sheetId, user, claimId, to, voidReason, false);
+    }
+
+    /** Change a claim's status; a settle whose four-eyes and proof rules were already judged on another claim
+     *  (a part-settle's original) skips them. */
+    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String voidReason,
+            boolean judged) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDueBy());
         roles.require(sheetId, user, switch (to) {
@@ -249,11 +256,8 @@ public class ClaimService {
         if (to == ClaimStatus.VOID && !voidReason.isEmpty()) {
             reversed += " reason=" + voidReason;
         }
-        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
-            throw new ClaimSettlerException("The user who opened a claim cannot settle it.");
-        }
-        if (to == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
-            throw new ClaimSettlerException("The user who last edited a claim cannot settle it.");
+        if (to == ClaimStatus.SETTLED && !judged) {
+            refuseSettler(claim, user);
         }
         if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
             throw new ClaimDeferException("The claim is deferred until " + claim.getDeferredUntil() + ".");
@@ -277,7 +281,9 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
             BigDecimal due = figure == null ? null : charged(claim, person, figure);
-            refuseUnproved(claim, person, due);
+            if (!judged) {
+                refuseUnproved(claim, person, due);
+            }
             if (overLimit(sheetId, user, due)) {
                 to = ClaimStatus.PENDING;
             } else {
@@ -772,6 +778,27 @@ public class ClaimService {
         return new Split(kept, split);
     }
 
+    /** Part-settle an OPEN claim: split the amount off it as a split does, then settle the new claim as a settle
+     *  by the user does (PENDING when over the clerk limit). The four-eyes rules and the proof rule are judged
+     *  on the original claim, at its figure before the split; the new claim, opened by the user, is not held
+     *  to them. Refused whole when the split or the settle would be. */
+    @Transactional
+    public Split settlePart(String sheetId, String user, long claimId, BigDecimal amount) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDueBy());
+        roles.require(sheetId, user, "settle");
+        if (claim.getStatus() == ClaimStatus.OPEN) {
+            refuseSettler(claim, user);
+            Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                    .orElseThrow(PersonNotFoundException::new);
+            BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
+            refuseUnproved(claim, person, figure == null ? null : charged(claim, person, figure));
+        }
+        Split done = split(sheetId, user, claimId, amount);
+        Claim settled = changeStatus(sheetId, user, done.split().getId(), ClaimStatus.SETTLED, "", true);
+        return new Split(done.kept(), settled);
+    }
+
     /** What a bulk open did: how many it opened and refused, and the claims it opened. */
     public record BulkOpened(int opened, int refused, List<Claim> claims) {
     }
@@ -1041,6 +1068,16 @@ public class ClaimService {
                 + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
         rollup.recordChanges(sheetId, user, before);
         return new Stated(person, statements.findByPersonIdOrderByIdAsc(personId), theirs);
+    }
+
+    /** Refuse a settle by the user who opened the claim or last edited it. */
+    private static void refuseSettler(Claim claim, String user) {
+        if (user.equals(claim.getOpenedBy())) {
+            throw new ClaimSettlerException("The user who opened a claim cannot settle it.");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ClaimSettlerException("The user who last edited a claim cannot settle it.");
+        }
     }
 
     /** Refuse an edit of a claim whose editor another user has open. */
