@@ -1,0 +1,95 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 5c59d3d36..b2d099fbe 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -291,13 +291,14 @@ export class Claims {
+   }
+ 
+   /** A claim's due from its figure (the rate figure, or the one its statement bound), in cents: the figure
+-   *  with its late charge on top, at least the sheet's floor in force on the claim's date (the floor applied
+-   *  last); a correction takes neither charge nor floor, and a bound figure already holds both. */
++   *  at least the sheet's floor in force on the claim's date, with the late charge worked out on that floored
++   *  figure on top (the floor applied first); a correction takes neither charge nor floor, and a bound figure
++   *  already holds both. */
+   chargedCents(c: Claim, figureCents: bigint): bigint {
+     if (c.amount.startsWith('-') || bound(c)) return figureCents;
+-    const due = figureCents + this.lateCents(c, figureCents);
+     const floor = hundredths(this.session.floorOn(c.date));
+-    return due < floor ? floor : due;
++    const floored = figureCents < floor ? floor : figureCents;
++    return floored + this.lateCents(c, floored);
+   }
+ 
+   /** The date a claim's figures round by: its own, or for a correction the date of the claim of the same
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 451d46669..137c07925 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -246,8 +246,8 @@ export class Figures {
+     return { upTo30: money(sum.upTo30), upTo60: money(sum.upTo60), over60: money(sum.over60) };
+   });
+ 
+-  /** A claim's figure: its settled due, else the figure its person's last statement bound it to, else its live due at the rate in force on its date, an overdue claim's late charge on top, at
+-   *  least the floor;
++  /** A claim's figure: its settled due, else the figure its person's last statement bound it to, else its live due at the rate in force on its date, at least the floor, an overdue
++   *  claim's late charge on that floored figure on top;
+    *  nothing when it has no figure. */
+   figureCents(c: Claim, p: Person): bigint {
+     if (c.settledDue !== null) return hundredths(c.settledDue);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b32cac67e..523460910 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -639,9 +639,10 @@ public class ClaimService {
+         if (figure != null) {
+             Sheet sheet = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+             LocalDate lateFrom = sheet.lateFrom(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate());
++            BigDecimal floored = sheet.floored(figure, claim.getDate());
+             due = claim.isCorrection() ? figure
+-                    : sheet.floored(claim.isWaived() ? figure
+-                            : figure.add(sheet.lateCharge(figure, lateFrom, claim.getDate())), claim.getDate());
++                    : claim.isWaived() ? floored
++                    : floored.add(sheet.lateCharge(floored, lateFrom, claim.getDate()));
+         }
+         claim.setSettledDue(due);
+         logStatus(claim, person, user);
+@@ -1362,8 +1363,8 @@ public class ClaimService {
+         return figure == null ? null : charged(claim, person, figure);
+     }
+ 
+-    /** A claim's due from its figure: its late charge on the sheet's today on top while it is OPEN or
+-     *  PENDING, then at least the floor in force on its date (a correction has neither). */
++    /** A claim's due from its figure: at least the floor in force on its date, then its late charge on the
++     *  sheet's today, worked out on that floored figure, on top while it is OPEN or PENDING (a correction has neither). */
+     private BigDecimal charged(Claim claim, Person person, BigDecimal figure) {
+         return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, person, figure);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 096f0e5a7..774c8102f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -414,8 +414,8 @@ public class Rollup {
+                 .findFirst().map(Claim::getDate).orElse(claim.getDate());
+     }
+ 
+-    /** A claim's due from its figure: its late charge on top while it is OPEN or PENDING (only those go
+-     *  overdue), then at least the sheet's floor in force on its date. A settled claim's due is frozen (it
++    /** A claim's due from its figure: at least the sheet's floor in force on its date, then its late charge,
++     *  worked out on that floored figure, on top while it is OPEN or PENDING (only those go overdue). A settled claim's due is frozen (it
+      *  already holds the charge and floor fixed when it was settled), as is a bound one's (its statement bound
+      *  the due as shown then, charge and floor included); a correction has neither late charge nor floor, and a
+      *  waived claim no late charge. */
+@@ -423,8 +423,11 @@ public class Rollup {
+         if (claim.getSettledDue() != null || claim.isBound() || claim.isCorrection()) {
+             return figure;
+         }
+-        return sheet.map(s -> s.floored(claim.getStatus().isOpen() && !claim.isWaived()
+-                ? figure.add(s.lateCharge(figure, lateFrom(sheet, claim, person), claim.getDate())) : figure, claim.getDate()))
++        return sheet.map(s -> {
++                    BigDecimal floored = s.floored(figure, claim.getDate());
++                    return claim.getStatus().isOpen() && !claim.isWaived()
++                            ? floored.add(s.lateCharge(floored, lateFrom(sheet, claim, person), claim.getDate())) : floored;
++                })
+                 .orElse(figure);
+     }
+ 
