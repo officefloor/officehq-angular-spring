@@ -11,7 +11,7 @@ import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, rateOn } from '../rate
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change a claim's buttons ask for. */
-type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
+type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle';
 
 export interface Claim {
   id: number;
@@ -126,6 +126,7 @@ const PAST: Record<ClaimAction, string> = {
   approve: 'approved',
   reject: 'rejected',
   void: 'voided',
+  resettle: 're-settled',
 };
 
 /** An amount of 0.00 or more with up to two decimals. */
@@ -228,6 +229,14 @@ const NUMBER = /^\S+$/;
           </button>
           <button type="button" data-testid="claim-void" [attr.aria-label]="'Void claim ' + c.id" (click)="act(c, 'void')">
             Void
+          </button>
+          <button
+            type="button"
+            data-testid="claim-resettle"
+            [attr.aria-label]="'Re-settle claim ' + c.id"
+            (click)="act(c, 'resettle')"
+          >
+            Re-settle
           </button>
           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
           <select
@@ -398,7 +407,7 @@ export class PersonClaims {
     this.error.set(null);
   }
 
-  /** Open, settle, approve, reject (with the reason typed on its row) or void a claim; a clerk
+  /** Open, settle, approve, reject (with the reason typed on its row), void or re-settle a claim; a clerk
    *  settling a due above the clerk limit leaves it PENDING. A change its status does not allow, the
    *  user who opened it settling or approving it, anyone but a steward approving or rejecting it, or
    *  a reject with no reason, is refused on the row. */
@@ -425,8 +434,10 @@ export class PersonClaims {
         message:
           forbidden && action === 'settle'
             ? 'The claim could not be settled: whoever opened it cannot settle it.'
-            : forbidden
-              ? `The claim could not be ${PAST[action]}: only a steward who did not open it can.`
+            : forbidden && action === 'resettle'
+              ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
+              : forbidden
+                ? `The claim could not be ${PAST[action]}: only a steward who did not open it can.`
               : `The claim could not be ${PAST[action]}.`,
       });
     }

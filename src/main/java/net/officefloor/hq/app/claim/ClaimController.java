@@ -188,6 +188,15 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.reject(sheet, by, personId, id, request.reason())));
     }
 
+    /** Re-settle a SETTLED claim at the figure it would have today: a steward only. */
+    @PostMapping("/people/{personId}/claims/{id}/resettle")
+    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.resettle(sheet, by, personId, id)));
+    }
+
     /** Move a DRAFT, OPEN or PENDING claim to another person: a steward only. */
     @PostMapping("/people/{personId}/claims/{id}/reassign")
     public ClaimView reassign(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -227,8 +236,9 @@ public class ClaimController {
     }
 
     /** The user who opened a claim cannot settle or approve it, and only a steward approves or
-     *  rejects a PENDING claim or moves a claim to another person. */
-    @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class})
+     *  rejects a PENDING claim, moves a claim to another person or re-settles a SETTLED one. */
+    @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class,
+            ResettleRefusedException.class})
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public void ownClaim() {
     }

@@ -190,6 +190,31 @@ public class ClaimService {
         return saved;
     }
 
+    /** A steward re-settles a SETTLED claim: its settled due is frozen again at the figure it would
+     *  have today as an OPEN claim bound by no statement (today's rates, grades, floor and late
+     *  charge), and its status log gains a SETTLED line. Anyone else, a claim that is not SETTLED, or
+     *  one dated in a closed period, is refused. */
+    @Transactional
+    public Claim resettle(String sheetId, String user, Long personId, Long id) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResettleRefusedException(user);
+        }
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new StatusChangeRefusedException(claim.getStatus(), ClaimStatus.SETTLED);
+        }
+        refuseClosed(sheetId, claim.getDate());
+        String old = settledDueText(claim);
+        BigDecimal figure = liveFigureOf(sheetId, person, claim);
+        claim.setSettledDue(figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure, true)));
+        Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
+        audit.recordOnCommit(line("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber())
+                + " old=" + old + " new=" + settledDueText(saved));
+        return saved;
+    }
+
     /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
      *  number and date, loses any figure a statement bound it to (live again until its new person's
      *  next statement), and is listed as its new person's newest claim. Anyone else, a SETTLED or VOID
@@ -299,16 +324,17 @@ public class ClaimService {
     /** The due a claim shows: its figure plus its late charge; null when it has no figure. */
     public BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figureOf(sheetId, person, claim);
-        return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure));
+        return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure, claim.getStatus().isOpen()));
     }
 
     /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by is
      *  before the sheet's today) or a correction, else the late percent of the figure for every full 30 days
      *  it is overdue, rounded to two decimals as the claim's date decides (see roundingOf). Never bound by a statement: it follows the
-     *  sheet's today. */
-    private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure) {
+     *  sheet's today. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
+     *  claim as if it were still OPEN. */
+    private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure, boolean open) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (!claim.getStatus().isOpen() || claim.isCorrection()) {
+        if (!open || claim.isCorrection()) {
             return none;
         }
         long days = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId));
