@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.history.AsOf;
+import net.officefloor.hq.app.history.Preview;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -210,12 +211,19 @@ public class PersonController {
         this.asOf = asOf;
     }
 
+    /** A preview date, for a sheet that exists: what the people list reckons their grade and terms on. */
+    private LocalDate previewOn(String sheetId, LocalDate preview) {
+        service.today(sheetId);
+        return preview;
+    }
+
     /** The sheet's people in list order; as they stood at the end of a date when the screen
      *  views the sheet as of one. */
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
-            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestHeader(value = Preview.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate preview) {
         String id = sheetId.trim();
         Map<Long, List<Statement>> statements = asOf == null ? service.statements(id)
                 : this.asOf.statements(id, asOf).stream().collect(Collectors.groupingBy(Statement::getPersonId));
@@ -223,7 +231,8 @@ public class PersonController {
                 : this.asOf.patrons(id, asOf).stream().collect(Collectors.groupingBy(Patron::getPersonId,
                         Collectors.mapping(Patron::getPatronId, Collectors.toList())));
         List<Person> people = asOf == null ? service.list(id) : this.asOf.people(id, asOf);
-        LocalDate today = asOf == null ? service.today(id) : this.asOf.today(id, asOf);
+        LocalDate today = asOf != null ? this.asOf.today(id, asOf) : preview != null ? previewOn(id, preview)
+                : service.today(id);
         Set<Long> watched = asOf == null ? service.watchedBy(id, user.trim())
                 : this.asOf.watches(id, asOf).stream().filter(w -> w.getUser().equals(user.trim()))
                         .map(Watch::getPersonId).collect(Collectors.toSet());

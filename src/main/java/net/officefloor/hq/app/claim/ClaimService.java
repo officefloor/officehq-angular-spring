@@ -1125,6 +1125,12 @@ public class ClaimService {
             claim.setStated(true, due);
             counted++;
         }
+        // the parts they hold of other people's claims count toward their due-total, as the rollup counts them
+        BigDecimal held = rollup.heldParts(sheetId, personId);
+        if (held != null) {
+            total = total.add(held);
+            figure = true;
+        }
         boolean rated = Rollup.inForce(rates.findWithAncestors(sheetId, sheetRows.ancestors(sheetId)), person.gradeOn(today), today).isPresent();
         BigDecimal summed = total;
         BigDecimal cutTotal = rollup.cutTotals(sheetId).get(personId);

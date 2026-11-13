@@ -135,6 +135,22 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
           @if (asOfError(); as err) {
             <p role="alert" data-testid="asof-error">{{ err }}</p>
           }
+          <p>Preview: <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong></p>
+          <form (submit)="setPreview($event)">
+            <label for="preview-date">Preview the sheet as if today were</label>
+            <input
+              id="preview-date"
+              data-testid="preview-date"
+              placeholder="YYYY-MM-DD"
+              [value]="previewInput()"
+              (input)="previewInput.set(value($event)); previewError.set(null)"
+            />
+            <button type="submit" data-testid="preview-set" [disabled]="loading()">Set preview</button>
+            <button type="button" data-testid="preview-clear" [disabled]="loading()" (click)="clearPreview()">Clear preview</button>
+          </form>
+          @if (previewError(); as err) {
+            <p role="alert" data-testid="preview-error">{{ err }}</p>
+          }
         }
       </section>
       @if (session.sheetId()) {
@@ -216,6 +232,8 @@ export class Home {
   protected readonly clonedTo = signal<string | null>(null);
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal<string | null>(null);
+  protected readonly previewInput = signal('');
+  protected readonly previewError = signal<string | null>(null);
   /** The locale chosen in the select; follows the user's saved locale each time it is re-read. */
   protected readonly localeInput = linkedSignal(() => this.userLocale.locale());
   protected readonly localeError = signal<string | null>(null);
@@ -295,6 +313,38 @@ export class Home {
     try {
       this.session.asOf.set(date);
       this.asOfError.set(await this.loadSheet(sid));
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  /** Preview the sheet on a date on this screen only: everything is re-read over the sheet as it is now, as if
+   *  its today were that date. */
+  protected async setPreview(e: Event): Promise<void> {
+    e.preventDefault();
+    const d = this.previewInput().trim();
+    this.previewError.set(null);
+    if (!isDate(d)) {
+      this.previewError.set('Enter a preview date as YYYY-MM-DD.');
+      return;
+    }
+    await this.showPreview(d);
+  }
+
+  /** Show the sheet on its own today again. */
+  protected async clearPreview(): Promise<void> {
+    this.previewError.set(null);
+    await this.showPreview(null);
+  }
+
+  private async showPreview(date: string | null): Promise<void> {
+    const sid = this.session.sheetId();
+    if (sid === null || this.loading()) return;
+    this.todayError.set(null);
+    this.loading.set(true);
+    try {
+      this.session.preview.set(date);
+      this.previewError.set(await this.loadSheet(sid));
     } finally {
       this.loading.set(false);
     }

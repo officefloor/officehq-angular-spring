@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.history.AsOf;
+import net.officefloor.hq.app.history.Preview;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -53,11 +54,15 @@ public class ConsolidatedController {
     @Transactional(readOnly = true)
     public ConsolidatedView figures(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
-            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestHeader(value = Preview.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate preview) {
         String sid = sheetId.trim();
-        Rollup.Consolidated c = rollup.descendants(sid, asOf);
-        Rollup.Snapshot own = asOf == null ? rollup.take(sid) : rollup.take(sid, asOf);
-        Rollup.Breakdown ownBreakdown = rollup.breakdown(sid, asOf, own);
+        LocalDate previewed = asOf == null ? preview : null;
+        Rollup.Consolidated c = rollup.descendants(sid, asOf, previewed);
+        Rollup.Snapshot own = asOf != null ? rollup.take(sid, asOf)
+                : previewed != null ? rollup.preview(sid, previewed) : rollup.take(sid);
+        Rollup.Breakdown ownBreakdown = previewed != null ? rollup.breakdown(sid, own, previewed)
+                : rollup.breakdown(sid, asOf, own);
         return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString(),
                 own.people().size(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString(),
                 shown(c.gradeDueTotals()), counted(c.statusCounts()),

@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import net.officefloor.hq.app.history.AsOf;
+import net.officefloor.hq.app.history.Preview;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -39,14 +40,17 @@ public class GradeDueTotalsController {
     @Transactional(readOnly = true)
     public ResponseEntity<Map<String, String>> gradeDueTotals(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
-            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestHeader(value = Preview.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate preview) {
         String sid = sheetId.trim();
         if (!sheets.existsById(sid)) {
             return ResponseEntity.notFound().build();
         }
-        Rollup.Snapshot snapshot = asOf == null ? rollup.take(sid) : rollup.take(sid, asOf);
+        LocalDate previewed = asOf == null ? preview : null;
+        Rollup.Snapshot snapshot = asOf != null ? rollup.take(sid, asOf)
+                : previewed != null ? rollup.preview(sid, previewed) : rollup.take(sid);
         Map<String, String> shown = new LinkedHashMap<>();
-        rollup.breakdown(sid, asOf, snapshot).gradeDueTotals().forEach((g, d) -> shown.put(g, d.toPlainString()));
+        (previewed != null ? rollup.breakdown(sid, snapshot, previewed) : rollup.breakdown(sid, asOf, snapshot)).gradeDueTotals().forEach((g, d) -> shown.put(g, d.toPlainString()));
         return ResponseEntity.ok(shown);
     }
 }

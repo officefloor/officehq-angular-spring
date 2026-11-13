@@ -154,7 +154,7 @@ export class RatesPanel {
   protected readonly saving = signal(false);
   /** The months (YYYY-MM) of the sheet's today's calendar year; none before a today is known. */
   protected readonly months = computed(() => {
-    const year = this.session.today()?.slice(0, 4);
+    const year = this.session.shownToday()?.slice(0, 4);
     return year ? Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`) : [];
   });
 

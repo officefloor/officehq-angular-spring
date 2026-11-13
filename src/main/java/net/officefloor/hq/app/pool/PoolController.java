@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.history.AsOf;
+import net.officefloor.hq.app.history.Preview;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
@@ -328,10 +329,11 @@ public class PoolController {
     @Transactional(readOnly = true)
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
-            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+            @RequestHeader(value = AsOf.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf,
+            @RequestHeader(value = Preview.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate preview) {
         String sid = sheetId.trim();
         if (asOf == null) {
-            return views(sid);
+            return views(sid, preview);
         }
         return withHistory(viewsAsOf(sid, asOf), this.asOf.periods(sid, asOf), asOf, d -> viewsAsOf(sid, d));
     }
@@ -366,7 +368,13 @@ public class PoolController {
     }
 
     private List<PoolView> views(String sheetId) {
-        LocalDate today = sheets.today(sheetId);
+        return views(sheetId, null);
+    }
+
+    /** The pools now, reckoned on a preview date as the sheet's today when one is given. */
+    private List<PoolView> views(String sheetId, LocalDate preview) {
+        LocalDate real = sheets.today(sheetId);
+        LocalDate today = preview != null ? preview : real;
         return withHistory(PoolView.of(service.list(sheetId), crews.list(sheetId), people(sheetId), sheets.pot(sheetId),
                 today), periods.list(sheetId), today, d -> viewsAsOf(sheetId, d));
     }

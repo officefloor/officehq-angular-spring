@@ -205,7 +205,7 @@ export class Claims {
   /** Whether a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by no
    *  statement, and its person's retirement date is reached on the sheet's today. A hold no longer does. */
   private readonly leftOut = computed(() => {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     const byId = new Map(this.people.people().map((p) => [p.id, p]));
     return (c: Claim): boolean => {
       const p = byId.get(c.personId);
@@ -217,7 +217,7 @@ export class Claims {
   /** Whether a retirement leaves a claim out of claimed: it is OPEN or PENDING, bound by no statement,
    *  and its person's retirement date is reached on the sheet's today. */
   private readonly retiredOut = computed(() => {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     const byId = new Map(this.people.people().map((p) => [p.id, p]));
     return (c: Claim): boolean => {
       const p = byId.get(c.personId);
@@ -258,7 +258,7 @@ export class Claims {
   /** Whether a claim is overdue: OPEN or PENDING, not deferred, with its due-by plus its grace (see
    *  lateFrom) before the sheet's today. */
   overdue(c: Claim): boolean {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     return isOpen(c) && !this.deferred(c) && today !== null && this.lateFrom(c) < today;
   }
 
@@ -266,7 +266,7 @@ export class Claims {
    *  REVIEW, as its status log records it) plus the sheet's review SLA is before the sheet's today. Never
    *  while the sheet has no SLA. */
   reviewLate(c: Claim): boolean {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     const sla = this.session.reviewSla();
     if (c.status !== 'REVIEW' || today === null || sla === null) return false;
     const went = c.statusLog.filter((l) => l.status === 'REVIEW').at(-1);
@@ -276,14 +276,14 @@ export class Claims {
   /** Whether a claim shows as deferred: its deferred-until date is after the sheet's today, whatever its
    *  status (a deferred claim voided keeps showing it). Only an OPEN one is left out of totals (`deferred`). */
   deferredShown(c: Claim): boolean {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
   /** Whether a claim is deferred: OPEN, with a deferred-until date after the sheet's today. Until then it
    *  counts in no total, is not overdue and cannot be settled. */
   deferred(c: Claim): boolean {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
@@ -292,7 +292,7 @@ export class Claims {
    *  (that date plus 30, 60, 90 ... days) of the figure plus the charges of the boundaries before it, rounded to cents as its date rounds, the charges added up; none otherwise, and none
    *  on a correction or a waived claim. Frozen into the due when bound by a statement or settled. */
   lateCents(c: Claim, figureCents: bigint): bigint {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     if (!this.overdue(c) || today === null || c.amount.startsWith('-') || c.waived) return 0n;
     const from = this.lateFrom(c);
     const periods = Math.floor(daysBetween(from, today) / 30);

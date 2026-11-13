@@ -280,6 +280,14 @@ export class Session {
    *  the end of that date, the date standing in for the sheet's today, and every change refused; null when
    *  the screen shows the sheet as it is. Kept for this screen only, across sheet loads. */
   readonly asOf = signal<string | null>(null);
+  /** The date (YYYY-MM-DD) this user's screen previews the sheet on, while set: every figure over the sheet's
+   *  current records as if the sheet's today were that date, while every change still uses the real today
+   *  and nothing a change of today does happens; null when not previewing. Kept for this screen only, across
+   *  sheet loads. */
+  readonly preview = signal<string | null>(null);
+  /** The today every figure on the screen is reckoned on: the preview date while one is set, else the sheet's
+   *  today. */
+  readonly shownToday = computed(() => this.preview() ?? this.today());
 
   /** The sheet load running now (resolved when none): what reads the loaded rows at once, an export, waits
    *  for it, so a load started by setting or clearing the as-of date is not read half done. */
@@ -730,7 +738,7 @@ export class Session {
   }
 
   private onToday(key: string): string | null {
-    const today = this.today();
+    const today = this.shownToday();
     return today === null ? null : this.valueOn(key, today);
   }
 
@@ -740,7 +748,7 @@ export class Session {
     const mode = this.valueOn('rounding', date);
     if (mode === 'half-up') return true;
     if (mode === 'half-even') return false;
-    const policy = this.policyDate() ?? this.today();
+    const policy = this.policyDate() ?? this.shownToday();
     return policy !== null && date < policy;
   }
 

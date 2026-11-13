@@ -21,6 +21,7 @@ import net.officefloor.hq.app.claim.StatusChange;
 import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.history.AsOf;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -81,10 +82,11 @@ public class Rollup {
     private final PoolRepository pools;
     private final CrewRepository crews;
     private final AsOf asOf;
+    private final History history;
     private final Audit audit;
 
     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
-            PoolRepository pools, CrewRepository crews, AsOf asOf, Audit audit) {
+            PoolRepository pools, CrewRepository crews, AsOf asOf, History history, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.rates = rates;
@@ -92,6 +94,7 @@ public class Rollup {
         this.pools = pools;
         this.crews = crews;
         this.asOf = asOf;
+        this.history = history;
         this.audit = audit;
     }
 
@@ -103,6 +106,25 @@ public class Rollup {
                 rates.findWithAncestors(sheetId, sheets.ancestors(sheetId)),
                 cutTotals(sheet, sheetPeople, pools.findBySheetIdOrderByIdAsc(sheetId),
                         crews.findBySheetIdOrderByIdAsc(sheetId)));
+    }
+
+    /** The sheet's figures over its rows now, a preview date standing in for its today; none of it kept. */
+    public Snapshot preview(String sheetId, LocalDate today) {
+        Optional<Sheet> sheet = previewed(sheetId, today);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        return take(sheet, sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
+                rates.findWithAncestors(sheetId, sheets.ancestors(sheetId)),
+                cutTotals(sheet, sheetPeople, pools.findBySheetIdOrderByIdAsc(sheetId),
+                        crews.findBySheetIdOrderByIdAsc(sheetId)));
+    }
+
+    /** A detached copy of the sheet as it is now, a preview date its today. */
+    private Optional<Sheet> previewed(String sheetId, LocalDate today) {
+        return sheets.findById(sheetId).map(s -> {
+            Sheet copy = history.copy(s, Sheet.class);
+            copy.setToday(today);
+            return copy;
+        });
     }
 
     /** Each person's cut total now, by person id. */
@@ -215,6 +237,30 @@ public class Rollup {
         return new Snapshot(figures, claimedTotal, trimmed(dues), trimmed(overdues), sheetOverdueCount);
     }
 
+    /** The parts a person holds of other people's claims that count now, at the figures their due-totals count,
+     *  added up; null when they hold no part of a claim with a figure. */
+    public BigDecimal heldParts(String sheetId, long personId) {
+        Optional<Sheet> sheet = sheets.findById(sheetId);
+        LocalDate today = sheet.map(Sheet::getToday).orElse(null);
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        List<Rate> sheetRates = rates.findWithAncestors(sheetId, sheets.ancestors(sheetId));
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> byId.put(p.getId(), p));
+        BigDecimal held = null;
+        for (Claim claim : sheetClaims) {
+            Optional<ClaimShare> share = claim.shareOf(personId);
+            Person owner = byId.get(claim.getPersonId());
+            if (share.isEmpty() || owner == null || !countsClaimed(claim, owner, today)) {
+                continue;
+            }
+            BigDecimal figure = figure(sheet, claim, owner, sheetClaims, sheetRates);
+            if (figure != null) {
+                held = (held == null ? ZERO : held).add(share.get().part(figure));
+            }
+        }
+        return held;
+    }
+
     /** A claim's figure as its person's due-total counts it: its settled due, else the figure its statement
      *  bound, else its live due, charged; none when it has none. */
     private static BigDecimal figure(Optional<Sheet> sheet, Claim claim, Person person, List<Claim> sheetClaims,
@@ -241,6 +287,12 @@ public class Rollup {
     /** The figures of every descendant of a sheet, as {@link #descendants(String)}, each sheet as it stood at the
      *  end of a date, that date its today; as they are now with no date. */
     public Consolidated descendants(String sheetId, LocalDate date) {
+        return descendants(sheetId, date, null);
+    }
+
+    /** The figures of every descendant of a sheet, as {@link #descendants(String, LocalDate)}; over their rows now
+     *  with a preview date standing in for each one's today when one is given (and no as-of date). */
+    public Consolidated descendants(String sheetId, LocalDate date, LocalDate preview) {
         Set<String> seen = new LinkedHashSet<>(List.of(sheetId));
         List<String> todo = new ArrayList<>(List.of(sheetId));
         int peopleCount = 0;
@@ -256,12 +308,14 @@ public class Rollup {
                     continue;
                 }
                 todo.add(child.getId());
-                Snapshot snapshot = date == null ? take(child.getId()) : take(child.getId(), date);
+                Snapshot snapshot = date != null ? take(child.getId(), date)
+                        : preview != null ? preview(child.getId(), preview) : take(child.getId());
                 peopleCount += snapshot.people().size();
                 due = due.add(snapshot.dueTotal());
                 overdue = overdue.add(snapshot.overdueTotal());
                 overdueCount += snapshot.overdueCount();
-                Breakdown breakdown = breakdown(child.getId(), date, snapshot);
+                Breakdown breakdown = date == null && preview != null ? breakdown(child.getId(), snapshot, preview)
+                        : breakdown(child.getId(), date, snapshot);
                 breakdown.gradeDueTotals().forEach((g, d) -> gradeDues.merge(g, d, BigDecimal::add));
                 breakdown.statusCounts().forEach((st, n) -> statusCounts.merge(st, n, Integer::sum));
                 members.addAll(members(child.getId(), date, snapshot));
@@ -292,6 +346,15 @@ public class Rollup {
     public Breakdown breakdown(String sheetId, LocalDate date, Snapshot snapshot) {
         LocalDate today = (date == null ? sheets.findById(sheetId) : Optional.of(asOf.sheet(sheetId, date)))
                 .map(Sheet::getToday).orElse(null);
+        return breakdown(sheetId, date, snapshot, today);
+    }
+
+    /** A sheet's breakdown by grade and status over its rows now, from its snapshot with a preview date as its today. */
+    public Breakdown breakdown(String sheetId, Snapshot snapshot, LocalDate preview) {
+        return breakdown(sheetId, null, snapshot, preview);
+    }
+
+    private Breakdown breakdown(String sheetId, LocalDate date, Snapshot snapshot, LocalDate today) {
         List<Person> sheetPeople = date == null ? people.findBySheetIdOrderByPositionAscIdAsc(sheetId)
                 : asOf.people(sheetId, date);
         List<Claim> sheetClaims = date == null ? claims.findBySheetIdOrderByIdDesc(sheetId) : asOf.claims(sheetId, date);

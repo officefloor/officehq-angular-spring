@@ -170,4 +170,9 @@ public class History {
     public <T> Optional<T> findAsOf(Class<T> type, String sheetId, Object id, LocalDate date) {
         return Optional.ofNullable(asOf(type, sheetId, date).get(String.valueOf(id)));
     }
+
+    /** A detached copy of a row as it is now, for a screen to reckon on without touching the stored one. */
+    public <T> T copy(T entity, Class<T> type) {
+        return json.readValue(json.writeValueAsString(entity), type);
+    }
 }

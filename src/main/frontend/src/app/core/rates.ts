@@ -70,7 +70,7 @@ export class Rates {
 
   /** A grade's rate in force on the sheet's today, with two decimals, or n/a when it has none. */
   current(grade: string): string {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     return (today ? this.inForce(grade, today)?.rate : undefined) ?? NO_RATE;
   }
 

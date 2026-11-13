@@ -77,7 +77,7 @@ export class Figures {
       if (this.hasFigure(c)) keptFigure = true;
       sum += part;
     }
-    const today = this.session.today();
+    const today = this.session.shownToday();
     const rated = today ? this.rates.inForce(gradeOn(p.grades, today), today) !== undefined : false;
     return rated || keptFigure ? sum : null;
   }
@@ -343,7 +343,7 @@ export class Figures {
    *  or more. All 0 with no today. */
   agedCents(p: Person): { upTo30: bigint; upTo60: bigint; over60: bigint } {
     const aged = { upTo30: 0n, upTo60: 0n, over60: 0n };
-    const today = this.session.today();
+    const today = this.session.shownToday();
     if (!today) return aged;
     const from30 = addDays(today, -30);
     const from60 = addDays(today, -60);
@@ -414,7 +414,7 @@ export class Figures {
   /** Whether a person is active: they have an OPEN or PENDING claim that counts live dated within the
    *  30 days up to and including the sheet's today. */
   active(p: Person): boolean {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     if (!today) return false;
     const from = addDays(today, -29);
     return this.claims.live().some((c) => c.personId === p.id && isOpen(c) && c.date >= from && c.date <= today);
@@ -423,7 +423,7 @@ export class Figures {
   /** A person's settled figure: the frozen dues of their SETTLED claims dated within the 90 days up to
    *  and including the sheet's today, added up; 0 with none. */
   recentSettledCents(p: Person): bigint {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     if (!today) return 0n;
     const from = addDays(today, -89);
     return this.claims
@@ -434,7 +434,7 @@ export class Figures {
 
   /** The grade in force on the sheet's today, the one the list shows. */
   gradeToday(p: Person): string {
-    const today = this.session.today();
+    const today = this.session.shownToday();
     return today ? gradeOn(p.grades, today) : p.grade;
   }
 
