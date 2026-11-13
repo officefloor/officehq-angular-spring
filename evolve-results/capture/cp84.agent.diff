@@ -1,0 +1,231 @@
+diff --git a/src/main/frontend/src/app/features/holidays/holidays.ts b/src/main/frontend/src/app/features/holidays/holidays.ts
+index 018d0b32f..0806bb2b6 100644
+--- a/src/main/frontend/src/app/features/holidays/holidays.ts
++++ b/src/main/frontend/src/app/features/holidays/holidays.ts
+@@ -50,7 +50,7 @@ export class HolidayStore {
+   }
+ }
+ 
+-// The sheet's holidays, which a claim's due-by is moved past when it is added, and the entry that
++// The sheet's holidays, which a claim's terms skip as non-business days when it is added, and the entry that
+ // adds one.
+ @Component({
+   selector: 'app-holidays',
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 075ed9f48..c7b8783f4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -25,7 +25,7 @@ interface Person {
+   grades: PersonGrade[];
+   /** Raised on every save; an editor saves only the version it loaded. */
+   version: number;
+-  /** The person's own terms in days, which fix the due-by of their claims; null for none. */
++  /** The person's own terms in business days, which fix the due-by of their claims; null for none. */
+   terms: number | null;
+   /** How many statements were taken for the person. */
+   statementCount: number;
+@@ -100,7 +100,7 @@ interface StatementTaken {
+           [value]="gradeFrom()"
+           (input)="gradeFrom.set(value($event)); error.set(null)"
+         />
+-        <label for="person-form-terms">Terms (days)</label>
++        <label for="person-form-terms">Terms (business days)</label>
+         <input
+           id="person-form-terms"
+           data-testid="person-form-terms"
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index bffc1f332..661075c24 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -37,7 +37,7 @@ interface SettingsView {
+   floor: string;
+   /** The cap (two decimals): the most a person's due-total can be; null when there is none. */
+   cap: string | null;
+-  /** The terms in whole days: a claim is due by its date plus them. */
++  /** The terms in whole days: a claim is due by the business day that many after its date. */
+   terms: number;
+   /** The late percent (two decimals): an overdue claim's due gains it of its figure for every full
+    *  30 days it is overdue. */
+@@ -566,7 +566,7 @@ export class SettingStore {
+           [value]="noteThresholdFrom()"
+           (input)="noteThresholdFrom.set(value($event)); settingsError.set(null)"
+         />
+-        <label for="setting-terms">Terms (days)</label>
++        <label for="setting-terms">Terms (business days)</label>
+         <input
+           id="setting-terms"
+           data-testid="setting-terms"
+@@ -583,7 +583,7 @@ export class SettingStore {
+           (input)="termsFrom.set(value($event)); settingsError.set(null)"
+         />
+         @for (g of grades; track g) {
+-          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
++          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (business days)</label>
+           <input
+             [id]="'setting-terms-' + g"
+             [attr.data-testid]="'setting-terms-' + g"
+diff --git a/src/main/java/db/migration/V54__business_day_terms.java b/src/main/java/db/migration/V54__business_day_terms.java
+new file mode 100644
+index 000000000..2816f461d
+--- /dev/null
++++ b/src/main/java/db/migration/V54__business_day_terms.java
+@@ -0,0 +1,64 @@
++package db.migration;
++
++import java.sql.Connection;
++import java.sql.PreparedStatement;
++import java.sql.ResultSet;
++import java.sql.Statement;
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++import net.officefloor.hq.app.holiday.HolidayService;
++import org.flywaydb.core.api.migration.BaseJavaMigration;
++import org.flywaydb.core.api.migration.Context;
++
++/**
++ * Terms count business days: every claim's due-by (and every saved state of it in claim_history)
++ * becomes the terms-th business day after its date, skipping weekends and the holidays on its sheet
++ * now. The terms a claim was fixed with are those its due-by was worked out from: the days from its
++ * date to its due-by, less the holidays directly before the due-by it was moved past.
++ */
++public class V54__business_day_terms extends BaseJavaMigration {
++
++    @Override
++    public void migrate(Context context) throws Exception {
++        Connection connection = context.getConnection();
++        Map<String, Set<LocalDate>> holidays = new HashMap<>();
++        try (Statement select = connection.createStatement();
++                ResultSet rs = select.executeQuery("SELECT sheet_id, holiday_date FROM holiday")) {
++            while (rs.next()) {
++                holidays.computeIfAbsent(rs.getString(1), k -> new HashSet<>())
++                        .add(rs.getObject(2, LocalDate.class));
++            }
++        }
++        redo(connection, holidays, "claim");
++        redo(connection, holidays, "claim_history");
++    }
++
++    private static void redo(Connection connection, Map<String, Set<LocalDate>> holidays, String table)
++            throws Exception {
++        try (Statement select = connection.createStatement();
++                ResultSet rs = select.executeQuery("SELECT id, sheet_id, claim_date, due_by FROM " + table);
++                PreparedStatement update = connection.prepareStatement(
++                        "UPDATE " + table + " SET due_by = ? WHERE id = ?")) {
++            while (rs.next()) {
++                Set<LocalDate> days = holidays.getOrDefault(rs.getString(2), Set.of());
++                LocalDate date = rs.getObject(3, LocalDate.class);
++                LocalDate dueBy = rs.getObject(4, LocalDate.class);
++                LocalDate fixed = dueBy;
++                while (fixed.isAfter(date) && days.contains(fixed.minusDays(1))) {
++                    fixed = fixed.minusDays(1);
++                }
++                int terms = (int) Math.max(0, ChronoUnit.DAYS.between(date, fixed));
++                LocalDate business = HolidayService.businessDaysAfter(days, date, terms);
++                if (!business.equals(dueBy)) {
++                    update.setObject(1, business);
++                    update.setLong(2, rs.getLong(1));
++                    update.executeUpdate();
++                }
++            }
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index cec3ab336..63b0f3a1a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -78,9 +78,9 @@ public class ClaimService {
+ 
+     /** Add a claim for a person; a missing date takes the sheet's entry date, else its today. One added while the period
+      *  its due-by falls in is soft-closed is a late entry, and one whose due-by falls in a closed period is refused.
+-     *  Its due-by is fixed now: its
+-     *  date plus the person's own terms, else the terms in force on that date for the person's grade then, moved past
+-     *  the sheet's holidays now. A negative amount is a
++     *  Its due-by is fixed now: the
++     *  business day after its date that is the person's own terms, else the terms in force on that date for the
++     *  person's grade then, counted skipping weekends and the sheet's holidays now. A negative amount is a
+      *  correction and must name a SETTLED claim of the person it corrects. */
+     @Transactional
+     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+@@ -795,13 +795,13 @@ public class ClaimService {
+         return note == null ? "" : note.trim();
+     }
+ 
+-    /** The due-by of a claim of the person dated on a date, fixed as it is added: its date plus its
+-     *  terms, moved past the holidays on the sheet now to the next day that is not one. */
++    /** The due-by of a claim of the person dated on a date, fixed as it is added: the terms-th
++     *  business day after its date, skipping weekends and the holidays on the sheet now. */
+     private LocalDate dueBy(String sheetId, Person person, LocalDate on) {
+-        return holidays.pastHolidays(sheetId, on.plusDays(termsFor(sheetId, person, on)));
++        return holidays.businessDaysAfter(sheetId, on, termsFor(sheetId, person, on));
+     }
+ 
+-    /** The terms in days a claim of the person dated on a date takes: the person's own, else their
++    /** The terms in business days a claim of the person dated on a date takes: the person's own, else their
+      *  grade's in force then, else the sheet's. */
+     private int termsFor(String sheetId, Person person, LocalDate on) {
+         return person.getTerms() != null ? person.getTerms()
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index f9f4b4929..69bd9bf14 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.holiday;
+ 
++import java.time.DayOfWeek;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Set;
+@@ -9,7 +10,8 @@ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** The holidays on a sheet: dates a claim's due-by, fixed when the claim is added, is moved past. */
++/** The holidays on a sheet: days a claim's due-by, fixed when the claim is added, does not count
++ *  among the business days of its terms. */
+ @Service
+ public class HolidayService {
+ 
+@@ -41,14 +43,34 @@ public class HolidayService {
+         return saved;
+     }
+ 
+-    /** The date moved past the sheet's holidays: the date itself when it is not a holiday, else the
+-     *  next day after it that is not. */
+-    public LocalDate pastHolidays(String sheetId, LocalDate date) {
++    /** The terms-th business day after a date: counting forward from the day after it, skipping
++     *  every Saturday, Sunday and holiday on the sheet now. With no terms, the date itself when it
++     *  is a business day, else the next one. */
++    public LocalDate businessDaysAfter(String sheetId, LocalDate date, int terms) {
+         Set<LocalDate> days = list(sheetId).stream().map(Holiday::getDate).collect(Collectors.toSet());
++        return businessDaysAfter(days, date, terms);
++    }
++
++    /** The terms-th business day after a date, skipping weekends and the given holidays. */
++    public static LocalDate businessDaysAfter(Set<LocalDate> holidays, LocalDate date, int terms) {
+         LocalDate day = date;
+-        while (days.contains(day)) {
++        if (terms <= 0) {
++            while (!isBusinessDay(holidays, day)) {
++                day = day.plusDays(1);
++            }
++            return day;
++        }
++        for (int counted = 0; counted < terms; ) {
+             day = day.plusDays(1);
++            if (isBusinessDay(holidays, day)) {
++                counted++;
++            }
+         }
+         return day;
+     }
++
++    private static boolean isBusinessDay(Set<LocalDate> holidays, LocalDate day) {
++        DayOfWeek dow = day.getDayOfWeek();
++        return dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY && !holidays.contains(day);
++    }
+ }
