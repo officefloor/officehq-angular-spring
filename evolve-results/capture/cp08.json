@@ -1,0 +1,80 @@
+{
+  "checkpoint": 8,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp08_workflow",
+  "phase": "early",
+  "type": "mutative",
+  "mutates": [
+    5,
+    6,
+    7
+  ],
+  "replaced_tests": [
+    "cp05_claims.spec.ts::claims",
+    "cp05_claims.spec.ts::claims scenario 1",
+    "cp05_claims.spec.ts::claims scenario 2",
+    "cp05_claims.spec.ts::claims scenario 3",
+    "cp06_audit.spec.ts::audit scenario 1",
+    "cp06_audit.spec.ts::audit scenario 2",
+    "cp06_audit.spec.ts::audit scenario 3",
+    "cp07_rates-and-due.spec.ts::rates and due",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+    "cp07_rates-and-due.spec.ts::rates and due scenario 3"
+  ],
+  "request": {
+    "spec": "A claim now has a status. It starts as DRAFT; it can be opened (OPEN) and then settled\n(SETTLED); a DRAFT or OPEN claim can be voided (VOID). A SETTLED or VOID claim cannot change\nstatus, and the buttons for a change that is not allowed are refused with an error on the claim.\nOnly OPEN and SETTLED claims count toward claimed, due-total and every total; drafts and voided\nclaims do not. Show each claim's status. Every status change writes an audit line: CLAIM_OPENED,\nCLAIM_SETTLED or CLAIM_VOIDED, each with person=<name> amount=<amount> date=<date>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim now has a status. It starts as DRAFT; it can be opened (OPEN) and then settled\n(SETTLED); a DRAFT or OPEN claim can be voided (VOID). A SETTLED or VOID claim cannot change\nstatus, and the buttons for a change that is not allowed are refused with an error on the claim.\nOnly OPEN and SETTLED claims count toward claimed, due-total and every total; drafts and voided\nclaims do not. Show each claim's status. Every status change writes an audit line: CLAIM_OPENED,\nCLAIM_SETTLED or CLAIM_VOIDED, each with person=<name> amount=<amount> date=<date>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8ffd9442eb8d34357424dcfa877513ad5cc4501f",
+  "reset_sha": "",
+  "preagent_sha": "746fcc6888e7ca302247162a6c9ddfb7c35c8230",
+  "prev_sha": "746fcc6888e7ca302247162a6c9ddfb7c35c8230",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5146774,
+    "input_tokens": 20,
+    "output_tokens": 7654,
+    "cache_read_tokens": 313347,
+    "cache_creation_tokens": 37356,
+    "num_turns": 11,
+    "duration_ms": 184410,
+    "duration_api_ms": 64214,
+    "model": "claude-opus-5-5",
+    "session_id": "68eff9df-2cce-40bf-bc59-e65d7f2efc7a",
+    "stop_reason": "success",
+    "result_text": "Claims now have a status, and `bin/e2e` passes all 4 tests in the acceptance spec.\n\n**How it behaves**\n- **Lifecycle:** every new claim starts as DRAFT. A DRAFT claim can be opened (OPEN), an OPEN claim can be settled (SETTLED), and a DRAFT or OPEN claim can be voided (VOID). SETTLED and VOID claims can't change status.\n- **Refusals:** the server enforces these rules against what's stored, not against the user's screen. So if another user has already changed the claim, a stale action is still refused. A refused change saves nothing and writes no audit line. The claim's row shows `claim-error`, and that error clears on the next action on the row.\n- **Buttons:** each claim row shows its status (`claim-status`) and always has Open, Settle and Void buttons (`claim-open`, `claim-settle`, `claim-void`). The test clicks buttons whose change isn't allowed and expects them to be refused, so they are never hidden.\n- **Totals:** only OPEN and SETTLED claims count toward the person's claimed and due-total and the sheet's claimed and due totals. Each claim's own due amount is still shown whatever its status, as the test expects.\n- **Audit:** each status change writes `CLAIM_OPENED`, `CLAIM_SETTLED` or `CLAIM_VOIDED` with `person=`, `amount=` and `date=`, once the change is saved.\n\nEditing a claim's amount, date or note is still allowed whatever its status. The request didn't say to restrict it, and the test edits an OPEN claim.\n\n**What changed**\n- **Database:** the new migration `V7__claim_status.sql` adds a `status` column. It defaults to DRAFT, so existing claims become drafts and stop counting toward totals until they are opened.\n- **Server:** in the `claim` package, the new `ClaimStatus` enum holds the allowed changes, and `ClaimService.changeStatus` applies them. `ClaimController` has three new POST endpoints, `.../claims/{id}/open`, `/settle` and `/void`, and returns 409 when a change isn't allowed.\n- **Front end:** `claims.ts` shows the status, buttons and error on each row, and `people.ts` leaves drafts and voided claims out of the totals.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5146774,
+        "num_turns": 11,
+        "duration_ms": 184410,
+        "duration_api_ms": 64214,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp08.agent.jsonl",
+  "agent_diff_file": "cp08.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
