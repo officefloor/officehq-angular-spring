@@ -1,14 +1,41 @@
 import { Component, computed, inject } from '@angular/core';
-import { Figures, STATUSES } from '../../core/figures';
+import { Figures, STATUSES, trimmed } from '../../core/figures';
 import { GRADES, People } from '../../core/people';
 import { hundredths, money } from '../../core/rates';
-import { Session } from '../../core/session';
+import { Session, TreeMember } from '../../core/session';
+
+/** How many people there are among rows whose names or aliases match, as names are compared (trimmed, without
+ *  regard to case): rows sharing a name, directly or through others, are one person. */
+function distinctPeople(rows: string[][]): number {
+  const parent = rows.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  const byName = new Map<string, number>();
+  rows.forEach((names, i) =>
+    names.forEach((n) => {
+      const key = n.trim().toLowerCase();
+      const seen = byName.get(key);
+      if (seen === undefined) byName.set(key, i);
+      else parent[root(i)] = root(seen);
+    }),
+  );
+  return rows.filter((_, i) => root(i) === i).length;
+}
+
+/** People count, due-total and overdue-total over every person of a tree, the totals trimmed once over them all. */
+function overTree(members: TreeMember[]) {
+  return {
+    peopleCount: distinctPeople(members.map((m) => m.names)),
+    dueTotal: money(trimmed(members.filter((m) => m.dueTotal !== null).map((m) => hundredths(m.dueTotal!)))),
+    overdueTotal: money(trimmed(members.map((m) => hundredths(m.overdueTotal)))),
+  };
+}
 
 // The sheet's counters, always in view: everyone on it (retired people included), the claims in
 // each status, and the sheet's due- and overdue-totals — the same figures the summary and the
-// people list show. Then the same figures consolidated over the sheet and all its descendants: each
-// descendant's as that sheet shows them, added to this sheet's own; while the screen shows the sheet as
-// of a date, every sheet of the tree as it stood at the end of that date. Likewise per grade the due-totals of
+// people list show. Then the same figures consolidated over the sheet and all its descendants (the tree): the
+// due- and overdue-totals of every person of the tree added up, trimmed once over them all; the people counted
+// once each, people whose names or aliases match (as names are compared) being one; while the screen shows the
+// sheet as of a date, every sheet of the tree as it stood at the end of that date. Likewise per grade the due-totals of
 // the people on it (retired people left out), and per status the number of claims in it. And the signed-in user's own due- and overdue-totals, when a
 // person on the sheet has their name or an alias equal to it; blank otherwise. And the user's crew total: the due-totals of
 // the crews that person leads, added up; blank when they lead none. And, for a steward, a dashboard: the
@@ -67,19 +94,19 @@ export class HeaderCounters {
       STATUSES.map((status) => ({ status, count: own(status) + (d.statusCounts[status] ?? 0) }));
     if (this.session.asOf()) {
       return {
-        peopleCount: d.ownPeopleCount + d.peopleCount,
-        dueTotal: money(hundredths(d.ownDueTotal) + hundredths(d.dueTotal)),
-        overdueTotal: money(hundredths(d.ownOverdueTotal) + hundredths(d.overdueTotal)),
+        ...overTree([...d.ownPeople, ...d.people]),
         grades: grades((g) => hundredths(d.ownGradeDueTotals[g] ?? '0.00')),
         statuses: statuses((s) => d.ownStatusCounts[s] ?? 0),
       };
     }
     const current = this.people.people().filter((p) => !p.retired);
     const counts = this.figures.statusCounts();
+    const own: TreeMember[] = this.people.people().map((p) => {
+      const due = this.figures.dueCents(p);
+      return { names: [p.name, ...p.aliases], dueTotal: due === null ? null : money(due), overdueTotal: money(this.figures.overdueCents(p)) };
+    });
     return {
-      peopleCount: this.people.people().length + d.peopleCount,
-      dueTotal: money(hundredths(this.figures.dueTotal()) + hundredths(d.dueTotal)),
-      overdueTotal: money(hundredths(this.figures.overdueTotal()) + hundredths(d.overdueTotal)),
+      ...overTree([...own, ...d.people]),
       grades: grades((g) =>
         current
           .filter((p) => this.figures.gradeToday(p) === g)

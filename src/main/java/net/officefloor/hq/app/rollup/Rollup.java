@@ -52,7 +52,12 @@ public class Rollup {
     /** Figures added up over sheets: the number of people, and each sheet's due- and overdue-total; and by grade
      *  the due-totals of the people on it (retired people left out), and by status the number of claims in it. */
     public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
-            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts) {
+            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts, List<Member> people) {
+    }
+
+    /** One person's row on a sheet of a tree: their name and aliases, and their due-total (null for n/a) and
+     *  overdue-total, for figures worked out over the whole tree. */
+    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
     }
 
     /** A sheet's due-totals by grade (each person not retired on the grade in force on the sheet's today, a due-total
@@ -162,6 +167,7 @@ public class Rollup {
         BigDecimal overdue = ZERO;
         Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
         Map<ClaimStatus, Integer> statusCounts = new LinkedHashMap<>();
+        List<Member> members = new ArrayList<>();
         while (!todo.isEmpty()) {
             for (Sheet child : sheets.findByParentOrderByIdAsc(todo.remove(0))) {
                 if (!seen.add(child.getId())) {
@@ -175,9 +181,28 @@ public class Rollup {
                 Breakdown breakdown = breakdown(child.getId(), date, snapshot);
                 breakdown.gradeDueTotals().forEach((g, d) -> gradeDues.merge(g, d, BigDecimal::add));
                 breakdown.statusCounts().forEach((st, n) -> statusCounts.merge(st, n, Integer::sum));
+                members.addAll(members(child.getId(), date, snapshot));
             }
         }
-        return new Consolidated(peopleCount, due, overdue, gradeDues, statusCounts);
+        return new Consolidated(peopleCount, due, overdue, gradeDues, statusCounts, members);
+    }
+
+    /** Each person on a sheet, now or as it stood at the end of a date, in list order, with their figures in
+     *  its snapshot then. */
+    public List<Member> members(String sheetId, LocalDate date, Snapshot snapshot) {
+        List<Person> sheetPeople = date == null ? people.findBySheetIdOrderByPositionAscIdAsc(sheetId)
+                : asOf.people(sheetId, date);
+        List<Member> members = new ArrayList<>();
+        for (Person person : sheetPeople) {
+            Figures figures = snapshot.people().get(person.getId());
+            if (figures == null) {
+                continue;
+            }
+            List<String> names = new ArrayList<>(List.of(person.getName()));
+            names.addAll(person.getAliases());
+            members.add(new Member(names, figures.dueTotal(), figures.overdueTotal()));
+        }
+        return members;
     }
 
     /** A sheet's breakdown by grade and status, now or as it stood at the end of a date, from its snapshot then. */

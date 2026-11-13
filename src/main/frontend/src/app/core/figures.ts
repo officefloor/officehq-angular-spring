@@ -12,7 +12,7 @@ export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'
 
 /** People's figures added up, leaving out the single highest and the single lowest when there are
  *  three or more. */
-function trimmed(figures: bigint[]): bigint {
+export function trimmed(figures: bigint[]): bigint {
   const sum = figures.reduce((s, f) => s + f, 0n);
   if (figures.length < 3) return sum;
   const max = figures.reduce((m, f) => (f > m ? f : m));

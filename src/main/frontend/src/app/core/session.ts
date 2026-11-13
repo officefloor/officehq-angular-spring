@@ -87,6 +87,19 @@ export interface DescendantFigures {
   /** The sheet's own, likewise. */
   ownGradeDueTotals: Record<string, string>;
   ownStatusCounts: Record<string, number>;
+  /** Each descendant's people, with their names (name, then aliases) and figures, for trimming and counting
+   *  over the whole tree. */
+  people: TreeMember[];
+  /** The sheet's own, likewise. */
+  ownPeople: TreeMember[];
+}
+
+/** A person on a sheet of a tree: their name then aliases, their due-total (two decimals; null for n/a) and
+ *  overdue-total (two decimals). */
+export interface TreeMember {
+  names: string[];
+  dueTotal: string | null;
+  overdueTotal: string;
 }
 
 const NO_DESCENDANTS: DescendantFigures = {
@@ -100,6 +113,8 @@ const NO_DESCENDANTS: DescendantFigures = {
   statusCounts: {},
   ownGradeDueTotals: {},
   ownStatusCounts: {},
+  people: [],
+  ownPeople: [],
 };
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by

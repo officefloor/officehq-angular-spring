@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.history.AsOf;
@@ -28,10 +29,18 @@ public class ConsolidatedController {
      *  sheet's own, for a screen showing the sheet as of a date to consolidate with. Each sheet as it stood at the
      *  end of that date, with it as the sheet's today, when the screen views the sheet as of one. By grade the
      *  due-totals of the people on it (retired people left out), and by status the number of claims in it, the
-     *  descendants' added up, then the sheet's own; a grade or status with none left out. */
+     *  descendants' added up, then the sheet's own; a grade or status with none left out. Then each descendant's
+     *  people, and the sheet's own, with their names and aliases and their figures, for the screen to trim and
+     *  count over the whole tree. */
     public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal, int ownPeopleCount,
             String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts, Map<String, String> ownGradeDueTotals, Map<String, Integer> ownStatusCounts) {
+            Map<String, Integer> statusCounts, Map<String, String> ownGradeDueTotals, Map<String, Integer> ownStatusCounts,
+            List<MemberView> people, List<MemberView> ownPeople) {
+    }
+
+    /** A person's names (their name, then their aliases) and their due-total (two decimals; null for n/a) and
+     *  overdue-total (two decimals). */
+    public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
     }
 
     private final Rollup rollup;
@@ -52,7 +61,13 @@ public class ConsolidatedController {
         return new ConsolidatedView(c.peopleCount(), c.dueTotal().toPlainString(), c.overdueTotal().toPlainString(),
                 own.people().size(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString(),
                 shown(c.gradeDueTotals()), counted(c.statusCounts()),
-                shown(ownBreakdown.gradeDueTotals()), counted(ownBreakdown.statusCounts()));
+                shown(ownBreakdown.gradeDueTotals()), counted(ownBreakdown.statusCounts()),
+                viewed(c.people()), viewed(rollup.members(sid, asOf, own)));
+    }
+
+    private static List<MemberView> viewed(List<Rollup.Member> members) {
+        return members.stream().map(m -> new MemberView(m.names(),
+                m.dueTotal() == null ? null : m.dueTotal().toPlainString(), m.overdueTotal().toPlainString())).toList();
     }
 
     private static Map<String, String> shown(Map<String, BigDecimal> totals) {

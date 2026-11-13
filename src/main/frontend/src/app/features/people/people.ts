@@ -1168,8 +1168,12 @@ export class PeopleList {
     this.inlineGrading.set(p.id);
     try {
       const grade = this.inlineGrades()[p.id] ?? this.gradeToday(p);
+      // the terms in force today resaved as they are recorded (from their own from-date), so they are left alone
+      const today = this.session.today();
+      const dated = today ? p.datedTerms.filter((t) => t.from <= today).at(-1) : undefined;
+      const terms = dated ? dated.terms : p.baseTerms;
       const refusal = await this.people.update(p.id, p.version, {
-        name: p.name, grade, gradeFrom: '', terms: p.baseTerms === null ? '' : String(p.baseTerms),
+        name: p.name, grade, gradeFrom: '', terms: terms === null ? '' : String(terms), termsFrom: dated?.from ?? '',
         contact: p.contact ?? '', tags: p.tags.join(', '),
       });
       if (refusal) this.actionError.set({ id: p.id, message: refusal.error });
