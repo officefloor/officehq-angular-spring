@@ -1,0 +1,90 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 34aa1df7c..ef59b46a4 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -70,7 +70,7 @@ export interface Claim {
+   lines: ClaimLine[];
+   /** Whether a steward waived its late charge: from then on it bears none, whatever its overdue state. */
+   waived: boolean;
+-  /** Whether it is on hold: while OPEN or PENDING and bound by no statement, it counts in no live total. */
++  /** Whether it is on hold: while OPEN or PENDING and bound by no statement, it counts in claimed but in no due figure. */
+   held: boolean;
+ }
+ 
+@@ -200,8 +200,23 @@ export class Claims {
+     };
+   });
+ 
+-  /** The claims that count toward claimed: the live ones, leaving out claims that correct another. */
+-  private readonly counted = computed(() => this.live().filter((c) => !c.corrects));
++  /** Whether a retirement leaves a claim out of claimed: it is OPEN or PENDING, bound by no statement,
++   *  and its person's retirement date is reached on the sheet's today. */
++  private readonly retiredOut = computed(() => {
++    const today = this.session.today();
++    const byId = new Map(this.people.people().map((p) => [p.id, p]));
++    return (c: Claim): boolean => {
++      const p = byId.get(c.personId);
++      return isOpen(c) && !bound(c) && p !== undefined && retiredBy(p, today);
++    };
++  });
++
++  /** The claims that count toward claimed: those that count, less those a retirement leaves out and the
++   *  deferred claims (a hold leaves a claim in claimed), leaving out claims that correct another. */
++  private readonly counted = computed(() => {
++    const retiredOut = this.retiredOut();
++    return this.claims().filter((c) => counts(c) && !retiredOut(c) && !this.deferred(c) && !c.corrects);
++  });
+ 
+   /** Each person's claimed, in cents, by person id. */
+   readonly claimedCents = computed(() => {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 1478056d5..096f0e5a7 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -97,13 +97,17 @@ public class Rollup {
+             BigDecimal overdue = ZERO;
+             boolean keptFigure = false;
+             for (Claim claim : sheetClaims) {
+-                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) {
++                if (!claim.getPersonId().equals(person.getId()) || !countsClaimed(claim, person, today)) {
+                     continue;
+                 }
+                 if (claim.getCorrects() == null || claim.getCorrects().isEmpty()) {
+                     // a claim that corrects another is left out of claimed
+                     claimed = claimed.add(claim.getAmount());
+                 }
++                if (heldOut(claim, person, today)) {
++                    // a hold leaves a claim in claimed, but out of the due figures
++                    continue;
++                }
+                 BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
+                         : claim.isBound() ? claim.getStatedDue() : null;
+                 BigDecimal figure = null;
+@@ -333,10 +337,10 @@ public class Rollup {
+         return dueTotal != null && dueTotal.compareTo(threshold) > 0;
+     }
+ 
+-    /** Whether a claim counts in the live totals: its status counts, it is not left out by a hold, and it
+-     *  is not deferred past the sheet's today. */
+-    private static boolean countsLive(Claim claim, Person person, LocalDate today) {
+-        return claim.getStatus().counts() && !heldOut(claim, person, today) && !claim.deferredOn(today);
++    /** Whether a claim counts toward claimed: its status counts, it is not left out by its person's
++     *  retirement (a hold leaves it in), and it is not deferred past the sheet's today. */
++    private static boolean countsClaimed(Claim claim, Person person, LocalDate today) {
++        return claim.getStatus().counts() && !retiredOut(claim, person, today) && !claim.deferredOn(today);
+     }
+ 
+     /** Whether a claim counted by the status it had at the end of a day, as its status log records it:
+@@ -377,6 +381,12 @@ public class Rollup {
+         return sheet.map(s -> s.lateFrom(claim.getDueBy(), grade, claim.getDate())).orElse(claim.getDueBy());
+     }
+ 
++    /** Whether a retirement leaves a claim out of claimed: it is OPEN or PENDING, bound by no statement, and
++     *  its person's retirement date is reached on the sheet's today. */
++    private static boolean retiredOut(Claim claim, Person person, LocalDate today) {
++        return person != null && claim.getStatus().isOpen() && !claim.isBound() && person.retiredBy(today);
++    }
++
+     /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by
+      *  no statement, and held itself, or dated within one of its person's holds, or its person's retirement
+      *  date is reached on the sheet's today. */
