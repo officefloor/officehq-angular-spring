@@ -1,0 +1,80 @@
+{
+  "checkpoint": 224,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp224_cap-includes-cuts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119,
+    143,
+    154,
+    189,
+    207
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals",
+    "cp143_fiscal-year.spec.ts::fiscal year scenario 3",
+    "cp154_classic-summary.spec.ts::classic summary scenario 1",
+    "cp189_default-grade.spec.ts::default grade scenario 2",
+    "cp207_year-end-rollover.spec.ts::year end rollover scenario 1"
+  ],
+  "request": {
+    "spec": "The cap now covers a person's due-total plus their cut total: their due-total is held to the cap\nless their cut total (not below 0.00), and the excess is what the figures exceed that by.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe cap now covers a person's due-total plus their cut total: their due-total is held to the cap\nless their cut total (not below 0.00), and the excess is what the figures exceed that by.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cc5cdcc9903b9e8feffb2f2b83b40846f45b0956",
+  "reset_sha": "",
+  "preagent_sha": "adca0122deda81c0e39de303494208e83d7afb82",
+  "prev_sha": "adca0122deda81c0e39de303494208e83d7afb82",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1776412,
+    "input_tokens": 48,
+    "output_tokens": 13274,
+    "cache_read_tokens": 1407926,
+    "cache_creation_tokens": 78798,
+    "num_turns": 25,
+    "duration_ms": 299741,
+    "duration_api_ms": 134000,
+    "model": "claude-opus-5-5",
+    "session_id": "0dcb0344-fbac-442d-9d7c-37d340d87fcc",
+    "stop_reason": "success",
+    "result_text": "The cap now covers a person's due-total plus their cut total, and all 4 acceptance tests pass with `bin/e2e`.\n\n**How it works now:** a person's due-total is held to the cap minus their cut total, and never below 0.00. The excess is how far their figures go over that limit. For example, with a cap of 6.00 and a cut of 5.00, a person whose figures add up to 4.00 shows a due-total of 1.00 and an excess of 3.00. With no cap set, nothing changes.\n\n**Server**\n- `Sheet.capped` now takes the person's cut total, and a new `Sheet.capLess` works out the limit.\n- `Rollup` works out each person's cut total from the pools and crews, using the same code as the pools screen (new `PoolController.cutTotals`). It does this for the sheet now and for the sheet as it stood on a past date. The cut-aware cap feeds everything built on these figures: the ROLLUP and TOTALS audit lines, the header, alerts and snapshots.\n- Statements, including statements taken for a past date, use the cut-aware cap for the due-total they record.\n\n**Front end:** `figures.ts` takes the person's cut total off the cap for both the due-total and the excess, so the people list, periods, summary and header all agree.\n\n**Extra audit lines:** a cut can now change someone's due-total, so these actions now write ROLLUP/TOTALS lines when figures move:\n- changing the pot (the test expects this)\n- adding a pool member\n- adding a crew, or adding someone to a crew\n\nThe last two of those go beyond what the test checks. I added them so the audit file still records every due-total change, the same way other changes do.\n\n**Not covered:** the database didn't need changing. There are no unit tests in the project, so the Playwright run is the only check.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1776412,
+        "num_turns": 25,
+        "duration_ms": 299741,
+        "duration_api_ms": 134000,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp224.agent.jsonl",
+  "agent_diff_file": "cp224.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

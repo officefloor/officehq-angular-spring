@@ -1,0 +1,352 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index f2a69ff8b..99c47c4ba 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -3,6 +3,7 @@ import { Claim, Claims, bound, countsAt, isOpen, partCents, statusAt } from './c
+ import { CrewView, Crews } from './crews';
+ import { GRADES, People, Person, gradeOn } from './people';
+ import { Period, Periods } from './periods';
++import { Pools } from './pools';
+ import { NO_RATE, Rates, halfEven, hundredths, money, rounded } from './rates';
+ import { Roles } from './roles';
+ import { Session, addDays } from './session';
+@@ -28,27 +29,33 @@ export class Figures {
+   private readonly crews = inject(Crews);
+   private readonly people = inject(People);
+   private readonly periods = inject(Periods);
++  private readonly pools = inject(Pools);
+   private readonly rates = inject(Rates);
+   private readonly roles = inject(Roles);
+   private readonly session = inject(Session);
+ 
+-  /** A person's due-total: the sum of their figures, at most the sheet's cap. Null (n/a) is not capped. */
++  /** A person's due-total: the sum of their figures, at most the sheet's cap less their cut total (not below
++   *  0.00). Null (n/a) is not capped. */
+   dueCents(p: Person): bigint | null {
+     const sum = this.sumCents(p);
+-    const cap = this.capCents();
++    const cap = this.capCents(p);
+     return sum !== null && cap !== null && sum > cap ? cap : sum;
+   }
+ 
+-  /** How far the sum of a person's figures is above the sheet's cap; 0 when it is not (or is n/a). */
++  /** How far the sum of a person's figures is above the sheet's cap less their cut total; 0 when it is not
++   *  (or is n/a). */
+   excessCents(p: Person): bigint {
+     const sum = this.sumCents(p);
+-    const cap = this.capCents();
++    const cap = this.capCents(p);
+     return sum !== null && cap !== null && sum > cap ? sum - cap : 0n;
+   }
+ 
+-  private capCents(): bigint | null {
++  /** The most a person's due-total can be: the sheet's cap less their cut total, not below 0.00; null for no cap. */
++  private capCents(p: Person): bigint | null {
+     const cap = this.session.cap();
+-    return cap === null ? null : hundredths(cap);
++    if (cap === null) return null;
++    const left = hundredths(cap) - (this.pools.cutCents().get(p.id) ?? 0n);
++    return left > 0n ? left : 0n;
+   }
+ 
+   /** The sum of the figures of a person's claims that count live (not left out by a hold), less the parts others
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index fd7885060..293ab0fbd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -1127,8 +1127,9 @@ public class ClaimService {
+         }
+         boolean rated = Rollup.inForce(rates.findWithAncestors(sheetId, sheetRows.ancestors(sheetId)), person.gradeOn(today), today).isPresent();
+         BigDecimal summed = total;
++        BigDecimal cutTotal = rollup.cutTotals(sheetId).get(personId);
+         BigDecimal dueTotal = rated || figure
+-                ? sheetRows.findById(sheetId).map(s -> s.capped(summed)).orElse(summed) : null;
++                ? sheetRows.findById(sheetId).map(s -> s.capped(summed, cutTotal)).orElse(summed) : null;
+         claims.saveAllAndFlush(theirs);
+         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
+         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+@@ -1189,7 +1190,7 @@ public class ClaimService {
+             claim.setStated(figures.containsKey(claim.getId()), figures.get(claim.getId()));
+         }
+         boolean rated = Rollup.inForce(ratesThen, then.gradeOn(asOf), asOf).isPresent();
+-        BigDecimal dueTotal = rated || figure ? sheetThen.capped(total) : null;
++        BigDecimal dueTotal = rated || figure ? sheetThen.capped(total, rollup.cutTotals(sheetId, asOf).get(personId)) : null;
+         int counted = figures.size();
+         claims.saveAllAndFlush(theirs);
+         statements.saveAndFlush(new Statement(sheetId, personId, asOf, dueTotal, counted));
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index a74012ed9..513eadeca 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -4,6 +4,7 @@ import java.util.List;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -17,10 +18,12 @@ public class CrewService {
+     private final PoolRepository pools;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final Rollup rollup;
+     private final Audit audit;
+ 
+     public CrewService(CrewRepository crews, PoolRepository pools, PersonRepository people, SheetService sheets,
+-            Audit audit) {
++            Rollup rollup, Audit audit) {
++        this.rollup = rollup;
+         this.crews = crews;
+         this.pools = pools;
+         this.people = people;
+@@ -53,8 +56,11 @@ public class CrewService {
+         if (lead == null) {
+             throw new CrewRefusedException("Choose a lead.");
+         }
++        Rollup.Snapshot before = rollup.take(sheetId);
+         Crew saved = crews.saveAndFlush(new Crew(sheetId, n, lead.getId()));
+         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + n + " lead=" + lead.getName());
++        // a crew's cuts move what the cap leaves its people's due-totals
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
+@@ -73,10 +79,12 @@ public class CrewService {
+         if (crew.includes(person.getId())) {
+             throw new CrewRefusedException(person.getName() + " is already in " + crew.getName() + ".");
+         }
++        Rollup.Snapshot before = rollup.take(sheetId);
+         crew.addMember(person.getId());
+         Crew saved = crews.saveAndFlush(crew);
+         audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
+                 + " name=" + person.getName());
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 2b740bbca..ce8838eaf 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -246,6 +246,23 @@ public class PoolController {
+         return out;
+     }
+ 
++    /** Each person's cut total as it stands now (the pools, crews, people and pot given, today as the sheet's
++     *  today): their cuts across every pool and crew they are a member of, added up, by person id; a person
++     *  with no cut is left out. */
++    public static Map<Long, BigDecimal> cutTotals(List<Pool> pools, List<Crew> crews, List<Person> people,
++            BigDecimal pot, LocalDate today) {
++        Map<Long, Person> byId = people.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
++        Map<Long, BigDecimal> out = new HashMap<>();
++        for (PoolView v : PoolView.of(pools, crews, byId, pot, today)) {
++            for (PoolMemberView m : v.members()) {
++                if (m.personId() != null && m.cut() != null) {
++                    out.merge(m.personId(), new BigDecimal(m.cut()), BigDecimal::add);
++                }
++            }
++        }
++        return out;
++    }
++
+     /** The views with each member's cut for each period that is closed or soft-closed, or whose to-date is on
+      *  or before today, by from-date: for a closed or soft-closed one, its cut fixed when it was closed; for an
+      *  open one, its cut in the pools as they stood at its end (then, by that date). */
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 839bcb8c6..05b77515c 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -9,6 +9,7 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.rollup.Rollup;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -24,10 +25,12 @@ public class PoolService {
+     private final CrewRepository crews;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final Rollup rollup;
+     private final Audit audit;
+ 
+     public PoolService(PoolRepository pools, CrewRepository crews, PersonRepository people, SheetService sheets,
+-            Audit audit) {
++            Rollup rollup, Audit audit) {
++        this.rollup = rollup;
+         this.pools = pools;
+         this.crews = crews;
+         this.people = people;
+@@ -83,6 +86,7 @@ public class PoolService {
+             throw new PoolRefusedException("A membership cannot end before it starts.");
+         }
+         BigDecimal s = share.setScale(2);
++        Rollup.Snapshot before = rollup.take(sheetId);
+         String name;
+         if (person != null) {
+             if (pool.hasMember(person.getId())) {
+@@ -99,6 +103,8 @@ public class PoolService {
+         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+                 + " name=" + name + " share=" + s.toPlainString() + (from == null ? "" : " from=" + from)
+                 + (to == null ? "" : " to=" + to));
++        // a member's cut moves what the cap leaves their due-total
++        rollup.recordChanges(sheetId, user, before);
+         return saved;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 8d8a53f68..539e44ee4 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -18,10 +18,15 @@ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimShare;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.StatusChange;
++import net.officefloor.hq.app.crew.Crew;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.history.AsOf;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.Pool;
++import net.officefloor.hq.app.pool.PoolController;
++import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.rate.RateRepository;
+ import net.officefloor.hq.app.sheet.Sheet;
+@@ -73,23 +78,49 @@ public class Rollup {
+     private final ClaimRepository claims;
+     private final RateRepository rates;
+     private final SheetRepository sheets;
++    private final PoolRepository pools;
++    private final CrewRepository crews;
+     private final AsOf asOf;
+     private final Audit audit;
+ 
+     public Rollup(PersonRepository people, ClaimRepository claims, RateRepository rates, SheetRepository sheets,
+-            AsOf asOf, Audit audit) {
++            PoolRepository pools, CrewRepository crews, AsOf asOf, Audit audit) {
+         this.people = people;
+         this.claims = claims;
+         this.rates = rates;
+         this.sheets = sheets;
++        this.pools = pools;
++        this.crews = crews;
+         this.asOf = asOf;
+         this.audit = audit;
+     }
+ 
+     /** The sheet's figures now. */
+     public Snapshot take(String sheetId) {
+-        return take(sheets.findById(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
+-                claims.findBySheetIdOrderByIdDesc(sheetId), rates.findWithAncestors(sheetId, sheets.ancestors(sheetId)));
++        Optional<Sheet> sheet = sheets.findById(sheetId);
++        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
++        return take(sheet, sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
++                rates.findWithAncestors(sheetId, sheets.ancestors(sheetId)),
++                cutTotals(sheet, sheetPeople, pools.findBySheetIdOrderByIdAsc(sheetId),
++                        crews.findBySheetIdOrderByIdAsc(sheetId)));
++    }
++
++    /** Each person's cut total now, by person id. */
++    public Map<Long, BigDecimal> cutTotals(String sheetId) {
++        return cutTotals(sheets.findById(sheetId), people.findBySheetIdOrderByPositionAscIdAsc(sheetId),
++                pools.findBySheetIdOrderByIdAsc(sheetId), crews.findBySheetIdOrderByIdAsc(sheetId));
++    }
++
++    /** Each person's cut total as the sheet stood at the end of a date, that date its today, by person id. */
++    public Map<Long, BigDecimal> cutTotals(String sheetId, LocalDate date) {
++        return cutTotals(Optional.of(asOf.sheet(sheetId, date)), asOf.people(sheetId, date),
++                asOf.pools(sheetId, date), asOf.crews(sheetId, date));
++    }
++
++    private static Map<Long, BigDecimal> cutTotals(Optional<Sheet> sheet, List<Person> sheetPeople,
++            List<Pool> sheetPools, List<Crew> sheetCrews) {
++        return sheet.map(s -> PoolController.cutTotals(sheetPools, sheetCrews, sheetPeople, s.getPot(), s.getToday()))
++                .orElse(Map.of());
+     }
+ 
+     /** The sheet's figures as it stood at the end of a date, that date its today: its rows, and its ancestors'
+@@ -98,10 +129,11 @@ public class Rollup {
+         List<Rate> sheetRates = new ArrayList<>(asOf.rates(sheetId, date));
+         sheets.ancestors(sheetId).forEach(a -> sheetRates.addAll(asOf.rates(a, date)));
+         return take(Optional.of(asOf.sheet(sheetId, date)), asOf.people(sheetId, date), asOf.claims(sheetId, date),
+-                sheetRates);
++                sheetRates, cutTotals(sheetId, date));
+     }
+ 
+-    private Snapshot take(Optional<Sheet> sheet, List<Person> sheetPeople, List<Claim> sheetClaims, List<Rate> sheetRates) {
++    private Snapshot take(Optional<Sheet> sheet, List<Person> sheetPeople, List<Claim> sheetClaims, List<Rate> sheetRates,
++            Map<Long, BigDecimal> cuts) {
+         LocalDate today = sheet.map(Sheet::getToday).orElse(null);
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = ZERO;
+@@ -172,7 +204,7 @@ public class Rollup {
+             BigDecimal score = settled.subtract(BigDecimal.valueOf(500L * overdueCount))
+                     .movePointLeft(2).setScale(0, RoundingMode.HALF_EVEN);
+             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
+-            BigDecimal personDue = rated || keptFigure ? capped(sheet, due) : null;
++            BigDecimal personDue = rated || keptFigure ? capped(sheet, due, cuts.get(person.getId())) : null;
+             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, score));
+             claimedTotal = claimedTotal.add(claimed);
+             overdues.add(overdue);
+@@ -583,9 +615,9 @@ public class Rollup {
+                 .orElse(figure);
+     }
+ 
+-    /** A person's due-total at most the sheet's cap. */
+-    private static BigDecimal capped(Optional<Sheet> sheet, BigDecimal dueTotal) {
+-        return sheet.map(s -> s.capped(dueTotal)).orElse(dueTotal);
++    /** A person's due-total at most the sheet's cap less their cut total. */
++    private static BigDecimal capped(Optional<Sheet> sheet, BigDecimal dueTotal, BigDecimal cutTotal) {
++        return sheet.map(s -> s.capped(dueTotal, cutTotal)).orElse(dueTotal);
+     }
+ 
+     private static boolean sameDue(BigDecimal a, BigDecimal b) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index a252fca7b..6475cfaca 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -312,10 +312,18 @@ public class Sheet {
+         return reviewThresholdOn(today);
+     }
+ 
+-    /** A person's due-total as it counts: at most the cap; none (n/a) stays none. */
+-    public BigDecimal capped(BigDecimal dueTotal) {
++    /** A person's due-total as it counts, with their cut total: at most the cap less the cut total (not below
++     *  0.00); none (n/a) stays none. */
++    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
++        BigDecimal limit = capLess(cutTotal);
++        return dueTotal == null || limit == null ? dueTotal : dueTotal.min(limit);
++    }
++
++    /** The most a person's due-total can be with their cut total: the cap less it, not below 0.00; none when
++     *  there is no cap. */
++    public BigDecimal capLess(BigDecimal cutTotal) {
+         BigDecimal cap = getCap();
+-        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
++        return cap == null ? null : cap.subtract(cutTotal == null ? BigDecimal.ZERO : cutTotal).max(BigDecimal.ZERO.setScale(2));
+     }
+ 
+     /** The sheet's terms on a date; 14 before every from-date. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 0766f353e..bb8c8f974 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -396,10 +396,14 @@ public class SheetService {
+     @Transactional
+     public Sheet setPot(String id, String user, BigDecimal pot) {
+         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
++        Rollup.Snapshot before = rollup.take(id);
+         BigDecimal p = pot == null ? null : pot.setScale(2);
+         sheet.setPot(p);
++        sheets.saveAndFlush(sheet);
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=pot value="
+                 + (p == null ? "" : p.toPlainString()));
++        // a person's cut moves what the cap leaves their due-total
++        rollup.recordChanges(id, user, before);
+         return sheet;
+     }
+ 
