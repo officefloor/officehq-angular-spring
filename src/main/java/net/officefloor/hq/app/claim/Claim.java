@@ -168,6 +168,8 @@ public class Claim {
         copy.terms = terms;
         copy.status = status;
         copy.settledDue = settledDue;
+        copy.stated = stated;
+        copy.statedDue = statedDue;
         copy.openedBy = openedBy;
         copy.editedBy = editedBy;
         copy.deferredUntil = deferredUntil;

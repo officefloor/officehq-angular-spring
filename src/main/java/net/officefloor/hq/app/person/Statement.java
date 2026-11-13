@@ -48,6 +48,11 @@ public class Statement {
         this.claimCount = claimCount;
     }
 
+    /** The same statement, taken of another person (on this sheet or another). */
+    public Statement copyTo(String otherSheetId, Long otherPersonId) {
+        return new Statement(otherSheetId, otherPersonId, takenOn, dueTotal, claimCount);
+    }
+
     public Long getId() {
         return id;
     }

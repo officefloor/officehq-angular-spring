@@ -412,11 +412,12 @@ public class PersonService {
     }
 
     /** A steward merges a person into another: the merged person's claims move to the other (numbers and
-     *  dates kept, listed after the other's in the order they were added, each losing any figure a statement
-     *  bound); their name and aliases become the other's aliases; their patrons are added to the other's (not
+     *  dates kept, listed after the other's in the order they were added, each keeping any figure a statement
+     *  bound); their statements count as the other's too, the other's last statement staying their last (or,
+     *  having none, the merged person's last becoming theirs); their name and aliases become the other's aliases; their patrons are added to the other's (not
      *  themselves, no repeats), anyone naming them as patron names the other instead (no repeats), and their
      *  pool memberships move to the other (shares added, at most 100.00, where the other is already a member)
-     *  as do their figures for closed periods. Their statements, holds, watchers and contact are dropped, and
+     *  as do their figures for closed periods. Their holds, watchers and contact are dropped, and
      *  they leave the sheet. Refused for anyone but a steward, for the same person, and when either is
      *  retired. */
     @Transactional
@@ -439,7 +440,6 @@ public class PersonService {
         long order = claims.maxListOrder(sheetId);
         for (Claim claim : moving) {
             claim.setPersonId(into.getId());
-            claim.setStated(false, null);
             claim.setListOrder(++order);
         }
         claims.saveAll(moving);
@@ -472,7 +472,7 @@ public class PersonService {
             period.moveClosedTotal(from.getId(), into.getId());
         }
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
-        statements.deleteAll(statements.findByPersonIdOrderByIdAsc(from.getId()));
+        carryStatements(from, into);
         // everything naming them goes before they do
         people.flush();
 
@@ -493,9 +493,10 @@ public class PersonService {
      *  given, their terms, contact and aliases, and their claims (status, dates, notes, frozen figures, tags
      *  and logs kept, listed in the order they were); each claim that had a number takes the next number of
      *  the other sheet, in the order the claims were opened (by the sheet's today then, then by the order they
-     *  were added). Figures a statement bound are lost, their statement count starts again, and references
+     *  were added). Figures a statement bound are kept, as are their statements (counting as those of whom they
+     *  are merged into too, whose last statement stays their last unless they have none), and references
      *  are not carried. They leave this sheet entirely: their patron links, pool memberships, watches,
-     *  statements, holds and fixed period figures are dropped. Refused for anyone but a steward, a retired
+     *  holds and fixed period figures are dropped. Refused for anyone but a steward, a retired
      *  person, this sheet's own id, an archived sheet, and when their name, an alias or their contact is already
      *  on the other sheet or their name or an alias on another sheet of its tree; a sheet never loaded is started.
      *  When their name or an alias is, ignoring case, that of one person on the other sheet, they are instead
@@ -596,7 +597,7 @@ public class PersonService {
             period.dropClosedTotal(from.getId());
         }
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
-        statements.deleteAll(statements.findByPersonIdOrderByIdAsc(from.getId()));
+        carryStatements(from, arrived);
         claims.deleteAll(leaving);
         // everything naming them goes before they do
         people.flush();
@@ -618,6 +619,22 @@ public class PersonService {
         }
         rollup.recordChanges(to, user, beforeThere);
         return arrived;
+    }
+
+    /** Carry a person's statements to whom they merge into or arrive as (on that person's sheet), ahead of
+     *  that person's own so that their own last statement stays their last; theirs are taken again after. */
+    private void carryStatements(Person from, Person into) {
+        List<Statement> theirs = statements.findByPersonIdOrderByIdAsc(from.getId());
+        if (theirs.isEmpty()) {
+            return;
+        }
+        List<Statement> own = statements.findByPersonIdOrderByIdAsc(into.getId());
+        statements.deleteAll(theirs);
+        statements.deleteAll(own);
+        statements.flush();
+        theirs.forEach(s -> statements.save(s.copyTo(into.getSheetId(), into.getId())));
+        own.forEach(s -> statements.save(s.copyTo(into.getSheetId(), into.getId())));
+        statements.flush();
     }
 
     /** Swap a person with the one above them in the list (up) or below them (down); the top cannot move up
