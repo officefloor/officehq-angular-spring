@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,11 +37,12 @@ public class StatementService {
     private final PersonGradeService grades;
     private final PersonService personService;
     private final SheetService sheets;
+    private final SettingService settings;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
             PersonRepository people, RateService rates, PersonGradeService grades, PersonService personService,
-            SheetService sheets, Audit audit) {
+            SheetService sheets, SettingService settings, Audit audit) {
         this.statements = statements;
         this.claims = claims;
         this.claimService = claimService;
@@ -49,6 +51,7 @@ public class StatementService {
         this.grades = grades;
         this.personService = personService;
         this.sheets = sheets;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -93,7 +96,7 @@ public class StatementService {
         }
         claims.saveAllAndFlush(theirs);
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today), today).isPresent();
-        String dueTotal = hasRate || anyFigure ? total.toPlainString() : NO_RATE;
+        String dueTotal = hasRate || anyFigure ? settings.capped(sheetId, total).toPlainString() : NO_RATE;
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted);

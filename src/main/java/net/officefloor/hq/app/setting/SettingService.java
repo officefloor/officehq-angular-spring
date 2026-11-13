@@ -13,7 +13,7 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its terms
+/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its cap, its terms
  *  (and any grade's own terms) and its late percent, its policy date and its period numbering from. */
 @Service
 public class SettingService {
@@ -51,6 +51,17 @@ public class SettingService {
     /** The sheet's floor: the least a claim's live due can be. */
     public BigDecimal floor(String sheetId) {
         return sheets.load(sheetId).getFloor();
+    }
+
+    /** The sheet's cap: the most a person's due-total can be; null when there is none. */
+    public BigDecimal cap(String sheetId) {
+        return sheets.load(sheetId).getCap();
+    }
+
+    /** A person's due-total held to the sheet's cap; a due-total of none (n/a) is not capped. */
+    public BigDecimal capped(String sheetId, BigDecimal dueTotal) {
+        BigDecimal cap = cap(sheetId);
+        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
     /** The sheet's terms in days: a claim is due by its date plus them. */
@@ -140,6 +151,19 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=floor value="
                 + scaled.toPlainString());
+        return saved;
+    }
+
+    /** Change the sheet's cap; null removes it. */
+    @Transactional
+    public Sheet setCap(String sheetId, String by, BigDecimal cap) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        BigDecimal scaled = cap != null ? cap.setScale(2, RoundingMode.UNNECESSARY) : null;
+        sheet.setCap(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=cap value="
+                + (scaled != null ? scaled.toPlainString() : ""));
         return saved;
     }
 

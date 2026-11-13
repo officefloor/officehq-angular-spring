@@ -168,6 +168,7 @@ interface StatementTaken {
             <th scope="col">Holds</th>
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
+            <th scope="col">Excess</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -196,6 +197,7 @@ interface StatementTaken {
               </td>
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
+              <td data-testid="person-excess">{{ excessOf(p) }}</td>
               <td>
                 <app-person-claims
                   [personId]="p.id"
@@ -309,6 +311,11 @@ export class People {
   protected readonly settings = inject(SettingStore);
   /** The sheet's floor in cents. */
   protected readonly floor = computed(() => cents(this.settings.floor()));
+  /** The sheet's cap in cents; null when there is none. */
+  private readonly cap = computed(() => {
+    const cap = this.settings.cap();
+    return cap === null ? null : cents(cap);
+  });
   /** What late charges work from: the sheet's late percent and today; and the policy date
    *  figures round by. */
   private readonly late = computed<Late>(() => ({
@@ -622,14 +629,29 @@ export class People {
     return (today === null ? null : gradeOn(person.grades, today)) ?? person.grade;
   }
 
-  /** The sum of the dues shown on a person's claims that count, or n/a when the grade in force on
-   *  the sheet's today has no rate in force then and no claim of theirs shows a figure. */
+  /** The sum of the dues shown on a person's claims that count held to the sheet's cap, or n/a when
+   *  the grade in force on the sheet's today has no rate in force then and no claim of theirs shows a
+   *  figure. */
   protected dueBy(person: Person): string {
     const due = this.dueCentsBy(person);
     return due === null ? NO_RATE : money(due);
   }
 
+  /** How far the sum of the dues on a person's claims that count is above the sheet's cap; 0.00
+   *  when it is not, there is no cap or the due-total is n/a. */
+  protected excessOf(person: Person): string {
+    const sum = this.uncappedCentsBy(person);
+    const cap = this.cap();
+    return money(sum === null || cap === null ? 0 : Math.max(sum - cap, 0));
+  }
+
   private dueCentsBy(person: Person): number | null {
+    const sum = this.uncappedCentsBy(person);
+    const cap = this.cap();
+    return sum === null || cap === null ? sum : Math.min(sum, cap);
+  }
+
+  private uncappedCentsBy(person: Person): number | null {
     const floor = this.floor();
     const late = this.late();
     const dues = this.countedOf(person.id).map((c) =>

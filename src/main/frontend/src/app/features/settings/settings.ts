@@ -17,6 +17,8 @@ interface SettingsView {
   clerkLimit: string | null;
   /** The floor (two decimals): the least a claim's live due can be. */
   floor: string;
+  /** The cap (two decimals): the most a person's due-total can be; null when there is none. */
+  cap: string | null;
   /** The terms in whole days: a claim is due by its date plus them. */
   terms: number;
   /** The late percent (two decimals): an overdue claim's due gains it of its figure for every full
@@ -58,6 +60,7 @@ export class SettingStore {
   readonly roles = signal<RoleView[]>([]);
   readonly clerkLimit = signal<string | null>(null);
   readonly floor = signal(FLOOR);
+  readonly cap = signal<string | null>(null);
   readonly terms = signal(TERMS);
   readonly latePct = signal(LATE_PCT);
   readonly policyDate = signal('');
@@ -71,6 +74,7 @@ export class SettingStore {
       this.roles.set([]);
       this.clerkLimit.set(null);
       this.floor.set(FLOOR);
+      this.cap.set(null);
       this.terms.set(TERMS);
       this.latePct.set(LATE_PCT);
       this.policyDate.set('');
@@ -110,6 +114,17 @@ export class SettingStore {
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/floor`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
+  /** Change the active sheet's cap; null removes it. */
+  async setCap(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/cap`, { value }),
     );
     if (this.session.sheetId() !== sheet) return;
     this.show(saved);
@@ -190,6 +205,7 @@ export class SettingStore {
     this.roles.set(settings.roles);
     this.clerkLimit.set(settings.clerkLimit);
     this.floor.set(settings.floor);
+    this.cap.set(settings.cap);
     this.terms.set(settings.terms);
     this.latePct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
@@ -200,12 +216,13 @@ export class SettingStore {
 
 // The sheet's settings: the role given each user name (clerk, the default, or steward) and the
 // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
+// the cap, the most a person's due-total can be,
 // the terms, the days after its date a claim is due by (fixed when the claim is added), and each
 // grade's own terms, which a claim of that grade takes instead, and the late percent, what an overdue claim's
 // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
 // claim's date makes its figures round half up rather than half to even, and the period numbering
 // from, on or after which a claim opened is numbered within its period.
-// Saving sends only the settings typed into since the last save; the clerk limit, the policy date and
+// Saving sends only the settings typed into since the last save; the clerk limit, the cap, the policy date and
 // the period numbering from count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
 @Component({
   selector: 'app-settings',
@@ -273,6 +290,15 @@ export class SettingStore {
           [value]="floor()"
           (input)="floor.set(value($event)); floorTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-cap">Cap</label>
+        <input
+          id="setting-cap"
+          data-testid="setting-cap"
+          inputmode="decimal"
+          [value]="cap()"
+          (focus)="capTyped.set(true)"
+          (input)="cap.set(value($event)); capTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-terms">Terms (days)</label>
         <input
           id="setting-terms"
@@ -334,6 +360,13 @@ export class SettingStore {
         <strong data-testid="setting-floor-current">{{ store.floor() }}</strong>
       </p>
       <p>
+        Cap in force:
+        <strong data-testid="setting-cap-current">{{ store.cap() ?? '' }}</strong>
+        @if (store.cap() === null) {
+          <span>none</span>
+        }
+      </p>
+      <p>
         Terms in force:
         <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days
       </p>
@@ -379,6 +412,8 @@ export class Settings {
   protected readonly clerkLimitTyped = signal(false);
   protected readonly floor = signal('');
   protected readonly floorTyped = signal(false);
+  protected readonly cap = signal('');
+  protected readonly capTyped = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTyped = signal(false);
   /** The grades' terms typed since the last save, by grade. */
@@ -437,6 +472,8 @@ export class Settings {
     const floor = this.floor().trim();
     const saveLimit = this.clerkLimitTyped();
     const saveFloor = this.floorTyped();
+    const cap = this.cap().trim();
+    const saveCap = this.capTyped();
     const terms = this.terms().trim();
     const saveTerms = this.termsTyped();
     const gradeTerms = Object.entries(this.gradeTerms()).map(([grade, days]) => [grade, days.trim()] as const);
@@ -452,6 +489,10 @@ export class Settings {
     }
     if (saveFloor && !AMOUNT.test(floor)) {
       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    if (saveCap && cap !== '' && !AMOUNT.test(cap)) {
+      this.settingsError.set('Type a cap of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
     if (saveTerms && !DAYS.test(terms)) {
@@ -477,6 +518,7 @@ export class Settings {
     }
     this.clerkLimitTyped.set(false);
     this.floorTyped.set(false);
+    this.capTyped.set(false);
     this.termsTyped.set(false);
     this.gradeTerms.set({});
     this.latePctTyped.set(false);
@@ -486,6 +528,7 @@ export class Settings {
       try {
         if (saveLimit) await this.store.setClerkLimit(limit === '' ? null : limit);
         if (saveFloor) await this.store.setFloor(floor);
+        if (saveCap) await this.store.setCap(cap === '' ? null : cap);
         if (saveTerms) await this.store.setTerms(Number(terms));
         for (const [grade, days] of gradeTerms) await this.store.setGradeTerms(grade, Number(days));
         if (saveLatePct) await this.store.setLatePct(latePct);
@@ -495,6 +538,7 @@ export class Settings {
         // What was typed stays to be saved again.
         if (saveLimit) this.clerkLimitTyped.set(true);
         if (saveFloor) this.floorTyped.set(true);
+        if (saveCap) this.capTyped.set(true);
         if (saveTerms) this.termsTyped.set(true);
         this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
         if (saveLatePct) this.latePctTyped.set(true);

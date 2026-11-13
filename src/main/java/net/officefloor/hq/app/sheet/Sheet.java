@@ -49,6 +49,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** The cap: a person's due-total is at most it; null for none. */
+    @Column(name = "due_cap", precision = 12, scale = 2)
+    private BigDecimal cap;
+
     protected Sheet() {
     }
 
@@ -115,6 +119,14 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
     }
 
     /** Take the sheet's next claim number. */

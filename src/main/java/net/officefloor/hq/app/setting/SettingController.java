@@ -41,10 +41,10 @@ public class SettingController {
     }
 
     /** The sheet's settings: the roles assigned, the clerk limit (two decimals; null for none) and
-     *  the floor (two decimals), the terms (whole days), the late percent (two decimals) and the policy
+     *  the floor (two decimals), the cap (two decimals; null for none), the terms (whole days), the late percent (two decimals) and the policy
      *  date (blank for the sheet's today) and the period numbering from (blank for off), and the grades'
      *  own terms by grade (a grade not listed takes the sheet's terms). */
-    public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, int terms, String latePct,
+    public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Map<String, Integer> gradeTerms) {
     }
 
@@ -58,6 +58,10 @@ public class SettingController {
 
     /** A floor of 0.00 or more with up to two decimals. */
     public record FloorRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
+    }
+
+    /** A cap of 0.00 or more with up to two decimals; null removes the cap. */
+    public record CapRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value) {
     }
 
     /** Terms of 0 or more whole days. */
@@ -121,6 +125,17 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's cap; the figures it moves are followed in the audit. */
+    @PutMapping("/cap")
+    public SettingsView setCap(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated CapRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        rollups.track(sheet, by, () -> service.setCap(sheet, by, request.value()));
+        return view(sheet);
+    }
+
     /** Change the sheet's terms; the late charges it moves are followed in the audit. */
     @PutMapping("/terms")
     public SettingsView setTerms(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -177,10 +192,12 @@ public class SettingController {
 
     private SettingsView view(String sheet) {
         BigDecimal limit = service.clerkLimit(sheet);
+        BigDecimal cap = service.cap(sheet);
         LocalDate policyDate = service.policyDateSet(sheet);
         LocalDate numberingFrom = service.periodNumberingFrom(sheet);
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
-                limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString(), service.terms(sheet),
+                limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString(),
+                cap != null ? cap.toPlainString() : null, service.terms(sheet),
                 service.latePct(sheet).toPlainString(), policyDate != null ? policyDate.toString() : "",
                 numberingFrom != null ? numberingFrom.toString() : "", service.gradeTerms(sheet));
     }

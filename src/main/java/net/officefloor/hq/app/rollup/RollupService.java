@@ -18,6 +18,7 @@ import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,11 +52,12 @@ public class RollupService {
     private final PersonGradeService grades;
     private final PersonService personService;
     private final SheetService sheets;
+    private final SettingService settings;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
             RateService rates, PersonGradeService grades, PersonService personService, SheetService sheets,
-            Audit audit) {
+            SettingService settings, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
@@ -63,6 +65,7 @@ public class RollupService {
         this.grades = grades;
         this.personService = personService;
         this.sheets = sheets;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -112,7 +115,7 @@ public class RollupService {
 
     /** A person's figures from their claims that count: the sum of their amounts, and the sum of the
      *  figures they show, or none when the grade in force on the sheet's today has no rate in force
-     *  then and no claim of theirs shows a figure. */
+     *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. */
     private Figures figuresOf(String sheetId, LocalDate today, Person person, List<Claim> counted) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
@@ -126,7 +129,7 @@ public class RollupService {
             anyFigure |= figure != null;
         }
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today), today).isPresent();
-        return new Figures(person.getName(), claimed, hasRate || anyFigure ? due : null);
+        return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due) : null);
     }
 
     private static String text(BigDecimal due) {
