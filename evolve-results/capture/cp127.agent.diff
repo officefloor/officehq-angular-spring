@@ -1,0 +1,57 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 6ba33b6e2..2e425c8e0 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -2,7 +2,7 @@ import { Injectable, computed, inject } from '@angular/core';
+ import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
+ import { People, Person, gradeOn } from './people';
+ import { Period, Periods } from './periods';
+-import { Rates, hundredths, money, rounded } from './rates';
++import { NO_RATE, Rates, hundredths, money, rounded } from './rates';
+ import { Session, addDays } from './session';
+ 
+ /** The statuses claims are counted by, in the order the screen shows them. */
+@@ -101,6 +101,20 @@ export class Figures {
+     money(trimmed(this.people.people().map((p) => this.overdueCents(p)))),
+   );
+ 
++  /** The signed-in user's own figures: the due-total (n/a when it has none) and overdue-total of the
++   *  person whose name or an alias is the user's name, compared as names are (trimmed, ignoring case);
++   *  null when no one on the sheet has it. */
++  readonly mine = computed(() => {
++    const user = this.session.user()?.trim().toLowerCase();
++    if (!user) return null;
++    const p = this.people
++      .people()
++      .find((p) => p.name.trim().toLowerCase() === user || p.aliases.some((a) => a.trim().toLowerCase() === user));
++    if (!p) return null;
++    const due = this.dueCents(p);
++    return { dueTotal: due === null ? NO_RATE : money(due), overdueTotal: money(this.overdueCents(p)) };
++  });
++
+   /** Each tag ever used on the sheet, sorted, with the due of the claims that count live and carry it
+    *  (a claim with two tags counts in both), not capped or trimmed. */
+   readonly tagTotals = computed(() => {
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 840e94988..2a6ac4e1b 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -8,7 +8,8 @@ import { Session } from '../../core/session';
+ // each status, and the sheet's due- and overdue-totals — the same figures the summary and the
+ // people list show. Then the same figures consolidated over the sheet and all its descendants: each
+ // descendant's as that sheet shows them, added to this sheet's own (as it is now, even while the
+-// screen shows the sheet as of a date).
++// screen shows the sheet as of a date). And the signed-in user's own due- and overdue-totals, when a
++// person on the sheet has their name or an alias equal to it; blank otherwise.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -20,6 +21,8 @@ import { Session } from '../../core/session';
+         }
+         <div><dt>Due total</dt><dd data-testid="header-due-total">{{ figures.dueTotal() }}</dd></div>
+         <div><dt>Overdue total</dt><dd data-testid="header-overdue-total">{{ figures.overdueTotal() }}</dd></div>
++        <div><dt>My due total</dt><dd data-testid="my-due-total">{{ figures.mine()?.dueTotal }}</dd></div>
++        <div><dt>My overdue total</dt><dd data-testid="my-overdue-total">{{ figures.mine()?.overdueTotal }}</dd></div>
+       </dl>
+       <dl aria-label="Consolidated with descendant sheets">
+         <div><dt>Consolidated people</dt><dd data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</dd></div>
