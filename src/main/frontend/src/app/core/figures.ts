@@ -238,6 +238,16 @@ export class Figures {
     return halfEven(tenThousandths, 10000n).toString();
   }
 
+  /** A person's band while both score thresholds are set: HIGH at or above the high one, MID at or above
+   *  the mid one, else LOW; blank while either is unset. */
+  band(p: Person): string {
+    const mid = this.session.scoreMid();
+    const high = this.session.scoreHigh();
+    if (mid === null || high === null) return '';
+    const score = Number(this.score(p));
+    return score >= high ? 'HIGH' : score >= mid ? 'MID' : 'LOW';
+  }
+
   /** The due of a person's overdue claims that count, added up. */
   overdueCents(p: Person): bigint {
     return this.overdue(p).reduce((sum, c) => sum + this.figureCents(c, p), 0n);

@@ -41,6 +41,12 @@ export interface SheetView {
   /** The escalation gap: reminding a claim whose previous reminder was at least these many days before the
    *  sheet's today escalates it (once per claim); null when off. */
   escalateAfter: number | null;
+  /** The mid score threshold: with the high one set, a person scoring at or above it is MID; null for no
+   *  bands. */
+  scoreMid: number | null;
+  /** The high score threshold: with the mid one set, a person scoring at or above it is HIGH; null for no
+   *  bands. */
+  scoreHigh: number | null;
   /** The review SLA: a REVIEW claim whose review day plus these many days is before the sheet's today is
    *  late for review; null when none. */
   reviewSla: number | null;
@@ -225,6 +231,10 @@ export class Session {
   readonly graceDays = signal<number | null>(null);
   /** The sheet's escalation gap in days; null when off. */
   readonly escalateAfter = signal<number | null>(null);
+  /** The sheet's mid score threshold; null for no bands. Not dated. */
+  readonly scoreMid = signal<number | null>(null);
+  /** The sheet's high score threshold; null for no bands. Not dated. */
+  readonly scoreHigh = signal<number | null>(null);
   /** The sheet's review SLA in days; null when none. */
   readonly reviewSla = signal<number | null>(null);
   /** The sheet's proof kinds, comma separated; null when none. */
@@ -308,6 +318,8 @@ export class Session {
       this.permissions.set(sheet.permissions);
       this.graceDays.set(sheet.graceDays);
       this.escalateAfter.set(sheet.escalateAfter);
+      this.scoreMid.set(sheet.scoreMid);
+      this.scoreHigh.set(sheet.scoreHigh);
       this.reviewSla.set(sheet.reviewSla);
       this.proofKinds.set(sheet.proofKinds);
       this.defaultGrade.set(sheet.defaultGrade);
@@ -809,6 +821,28 @@ export class Session {
           { escalateAfter: d ? Number(d) : null }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.escalateAfter.set(sheet.escalateAfter);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's mid or high score threshold (blank: no bands); an error message when refused. */
+  async setScoreThreshold(key: 'score-mid' | 'score-high', value: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const v = value.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (v && !/^-?\d{1,9}$/.test(v)) return 'Enter the score threshold as a whole number, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/${key}`,
+          { value: v ? Number(v) : null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) {
+        this.scoreMid.set(sheet.scoreMid);
+        this.scoreHigh.set(sheet.scoreHigh);
+      }
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

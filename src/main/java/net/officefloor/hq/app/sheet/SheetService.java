@@ -299,6 +299,20 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's mid or high score threshold (key score-mid or score-high; none: no bands). Not dated. */
+    @Transactional
+    public Sheet setScoreThreshold(String id, String user, String key, Integer value) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        if ("score-high".equals(key)) {
+            sheet.setScoreHigh(value);
+        } else {
+            sheet.setScoreMid(value);
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value="
+                + (value == null ? "" : value.toString()));
+        return sheet;
+    }
+
     /** Change the sheet's review SLA in days (none: none). Not dated. */
     @Transactional
     public Sheet setReviewSla(String id, String user, Integer days) {

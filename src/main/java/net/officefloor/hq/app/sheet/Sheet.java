@@ -111,6 +111,16 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The mid score threshold: with the high one set, a person whose score is at or above it is MID; none
+     *  means no bands. Not dated. */
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    /** The high score threshold: with the mid one set, a person whose score is at or above it is HIGH; none
+     *  means no bands. Not dated. */
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** The review SLA: a REVIEW claim whose review day (the sheet's today when it went to REVIEW) plus these
      *  many days is before the sheet's today is late for review; none means none. Not dated. */
     @Column(name = "review_sla")
@@ -452,6 +462,22 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    public Integer getScoreMid() {
+        return scoreMid;
+    }
+
+    public void setScoreMid(Integer scoreMid) {
+        this.scoreMid = scoreMid;
+    }
+
+    public Integer getScoreHigh() {
+        return scoreHigh;
+    }
+
+    public void setScoreHigh(Integer scoreHigh) {
+        this.scoreHigh = scoreHigh;
     }
 
     public Integer getReviewSla() {
