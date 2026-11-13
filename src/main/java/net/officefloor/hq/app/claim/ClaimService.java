@@ -88,7 +88,7 @@ public class ClaimService {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
-            claim.setSettledDue(dueOf(sheetId, person, claim));
+            claim.setSettledDue(figureOf(sheetId, person, claim));
         } else if (to == ClaimStatus.VOID) {
             claim.setNumber(null);
         }
@@ -105,6 +105,15 @@ public class ClaimService {
         }
         audit.recordOnCommit(line);
         return saved;
+    }
+
+    /** The figure a claim shows: the due fixed when it was settled, else the figure its person's
+     *  last statement bound it to, else its due at the person's grade rate; null when it has none. */
+    public BigDecimal figureOf(String sheetId, Person person, Claim claim) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
+        return claim.isStated() ? claim.getStatedDue() : dueOf(sheetId, person, claim);
     }
 
     /** The due on a claim at the person's grade rate in force on the claim's date: amount times rate

@@ -4,8 +4,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.statement.StatementService;
+import net.officefloor.hq.app.statement.StatementSummary;
 import java.util.NoSuchElementException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -27,9 +31,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    public record PersonView(Long id, String name, String grade, long version) {
-        static PersonView of(Person person) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion());
+    /** A person as the screen shows them, with how many statements were taken for them and the
+     *  last one's due-total and date (null when none was). */
+    public record PersonView(Long id, String name, String grade, long version, int statementCount,
+            String statedTotal, LocalDate statementDate) {
+        static PersonView of(Person person, StatementSummary statements) {
+            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
+                    statements.count(), statements.lastDueTotal(), statements.lastDate());
         }
     }
 
@@ -47,15 +55,21 @@ public class PersonController {
     }
 
     private final PersonService service;
+    private final StatementService statements;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, StatementService statements) {
         this.service = service;
+        this.statements = statements;
     }
 
     /** The sheet's people in the order they were added. */
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PersonView::of).toList();
+        String sheet = sheetId.trim();
+        Map<Long, StatementSummary> summaries = statements.summaries(sheet);
+        return service.list(sheet).stream()
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE)))
+                .toList();
     }
 
     /** Add a person to the sheet. */
@@ -63,14 +77,15 @@ public class PersonController {
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonRequest request) {
-        return PersonView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name(), request.grade()));
+        return withStatements(service.add(sheetId.trim(), SignedInUser.decode(user), request.name(),
+                request.grade()));
     }
 
     /** Change a person's name and grade; refused when the person was saved since the editor loaded them. */
     @PutMapping("/{id}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonUpdate request) {
-        return PersonView.of(service.update(sheetId.trim(), SignedInUser.decode(user), id, request.version(),
+        return withStatements(service.update(sheetId.trim(), SignedInUser.decode(user), id, request.version(),
                 request.name(), request.grade()));
     }
 
@@ -78,7 +93,11 @@ public class PersonController {
     @ExceptionHandler(StalePersonException.class)
     @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
     public PersonView stale(StalePersonException e) {
-        return PersonView.of(e.getCurrent());
+        return withStatements(e.getCurrent());
+    }
+
+    private PersonView withStatements(Person person) {
+        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */

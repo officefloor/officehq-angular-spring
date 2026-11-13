@@ -30,14 +30,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as the screen shows it; the amount and the due fixed on settling (null when none
-     *  was) are strings with two decimals; openedBy is null for a claim never opened. */
+     *  was) are strings with two decimals; openedBy is null for a claim never opened; stated tells
+     *  whether a statement bound the claim, statedDue the figure it bound it to (null when none). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Long number, String settledDue, String openedBy) {
-        static ClaimView of(Claim claim) {
+            ClaimStatus status, Long number, String settledDue, String openedBy, boolean stated,
+            String statedDue) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
-                    claim.getOpenedBy());
+                    claim.getOpenedBy(), claim.isStated(),
+                    claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null);
         }
     }
 

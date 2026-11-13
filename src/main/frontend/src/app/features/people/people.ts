@@ -11,6 +11,19 @@ interface Person {
   grade: string;
   /** Raised on every save; an editor saves only the version it loaded. */
   version: number;
+  /** How many statements were taken for the person. */
+  statementCount: number;
+  /** The last statement's due-total (two decimals, or n/a); null when none was taken. */
+  statedTotal: string | null;
+  /** The sheet's today when the last statement was taken; null when none was. */
+  statementDate: string | null;
+}
+
+/** A statement taken: the person's statements as their row shows them, and their claims as it
+ *  bound them. */
+interface StatementTaken {
+  statements: { count: number; lastDueTotal: string | null; lastDate: string | null };
+  claims: Claim[];
 }
 
 // The people on the active sheet, in the order they were added, each with their claims and what
@@ -62,6 +75,9 @@ interface Person {
             <th scope="col">Grade</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
+            <th scope="col">Statements</th>
+            <th scope="col">Last stated</th>
+            <th scope="col">Stated on</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -73,6 +89,9 @@ interface Person {
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
+              <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
+              <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td>
                 <app-person-claims
                   [personId]="p.id"
@@ -90,6 +109,19 @@ interface Person {
                 >
                   Edit
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-statement"
+                  [attr.aria-label]="'Take a statement for ' + p.name"
+                  (click)="takeStatement(p)"
+                >
+                  Statement
+                </button>
+                @if (rowError(); as e) {
+                  @if (e.id === p.id) {
+                    <p role="alert" data-testid="person-error">{{ e.message }}</p>
+                  }
+                }
               </td>
             </tr>
           }
@@ -139,6 +171,8 @@ export class People {
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
+  /** The error from the last action on a person's row refused, and the person it belongs to. */
+  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
 
   constructor() {
     effect(() => {
@@ -146,6 +180,7 @@ export class People {
       const load = this.session.loads();
       this.people.set([]);
       this.claims.set([]);
+      this.rowError.set(null);
       this.reset();
       if (sheet) void this.read(sheet, load);
     });
@@ -169,7 +204,7 @@ export class People {
   }
 
   /** The sum of the dues shown on a person's claims that count, or n/a when their grade has no rate
-   *  in force on the sheet's today and no settled claim of theirs keeps a figure. */
+   *  in force on the sheet's today and no settled or stated claim of theirs keeps a figure. */
   protected dueBy(person: Person): string {
     const due = this.dueCentsBy(person);
     return due === null ? NO_RATE : money(due);
@@ -178,7 +213,9 @@ export class People {
   private dueCentsBy(person: Person): number | null {
     const counted = this.countedOf(person.id);
     const hasRate = this.rates.current().has(person.grade);
-    if (!hasRate && !counted.some((c) => c.settledDue !== null)) return null;
+    if (!hasRate && !counted.some((c) => c.settledDue !== null || (c.stated && c.statedDue !== null))) {
+      return null;
+    }
     const rates = this.rates.of(person.grade);
     return counted.reduce((sum, c) => sum + (claimDueCents(c, rates) ?? 0), 0);
   }
@@ -192,7 +229,35 @@ export class People {
     );
   }
 
+  /** Take a statement for a person: their row and claims then show what it recorded and bound. */
+  protected async takeStatement(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
+    try {
+      const taken = await firstValueFrom(this.http.post<StatementTaken>(url, null));
+      if (this.session.sheetId() !== sheet) return;
+      const bound = new Map(taken.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => [
+        ...taken.claims.filter((c) => !list.some((had) => had.id === c.id)),
+        ...list.map((c) => bound.get(c.id) ?? c),
+      ].sort((a, b) => b.id - a.id));
+      const { count, lastDueTotal, lastDate } = taken.statements;
+      this.people.update((list) =>
+        list.map((p) =>
+          p.id === person.id
+            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate }
+            : p,
+        ),
+      );
+    } catch {
+      this.rowError.set({ id: person.id, message: `A statement could not be taken for ${person.name}.` });
+    }
+  }
+
   protected edit(person: Person): void {
+    this.rowError.set(null);
     this.editingId.set(person.id);
     this.editingVersion.set(person.version);
     this.name.set(person.name);

@@ -45,6 +45,14 @@ public class SheetService {
         return number;
     }
 
+    /** Hold the sheet locked until the transaction ends, so changes to it made at the same moment
+     *  wait their turn. */
+    @Transactional
+    public void lock(String id) {
+        load(id);
+        sheets.findLockedById(id).orElseThrow();
+    }
+
     /** Change the sheet's today. */
     @Transactional
     public Sheet setToday(String id, LocalDate today) {

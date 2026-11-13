@@ -52,6 +52,14 @@ public class Claim {
     @Column(name = "opened_by")
     private String openedBy;
 
+    /** Whether the person's last statement bound the claim to the figure it had then. */
+    @Column(name = "stated", nullable = false)
+    private boolean stated;
+
+    /** The figure the claim was bound to by a statement; null when unbound or it had no figure. */
+    @Column(name = "stated_due", precision = 12, scale = 2)
+    private BigDecimal statedDue;
+
     protected Claim() {
     }
 
@@ -129,5 +137,30 @@ public class Claim {
 
     public void setOpenedBy(String openedBy) {
         this.openedBy = openedBy;
+    }
+
+    public boolean isStated() {
+        return stated;
+    }
+
+    public BigDecimal getStatedDue() {
+        return statedDue;
+    }
+
+    /** Bind the claim to a figure (may be null: it had none). */
+    public void bind(BigDecimal due) {
+        this.stated = true;
+        this.statedDue = due;
+    }
+
+    /** Leave the claim unbound, its figure live again. */
+    public void unbind() {
+        this.stated = false;
+        this.statedDue = null;
+    }
+
+    /** Whether the claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
+    public boolean counts() {
+        return status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED;
     }
 }
