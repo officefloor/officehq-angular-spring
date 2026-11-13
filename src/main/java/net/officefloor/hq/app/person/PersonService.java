@@ -452,6 +452,32 @@ public class PersonService {
                 p.getTerms(), null, p.getContact(), null, false)).toList();
     }
 
+    /** Merge a grade into another, by a steward only, and refused for the same grade twice: every person
+     *  whose grade in force on the sheet's today is the merged grade is given the other from the sheet's
+     *  today, in list order, exactly as the person form would, then the figures the whole merge moved are
+     *  recorded; the people changed, in list order. */
+    @Transactional
+    public List<Person> mergeGrade(String sheetId, String user, String from, String into) {
+        requireSheet(sheetId);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new MergeRefusedException("Only a steward may merge grades.");
+        }
+        if (from.equals(into)) {
+            throw new MergeRefusedException("Choose two different grades to merge.");
+        }
+        LocalDate today = today(sheetId);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
+        List<Person> merged = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> from.equals(p.gradeOn(today)))
+                .map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), into, today,
+                        p.getTerms(), null, p.getContact(), null, false))
+                .toList();
+        // then the figures the whole merge moved
+        rollup.recordChanges(sheetId, user, before);
+        return merged;
+    }
+
     /** Give a person an alias, stored trimmed: refused when blank, or when it equals, ignoring case, any
      *  name or alias on the sheet. */
     @Transactional

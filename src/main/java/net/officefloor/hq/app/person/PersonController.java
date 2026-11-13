@@ -461,6 +461,30 @@ public class PersonController {
         return Map.of("message", e.getMessage());
     }
 
+    /** The grade to merge and the grade to merge it into. */
+    public record MergeGradeRequest(
+            @NotNull @Pattern(regexp = "[ABC]") String from,
+            @NotNull @Pattern(regexp = "[ABC]") String into) {
+    }
+
+    /** How many people a grade merge changed, and the people it changed. */
+    public record MergeGradeView(int merged, List<PersonView> people) {
+    }
+
+    /** Merge a grade into another: each person on the merged grade today is given the other from today. */
+    @PostMapping("/merge-grade")
+    public MergeGradeView mergeGrade(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid MergeGradeRequest request) {
+        try {
+            List<Person> merged = service.mergeGrade(sheetId.trim(), user.trim(), request.from(), request.into());
+            return new MergeGradeView(merged.size(), merged.stream().map(p -> view(p, user.trim())).toList());
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // one of them was saved by someone else at the same moment
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone else changed one of them; try again.");
+        }
+    }
+
     /** The id of the sheet to transfer a person to. */
     public record TransferRequest(@Size(max = 200) String toSheetId) {
     }

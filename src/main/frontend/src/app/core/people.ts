@@ -284,6 +284,37 @@ export class People {
     }
   }
 
+  /** Merge a grade into another: the server gives each person whose grade in force today is the merged
+   *  one the other from the sheet's today, in list order, as the person form would; how many were changed,
+   *  or an error message. */
+  async mergeGrade(from: string, into: string): Promise<number | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const grades = GRADES as readonly string[];
+    if (!grades.includes(from) || !grades.includes(into)) return 'Choose two grades.';
+    if (from === into) return 'Choose two different grades to merge.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ merged: number; people: Person[] }>(
+          `${this.url(sid)}/merge-grade`,
+          { from, into },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        const byId = new Map(done.people.map((p) => [p.id, p]));
+        this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
+      }
+      return done.merged;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && (e.status === 409 || e.status === 403) && typeof e.error?.message === 'string') {
+        return e.error.message;
+      }
+      return e instanceof HttpErrorResponse ? `Could not merge the grade (${e.status}).` : 'Could not merge the grade.';
+    }
+  }
+
   /** Retire the chosen people from a date (blank takes the sheet's today) together, the server retiring
    *  them in list order as each row's retire would; how many were retired, or an error message. */
   async bulkRetire(from: string): Promise<number | string> {
