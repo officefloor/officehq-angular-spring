@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 import { AMOUNT, Claim, PersonClaims, cents, claimDueCents, counts, money } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, RateStore, Rates } from '../rates/rates';
+import { Settings } from '../settings/settings';
 
 interface Person {
   id: number;
@@ -38,8 +39,9 @@ interface StatementTaken {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, Periods, Rates],
+  imports: [PersonClaims, Periods, Rates, Settings],
   template: `
+    <app-settings />
     <app-rates />
     <app-periods [dueTotals]="periodDueTotals()" />
     <section aria-labelledby="people-heading">

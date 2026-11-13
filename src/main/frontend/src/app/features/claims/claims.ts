@@ -195,8 +195,8 @@ export class PersonClaims {
     this.error.set(null);
   }
 
-  /** Open, settle or void a claim; a change its status does not allow, or the user who opened it
-   *  settling it, is refused on the row. */
+  /** Open, settle or void a claim; a change its status does not allow, the user who opened it
+   *  settling it, or a clerk settling a due above the clerk limit, is refused on the row. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.rowError.set(null);
     const sheet = this.session.sheetId();
@@ -208,12 +208,15 @@ export class PersonClaims {
       if (this.session.sheetId() !== sheet) return;
       this.saved.emit(saved);
     } catch (e) {
-      const own = action === 'settle' && e instanceof HttpErrorResponse && e.status === 403;
+      const status = action === 'settle' && e instanceof HttpErrorResponse ? e.status : null;
       this.rowError.set({
         id: claim.id,
-        message: own
-          ? 'The claim could not be settled: whoever opened it cannot settle it.'
-          : `The claim could not be ${PAST[action]}.`,
+        message:
+          status === 403
+            ? 'The claim could not be settled: whoever opened it cannot settle it.'
+            : status === 422
+              ? 'The claim could not be settled: its due is above the clerk limit; a steward must settle it.'
+              : `The claim could not be ${PAST[action]}.`,
       });
     }
   }

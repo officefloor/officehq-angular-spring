@@ -132,6 +132,12 @@ public class ClaimController {
     public void ownClaim() {
     }
 
+    /** A clerk cannot settle a claim whose due is above the clerk limit. */
+    @ExceptionHandler(ClerkLimitRefusedException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+    public void overClerkLimit() {
+    }
+
     @ExceptionHandler(NoSuchElementException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public void notFound() {

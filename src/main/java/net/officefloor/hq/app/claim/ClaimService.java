@@ -13,6 +13,8 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,11 +31,13 @@ public class ClaimService {
     private final RateService rates;
     private final SheetService sheets;
     private final PeriodRepository periods;
+    private final SettingService settings;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            PeriodRepository periods, Audit audit) {
+            PeriodRepository periods, SettingService settings, Audit audit) {
         this.periods = periods;
+        this.settings = settings;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
@@ -82,7 +86,8 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a change its status does not allow is refused, as is the user
-     *  who opened a claim settling it. */
+     *  who opened a claim settling it, and a clerk settling a claim whose due is above the clerk
+     *  limit. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
         Person person = person(sheetId, personId);
@@ -97,6 +102,9 @@ public class ClaimService {
         }
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new OwnClaimSettleRefusedException(user);
+        }
+        if (to == ClaimStatus.SETTLED) {
+            refuseOverClerkLimit(sheetId, user, figureOf(sheetId, person, claim));
         }
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
@@ -137,6 +145,18 @@ public class ClaimService {
                 .map(Rate::getRate)
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .orElse(null);
+    }
+
+    /** A clerk cannot settle a claim whose due is above the sheet's clerk limit; a due of n/a is
+     *  within any limit, and a steward settles anything. */
+    private void refuseOverClerkLimit(String sheetId, String user, BigDecimal due) {
+        BigDecimal limit = settings.clerkLimit(sheetId);
+        if (limit == null || due == null || due.compareTo(limit) <= 0) {
+            return;
+        }
+        if (settings.roleOf(sheetId, user) == Role.CLERK) {
+            throw new ClerkLimitRefusedException(user, due, limit);
+        }
     }
 
     /** A claim dated inside a closed period cannot be added, edited, opened, settled or voided. */
