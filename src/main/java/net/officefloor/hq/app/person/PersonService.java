@@ -27,7 +27,9 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String name, String grade) {
         sheets.load(sheetId);
-        return people.save(new Person(sheetId, name, grade));
+        String trimmed = name.trim();
+        requireFreeName(sheetId, trimmed, null);
+        return people.saveAndFlush(new Person(sheetId, trimmed, grade));
     }
 
     /** Change a person's name and grade. */
@@ -35,8 +37,16 @@ public class PersonService {
     public Person update(String sheetId, Long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
-        person.setName(name);
+        String trimmed = name.trim();
+        requireFreeName(sheetId, trimmed, id);
+        person.setName(trimmed);
         person.setGrade(grade);
-        return people.save(person);
+        return people.saveAndFlush(person);
+    }
+
+    private void requireFreeName(String sheetId, String name, Long exceptId) {
+        if (people.nameInUse(sheetId, name, exceptId)) {
+            throw new NameInUseException(name);
+        }
     }
 }
