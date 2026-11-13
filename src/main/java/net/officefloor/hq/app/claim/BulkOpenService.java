@@ -49,7 +49,7 @@ public class BulkOpenService {
             try {
                 opened.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
                         claim.getPersonId(), claim.getId(), ClaimStatus.OPEN)));
-            } catch (StatusChangeRefusedException | PermissionRefusedException | PeriodClosedException | NoSuchElementException refused) {
+            } catch (StatusChangeRefusedException | NoteRequiredException | PermissionRefusedException | PeriodClosedException | NoSuchElementException refused) {
                 // Left as it is: its change rolled back with its own transaction.
             }
         }

@@ -120,6 +120,8 @@ export class SettingStore {
   readonly cap = computed(() => this.onToday('cap') ?? null);
   /** The proof threshold in force on the sheet's today; null when there is none. */
   readonly proofThreshold = computed(() => this.onToday('proof-threshold') ?? null);
+  /** The note threshold in force on the sheet's today; null when there is none. */
+  readonly noteThreshold = computed(() => this.onToday('note-threshold') ?? null);
   /** The terms in force on the sheet's today. */
   readonly terms = computed(() => Number(this.onToday('terms') ?? TERMS));
   /** The late percent in force on the sheet's today. */
@@ -240,6 +242,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Record the active sheet's note threshold from a date (null for the sheet's today); null records none. */
+  async setNoteThreshold(value: string | null, from: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/note-threshold`, { value, from }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Record the active sheet's terms from a date (null for the sheet's today). */
   async setTerms(value: number, from: string | null): Promise<void> {
     const sheet = this.session.sheetId();
@@ -352,7 +365,8 @@ export class SettingStore {
 // who acts as a steward while the sheet's today is from its from-date to its to-date) and the
 // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
 // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
-// in force on its date) cannot be settled or approved until the claim has a proof,
+// in force on its date) cannot be settled or approved until the claim has a proof, the note threshold, above
+// which a claim's due (by the threshold in force on its date) cannot be opened while its note is empty,
 // the terms, the days after its date a claim is due by (fixed when the claim is added), and each
 // grade's own terms, which a claim of that grade takes instead, and the late percent, what an overdue claim's
 // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
@@ -362,7 +376,7 @@ export class SettingStore {
 // the roles that may open, settle, void, reassign, close and reopen (blank keeps the standing rule).
 // The settings that carry a figure are dated: each is saved from the from-date typed beside it (blank
 // for the sheet's today), keeping the values recorded before, and the value in force on the sheet's
-// today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof threshold, the policy date,
+// today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof and note thresholds, the policy date,
 // the period numbering from and the grace days count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
 @Component({
   selector: 'app-settings',
@@ -516,6 +530,23 @@ export class SettingStore {
           [value]="proofThresholdFrom()"
           (input)="proofThresholdFrom.set(value($event)); settingsError.set(null)"
         />
+        <label for="setting-note-threshold">Note threshold</label>
+        <input
+          id="setting-note-threshold"
+          data-testid="setting-note-threshold"
+          inputmode="decimal"
+          [value]="noteThreshold()"
+          (focus)="noteThresholdTyped.set(true)"
+          (input)="noteThreshold.set(value($event)); noteThresholdTyped.set(true); settingsError.set(null)"
+        />
+        <label for="setting-note-threshold-from">Note threshold from</label>
+        <input
+          id="setting-note-threshold-from"
+          data-testid="setting-note-threshold-from"
+          placeholder="yyyy-mm-dd"
+          [value]="noteThresholdFrom()"
+          (input)="noteThresholdFrom.set(value($event)); settingsError.set(null)"
+        />
         <label for="setting-terms">Terms (days)</label>
         <input
           id="setting-terms"
@@ -637,6 +668,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Note threshold in force:
+        <strong data-testid="setting-note-threshold-current">{{ store.noteThreshold() ?? '' }}</strong>
+        @if (store.noteThreshold() === null) {
+          <span>none</span>
+        }
+      </p>
+      <p>
         Terms in force:
         <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days
       </p>
@@ -711,6 +749,9 @@ export class Settings {
   protected readonly proofThreshold = signal('');
   protected readonly proofThresholdTyped = signal(false);
   protected readonly proofThresholdFrom = signal('');
+  protected readonly noteThreshold = signal('');
+  protected readonly noteThresholdTyped = signal(false);
+  protected readonly noteThresholdFrom = signal('');
   protected readonly terms = signal('');
   protected readonly termsTyped = signal(false);
   protected readonly termsFrom = signal('');
@@ -821,6 +862,8 @@ export class Settings {
     const saveCap = this.capTyped();
     const threshold = this.proofThreshold().trim();
     const saveThreshold = this.proofThresholdTyped();
+    const noteThreshold = this.noteThreshold().trim();
+    const saveNoteThreshold = this.noteThresholdTyped();
     const terms = this.terms().trim();
     const saveTerms = this.termsTyped();
     const gradeTerms = Object.entries(this.gradeTerms()).map(([grade, days]) => [grade, days.trim()] as const);
@@ -839,6 +882,7 @@ export class Settings {
     const floorFrom = this.floorFrom().trim();
     const capFrom = this.capFrom().trim();
     const thresholdFrom = this.proofThresholdFrom().trim();
+    const noteThresholdFrom = this.noteThresholdFrom().trim();
     const termsFrom = this.termsFrom().trim();
     const latePctFrom = this.latePctFrom().trim();
     const gradeTermsFrom: Record<string, string> = Object.fromEntries(
@@ -849,6 +893,7 @@ export class Settings {
       [saveFloor, floorFrom, 'the floor'],
       [saveCap, capFrom, 'the cap'],
       [saveThreshold, thresholdFrom, 'the proof threshold'],
+      [saveNoteThreshold, noteThresholdFrom, 'the note threshold'],
       [saveTerms, termsFrom, 'the terms'],
       ...gradeTerms.map(([grade]) => [true, gradeTermsFrom[grade] ?? '', `the terms for grade ${grade}`] as [boolean, string, string]),
       [saveLatePct, latePctFrom, 'the late percent'],
@@ -867,6 +912,10 @@ export class Settings {
     }
     if (saveThreshold && threshold !== '' && !AMOUNT.test(threshold)) {
       this.settingsError.set('Type a proof threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveNoteThreshold && noteThreshold !== '' && !AMOUNT.test(noteThreshold)) {
+      this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
     if (saveTerms && !DAYS.test(terms)) {
@@ -909,6 +958,7 @@ export class Settings {
     this.floorTyped.set(false);
     this.capTyped.set(false);
     this.proofThresholdTyped.set(false);
+    this.noteThresholdTyped.set(false);
     this.termsTyped.set(false);
     this.gradeTerms.set({});
     this.latePctTyped.set(false);
@@ -922,6 +972,9 @@ export class Settings {
         if (saveFloor) await this.store.setFloor(floor, fromOf(floorFrom));
         if (saveCap) await this.store.setCap(cap === '' ? null : cap, fromOf(capFrom));
         if (saveThreshold) await this.store.setProofThreshold(threshold === '' ? null : threshold, fromOf(thresholdFrom));
+        if (saveNoteThreshold) {
+          await this.store.setNoteThreshold(noteThreshold === '' ? null : noteThreshold, fromOf(noteThresholdFrom));
+        }
         if (saveTerms) await this.store.setTerms(Number(terms), fromOf(termsFrom));
         for (const [grade, days] of gradeTerms) {
           await this.store.setGradeTerms(grade, Number(days), fromOf(gradeTermsFrom[grade] ?? ''));
@@ -937,6 +990,7 @@ export class Settings {
         if (saveFloor) this.floorTyped.set(true);
         if (saveCap) this.capTyped.set(true);
         if (saveThreshold) this.proofThresholdTyped.set(true);
+        if (saveNoteThreshold) this.noteThresholdTyped.set(true);
         if (saveTerms) this.termsTyped.set(true);
         this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
         if (saveLatePct) this.latePctTyped.set(true);

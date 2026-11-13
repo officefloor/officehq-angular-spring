@@ -319,13 +319,14 @@ public class ClaimController {
      *  any change to a claim dated in a closed period, a claim dated after its person retired, or a
      *  correction that does not name a SETTLED claim of its person, a move the claim does not allow,
      *  a deferral the claim does not allow, a proof added to a SETTLED or VOID claim, or settling or
-     *  approving a claim above the proof threshold with no proofs, or a split the claim or amount does
+     *  approving a claim above the proof threshold with no proofs, or opening a claim above the note
+     *  threshold with an empty note, or a split the claim or amount does
      *  not allow, or a void of a SETTLED claim by anyone but a steward or after its void window, or a
      *  re-date of a claim that is not OPEN or PENDING, or opening or saving the editor of a claim
      *  another user's editor locks, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
-            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class,
+            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
             SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {

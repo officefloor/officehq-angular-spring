@@ -745,6 +745,8 @@ export class PersonClaims {
             ? 'The claim could not be settled: whoever opened it cannot settle it, and your role must be allowed to settle.'
             : !forbidden && (action === 'settle' || action === 'approve')
               ? `The claim could not be ${PAST[action]}: one due above the proof threshold needs a proof first, and its status must allow it.`
+            : !forbidden && action === 'open'
+              ? 'The claim could not be opened: one due above the note threshold needs a note first, and its status and period must allow it.'
             : forbidden && action === 'resettle'
               ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
               : !forbidden && action === 'void' && claim.status === 'SETTLED'

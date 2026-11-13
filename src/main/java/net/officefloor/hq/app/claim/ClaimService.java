@@ -211,6 +211,9 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED) {
             refuseUnproved(sheetId, claim, due);
         }
+        if (to == ClaimStatus.OPEN) {
+            refuseUnnoted(sheetId, person, claim);
+        }
         if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, due)) {
             to = ClaimStatus.PENDING;
         }
@@ -680,6 +683,19 @@ public class ClaimService {
         BigDecimal threshold = settings.proofThreshold(sheetId, claim.getDate());
         if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
             throw new ProofRequiredException(due, threshold);
+        }
+    }
+
+    /** A claim whose due is above the note threshold in force on its date cannot be opened while its
+     *  note is empty; a due of n/a, or no threshold, asks for none. */
+    private void refuseUnnoted(String sheetId, Person person, Claim claim) {
+        BigDecimal threshold = settings.noteThreshold(sheetId, claim.getDate());
+        if (threshold == null || (claim.getNote() != null && !claim.getNote().isBlank())) {
+            return;
+        }
+        BigDecimal due = dueOf(sheetId, person, claim);
+        if (due != null && due.compareTo(threshold) > 0) {
+            throw new NoteRequiredException(due, threshold);
         }
     }
 

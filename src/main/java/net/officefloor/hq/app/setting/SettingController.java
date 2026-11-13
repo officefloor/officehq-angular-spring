@@ -49,7 +49,7 @@ public class SettingController {
      *  date (blank for the sheet's today) and the period numbering from (blank for off) and the grace days
      *  (null for off), and the grades'
      *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
-     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold); and
+     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold, note-threshold); and
      *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
@@ -57,7 +57,7 @@ public class SettingController {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
-     *  terms, null for no clerk limit, cap or proof threshold. */
+     *  terms, null for no clerk limit, cap, proof threshold or note threshold. */
     public record DatedView(String from, String value) {
         static DatedView of(SettingValue v) {
             String value = v.getValue() == null ? null
@@ -97,6 +97,10 @@ public class SettingController {
 
     /** A proof threshold of 0.00 or more with up to two decimals; null removes the threshold. */
     public record ProofThresholdRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
+    }
+
+    /** A note threshold of 0.00 or more with up to two decimals; null removes the threshold. */
+    public record NoteThresholdRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
     /** Terms of 0 or more whole days. Each figure setting is recorded from its from-date; null for the
@@ -215,6 +219,16 @@ public class SettingController {
             @RequestBody @Validated ProofThresholdRequest request) {
         String sheet = sheetId.trim();
         service.setProofThreshold(sheet, SignedInUser.decode(user), request.value(), request.from());
+        return view(sheet);
+    }
+
+    /** Change the sheet's note threshold. */
+    @PutMapping("/note-threshold")
+    public SettingsView setNoteThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated NoteThresholdRequest request) {
+        String sheet = sheetId.trim();
+        service.setNoteThreshold(sheet, SignedInUser.decode(user), request.value(), request.from());
         return view(sheet);
     }
 
