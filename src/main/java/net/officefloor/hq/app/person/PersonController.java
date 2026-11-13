@@ -35,13 +35,15 @@ public class PersonController {
 
     /** A person as the screen shows them, with how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
-     *  when (null when not), and whether they are on hold. */
+     *  when (null when not), and whether they are on hold, and the ids of their patrons in the order
+     *  they were named. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held) {
-        public static PersonView of(Person person, StatementSummary statements) {
+            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
+            List<Long> patronIds) {
+        public static PersonView of(Person person, StatementSummary statements, List<Long> patronIds) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(), person.isRetired(),
-                    person.getRetiredFrom(), person.isHeld());
+                    person.getRetiredFrom(), person.isHeld(), patronIds);
         }
     }
 
@@ -62,6 +64,10 @@ public class PersonController {
     public record RetireRequest(LocalDate from) {
     }
 
+    /** A patron to name: the id of another person on the sheet. */
+    public record PatronRequest(@NotNull Long patronId) {
+    }
+
     private final PersonService service;
     private final StatementService statements;
     private final RollupService rollups;
@@ -77,8 +83,10 @@ public class PersonController {
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
         String sheet = sheetId.trim();
         Map<Long, StatementSummary> summaries = statements.summaries(sheet);
+        Map<Long, List<Long>> patrons = service.patronIds(sheet);
         return service.list(sheet).stream()
-                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE)))
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
+                        patrons.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -121,6 +129,15 @@ public class PersonController {
         return withStatements(rollups.track(sheet, by, () -> service.toggleHold(sheet, by, id)));
     }
 
+    /** Name another person on the sheet as a person's patron. */
+    @PostMapping("/{id}/patrons")
+    public PersonView addPatron(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PatronRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(service.addPatron(sheet, by, id, request.patronId()));
+    }
+
     /** A date that is not a real yyyy-mm-dd date is refused. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -135,7 +152,8 @@ public class PersonController {
     }
 
     private PersonView withStatements(Person person) {
-        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()));
+        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()),
+                service.patronIds(person.getId()));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */
@@ -149,8 +167,9 @@ public class PersonController {
     public void notFound() {
     }
 
-    /** The name is already in use on the sheet; a concurrent save is caught by the unique index. */
-    @ExceptionHandler({NameInUseException.class, DataIntegrityViolationException.class})
+    /** The name is already in use on the sheet, or the patron may not be named; a concurrent save is
+     *  caught by the unique index. */
+    @ExceptionHandler({NameInUseException.class, PatronRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void nameInUse() {
     }

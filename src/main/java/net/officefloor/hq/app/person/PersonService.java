@@ -2,7 +2,9 @@ package net.officefloor.hq.app.person;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -13,11 +15,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class PersonService {
 
     private final PersonRepository people;
+    private final PersonPatronRepository patrons;
     private final SheetService sheets;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, PersonPatronRepository patrons, SheetService sheets, Audit audit) {
         this.people = people;
+        this.patrons = patrons;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -78,6 +82,39 @@ public class PersonService {
         audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
                 + " by=" + user + " name=" + saved.getName());
         return saved;
+    }
+
+    /** Each person's patron ids on the sheet, in the order they were named, by person id; a person
+     *  with none is absent. */
+    public Map<Long, List<Long>> patronIds(String sheetId) {
+        return patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(PersonPatron::getPersonId,
+                        Collectors.mapping(PersonPatron::getPatronId, Collectors.toList())));
+    }
+
+    /** A person's patron ids, in the order they were named. */
+    public List<Long> patronIds(Long personId) {
+        return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(PersonPatron::getPatronId).toList();
+    }
+
+    /** Name another person on the sheet as a person's patron; refused for the person themselves and
+     *  for someone already their patron. */
+    @Transactional
+    public Person addPatron(String sheetId, String user, Long id, Long patronId) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        Person patron = people.findByIdAndSheetId(patronId, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + patronId + " on sheet " + sheetId));
+        if (person.getId().equals(patron.getId())) {
+            throw new PatronRefusedException(person.getName() + " cannot be their own patron");
+        }
+        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
+            throw new PatronRefusedException(patron.getName() + " is already a patron of " + person.getName());
+        }
+        patrons.saveAndFlush(new PersonPatron(sheetId, person.getId(), patron.getId()));
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " patron=" + patron.getName());
+        return person;
     }
 
     private void record(String event, String sheetId, String user, Person person) {

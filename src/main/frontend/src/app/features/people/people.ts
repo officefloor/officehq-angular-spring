@@ -25,6 +25,8 @@ interface Person {
   retiredFrom: string | null;
   /** Whether the person is on hold: while held, their OPEN claims count in no live total. */
   held: boolean;
+  /** The ids of the person's patrons, in the order they were named. */
+  patronIds: number[];
 }
 
 /** A statement taken: the person's statements as their row shows them, and their claims as it
@@ -125,6 +127,8 @@ interface StatementTaken {
             <th scope="col">Retired</th>
             <th scope="col">Retired from</th>
             <th scope="col">On hold</th>
+            <th scope="col">Patrons</th>
+            <th scope="col">Backing</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -144,6 +148,8 @@ interface StatementTaken {
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
+              <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td>
                 <app-person-claims
                   [personId]="p.id"
@@ -196,9 +202,29 @@ interface StatementTaken {
                 >
                   {{ p.held ? 'Release' : 'Hold' }}
                 </button>
+                <label [for]="'person-patron-select-' + p.id">Patron</label>
+                <select
+                  [id]="'person-patron-select-' + p.id"
+                  data-testid="person-patron-select"
+                  [value]="patronChoices()[p.id] ?? ''"
+                  (change)="setPatronChoice(p.id, value($event))"
+                >
+                  <option value="" [selected]="!patronChoices()[p.id]">Choose a patron</option>
+                  @for (o of people(); track o.id) {
+                    <option [value]="'' + o.id" [selected]="patronChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-patron-add"
+                  [attr.aria-label]="'Add a patron for ' + p.name"
+                  (click)="addPatron(p)"
+                >
+                  Add patron
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
-                    <p role="alert" data-testid="person-error">{{ e.message }}</p>
+                    <p role="alert" [attr.data-testid]="e.testId ?? 'person-error'">{{ e.message }}</p>
                   }
                 }
               </td>
@@ -312,7 +338,9 @@ export class People {
   private readonly quickBusy = signal(false);
   protected readonly quickError = signal<string | null>(null);
   /** The error from the last action on a person's row refused, and the person it belongs to. */
-  protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+  protected readonly rowError = signal<{ id: number; message: string; testId?: string } | null>(null);
+  /** The patron chosen on each person's row (a person id, or blank), by person id. */
+  protected readonly patronChoices = signal<Record<number, string>>({});
 
   constructor() {
     effect(() => {
@@ -322,6 +350,7 @@ export class People {
       this.claims.set([]);
       this.rowError.set(null);
       this.retireDates.set({});
+      this.patronChoices.set({});
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -359,6 +388,62 @@ export class People {
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be retired.` });
     }
+  }
+
+  protected setPatronChoice(personId: number, patronId: string): void {
+    this.patronChoices.update((choices) => ({ ...choices, [personId]: patronId }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Name the chosen person as a person's patron; their row then shows them and the backing. */
+  protected async addPatron(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const refused = (message: string) =>
+      this.rowError.set({ id: person.id, message, testId: 'person-patron-error' });
+    const chosen = this.patronChoices()[person.id] ?? '';
+    if (!chosen) {
+      refused('Choose a patron to add.');
+      return;
+    }
+    const patronId = Number(chosen);
+    const patron = this.people().find((p) => p.id === patronId);
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/patrons`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { patronId }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.patronChoices.update((choices) => ({ ...choices, [person.id]: '' }));
+    } catch {
+      refused(
+        patronId === person.id
+          ? `${person.name} cannot be their own patron.`
+          : `${patron?.name ?? 'That person'} could not be added as a patron of ${person.name}.`,
+      );
+    }
+  }
+
+  /** A person's patrons' names, sorted, comma and space separated. */
+  protected patronsOf(person: Person): string {
+    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    return person.patronIds
+      .map((id) => names.get(id))
+      .filter((name): name is string => name !== undefined)
+      .sort((a, b) => a.localeCompare(b))
+      .join(', ');
+  }
+
+  /** A person's patrons' due-totals added up, skipping those with no figure; 0.00 with no patrons. */
+  protected backingOf(person: Person): string {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    return money(
+      person.patronIds.reduce((sum, id) => {
+        const patron = byId.get(id);
+        const due = patron ? this.dueCentsBy(patron) : null;
+        return due === null ? sum : sum + due;
+      }, 0),
+    );
   }
 
   /** Put a person on hold, or take them off hold; their row and the totals then show it. */

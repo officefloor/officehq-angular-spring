@@ -12,6 +12,7 @@ import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.NameInUseException;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.statement.StatementService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -44,10 +45,12 @@ public class QuickAddController {
 
     private final QuickAddService service;
     private final StatementService statements;
+    private final PersonService people;
 
-    public QuickAddController(QuickAddService service, StatementService statements) {
+    public QuickAddController(QuickAddService service, StatementService statements, PersonService people) {
         this.service = service;
         this.statements = statements;
+        this.people = people;
     }
 
     /** Add a DRAFT claim for the named person, adding them first when the name is not on the sheet. */
@@ -58,7 +61,8 @@ public class QuickAddController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         QuickAddService.Added added = service.add(sheet, by, request.name(), request.amount());
-        return new QuickAddView(PersonView.of(added.person(), statements.summary(sheet, added.person().getId())),
+        return new QuickAddView(PersonView.of(added.person(), statements.summary(sheet, added.person().getId()),
+                people.patronIds(added.person().getId())),
                 ClaimView.of(added.claim()));
     }
 
