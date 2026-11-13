@@ -17,10 +17,14 @@ export const GRADES = ['A', 'B', 'C'];
 export const NO_RATE = 'n/a';
 
 /** The due on an amount in cents at a percent rate (two decimals), in cents: amount times rate
- *  divided by 100, rounded half up. Worked in whole numbers so nothing is lost to floating point. */
+ *  divided by 100, rounded half to even. Worked in whole numbers so nothing is lost to floating
+ *  point. */
 export function dueCents(amountCents: number, rate: string): number {
   const hundredths = BigInt(Math.round(Number(rate) * 100));
-  return Number((BigInt(amountCents) * hundredths + 5000n) / 10000n);
+  const product = BigInt(amountCents) * hundredths;
+  const whole = product / 10000n;
+  const rest = product % 10000n;
+  return Number(rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole);
 }
 
 /** The rate in force on a date among a grade's rates: the one whose from-date is the latest on or

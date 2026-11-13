@@ -2,8 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, PersonClaims, cents, counts, money } from '../claims/claims';
-import { NO_RATE, RateStore, Rates, dueCents } from '../rates/rates';
+import { Claim, PersonClaims, cents, claimDueCents, counts, money } from '../claims/claims';
+import { NO_RATE, RateStore, Rates } from '../rates/rates';
 
 interface Person {
   id: number;
@@ -162,17 +162,19 @@ export class People {
     return money(this.countedOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
   }
 
-  /** What a person has claimed times their grade's rate in force on the sheet's today, or n/a when
-   *  none is. */
+  /** The sum of the dues shown on a person's claims that count, or n/a when their grade has no rate
+   *  in force on the sheet's today and no settled claim of theirs keeps a figure. */
   protected dueBy(person: Person): string {
     const due = this.dueCentsBy(person);
     return due === null ? NO_RATE : money(due);
   }
 
   private dueCentsBy(person: Person): number | null {
-    const rate = this.rates.current().get(person.grade);
-    if (rate === undefined) return null;
-    return dueCents(this.countedOf(person.id).reduce((sum, c) => sum + cents(c.amount), 0), rate);
+    const counted = this.countedOf(person.id);
+    const hasRate = this.rates.current().has(person.grade);
+    if (!hasRate && !counted.some((c) => c.settledDue !== null)) return null;
+    const rates = this.rates.of(person.grade);
+    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates) ?? 0), 0);
   }
 
   /** A claim added (listed first) or saved in place. */

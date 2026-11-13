@@ -35,6 +35,14 @@ export function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
+/** A claim's due in cents: the due fixed when it was settled; otherwise its amount times the rate
+ *  in force on its date among its grade's rates; null when it has no figure. */
+export function claimDueCents(claim: Claim, rates: Rate[]): number | null {
+  if (claim.settledDue !== null) return cents(claim.settledDue);
+  const rate = rateOn(rates, claim.date);
+  return rate === null ? null : dueCents(cents(claim.amount), rate);
+}
+
 /** Cents shown with two decimals. */
 export function money(total: number): string {
   return (total / 100).toFixed(2);
@@ -136,12 +144,10 @@ export class PersonClaims {
     return (event.target as HTMLInputElement).value;
   }
 
-  /** The due fixed when the claim was settled; otherwise the claim's amount times the rate in force
-   *  on the claim's date, or n/a when no rate applies. */
+  /** The claim's due (see claimDueCents), or n/a when it has no figure. */
   protected dueOf(claim: Claim): string {
-    if (claim.settledDue !== null) return claim.settledDue;
-    const rate = rateOn(this.rates(), claim.date);
-    return rate === null ? NO_RATE : money(dueCents(cents(claim.amount), rate));
+    const due = claimDueCents(claim, this.rates());
+    return due === null ? NO_RATE : money(due);
   }
 
   protected edit(claim: Claim): void {
