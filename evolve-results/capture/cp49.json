@@ -1,0 +1,64 @@
+{
+  "checkpoint": 49,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp49_paste-claims",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A paste box takes lines of name,amount,date,note (the note may hold commas; the date may be\nblank for the sheet's today; the note may be absent) and adds a DRAFT claim per line, in order,\nfor the named person (the name must be on the sheet, matched as names are compared). Every line is\nchecked first with exactly the claim form's rules: if any line fails, an error shows on the box\nand nothing is added; otherwise every claim is added and written as CLAIM_ADDED. Show how many\nwere added.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA paste box takes lines of name,amount,date,note (the note may hold commas; the date may be\nblank for the sheet's today; the note may be absent) and adds a DRAFT claim per line, in order,\nfor the named person (the name must be on the sheet, matched as names are compared). Every line is\nchecked first with exactly the claim form's rules: if any line fails, an error shows on the box\nand nothing is added; otherwise every claim is added and written as CLAIM_ADDED. Show how many\nwere added.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "95aea05bc9603b1a3ed1f23a8051cf60e0a1f590",
+  "reset_sha": "",
+  "preagent_sha": "d608e51979cfb4f7f22aa658a251677e8b305c24",
+  "prev_sha": "d608e51979cfb4f7f22aa658a251677e8b305c24",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7954968,
+    "input_tokens": 6,
+    "output_tokens": 731,
+    "cache_read_tokens": 125995,
+    "cache_creation_tokens": 2451,
+    "num_turns": 2,
+    "duration_ms": 9055,
+    "duration_api_ms": 96522,
+    "model": "claude-opus-5-5",
+    "session_id": "a37036c9-57a7-474f-a7a1-28ff09e4e564",
+    "stop_reason": "success",
+    "result_text": "The paste box is in and all 4 tests in `e2e/specs/acceptance.spec.ts` pass when run with `bin/e2e`.\n\n**How it works:**\n- **Front end** (`features/people/people.ts`): a paste box sits below the quick-add form, with a submit button, an \"Added N\" count and an error message. The count clears when you press the button and shows the new number once the paste is done. The error clears as soon as you edit the box or submit again. Added claims show at the top of each person's list, newest first.\n- **Server** (new `paste` package, endpoint `POST /api/sheets/{id}/claims/paste`):\n  - Every line is checked before anything is added. Names are matched the same way as elsewhere (trimmed, ignoring case). The amount must be 0.00 or more with up to two decimals. A blank date means the sheet's today, and the note is everything after the third comma, so it can contain commas.\n  - The claims are then added through the existing `ClaimService.add`, so they also get its checks for closed periods and retired people. Each added claim writes one `CLAIM_ADDED` line.\n  - All the adds happen in one transaction. Audit lines are only written once it commits, so if any line is refused, nothing is added and nothing goes to the audit file.\n\n**Choices I made where the request didn't say:**\n- Blank lines are skipped.\n- A paste with no lines at all is refused.\n- A line with fewer than three fields (just `name,amount`) is refused, because the request only says the note may be left off. Allowing a missing date too would be a one-line change.\n- A negative amount is refused, because the claim form only allows one when it names a claim it corrects, and pasted lines can't do that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7954968,
+        "num_turns": 2,
+        "duration_ms": 9055,
+        "duration_api_ms": 96522,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp49.agent.jsonl",
+  "agent_diff_file": "cp49.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
