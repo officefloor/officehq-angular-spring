@@ -2,11 +2,16 @@ package net.officefloor.hq.app.audit;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
 /**
@@ -18,28 +23,48 @@ public class AuditViewService {
 
     private final Audit audit;
     private final PersonRepository people;
+    private final SheetRepository sheets;
 
-    public AuditViewService(Audit audit, PersonRepository people) {
+    public AuditViewService(Audit audit, PersonRepository people, SheetRepository sheets) {
         this.audit = audit;
         this.people = people;
+        this.sheets = sheets;
     }
 
     /**
      * The sheet's audit lines, newest first. With a name, only the lines about that person: those
      * carrying name=&lt;name&gt; or person=&lt;name&gt;, the name compared as names are (case and
-     * surrounding spaces ignored); when the person of that name on the sheet was transferred here, the
+     * surrounding spaces ignored); the lines about them on the sheet's descendants follow, each sheet's
+     * newest first, the sheets by id; when the person of that name on the sheet was transferred here, the
      * lines about them on the sheet they came from follow, newest first, as that sheet's file holds them.
      */
     public List<String> lines(String sheetId, String name) {
         List<String> lines = sheetLines(sheetId, name);
         String who = name == null ? "" : name.trim();
         if (!who.isEmpty()) {
+            for (String descendant : descendants(sheetId)) {
+                lines.addAll(sheetLines(descendant, who));
+            }
             String origin = people.findByNameOrAlias(sheetId, who).map(Person::getOriginSheet).orElse(null);
             if (origin != null && !origin.equals(sheetId)) {
                 lines.addAll(sheetLines(origin, who));
             }
         }
         return lines;
+    }
+
+    /** The sheet's children, theirs and so on, by id. */
+    private TreeSet<String> descendants(String sheetId) {
+        TreeSet<String> found = new TreeSet<>();
+        Deque<String> next = new ArrayDeque<>(List.of(sheetId));
+        while (!next.isEmpty()) {
+            for (Sheet child : sheets.findByParentOrderByIdAsc(next.pop())) {
+                if (!child.getId().equals(sheetId) && found.add(child.getId())) {
+                    next.add(child.getId());
+                }
+            }
+        }
+        return found;
     }
 
     private List<String> sheetLines(String sheetId, String name) {
