@@ -1,0 +1,131 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 42f2cbe74..4481d7115 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -109,34 +109,34 @@ function roundsHalfUp(claim: Claim, late: Late): boolean {
+   return policy !== null && claim.roundsBy < policy;
+ }
+ 
+-/** A claim's figure in cents: the due fixed when it was settled; otherwise, unless it is PENDING
+- *  (no statement binds it then), the figure a statement bound it to; otherwise its amount times the rate in force on its date among its grade's rates,
+- *  raised to the sheet's floor in force on its date (in cents) unless it is a correction; null when it has no figure. */
+-function figureCents(claim: Claim, rates: Rate[], floor: (date: string) => number, halfUp: boolean): number | null {
+-  if (claim.settledDue !== null) return cents(claim.settledDue);
++/** A claim's figure in cents: the figure a statement bound it to, unless it is PENDING (no statement
++ *  binds it then); otherwise its amount times the rate in force on its date among its grade's rates;
++ *  null when it has no figure. The floor is not applied here (see claimDueCents). */
++function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | null {
+   if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
+   const rate = rateOn(rates, claim.date);
+   if (rate === null) return null;
+-  const due = dueCents(cents(claim.amount), rate, halfUp);
+-  return isCorrection(claim) ? due : Math.max(due, floor(claim.date));
++  return dueCents(cents(claim.amount), rate, halfUp);
+ }
+ 
+-/** A claim's due in cents: its figure plus its late charge: for every full 30 days an OPEN or PENDING claim is
+- *  overdue, the late percent in force on that boundary (its due-by plus 30, 60, 90 ... days) of the figure,
+- *  rounded like a due, the charges added up (a statement never binds the
+- *  charge; settling freezes it into the settled due; a correction has none); null when it has no
+- *  figure. */
++/** A claim's due in cents: the due fixed when it was settled; otherwise the greater of the sheet's floor
++ *  in force on its date (none for a correction) and its figure plus its late charge: for every full 30
++ *  days an OPEN or PENDING claim is overdue, the late percent in force on that boundary (its due-by plus
++ *  30, 60, 90 ... days) of the figure, rounded like a due, the charges added up (a statement never binds
++ *  the charge; settling freezes the due; a correction has none); null when it has no figure. */
+ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string) => number, late: Late): number | null {
++  if (claim.settledDue !== null) return cents(claim.settledDue);
+   const halfUp = roundsHalfUp(claim, late);
+-  const figure = figureCents(claim, rates, floor, halfUp);
++  const figure = figureCents(claim, rates, halfUp);
+   if (figure === null) return null;
+-  const periods = isCorrection(claim) ? 0 : Math.floor(daysOverdue(claim, late) / 30);
++  if (isCorrection(claim)) return figure;
++  const periods = Math.floor(daysOverdue(claim, late) / 30);
+   let charge = 0;
+   for (let boundary = 1; boundary <= periods; boundary++) {
+     const pct = late.pct(plusDays(claim.dueBy, 30 * boundary));
+     if (cents(pct) !== 0) charge += dueCents(figure, pct, halfUp);
+   }
+-  return figure + charge;
++  return Math.max(figure + charge, floor(claim.date));
+ }
+ 
+ /** A date (yyyy-mm-dd) some days on. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2f73402e4..37f6e2f86 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -309,7 +309,7 @@ public class ClaimService {
+         refuseClosed(sheetId, claim.getDate());
+         String old = settledDueText(claim);
+         BigDecimal figure = liveFigureOf(sheetId, person, claim);
+-        claim.setSettledDue(figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure, true)));
++        claim.setSettledDue(figure == null ? null : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, claim, figure, true))));
+         Claim saved = claims.saveAndFlush(claim);
+         log(sheetId, user, person, saved);
+         audit.recordOnCommit(line("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber())
+@@ -437,12 +437,21 @@ public class ClaimService {
+         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue() : liveFigureOf(sheetId, person, claim);
+     }
+ 
+-    /** The due a claim shows: its figure plus its late charge (none while it is deferred: it is not
+-     *  overdue then); null when it has no figure. */
++    /** The due a claim shows: a settled claim's frozen due; otherwise the greater of the sheet's floor in
++     *  force on its date (none for a correction) and its figure plus its late charge (none while it is
++     *  deferred: it is not overdue then); null when it has no figure. */
+     public BigDecimal dueOf(String sheetId, Person person, Claim claim) {
++        if (claim.getSettledDue() != null) {
++            return claim.getSettledDue();
++        }
+         BigDecimal figure = figureOf(sheetId, person, claim);
+         boolean open = claim.getStatus().isOpen() && !claim.deferredOn(sheets.today(sheetId));
+-        return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure, open));
++        return figure == null ? null : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, claim, figure, open)));
++    }
++
++    /** A due raised to the sheet's floor in force on the claim's date, unless the claim is a correction. */
++    private BigDecimal floored(String sheetId, Claim claim, BigDecimal due) {
++        return claim.isCorrection() ? due : due.max(settings.floor(sheetId, claim.getDate()));
+     }
+ 
+     /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by is
+@@ -474,15 +483,14 @@ public class ClaimService {
+ 
+     /** The due on a claim at the rate in force on the claim's date for the person's grade in force
+      *  on the claim's date: amount times rate
+-     *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf), and at least the sheet's floor in force on its date unless it
+-     *  is a correction; null when no rate applies. */
++     *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf); the floor is
++     *  not applied here (see dueOf); null when no rate applies. */
+     private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim) {
+         BigDecimal amount = claim.getAmount();
+         RoundingMode rounding = roundingOf(sheetId, claim);
+         return rates.rateOn(sheetId, grades.gradeOn(person.getId(), claim.getDate()), claim.getDate())
+                 .map(Rate::getRate)
+                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, rounding))
+-                .map(due -> claim.isCorrection() ? due : due.max(settings.floor(sheetId, claim.getDate())))
+                 .orElse(null);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 404599b1c..252c9619c 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -130,13 +130,13 @@ public class PeriodService {
+ 
+     /** Close, as a close by hand would, every open period whose to-date plus the sheet's grace days is
+      *  before the sheet's today, in order of their to-dates, each recorded with auto=yes; nothing when
+-     *  the grace days are blank (off) or the user's role may not close. Made when the sheet's today is
+-     *  changed, after it is set. */
++     *  the grace days are blank (off). The sheet's permission matrix governs a close by hand, not this
++     *  one. Made when the sheet's today is changed, after it is set. */
+     @Transactional
+     public void autoClose(String sheetId, String user) {
+         sheets.lock(sheetId);
+         Integer grace = settings.graceDays(sheetId);
+-        if (grace == null || !settings.allows(sheetId, user, Permission.CLOSE)) {
++        if (grace == null) {
+             return;
+         }
+         LocalDate today = sheets.today(sheetId);
