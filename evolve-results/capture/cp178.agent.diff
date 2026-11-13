@@ -1,0 +1,177 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index d352131b4..19ed11a81 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -4,6 +4,7 @@ import { CrewView, Crews } from './crews';
+ import { People, Person, gradeOn } from './people';
+ import { Period, Periods } from './periods';
+ import { NO_RATE, Rates, hundredths, money, rounded } from './rates';
++import { Roles } from './roles';
+ import { Session, addDays } from './session';
+ 
+ /** The statuses claims are counted by, in the order the screen shows them. */
+@@ -28,6 +29,7 @@ export class Figures {
+   private readonly people = inject(People);
+   private readonly periods = inject(Periods);
+   private readonly rates = inject(Rates);
++  private readonly roles = inject(Roles);
+   private readonly session = inject(Session);
+ 
+   /** A person's due-total: the sum of their figures, at most the sheet's cap. Null (n/a) is not capped. */
+@@ -122,6 +124,28 @@ export class Figures {
+     return { dueTotal: due === null ? NO_RATE : money(due), overdueTotal: money(this.overdueCents(p)) };
+   });
+ 
++  /** Whether the signed-in user is a steward on the sheet: given the role, or delegated it for the sheet's
++   *  today (under an as-of date, the roles and delegations as they stood then). */
++  private readonly steward = computed(() => {
++    const user = this.session.user();
++    const today = this.session.today();
++    if (!user) return false;
++    if (this.roles.roles().some((r) => r.user === user && r.role === 'steward')) return true;
++    return today !== null && this.roles.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
++  });
++
++  /** A steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count,
++   *  counted; null when the signed-in user is not a steward. */
++  readonly dashboard = computed(() => {
++    if (!this.steward()) return null;
++    const claims = this.claims.claims();
++    return {
++      pending: claims.filter((c) => c.status === 'PENDING').length,
++      review: claims.filter((c) => c.status === 'REVIEW').length,
++      overdue: this.claims.live().filter((c) => this.claims.overdue(c)).length,
++    };
++  });
++
+   /** A crew's due-total: the lead's and the members' due-totals as the people list shows them, added up,
+    *  n/a skipped. */
+   crewDueCents(c: CrewView): bigint {
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 74a7ec041..5e73447d1 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -10,7 +10,8 @@ import { Session } from '../../core/session';
+ // descendant's as that sheet shows them, added to this sheet's own; while the screen shows the sheet as
+ // of a date, every sheet of the tree as it stood at the end of that date. And the signed-in user's own due- and overdue-totals, when a
+ // person on the sheet has their name or an alias equal to it; blank otherwise. And the user's crew total: the due-totals of
+-// the crews that person leads, added up; blank when they lead none.
++// the crews that person leads, added up; blank when they lead none. And, for a steward, a dashboard: the
++// sheet's PENDING and REVIEW claims and its overdue claims that count, counted; blank for anyone else.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -26,6 +27,11 @@ import { Session } from '../../core/session';
+         <div><dt>My overdue total</dt><dd data-testid="my-overdue-total">{{ figures.mine()?.overdueTotal }}</dd></div>
+         <div><dt>My crew due total</dt><dd data-testid="my-crew-due-total">{{ figures.myCrewDueTotal() }}</dd></div>
+       </dl>
++      <dl aria-label="Steward dashboard">
++        <div><dt>Pending to approve</dt><dd data-testid="dash-pending-count">{{ figures.dashboard()?.pending }}</dd></div>
++        <div><dt>To review</dt><dd data-testid="dash-review-count">{{ figures.dashboard()?.review }}</dd></div>
++        <div><dt>Overdue</dt><dd data-testid="dash-overdue-count">{{ figures.dashboard()?.overdue }}</dd></div>
++      </dl>
+       <dl aria-label="Consolidated with descendant sheets">
+         <div><dt>Consolidated people</dt><dd data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</dd></div>
+         <div><dt>Consolidated due total</dt><dd data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</dd></div>
+diff --git a/src/main/java/net/officefloor/hq/app/history/AsOf.java b/src/main/java/net/officefloor/hq/app/history/AsOf.java
+index ccb508b32..6dc1192be 100644
+--- a/src/main/java/net/officefloor/hq/app/history/AsOf.java
++++ b/src/main/java/net/officefloor/hq/app/history/AsOf.java
+@@ -72,6 +72,14 @@ public class AsOf {
+         return sorted(Rate.class, sheetId, asOf, Comparator.comparing(Rate::getGrade));
+     }
+ 
++    /** An ancestor's rates, by grade, as they stood when the sheet last changed while its today was on or
++     *  before the date: the ancestor's own today does not date them, the sheet's does. */
++    public List<Rate> inheritedRates(String sheetId, String ancestor, LocalDate asOf) {
++        sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new);
++        return history.listAsOfSheet(Rate.class, ancestor, sheetId, asOf).stream()
++                .sorted(Comparator.comparing(Rate::getGrade)).toList();
++    }
++
+     /** The periods, by from-date. */
+     public List<Period> periods(String sheetId, LocalDate asOf) {
+         return sorted(Period.class, sheetId, asOf, Comparator.comparing(Period::getFromDate));
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+index 894adf7b7..fb96e524c 100644
+--- a/src/main/java/net/officefloor/hq/app/history/History.java
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -7,6 +7,7 @@ import jakarta.persistence.PostRemove;
+ import jakarta.persistence.PostUpdate;
+ import java.sql.Date;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -129,6 +130,29 @@ public class History {
+         return rows;
+     }
+ 
++    /** Another sheet's rows of a kind as they stood when the sheet last changed while its today was on or
++     *  before a date: each one's latest version kept by then, whatever that other sheet's today; none when the
++     *  sheet made no change by then. In the order first kept. */
++    public <T> List<T> listAsOfSheet(Class<T> type, String otherSheetId, String sheetId, LocalDate date) {
++        Long upTo = jdbc.queryForObject("SELECT MAX(id) FROM entity_version WHERE sheet_id = ? AND recorded_on <= ?",
++                Long.class, sheetId, Date.valueOf(date));
++        if (upTo == null) {
++            return List.of();
++        }
++        Map<String, String> latest = new LinkedHashMap<>();
++        jdbc.query("SELECT entity_id, state FROM entity_version WHERE sheet_id = ? AND kind = ? AND id <= ?"
++                + " ORDER BY id", rs -> {
++                    latest.put(rs.getString(1), rs.getString(2));
++                }, otherSheetId, type.getSimpleName(), upTo);
++        List<T> rows = new ArrayList<>();
++        latest.forEach((id, state) -> {
++            if (state != null) {
++                rows.add(json.readValue(state, type));
++            }
++        });
++        return rows;
++    }
++
+     /** The sheet's rows of a kind as of a date, in the order first kept. */
+     public <T> List<T> listAsOf(Class<T> type, String sheetId, LocalDate date) {
+         return List.copyOf(asOf(type, sheetId, date).values());
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 8a970ad8e..7dbe3a1a8 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -71,10 +71,10 @@ public class PersonController {
+                     statementLines(statements));
+         }
+ 
+-        /** One line per statement standing, oldest first by the date it was taken (in the order taken on
+-         *  one date), as `<date> <due-total>` (n/a when it was). */
++        /** One line per statement standing, in the order they were taken (one taken as of an earlier date
++         *  where it was taken, not by that date), as `<date> <due-total>` (n/a when it was). */
+         private static List<String> statementLines(List<Statement> statements) {
+-            return statements.stream().sorted(Comparator.comparing(Statement::getTakenOn))
++            return statements.stream().sorted(Comparator.comparing(Statement::getId))
+                     .map(s -> s.getTakenOn() + " " + (s.getDueTotal() == null ? "n/a" : s.getDueTotal().toPlainString()))
+                     .toList();
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 8cc6555b5..9ff33022c 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -74,7 +74,8 @@ public class RateController {
+     }
+ 
+     /** The rates of each of the sheet's ancestors (its parent first, up to three levels up), each by grade;
+-     *  as they stood at the end of a date when the screen views the sheet as of one. */
++     *  as they stood when the sheet last changed while its today was on or before a date, when the screen views
++     *  the sheet as of one. */
+     @GetMapping("/inherited")
+     public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+@@ -84,7 +85,7 @@ public class RateController {
+                     .toList();
+         }
+         return service.ancestors(sheetId.trim()).stream()
+-                .map(a -> this.asOf.rates(a, asOf).stream().map(RateView::of).toList()).toList();
++                .map(a -> this.asOf.inheritedRates(sheetId.trim(), a, asOf).stream().map(RateView::of).toList()).toList();
+     }
+ 
+     /** Set a grade's rate from a date (or from the beginning of time), perhaps through a to-date,
