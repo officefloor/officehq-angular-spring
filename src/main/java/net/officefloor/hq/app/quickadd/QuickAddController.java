@@ -71,7 +71,7 @@ public class QuickAddController {
         Long personId = added.person().getId();
         return new QuickAddView(PersonView.of(added.person(), grades.of(personId), sheets.today(sheet),
                 statements.summary(sheet, personId), people.patronIds(personId)),
-                ClaimView.of(added.claim()));
+                ClaimView.of(added.claim(), added.claim().getDate())); // never a correction: rounds by its own date
     }
 
     /** A claim dated in a closed period or after its person retired, or a name taken at the same moment, is refused. */

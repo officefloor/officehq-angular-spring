@@ -157,7 +157,7 @@ public class ClaimService {
 
     /** The late charge on a claim with a figure: none unless it is OPEN and overdue (its date plus the
      *  terms is before the sheet's today) or a correction, else the late percent of the figure for every full 30 days
-     *  it is overdue, rounded half to even to two decimals. Never bound by a statement: it follows the
+     *  it is overdue, rounded to two decimals as the claim's date decides (see roundingOf). Never bound by a statement: it follows the
      *  sheet's today. */
     private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
@@ -170,20 +170,36 @@ public class ClaimService {
             return none;
         }
         return figure.multiply(settings.latePct(sheetId)).multiply(BigDecimal.valueOf(days / 30))
-                .movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
+                .movePointLeft(2).setScale(2, roundingOf(sheetId, claim));
     }
 
     /** The due on a claim at the rate in force on the claim's date for the person's grade in force
      *  on the claim's date: amount times rate
-     *  divided by 100, rounded half to even to two decimals, and at least the sheet's floor unless it
+     *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf), and at least the sheet's floor unless it
      *  is a correction; null when no rate applies. */
     private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim) {
         BigDecimal amount = claim.getAmount();
+        RoundingMode rounding = roundingOf(sheetId, claim);
         return rates.rateOn(sheetId, grades.gradeOn(person.getId(), claim.getDate()), claim.getDate())
                 .map(Rate::getRate)
-                .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, rounding))
                 .map(due -> claim.isCorrection() ? due : due.max(settings.floor(sheetId)))
                 .orElse(null);
+    }
+
+    /** The date a claim's live figures round by: its own, or for a correction the date of the claim
+     *  it corrects. */
+    public LocalDate roundsBy(String sheetId, Claim claim) {
+        if (!claim.isCorrection() || claim.getCorrects() == null) {
+            return claim.getDate();
+        }
+        return claims.findBySheetIdAndPersonIdAndNumber(sheetId, claim.getPersonId(), claim.getCorrects())
+                .map(Claim::getDate).orElse(claim.getDate());
+    }
+
+    /** How a claim's live figures round: by the sheet's policy date against the date it rounds by. */
+    private RoundingMode roundingOf(String sheetId, Claim claim) {
+        return settings.roundingOn(sheetId, roundsBy(sheetId, claim));
     }
 
     /** A clerk cannot settle a claim whose due is above the sheet's clerk limit; a due of n/a is

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -31,9 +32,12 @@ public class StatementController {
 
     private final RollupService rollups;
 
-    public StatementController(StatementService service, RollupService rollups) {
+    private final ClaimService claimService;
+
+    public StatementController(StatementService service, RollupService rollups, ClaimService claimService) {
         this.service = service;
         this.rollups = rollups;
+        this.claimService = claimService;
     }
 
     /** Take a statement for the person. */
@@ -43,7 +47,7 @@ public class StatementController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         List<ClaimView> claims = rollups.track(sheet, by, () -> service.take(sheet, by, personId)).stream()
-                .map(ClaimView::of).toList();
+                .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim))).toList();
         return new StatementTaken(service.summary(sheet, personId), claims);
     }
 

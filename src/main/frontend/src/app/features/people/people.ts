@@ -171,6 +171,7 @@ interface StatementTaken {
                   [floor]="floor()"
                   [terms]="settings.terms()"
                   [latePct]="settings.latePct()"
+                  [policyDate]="settings.policyDate()"
                   (saved)="claimSaved($event)"
                 />
               </td>
@@ -256,11 +257,13 @@ export class People {
   protected readonly settings = inject(SettingStore);
   /** The sheet's floor in cents. */
   protected readonly floor = computed(() => cents(this.settings.floor()));
-  /** What late charges work from: the sheet's late percent, terms and today. */
+  /** What late charges work from: the sheet's late percent, terms and today; and the policy date
+   *  figures round by. */
   private readonly late = computed<Late>(() => ({
     pct: this.settings.latePct(),
     terms: this.settings.terms(),
     today: this.session.today(),
+    policyDate: this.settings.policyDate(),
   }));
 
   protected readonly grades = ['A', 'B', 'C'];

@@ -21,6 +21,9 @@ interface SettingsView {
   /** The late percent (two decimals): an overdue claim's due gains it of its figure for every full
    *  30 days it is overdue. */
   latePct: string;
+  /** The policy date (yyyy-mm-dd): a claim dated before it rounds half up, one on or after it half to
+   *  even; blank for the sheet's today. */
+  policyDate: string;
 }
 
 /** The floor a sheet starts with. */
@@ -35,6 +38,9 @@ const LATE_PCT = '0.00';
 /** Terms of 0 or more whole days. */
 const DAYS = /^\d{1,5}$/;
 
+/** A date, yyyy-mm-dd. */
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 const ROLES = ['clerk', 'steward'];
 
 // The active sheet's settings, re-read whenever a sheet is loaded.
@@ -48,6 +54,7 @@ export class SettingStore {
   readonly floor = signal(FLOOR);
   readonly terms = signal(TERMS);
   readonly latePct = signal(LATE_PCT);
+  readonly policyDate = signal('');
 
   constructor() {
     effect(() => {
@@ -58,6 +65,7 @@ export class SettingStore {
       this.floor.set(FLOOR);
       this.terms.set(TERMS);
       this.latePct.set(LATE_PCT);
+      this.policyDate.set('');
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -119,6 +127,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's policy date; null leaves it blank (the sheet's today). */
+  async setPolicyDate(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/policy-date`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const settings = await firstValueFrom(
       this.http.get<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings`),
@@ -133,15 +152,17 @@ export class SettingStore {
     this.floor.set(settings.floor);
     this.terms.set(settings.terms);
     this.latePct.set(settings.latePct);
+    this.policyDate.set(settings.policyDate);
   }
 }
 
 // The sheet's settings: the role given each user name (clerk, the default, or steward) and the
 // clerk limit, the highest due a clerk can settle, the floor, the least a claim's live due can be,
 // the terms, the days after its date a claim is due by, and the late percent, what an overdue claim's
-// due gains of its figure for every full 30 days it is overdue.
-// Saving sends only the settings typed into since the last save; the clerk limit counts as typed
-// into once focused, as a blank one (none) is a value of its own.
+// due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
+// claim's date makes its figures round half up rather than half to even.
+// Saving sends only the settings typed into since the last save; the clerk limit and the policy date
+// count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
 @Component({
   selector: 'app-settings',
   template: `
@@ -224,6 +245,15 @@ export class SettingStore {
           [value]="latePct()"
           (input)="latePct.set(value($event)); latePctTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-policy-date">Policy date</label>
+        <input
+          id="setting-policy-date"
+          data-testid="setting-policy-date"
+          placeholder="yyyy-mm-dd"
+          [value]="policyDate()"
+          (focus)="policyDateTyped.set(true)"
+          (input)="policyDate.set(value($event)); policyDateTyped.set(true); settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as message) {
@@ -248,6 +278,13 @@ export class SettingStore {
         Late percent in force:
         <strong data-testid="setting-late-pct-current">{{ store.latePct() }}</strong>
       </p>
+      <p>
+        Policy date in force:
+        <strong data-testid="setting-policy-date-current">{{ store.policyDate() }}</strong>
+        @if (store.policyDate() === '') {
+          <span>the sheet's today</span>
+        }
+      </p>
     </section>
   `,
 })
@@ -266,6 +303,8 @@ export class Settings {
   protected readonly termsTyped = signal(false);
   protected readonly latePct = signal('');
   protected readonly latePctTyped = signal(false);
+  protected readonly policyDate = signal('');
+  protected readonly policyDateTyped = signal(false);
   protected readonly settingsError = signal<string | null>(null);
   /** Whether a role submit is waiting for its answer; a second one meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -313,6 +352,8 @@ export class Settings {
     const saveTerms = this.termsTyped();
     const latePct = this.latePct().trim();
     const saveLatePct = this.latePctTyped();
+    const policyDate = this.policyDate().trim();
+    const savePolicyDate = this.policyDateTyped();
     if (saveLimit && limit !== '' && !AMOUNT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
@@ -329,22 +370,29 @@ export class Settings {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
       return;
     }
+    if (savePolicyDate && policyDate !== '' && !DATE.test(policyDate)) {
+      this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
+      return;
+    }
     this.clerkLimitTyped.set(false);
     this.floorTyped.set(false);
     this.termsTyped.set(false);
     this.latePctTyped.set(false);
+    this.policyDateTyped.set(false);
     const save = async () => {
       try {
         if (saveLimit) await this.store.setClerkLimit(limit === '' ? null : limit);
         if (saveFloor) await this.store.setFloor(floor);
         if (saveTerms) await this.store.setTerms(Number(terms));
         if (saveLatePct) await this.store.setLatePct(latePct);
+        if (savePolicyDate) await this.store.setPolicyDate(policyDate === '' ? null : policyDate);
       } catch {
         // What was typed stays to be saved again.
         if (saveLimit) this.clerkLimitTyped.set(true);
         if (saveFloor) this.floorTyped.set(true);
         if (saveTerms) this.termsTyped.set(true);
         if (saveLatePct) this.latePctTyped.set(true);
+        if (savePolicyDate) this.policyDateTyped.set(true);
         this.settingsError.set('The settings could not be saved.');
       }
     };

@@ -2,6 +2,7 @@ package net.officefloor.hq.app.setting;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -11,7 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its terms and
- *  its late percent. */
+ *  its late percent and its policy date. */
 @Service
 public class SettingService {
 
@@ -57,6 +58,23 @@ public class SettingService {
      *  it is overdue. */
     public BigDecimal latePct(String sheetId) {
         return sheets.load(sheetId).getLatePct();
+    }
+
+    /** The sheet's policy date as set; null when it is blank (the sheet's today applies). */
+    public LocalDate policyDateSet(String sheetId) {
+        return sheets.load(sheetId).getPolicyDate();
+    }
+
+    /** The sheet's policy date in force: as set, else the sheet's today. */
+    public LocalDate policyDate(String sheetId) {
+        LocalDate set = policyDateSet(sheetId);
+        return set != null ? set : sheets.today(sheetId);
+    }
+
+    /** How a claim dated on the given date rounds: half up before the policy date, half to even on or
+     *  after it. */
+    public RoundingMode roundingOn(String sheetId, LocalDate date) {
+        return date.isBefore(policyDate(sheetId)) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
     /** Assign a user name a role on the sheet. */
@@ -121,6 +139,18 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=late-pct value="
                 + scaled.toPlainString());
+        return saved;
+    }
+
+    /** Change the sheet's policy date; null leaves it blank (the sheet's today). */
+    @Transactional
+    public Sheet setPolicyDate(String sheetId, String by, LocalDate policyDate) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setPolicyDate(policyDate);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=policy-date value="
+                + (policyDate != null ? policyDate.toString() : ""));
         return saved;
     }
 }

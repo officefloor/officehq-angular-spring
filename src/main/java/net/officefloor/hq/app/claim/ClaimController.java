@@ -35,17 +35,19 @@ public class ClaimController {
     /** A claim as the screen shows it; the amount and the due fixed on settling (null when none
      *  was) are strings with two decimals; openedBy is null for a claim never opened; stated tells
      *  whether a statement bound the claim, statedDue the figure it bound it to (null when none);
-     *  corrects is the number of the claim a correction corrects (null when it is not one). */
+     *  corrects is the number of the claim a correction corrects (null when it is not one); roundsBy
+     *  is the date its live figures round by against the sheet's policy date (its own date, or for a
+     *  correction the date of the claim it corrects). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Long number, String settledDue, String openedBy, boolean stated,
-            String statedDue, Long corrects) {
-        public static ClaimView of(Claim claim) {
+            String statedDue, Long corrects, LocalDate roundsBy) {
+        public static ClaimView of(Claim claim, LocalDate roundsBy) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
-                    claim.getCorrects());
+                    claim.getCorrects(), roundsBy);
         }
     }
 
@@ -70,7 +72,8 @@ public class ClaimController {
     /** The sheet's claims, newest first. */
     @GetMapping("/claims")
     public List<ClaimView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(ClaimView::of).toList();
+        String sheet = sheetId.trim();
+        return service.list(sheet).stream().map(claim -> view(sheet, claim)).toList();
     }
 
     /** Add a claim for a person. */
@@ -80,7 +83,7 @@ public class ClaimController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ClaimRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return ClaimView.of(rollups.track(sheet, by, () -> service.add(sheet, by, personId, request.amount(),
+        return view(sheet, rollups.track(sheet, by, () -> service.add(sheet, by, personId, request.amount(),
                 request.date(), request.note(), request.corrects())));
     }
 
@@ -91,7 +94,7 @@ public class ClaimController {
             @RequestBody @Validated ClaimRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return ClaimView.of(rollups.track(sheet, by, () -> service.update(sheet, by, personId, id,
+        return view(sheet, rollups.track(sheet, by, () -> service.update(sheet, by, personId, id,
                 request.amount(), request.date(), request.note(), request.corrects())));
     }
 
@@ -119,7 +122,11 @@ public class ClaimController {
     private ClaimView changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return ClaimView.of(rollups.track(sheet, by, () -> service.changeStatus(sheet, by, personId, id, to)));
+        return view(sheet, rollups.track(sheet, by, () -> service.changeStatus(sheet, by, personId, id, to)));
+    }
+
+    private ClaimView view(String sheet, Claim claim) {
+        return ClaimView.of(claim, service.roundsBy(sheet, claim));
     }
 
     /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,

@@ -33,6 +33,9 @@ export interface Claim {
   statedDue: string | null;
   /** The number of the claim a correction (a negative amount) corrects; null when it is not one. */
   corrects: number | null;
+  /** The date the claim's live figures round by (yyyy-mm-dd): its own, or for a correction the date
+   *  of the claim it corrects. */
+  roundsBy: string;
 }
 
 /** Whether a claim is a correction: its amount is negative. */
@@ -51,22 +54,30 @@ export function cents(amount: string): number {
 }
 
 /** What a late charge works from: the sheet's late percent (two decimals), its terms in days and
- *  its today. */
+ *  its today; and what a claim's figures round by: the sheet's policy date (blank for its today). */
 export interface Late {
   pct: string;
   terms: number;
   today: string | null;
+  policyDate: string;
+}
+
+/** Whether a claim's live figures round half up: it rounds by a date before the sheet's policy date
+ *  (its today when the policy date is blank); otherwise they round half to even. */
+function roundsHalfUp(claim: Claim, late: Late): boolean {
+  const policy = late.policyDate !== '' ? late.policyDate : late.today;
+  return policy !== null && claim.roundsBy < policy;
 }
 
 /** A claim's figure in cents: the due fixed when it was settled; otherwise the figure a statement
  *  bound it to; otherwise its amount times the rate in force on its date among its grade's rates,
  *  raised to the sheet's floor (in cents) unless it is a correction; null when it has no figure. */
-function figureCents(claim: Claim, rates: Rate[], floor: number): number | null {
+function figureCents(claim: Claim, rates: Rate[], floor: number, halfUp: boolean): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateOn(rates, claim.date);
   if (rate === null) return null;
-  const due = dueCents(cents(claim.amount), rate);
+  const due = dueCents(cents(claim.amount), rate, halfUp);
   return isCorrection(claim) ? due : Math.max(due, floor);
 }
 
@@ -75,10 +86,11 @@ function figureCents(claim: Claim, rates: Rate[], floor: number): number | null 
  *  charge; settling freezes it into the settled due; a correction has none); null when it has no
  *  figure. */
 export function claimDueCents(claim: Claim, rates: Rate[], floor: number, late: Late): number | null {
-  const figure = figureCents(claim, rates, floor);
+  const halfUp = roundsHalfUp(claim, late);
+  const figure = figureCents(claim, rates, floor, halfUp);
   if (figure === null) return null;
   const periods = isCorrection(claim) ? 0 : Math.floor(daysOverdue(claim, late) / 30);
-  return periods > 0 ? figure + dueCents(figure * periods, late.pct) : figure;
+  return periods > 0 ? figure + dueCents(figure * periods, late.pct, halfUp) : figure;
 }
 
 /** How many days an OPEN claim is past its due-by on the sheet's today; 0 when it is not overdue. */
@@ -214,6 +226,8 @@ export class PersonClaims {
   readonly terms = input.required<number>();
   /** The sheet's late percent (two decimals). */
   readonly latePct = input.required<string>();
+  /** The sheet's policy date (yyyy-mm-dd); blank for its today. */
+  readonly policyDate = input.required<string>();
   readonly saved = output<Claim>();
 
   protected readonly amount = signal('');
@@ -233,7 +247,12 @@ export class PersonClaims {
 
   /** The claim's due (see claimDueCents), or n/a when it has no figure. */
   protected dueOf(claim: Claim): string {
-    const late = { pct: this.latePct(), terms: this.terms(), today: this.session.today() };
+    const late = {
+      pct: this.latePct(),
+      terms: this.terms(),
+      today: this.session.today(),
+      policyDate: this.policyDate(),
+    };
     const due = claimDueCents(claim, this.rates.ofGradeOn(this.grades(), claim.date), this.floor(), late);
     return due === null ? NO_RATE : money(due);
   }
