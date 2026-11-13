@@ -1,0 +1,168 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index 8c0a3fc8c..b8d2a0cc5 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -338,6 +338,24 @@ export class Claims {
+     this.claims.update((cs) => cs.map((c) => (c.personId === personId ? (byId.get(c.id) ?? c) : c)));
+   }
+ 
++  /** Re-read the active sheet's claims from the server in place, keeping what is selected; an error message
++   *  when that failed. */
++  async reread(): Promise<string | null> {
++    const user = this.session.user();
++    const sid = this.session.sheetId();
++    if (!user || !sid) return null;
++    const load = ++this.loads;
++    try {
++      const claims = await firstValueFrom(
++        this.http.get<Claim[]>(`${this.url(sid)}/claims`, { headers: { 'X-User': user } }),
++      );
++      if (load === this.loads && this.session.sheetId() === sid) this.claims.set(claims);
++      return null;
++    } catch (e) {
++      return failed('load', e).replace(' claim', ' claims');
++    }
++  }
++
+   /** Re-read the active sheet's claims from the server; an error message when that failed. */
+   async load(): Promise<string | null> {
+     const user = this.session.user();
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index 3a35f4065..9af72c133 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -119,8 +119,8 @@ export class Plans {
+     }
+   }
+ 
+-  /** Change a plan's amount from the sheet's today, for the claims it makes from then on; an error message when
+-   *  refused (a bad amount). */
++  /** Change a plan's amount from the sheet's today, for the claims it makes from then on and those it made that
++   *  are still DRAFT; an error message when refused (a bad amount). */
+   async changeAmount(planId: number, amount: string): Promise<string | null> {
+     const user = this.session.user();
+     const sid = this.session.sheetId();
+@@ -131,7 +131,10 @@ export class Plans {
+       const plan = await firstValueFrom(
+         this.http.post<Plan>(`${this.url(sid)}/${planId}/amount`, { amount: a }, { headers: { 'X-User': user } }),
+       );
+-      if (this.session.sheetId() === sid) this.plans.update((ps) => ps.map((p) => (p.id === plan.id ? plan : p)));
++      if (this.session.sheetId() === sid) {
++        this.plans.update((ps) => ps.map((p) => (p.id === plan.id ? plan : p)));
++        await this.claims.reread(); // its DRAFT claims took the new amount
++      }
+       return null;
+     } catch (e) {
+       return failed('change plan amount', e);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 86e847956..fd7885060 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -181,6 +181,26 @@ public class ClaimService {
+         return updated;
+     }
+ 
++    /** Change the amount of a claim still DRAFT as the claim form would edit it, keeping the rest of it; none
++     *  when the claim is not a DRAFT, no longer on the sheet, or the form would refuse the edit, then nothing
++     *  is written. */
++    @Transactional
++    public Optional<Claim> changeDraftAmountIfAccepted(String sheetId, String user, long claimId,
++            BigDecimal amount) {
++        Optional<Claim> found = claims.findByIdAndSheetId(claimId, sheetId);
++        if (found.isEmpty() || found.get().getStatus() != ClaimStatus.DRAFT) {
++            return Optional.empty();
++        }
++        Claim claim = found.get();
++        try {
++            return Optional.of(update(sheetId, user, claimId, amount, claim.getDate(), claim.getNote(),
++                    claim.getCorrects(), claim.getRef(), claim.getTags()));
++        } catch (ClaimLockedException | PeriodClosedException | PersonRetiredException | PersonNotFoundException
++                | ClaimCorrectionException | ClaimRefException | ClaimLineException e) {
++            return Optional.empty();
++        }
++    }
++
+     /** Open a claim's editor: the claim is locked for every other user until the user saves or cancels it,
+      *  or the sheet's today changes. Refused for a claim that is not a DRAFT, a claim in a closed period, and
+      *  a claim another user has locked; a refused open takes no lock. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 6c8daa789..fdb6dfdee 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -62,6 +62,12 @@ public class Plan {
+     @Column(name = "on_date")
+     private Set<LocalDate> generated = new HashSet<>();
+ 
++    /** The ids of the claims it has made. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "plan_claim", joinColumns = @JoinColumn(name = "plan_id"))
++    @Column(name = "claim_id")
++    private Set<Long> claimIds = new HashSet<>();
++
+     @ElementCollection(fetch = FetchType.EAGER)
+     @CollectionTable(name = "plan_pause", joinColumns = @JoinColumn(name = "plan_id"))
+     private List<PlanPause> pauses = new ArrayList<>();
+@@ -202,8 +208,14 @@ public class Plan {
+         return out;
+     }
+ 
+-    /** Keep that the plan has made its claim for the plan date. */
+-    public void generated(LocalDate date) {
++    /** Keep that the plan has made the claim for the plan date. */
++    public void generated(LocalDate date, long claimId) {
+         generated.add(date);
++        claimIds.add(claimId);
++    }
++
++    /** The ids of the claims it has made, lowest (first made) first. */
++    public List<Long> getClaimIds() {
++        return claimIds.stream().sorted().toList();
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index f9fd6aeb4..0abc712a8 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -112,7 +112,9 @@ public class PlanService {
+     }
+ 
+     /** Change a plan's amount from the sheet's today: the claims it makes from then on carry the new amount,
+-     *  those already made keep theirs. An amount a claim would refuse (below 0.00) is refused. */
++     *  and of those already made, each still DRAFT takes it as the claim form would edit it (one the form
++     *  would refuse keeps its amount); claims in any other status keep theirs. An amount a claim would refuse
++     *  (below 0.00) is refused. */
+     @Transactional
+     public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+         LocalDate today = sheets.today(sheetId);
+@@ -128,6 +130,10 @@ public class PlanService {
+         plan = plans.saveAndFlush(plan);
+         audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                 + " start=" + plan.getStart() + " amount=" + a.toPlainString());
++        String on = plan.getTargetSheet() != null ? plan.getTargetSheet() : sheetId;
++        for (long claimId : plan.getClaimIds()) {
++            claims.changeDraftAmountIfAccepted(on, user, claimId, a);
++        }
+         return plan;
+     }
+ 
+@@ -163,7 +169,7 @@ public class PlanService {
+                 claims.addIfAccepted(on, user, claimantId, plan.getAmount(), date, "")
+                         .ifPresent(claim -> {
+                             made.add(claim);
+-                            plan.generated(date);
++                            plan.generated(date, claim.getId());
+                         });
+             }
+             plans.saveAndFlush(plan);
+diff --git a/src/main/resources/db/migration/V119__plan_claim.sql b/src/main/resources/db/migration/V119__plan_claim.sql
+new file mode 100644
+index 000000000..51a5eefe1
+--- /dev/null
++++ b/src/main/resources/db/migration/V119__plan_claim.sql
+@@ -0,0 +1,6 @@
++-- The claims a plan has made, so a change of its amount can reach those still DRAFT.
++CREATE TABLE plan_claim (
++    plan_id  BIGINT NOT NULL REFERENCES plan (id),
++    claim_id BIGINT NOT NULL,
++    PRIMARY KEY (plan_id, claim_id)
++);

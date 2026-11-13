@@ -1,0 +1,70 @@
+{
+  "checkpoint": 220,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp220_plan-amount-reaches-drafts",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    205,
+    212
+  ],
+  "replaced_tests": [
+    "cp205_plan-history.spec.ts::plan history",
+    "cp212_score-without-corrections.spec.ts::score without corrections scenario 2"
+  ],
+  "request": {
+    "spec": "Changing a plan's amount now also changes the amount of the claims it generated that are still\nDRAFT (each as the claim form would edit it, writing CLAIM_EDITED); claims in any other status keep\ntheirs.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nChanging a plan's amount now also changes the amount of the claims it generated that are still\nDRAFT (each as the claim form would edit it, writing CLAIM_EDITED); claims in any other status keep\ntheirs.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5d97d71a560213017e69b0dca247cd0dfa372395",
+  "reset_sha": "",
+  "preagent_sha": "ce47dda24ff52df14d03000096fedb2db1f1b3bd",
+  "prev_sha": "ce47dda24ff52df14d03000096fedb2db1f1b3bd",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.682545,
+    "input_tokens": 38,
+    "output_tokens": 8226,
+    "cache_read_tokens": 757245,
+    "cache_creation_tokens": 45803,
+    "num_turns": 20,
+    "duration_ms": 634845,
+    "duration_api_ms": 88751,
+    "model": "claude-opus-5-5",
+    "session_id": "973d748a-9a4a-4f83-9226-ee965b591a8b",
+    "stop_reason": "success",
+    "result_text": "Changing a plan's amount now also changes the amount on the claims that plan generated which are still DRAFT. Claims in any other status keep their old amount. `bin/e2e` passes all 4 tests in the spec.\n\n**What changed:**\n- **Stored data:** the app didn't record which claims a plan had made, only the dates it had covered. A new migration, `V119__plan_claim.sql`, adds a `plan_claim` table for that, and `Plan` keeps the id of each claim it generates.\n- **Server:** after writing `PLAN_CHANGED`, `PlanService.changeAmount` goes through the plan's claims, oldest first. Each one still in DRAFT is saved through the same code the claim form uses, with the new amount and its date, note, reference and tags unchanged, so it writes `CLAIM_EDITED`. For plans that make claims on a descendant sheet, the claims are edited on that sheet. The new method is `ClaimService.changeDraftAmountIfAccepted`.\n- **Front end:** after a plan's amount is saved, the claims are re-read from the server, so the new amounts show without reloading the sheet. Selected claims stay selected.\n\n**Behaviour you might not assume:**\n- **Refused edits are skipped.** If the claim form would refuse the edit (the claim is locked by another user, its period is closed, the person has retired, or it has lines that fix its amount), that claim keeps its old amount. The plan change still goes through and nothing is written for that claim.\n- **Same-amount drafts are still edited.** A draft whose amount already matches the new one is saved anyway and still writes `CLAIM_EDITED`, the same as saving it unchanged in the claim form would.\n- **Existing claims are not linked.** The link is only recorded from now on, so claims generated before the migration won't be updated by a plan change. The database is in-memory and rebuilt on each start, so this only matters if that ever changes.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.682545,
+        "num_turns": 20,
+        "duration_ms": 634845,
+        "duration_api_ms": 88751,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp220.agent.jsonl",
+  "agent_diff_file": "cp220.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
