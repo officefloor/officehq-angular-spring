@@ -26,6 +26,7 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final ClaimSequenceRepository sequences;
+    private final FiscalClaimSequenceRepository fiscalSequences;
     private final PeriodRepository periods;
     private final PeriodService periodService;
     private final Rollup rollup;
@@ -34,9 +35,11 @@ public class SheetService {
     private final ClaimRepository claims;
     private final History history;
 
-    public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences, PeriodRepository periods,
+    public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences,
+            FiscalClaimSequenceRepository fiscalSequences, PeriodRepository periods,
             PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims,
             History history) {
+        this.fiscalSequences = fiscalSequences;
         this.history = history;
         this.claims = claims;
         this.sheets = sheets;
@@ -342,8 +345,9 @@ public class SheetService {
 
     /** The next number for a claim due by a date: while the sheet numbers by period, the next in the
      *  sequence of the period containing the date (<period name>-1, -2, ...), or of no period (X-1, ...);
-     *  otherwise the sheet-wide one (1, 2, ...), which the sheets of a tree share: the next after the last
-     *  given on any of them. None is ever given twice. */
+     *  otherwise the sheet-wide one, which restarts each fiscal year (FY<year>-1, -2, ..., the fiscal year
+     *  the date falls in by the sheet's fiscal start month) and which the sheets of a tree share: the next
+     *  after the last given in that fiscal year on any of them. None is ever given twice. */
     @Transactional
     public String nextClaimNumber(String id, LocalDate date) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
@@ -352,7 +356,15 @@ public class SheetService {
             List<Sheet> tree = sheets.tree(id).stream().sorted()
                     .map(other -> sheets.findForUpdateById(other).orElse(null))
                     .filter(Objects::nonNull).toList();
-            return sheet.nextClaimNumber(tree);
+            int fiscalYear = sheet.fiscalYearOf(date);
+            List<String> others = tree.stream().map(Sheet::getId).toList();
+            int lastOfTree = fiscalSequences.findBySheetIdInAndFiscalYear(others, fiscalYear).stream()
+                    .mapToInt(FiscalClaimSequence::getLastNumber).max().orElse(0);
+            FiscalClaimSequence sequence = fiscalSequences.findBySheetIdAndFiscalYear(id, fiscalYear)
+                    .orElseGet(() -> new FiscalClaimSequence(id, fiscalYear));
+            String number = sequence.nextClaimNumber(lastOfTree);
+            fiscalSequences.save(sequence);
+            return number;
         }
         String prefix = periodPrefix(id, date);
         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(id, prefix)

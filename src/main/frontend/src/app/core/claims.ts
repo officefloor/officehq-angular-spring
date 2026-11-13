@@ -13,7 +13,7 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** Given when opened: the next on the sheet (1, 2, ...), or while numbering by period the next in its
+  /** Given when opened: the next on the sheet in its fiscal year (FY2026-1, FY2026-2, ...), or while numbering by period the next in its
    *  period (<period name>-1, ...) or in no period (X-1, ...); null while a draft. */
   number: string | null;
   /** The due fixed when it was settled, two decimals; null while its due is live (not settled, or

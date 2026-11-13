@@ -61,7 +61,8 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
-    /** The last number given to a claim opened on the sheet; 0 before the first. */
+    /** The last plain sheet-wide number given to a claim opened on the sheet, before numbering restarted each
+     *  fiscal year (see FiscalClaimSequence); 0 before the first. */
     @Column(name = "last_claim_number", nullable = false)
     private int lastClaimNumber;
 
@@ -422,17 +423,9 @@ public class Sheet {
         return due == null ? null : due.max(floorOn(date));
     }
 
-    /** Give out the sheet's next claim number. */
-    public String nextClaimNumber() {
-        return String.valueOf(++lastClaimNumber);
-    }
-
-    /** Give out the next claim number after the last given on this sheet or any of the others of its tree. */
-    public String nextClaimNumber(List<Sheet> tree) {
-        for (Sheet other : tree) {
-            lastClaimNumber = Math.max(lastClaimNumber, other.lastClaimNumber);
-        }
-        return nextClaimNumber();
+    /** The fiscal year a date falls in, named by the calendar year its first day falls in. */
+    public int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= fiscalStartMonth ? date.getYear() : date.getYear() - 1;
     }
 
     public int getLastSettleBatch() {
