@@ -284,7 +284,7 @@ public class ClaimService {
             if (!judged) {
                 refuseUnproved(claim, person, due);
             }
-            if (overLimit(sheetId, user, due)) {
+            if (overLimit(sheetId, user, person, due)) {
                 to = ClaimStatus.PENDING;
             } else {
                 claim.setSettledDue(due);
@@ -1244,10 +1244,12 @@ public class ClaimService {
         }
     }
 
-    /** Whether a clerk is settling a due above the sheet's clerk limit; a steward settles anything, and a
-     *  due of n/a, or a sheet with no limit, is within it. */
-    private boolean overLimit(String sheetId, String user, BigDecimal due) {
-        BigDecimal limit = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).getClerkLimit();
+    /** Whether a clerk is settling a due above the clerk limit in force on the sheet's today for the person's
+     *  grade then (its own when set, else the sheet's); a steward settles anything, and a due of n/a, or no
+     *  limit, is within it. */
+    private boolean overLimit(String sheetId, String user, Person person, BigDecimal due) {
+        Sheet sheet = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+        BigDecimal limit = sheet.clerkLimitFor(person.gradeOn(sheet.getToday()));
         return limit != null && due != null && due.compareTo(limit) > 0 && !roles.isSteward(sheetId, user);
     }
 

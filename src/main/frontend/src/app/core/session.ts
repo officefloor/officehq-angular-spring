@@ -95,7 +95,7 @@ const NO_DESCENDANTS: DescendantFigures = {
  *  clerk and steward; reassign and reopen by steward. */
 export const PERMISSION_ACTIONS = ['open', 'settle', 'void', 'reassign', 'close', 'reopen'] as const;
 
-/** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding) takes from a date
+/** A value a dated setting (floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, clerk-limit-<grade>, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding) takes from a date
  *  on; null for no limit, no cap, or a grade using the sheet's terms. */
 export interface DatedSetting {
   key: string;
@@ -147,6 +147,17 @@ export class Session {
       if (!key.startsWith('terms-')) continue;
       const t = this.onToday(key);
       if (t !== null) out[key.slice('terms-'.length)] = Number(t);
+    }
+    return out;
+  });
+  /** The clerk limit (two decimals) of each grade that has its own in force on the sheet's today; a grade
+   *  without uses the sheet's. */
+  readonly gradeClerkLimit = computed(() => {
+    const out: Record<string, string> = {};
+    for (const key of new Set(this.settings().map((s) => s.key))) {
+      if (!key.startsWith('clerk-limit-')) continue;
+      const t = this.onToday(key);
+      if (t !== null) out[key.slice('clerk-limit-'.length)] = t;
     }
     return out;
   });
@@ -449,6 +460,33 @@ export class Session {
         this.http.put<SheetView>(
           `/api/sheets/${encodeURIComponent(sid)}/settings/proof-threshold`,
           { proofThreshold: t || null, from: d || null },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Record a grade's clerk limit (blank: the grade uses the sheet's) from a date (blank: the sheet's today);
+   *  an error message when refused. */
+  async setGradeClerkLimit(grade: string, limit: string, from = ''): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const l = limit.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+    if (l && !/^\d+(\.\d{1,2})?$/.test(l)) {
+      return `Enter a clerk limit for grade ${grade} of 0.00 or more, with up to two decimals, or leave it blank.`;
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(
+          `/api/sheets/${encodeURIComponent(sid)}/settings/clerk-limit/${encodeURIComponent(grade)}`,
+          { clerkLimit: l || null, from: d || null },
           { headers: { 'X-User': user } },
         ),
       );

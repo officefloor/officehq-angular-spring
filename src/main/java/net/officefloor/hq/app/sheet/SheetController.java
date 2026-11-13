@@ -63,7 +63,7 @@ public class SheetController {
         }
     }
 
-    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>, note-threshold, review-threshold or rounding)
+    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, clerk-limit-<grade>, cap, proof-threshold, proof-threshold-<grade>, note-threshold, review-threshold or rounding)
      *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
     public record SettingView(String key, LocalDate from, String value) {
 
@@ -74,6 +74,12 @@ public class SheetController {
 
     /** The sheet's clerk limit from a date; a missing limit means no limit, a missing date the sheet's today. */
     public record SettingsRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal clerkLimit,
+            LocalDate from) {
+    }
+
+    /** A grade's clerk limit from a date (missing: the sheet's today); a missing one means the grade uses the
+     *  sheet's. */
+    public record GradeClerkLimitRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal clerkLimit,
             LocalDate from) {
     }
 
@@ -302,6 +308,16 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GradeTermsRequest request) {
         return SheetView.of(service.setGradeTerms(id.trim(), user.trim(), grade, request.terms(), request.from()));
+    }
+
+    /** Change a grade's clerk limit. */
+    @PutMapping("/{id}/settings/clerk-limit/{grade}")
+    public SheetView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 200) String id,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GradeClerkLimitRequest request) {
+        return SheetView.of(service.setGradeClerkLimit(id.trim(), user.trim(), grade, request.clerkLimit(),
+                request.from()));
     }
 
     /** Change a grade's proof threshold. */

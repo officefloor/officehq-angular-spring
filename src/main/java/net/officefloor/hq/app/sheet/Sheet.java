@@ -76,7 +76,8 @@ public class Sheet {
     private int lastSettleBatch;
 
     /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
-     *  each grade's terms (terms-<grade>), each grade's grace days (grace-<grade>), the clerk limit, the cap, the proof threshold, each grade's proof
+     *  each grade's terms (terms-<grade>), each grade's grace days (grace-<grade>), the clerk limit, each grade's clerk limit
+     *  (clerk-limit-<grade>), the cap, the proof threshold, each grade's proof
      *  threshold (proof-threshold-<grade>), the note threshold, the review threshold and the rounding mode. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
@@ -218,6 +219,13 @@ public class Sheet {
     /** The largest due a clerk may settle, in force on the sheet's today; none when there is no limit. */
     public BigDecimal getClerkLimit() {
         return decimalOn(CLERK_LIMIT, today, null);
+    }
+
+    /** The clerk limit for a grade, in force on the sheet's today: the grade's own (clerk-limit-<grade>) when
+     *  one is set then, else the sheet's; none when neither is. */
+    public BigDecimal clerkLimitFor(String grade) {
+        BigDecimal own = grade == null ? null : decimalOn(CLERK_LIMIT + "-" + grade, today, null);
+        return own != null ? own : getClerkLimit();
     }
 
     /** The least a claim's live due can be on a date; 1.00 before every from-date. */

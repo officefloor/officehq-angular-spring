@@ -5,9 +5,10 @@ import { Rates } from '../../core/rates';
 import { ROLES, Roles } from '../../core/roles';
 import { PERMISSION_ACTIONS, Session } from '../../core/session';
 
-// The sheet's settings. Those that carry a figure (the clerk limit, the floor, the cap, the proof threshold, each grade's proof threshold, the note threshold, the terms, each grade's
+// The sheet's settings. Those that carry a figure (the clerk limit, each grade's clerk limit, the floor, the cap, the proof threshold, each grade's proof threshold, the note threshold, the terms, each grade's
 // terms, the late percent and the rounding mode) are saved from a from-date (blank for the sheet's today), keeping the values
-// already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), the
+// already recorded; each shows the value in force on the sheet's today. The settings: the clerk limit (the largest due a clerk may settle; blank for no limit), each grade's
+// clerk limit (blank: the grade uses the sheet's), the
 // floor (the least a claim's live due can be), the rounding mode (half-up or half-even: how a claim dated while it is in force rounds every
 // live figure; blank for none, rounding by the policy date), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
 // the one in force on its date needs a proof to be settled or approved; blank for none), the note threshold (a claim whose due
@@ -48,6 +49,27 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('clerk-limit', value($event))"
         />
         <p>In force: <strong data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</strong></p>
+        @for (g of grades; track g) {
+          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (blank: the sheet's)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g"
+            [attr.data-testid]="'setting-clerk-limit-' + g"
+            inputmode="decimal"
+            [value]="gradeClerkLimit()[g] ?? ''"
+            (input)="setGradeClerkLimit(g, value($event))"
+            (focus)="focused.set('clerk-limit-' + g)"
+            (keydown.delete)="touchGradeClerkLimit(g)"
+            (keydown.backspace)="touchGradeClerkLimit(g)"
+          />
+          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} from (YYYY-MM-DD; blank for the sheet's today)</label>
+          <input
+            [id]="'setting-clerk-limit-' + g + '-from'"
+            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
+            [value]="fromOf('clerk-limit-' + g)"
+            (input)="setFrom('clerk-limit-' + g, value($event))"
+          />
+          <p>In force: <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ session.gradeClerkLimit()[g] ?? '' }}</strong></p>
+        }
         <label for="setting-floor">Floor (the least a live due can be)</label>
         <input
           id="setting-floor"
@@ -503,6 +525,9 @@ export class SettingsPanel {
   /** What is typed for each grade's terms, and the grades typed into since the last save. */
   protected readonly gradeTerms = signal<Record<string, string>>({});
   protected readonly gradeTermsTouched = signal<ReadonlySet<string>>(new Set());
+  /** What is typed for each grade's clerk limit, and the grades typed into since the last save. */
+  protected readonly gradeClerkLimit = signal<Record<string, string>>({});
+  protected readonly gradeClerkLimitTouched = signal<ReadonlySet<string>>(new Set());
   /** What is typed for each grade's proof threshold, and the grades typed into since the last save. */
   protected readonly gradeProofThreshold = signal<Record<string, string>>({});
   protected readonly gradeProofThresholdTouched = signal<ReadonlySet<string>>(new Set());
@@ -575,6 +600,16 @@ export class SettingsPanel {
     this.error.set(null);
   }
 
+  protected setGradeClerkLimit(grade: string, limit: string): void {
+    this.gradeClerkLimit.update((t) => ({ ...t, [grade]: limit }));
+    this.touchGradeClerkLimit(grade);
+  }
+
+  protected touchGradeClerkLimit(grade: string): void {
+    this.gradeClerkLimitTouched.update((t) => new Set([...t, grade]));
+    this.error.set(null);
+  }
+
   protected setGradeProofThreshold(grade: string, threshold: string): void {
     this.gradeProofThreshold.update((t) => ({ ...t, [grade]: threshold }));
     this.touchGradeProofThreshold(grade);
@@ -626,7 +661,7 @@ export class SettingsPanel {
         && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.reviewSlaTouched() && !this.proofKindsTouched() && !this.defaultGradeTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
         && !this.fiscalStartMonthTouched() && !this.alertThresholdTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
-        && this.gradeProofThresholdTouched().size === 0
+        && this.gradeProofThresholdTouched().size === 0 && this.gradeClerkLimitTouched().size === 0
         && this.permsTouched().size === 0;
       const pick = untouched ? this.focused() : null;
       if (pick?.startsWith('terms-')) this.touchGradeTerms(pick.slice('terms-'.length));
@@ -635,6 +670,8 @@ export class SettingsPanel {
       if (graceGrade) this.touchGradeGrace(graceGrade);
       const proofGrade = this.grades.find((g) => pick === 'proof-threshold-' + g);
       if (proofGrade) this.touchGradeProofThreshold(proofGrade);
+      const limitGrade = this.grades.find((g) => pick === 'clerk-limit-' + g);
+      if (limitGrade) this.touchGradeClerkLimit(limitGrade);
       const guess = untouched && pick === null;
       const floor = this.floorTouched();
       const rounding = this.roundingTouched() || pick === 'rounding' || (guess && this.fromOf('rounding').trim() !== '');
@@ -673,9 +710,10 @@ export class SettingsPanel {
       const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
         || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter && !reviewSla && !proofKinds && !defaultGrade
-          && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth)
+          && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth && !limitGrade)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
+        ?? (await this.saveGradeClerkLimit())
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
         ?? (rounding ? await this.session.setRounding(this.rounding(), this.fromOf('rounding')) : null)
         ?? (cap ? await this.session.setCap(this.cap(), this.fromOf('cap')) : null)
@@ -730,6 +768,8 @@ export class SettingsPanel {
         this.gradeGraceTouched.set(new Set());
         this.gradeProofThreshold.set({});
         this.gradeProofThresholdTouched.set(new Set());
+        this.gradeClerkLimit.set({});
+        this.gradeClerkLimitTouched.set(new Set());
         this.perms.set({});
         this.permsTouched.set(new Set());
         this.froms.set({});
@@ -785,6 +825,16 @@ export class SettingsPanel {
     for (const g of this.grades) {
       if (!this.gradeTermsTouched().has(g)) continue;
       const err = await this.session.setGradeTerms(g, this.gradeTerms()[g] ?? '', this.fromOf('terms-' + g));
+      if (err) return err;
+    }
+    return null;
+  }
+
+  /** Save the clerk limit of each grade typed into, in grade order; the first refusal stops the rest. */
+  private async saveGradeClerkLimit(): Promise<string | null> {
+    for (const g of this.grades) {
+      if (!this.gradeClerkLimitTouched().has(g)) continue;
+      const err = await this.session.setGradeClerkLimit(g, this.gradeClerkLimit()[g] ?? '', this.fromOf('clerk-limit-' + g));
       if (err) return err;
     }
     return null;

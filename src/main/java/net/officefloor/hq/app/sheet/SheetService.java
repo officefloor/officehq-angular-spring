@@ -145,6 +145,14 @@ public class SheetService {
                 false);
     }
 
+    /** Record a grade's own clerk limit from a date (none: the sheet's today; no limit: the grade uses the
+     *  sheet's): a clerk settling a claim whose person has that grade may settle a due up to it. */
+    @Transactional
+    public Sheet setGradeClerkLimit(String id, String user, String grade, BigDecimal limit, LocalDate from) {
+        return setDated(id, user, Sheet.CLERK_LIMIT + "-" + grade, limit == null ? null : limit.setScale(2).toPlainString(),
+                from, false);
+    }
+
     /** Record the sheet's floor from a date (none: the sheet's today): the least a claim's live due can be,
      *  recording the figures it moves. */
     @Transactional
