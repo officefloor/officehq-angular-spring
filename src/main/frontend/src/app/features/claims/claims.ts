@@ -120,6 +120,37 @@ import { VoidReasons } from '../../core/void-reasons';
               <li data-testid="claim-comments-line">{{ m.by }} on {{ m.on }}: {{ m.text }}</li>
             }
           </ol>
+          <ol data-testid="claim-lines" aria-label="Lines">
+            @for (l of c.lines ?? []; track $index) {
+              <li data-testid="claim-lines-line">{{ l.label }} {{ l.qty }} x {{ l.unit }}</li>
+            }
+          </ol>
+          <label [for]="'claim-line-label-' + c.id">Line label</label>
+          <input
+            [id]="'claim-line-label-' + c.id"
+            data-testid="claim-line-label"
+            [value]="lineFields()[c.id]?.label ?? ''"
+            (input)="setLineField(c.id, 'label', value($event))"
+          />
+          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+          <input
+            [id]="'claim-line-qty-' + c.id"
+            data-testid="claim-line-qty"
+            inputmode="numeric"
+            [value]="lineFields()[c.id]?.qty ?? ''"
+            (input)="setLineField(c.id, 'qty', value($event))"
+          />
+          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+          <input
+            [id]="'claim-line-unit-' + c.id"
+            data-testid="claim-line-unit"
+            inputmode="decimal"
+            [value]="lineFields()[c.id]?.unit ?? ''"
+            (input)="setLineField(c.id, 'unit', value($event))"
+          />
+          <button type="button" data-testid="claim-line-add" [disabled]="acting() === c.id" (click)="addLine(c)">
+            Add line<span class="visually-hidden"> to claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           <label [for]="'claim-comment-text-' + c.id">Comment</label>
           <input
             [id]="'claim-comment-text-' + c.id"
@@ -309,6 +340,8 @@ export class PersonClaims {
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The comment typed on each claim, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
+  /** The line typed on each claim, by claim id. */
+  protected readonly lineFields = signal<Record<number, { label?: string; qty?: string; unit?: string }>>({});
   /** The reason typed to reject each claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
   protected readonly voidReasons = inject(VoidReasons);
@@ -477,6 +510,25 @@ export class PersonClaims {
       const err = await this.claims.comment(c.id, this.commentTexts()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
       else this.commentTexts.update((t) => ({ ...t, [c.id]: '' }));
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setLineField(id: number, key: 'label' | 'qty' | 'unit', text: string): void {
+    this.clearActionError(id);
+    this.lineFields.update((f) => ({ ...f, [id]: { ...f[id], [key]: text } }));
+  }
+
+  /** Add a line to the claim; once it goes through, its line boxes are emptied. */
+  protected async addLine(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const f = this.lineFields()[c.id] ?? {};
+      const err = await this.claims.addLine(c.id, f.label ?? '', f.qty ?? '', f.unit ?? '');
+      if (err) this.actionError.set({ id: c.id, message: err });
+      else this.lineFields.update((l) => ({ ...l, [c.id]: {} }));
     } finally {
       this.acting.set(null);
     }

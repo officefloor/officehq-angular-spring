@@ -145,6 +145,12 @@ public class Claim {
     @OrderColumn(name = "seq")
     private List<ClaimComment> comments = new ArrayList<>();
 
+    /** Its lines, in the order added; while it has any, its amount is what they add up to. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_line", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimLine> lines = new ArrayList<>();
+
     protected Claim() {
     }
 
@@ -160,7 +166,7 @@ public class Claim {
     }
 
     /** A copy of the claim for a person on another sheet, listed at a place there: its status, dates, note,
-     *  terms, frozen figure, tags, status log and comments carried; no number (one is given there), no figure
+     *  terms, frozen figure, tags, status log, comments and lines carried; no number (one is given there), no figure
      *  a statement bound, no reference, settle batch or lock. */
     public Claim copyTo(String otherSheetId, Long otherPersonId, long otherListOrder) {
         Claim copy = new Claim(otherSheetId, otherPersonId, amount, date, dueBy, note, corrects);
@@ -181,6 +187,7 @@ public class Claim {
         copy.tags = tags;
         statusLog.forEach(l -> copy.statusLog.add(new StatusChange(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
         comments.forEach(c -> copy.comments.add(new ClaimComment(c.getBy(), c.getOn(), c.getText())));
+        lines.forEach(l -> copy.lines.add(new ClaimLine(l.getLabel(), l.getQty(), l.getUnit())));
         return copy;
     }
 
@@ -433,5 +440,15 @@ public class Claim {
     /** Add a comment after those it has. */
     public void addComment(String by, LocalDate on, String text) {
         comments.add(new ClaimComment(by, on, text));
+    }
+
+    public List<ClaimLine> getLines() {
+        return List.copyOf(lines);
+    }
+
+    /** Add a line after those it has; its amount becomes what its lines add up to. */
+    public void addLine(String label, int qty, BigDecimal unit) {
+        lines.add(new ClaimLine(label, qty, unit));
+        amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
     }
 }

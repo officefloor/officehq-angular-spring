@@ -48,13 +48,13 @@ public class ClaimController {
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
-     *  not given), and its tags, sorted, and its comments, in the order written. */
+     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry,
             String remindedOn, String ref, List<String> tags, String voidReason,
-            List<CommentLine> comments, Integer settleBatch) {
+            List<CommentLine> comments, Integer settleBatch, List<LineView> lines) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -69,7 +69,8 @@ public class ClaimController {
                     claim.isLateEntry(),
                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
-                    claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch());
+                    claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch(),
+                    claim.getLines().stream().map(LineView::of).toList());
         }
     }
 
@@ -88,6 +89,14 @@ public class ClaimController {
 
         static CommentLine of(ClaimComment comment) {
             return new CommentLine(comment.getBy(), comment.getOn().toString(), comment.getText());
+        }
+    }
+
+    /** A line of a claim: its label, quantity and unit amount, two decimals. */
+    public record LineView(String label, int qty, String unit) {
+
+        static LineView of(ClaimLine line) {
+            return new LineView(line.getLabel(), line.getQty(), line.getUnit().toPlainString());
         }
     }
 
@@ -368,6 +377,24 @@ public class ClaimController {
             @RequestBody @Valid CommentRequest request) {
         return ClaimView.of(service.comment(sheetId.trim(), user.trim(), claimId,
                 request.text() == null ? "" : request.text().trim()));
+    }
+
+    /** A line's label, quantity and unit amount; a missing one is refused. */
+    public record LineRequest(@Size(max = 200) String label, Integer qty,
+            @Digits(integer = 13, fraction = 10) BigDecimal unit) {
+    }
+
+    /** Add a line to a DRAFT claim; its amount becomes what its lines add up to. */
+    @PostMapping("/claims/{claimId}/lines")
+    public ClaimView addLine(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid LineRequest request) {
+        if (request.qty() == null || request.unit() == null) {
+            throw new ClaimLineException("Enter the line's quantity and unit amount.");
+        }
+        return ClaimView.of(service.addLine(sheetId.trim(), user.trim(), claimId,
+                request.label() == null ? "" : request.label().trim(), request.qty(), request.unit()));
     }
 
     /** Re-settle a SETTLED claim at its figure today: a steward freezes it again. */
@@ -652,6 +679,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimCommentException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> commentRefused(ClaimCommentException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A claim line that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimLineException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> lineRefused(ClaimLineException e) {
         return Map.of("message", e.getMessage());
     }
 }

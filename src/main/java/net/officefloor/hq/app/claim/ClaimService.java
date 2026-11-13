@@ -136,7 +136,7 @@ public class ClaimService {
     }
 
     /** Change a DRAFT claim; a claim in any other status is refused, and a correction or a reference as when
-     *  added. */
+     *  added. A claim with lines keeps the amount they add up to: another amount is refused. */
     @Transactional
     public Claim update(String sheetId, String user, long claimId, BigDecimal amount, LocalDate date, String note,
             String corrects, String ref, List<String> tags) {
@@ -151,6 +151,9 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new), on);
         refuseCorrection(sheetId, claim.getPersonId(), amount, corrects);
         refuseRefUsed(sheetId, ref, claim.getId());
+        if (!claim.getLines().isEmpty() && amount.compareTo(claim.getAmount()) != 0) {
+            throw new ClaimLineException("A claim with lines takes its amount from its lines.");
+        }
         Rollup.Snapshot before = rollup.take(sheetId);
         claim.setAmount(amount.setScale(2));
         claim.setDate(on);
@@ -425,6 +428,42 @@ public class ClaimService {
         // A change to its comments alone may not reach the entity listener: keep its state for the as-of view.
         history.saved(updated);
         audit("COMMENT_ADDED", updated, person, user, updated.getNumber(), " text=" + text);
+        return updated;
+    }
+
+    /** Add a line to a DRAFT claim: its amount becomes what its lines add up to, the user counts as having
+     *  edited it, and CLAIM_LINE_ADDED is written. Refused for an empty label, a quantity below 1, a unit
+     *  amount below 0.00 or of more than two decimals, a claim that is not a DRAFT, a claim in a closed period,
+     *  and a claim another user has locked. */
+    @Transactional
+    public Claim addLine(String sheetId, String user, long claimId, String label, int qty, BigDecimal unit) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (label.isEmpty()) {
+            throw new ClaimLineException("Enter a label for the line.");
+        }
+        if (qty < 1) {
+            throw new ClaimLineException("A line's quantity is a whole number of at least 1.");
+        }
+        if (unit.signum() < 0 || unit.stripTrailingZeros().scale() > 2) {
+            throw new ClaimLineException("A line's unit amount is 0.00 or more, with two decimals.");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotDraftException(claim.getStatus());
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        refuseLocked(claim, user);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        BigDecimal shown = unit.setScale(2);
+        claim.addLine(label, qty, shown);
+        claim.setEditedBy(user);
+        Claim updated = claims.saveAndFlush(claim);
+        // A change to its lines alone may not reach the entity listener: keep its state for the as-of view.
+        history.saved(updated);
+        audit("CLAIM_LINE_ADDED", updated, person, user, updated.getNumber(),
+                " label=" + label + " qty=" + qty + " unit=" + shown.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
         return updated;
     }
 

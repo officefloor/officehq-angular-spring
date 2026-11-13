@@ -59,6 +59,15 @@ export interface Claim {
   comments: CommentLine[];
   /** The number of the bulk settle batch that settled it; null when settled one at a time, or never. */
   settleBatch: number | null;
+  /** Its lines, in the order added; while it has any, its amount is what they add up to. */
+  lines: ClaimLine[];
+}
+
+/** A line of a claim: its label, a whole quantity of at least 1 and a unit amount, two decimals. */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (YYYY-MM-DD), and its text. */
@@ -523,6 +532,31 @@ export class Claims {
       return null;
     } catch (e) {
       return failed('comment on', e);
+    }
+  }
+
+  /** Add a line to a DRAFT claim; an error message when refused (no label, a quantity that is not a whole
+   *  number of at least 1, a unit amount not of up to two decimals, a claim that is not a DRAFT, in a closed
+   *  period, or another user's editor is open on it). */
+  async addLine(id: number, label: string, qty: string, unit: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!label.trim()) return 'Enter a label for the line.';
+    if (!/^\d+$/.test(qty.trim()) || Number(qty.trim()) < 1) return 'Enter a whole quantity of at least 1.';
+    if (!/^\d+(\.\d{1,2})?$/.test(unit.trim())) return 'Enter a unit amount with up to two decimals.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(
+          `${this.url(sid)}/claims/${id}/lines`,
+          { label: label.trim(), qty: Number(qty.trim()), unit: unit.trim() },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('add a line to', e);
     }
   }
 
