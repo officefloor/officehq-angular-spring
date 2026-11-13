@@ -1,0 +1,58 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 37fc76ec8..90430776a 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -286,8 +286,8 @@ export class People {
+   }
+ 
+   /** Merge a grade into another: the server gives each person whose grade in force today is the merged
+-   *  one the other from the sheet's today, in list order, as the person form would; how many were changed,
+-   *  or an error message. */
++   *  one the other from the sheet's today, in list order, as the person form would, and turns every grade
++   *  record of theirs on the merged one into the other; how many were changed, or an error message. */
+   async mergeGrade(from: string, into: string): Promise<number | string> {
+     const sid = this.session.sheetId();
+     const user = this.session.user();
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 9ded51198..477528250 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -152,6 +152,11 @@ public class Person {
+         return found;
+     }
+ 
++    /** Make every grade they were given as one grade the other instead, whatever its from-date. */
++    public void regrade(String from, String into) {
++        grades.stream().filter(g -> from.equals(g.getGrade())).forEach(g -> g.setGrade(into));
++    }
++
+     /** Give them a grade from a date, replacing the one they had from that same date. */
+     public void setGrade(String grade, LocalDate from) {
+         for (PersonGrade g : grades) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index bceb7698f..9de17be01 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -458,8 +458,9 @@ public class PersonService {
+ 
+     /** Merge a grade into another, by a steward only, and refused for the same grade twice: every person
+      *  whose grade in force on the sheet's today is the merged grade is given the other from the sheet's
+-     *  today, in list order, exactly as the person form would, then the figures the whole merge moved are
+-     *  recorded; the people changed, in list order. */
++     *  today, in list order, exactly as the person form would, then every grade record of theirs on the merged
++     *  grade becomes the other (so all their claims, whatever their date, use the other's rates, terms and
++     *  thresholds), then the figures the whole merge moved are recorded; the people changed, in list order. */
+     @Transactional
+     public List<Person> mergeGrade(String sheetId, String user, String from, String into) {
+         requireSheet(sheetId);
+@@ -480,6 +481,10 @@ public class PersonService {
+                 .filter(p -> from.equals(p.gradeOn(today)))
+                 .map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), into, today,
+                         p.getTerms(), null, p.getContact(), null, false))
++                .map(p -> {
++                    p.regrade(from, into);
++                    return saved(p);
++                })
+                 .toList();
+         // then the figures the whole merge moved
+         rollup.recordChanges(sheetId, user, before);
