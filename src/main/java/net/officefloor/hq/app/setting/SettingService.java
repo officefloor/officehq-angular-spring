@@ -30,6 +30,9 @@ public class SettingService {
     /** The key prefix of a grade's own terms: terms-A, terms-B, terms-C. */
     private static final String GRADE_TERMS = "terms-";
 
+    /** The key prefix of a grade's grace days: grace-A, grace-B, grace-C. */
+    private static final String GRADE_GRACE = "grace-";
+
     private final SheetService sheets;
     private final SheetRepository sheetRepository;
     private final SheetRoleRepository roles;
@@ -321,6 +324,17 @@ public class SettingService {
                 .orElseGet(() -> terms(sheetId, on));
     }
 
+    /** The grace days in force on a date for a claim of the grade: an OPEN or PENDING claim of that
+     *  date is overdue only once its due-by plus them is before the sheet's today, and its late
+     *  charge's 30-day boundaries count from there; 0 when the grade has none in force then (blank). */
+    public int graceFor(String sheetId, String grade, LocalDate on, LocalDate asOf) {
+        if (grade == null) {
+            return 0;
+        }
+        return inForce(sheetId, GRADE_GRACE + grade, on, asOf).map(SettingValue::getValue)
+                .map(BigDecimal::intValue).orElse(0);
+    }
+
     /** The sheet's late percent in force on a date: an overdue claim of that date's due gains it of its
      *  figure for every full 30 days it is overdue. */
     public BigDecimal latePct(String sheetId, LocalDate on) {
@@ -443,6 +457,13 @@ public class SettingService {
         return record(sheetId, by, GRADE_TERMS + grade, BigDecimal.valueOf(terms), from);
     }
 
+    /** Record a grade's grace days on the sheet from a date (null for the sheet's today); null
+     *  records none (blank). */
+    @Transactional
+    public SettingValue setGradeGrace(String sheetId, String by, String grade, Integer days, LocalDate from) {
+        return record(sheetId, by, GRADE_GRACE + grade, days != null ? BigDecimal.valueOf(days) : null, from);
+    }
+
     /** Record the sheet's late percent from a date (null for the sheet's today). */
     @Transactional
     public SettingValue setLatePct(String sheetId, String by, BigDecimal latePct, LocalDate from) {
@@ -462,9 +483,14 @@ public class SettingService {
                 .orElseGet(() -> new SettingValue(sheetId, key, on, value));
         saved = values.saveAndFlush(saved);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=" + key + " value="
-                + (value != null ? (key.startsWith("terms") ? String.valueOf(value.intValue()) : value.toPlainString()) : "")
+                + (value != null ? (wholeDays(key) ? String.valueOf(value.intValue()) : value.toPlainString()) : "")
                 + (from != null ? " from=" + from : ""));
         return saved;
+    }
+
+    /** Whether a dated setting's values are whole days: the terms, a grade's terms and a grade's grace. */
+    public static boolean wholeDays(String key) {
+        return key.startsWith("terms") || key.startsWith(GRADE_GRACE);
     }
 
     /** Change the sheet's policy date; null leaves it blank (the sheet's today). */

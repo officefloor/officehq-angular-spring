@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, input, output, signal, untracked }
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, periodOf } from '../periods/periods';
-import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, rateOn } from '../rates/rates';
+import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, gradeOn, rateOn } from '../rates/rates';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; an OPEN claim a clerk settles above
  *  the clerk limit is PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
@@ -102,11 +102,14 @@ export function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
-/** What a late charge works from: the sheet's late percent (two decimals) in force on a date and its today; and what a claim's figures round by: the sheet's policy date (blank for its today). */
+/** What a late charge works from: the sheet's late percent (two decimals) in force on a date, its today and
+ *  a claim's grace days (see graceOn in the settings); and what a claim's figures round by: the sheet's
+ *  policy date (blank for its today). */
 export interface Late {
   pct: (date: string) => string;
   today: string | null;
   policyDate: string;
+  grace: (claim: Claim) => number;
 }
 
 /** Whether a claim's live figures round half up: it rounds by a date before the sheet's policy date
@@ -137,10 +140,11 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
   const figure = figureCents(claim, rates, halfUp);
   if (figure === null) return null;
   if (isCorrection(claim)) return figure;
-  const periods = Math.floor(daysOverdue(claim, late) / 30);
+  const grace = late.grace(claim);
+  const periods = Math.floor(daysOverdue(claim, late.today, grace) / 30);
   let charge = 0;
   for (let boundary = 1; boundary <= periods; boundary++) {
-    const pct = late.pct(plusDays(claim.dueBy, 30 * boundary));
+    const pct = late.pct(plusDays(claim.dueBy, grace + 30 * boundary));
     if (cents(pct) !== 0) charge += dueCents(figure, pct, halfUp);
   }
   return Math.max(figure + charge, floor(claim.date));
@@ -151,15 +155,17 @@ export function plusDays(date: string, days: number): string {
   return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** How many days an OPEN or PENDING claim is past its due-by on the sheet's today; 0 when it is not overdue. */
-function daysOverdue(claim: Claim, late: Late): number {
-  if (!overdue(claim, late.today) || late.today === null) return 0;
-  return Math.round((Date.parse(late.today) - Date.parse(claim.dueBy)) / 86_400_000);
+/** How many days an OPEN or PENDING claim is past its due-by plus its grace days on the sheet's today; 0
+ *  when it is not overdue. */
+function daysOverdue(claim: Claim, today: string | null, grace: number): number {
+  if (!overdue(claim, today, grace) || today === null) return 0;
+  return Math.round((Date.parse(today) - Date.parse(plusDays(claim.dueBy, grace))) / 86_400_000);
 }
 
-/** Whether a claim is overdue: it is OPEN or PENDING, not deferred, and its due-by is before the sheet's today. */
-export function overdue(claim: Claim, today: string | null): boolean {
-  return isOpen(claim) && today !== null && claim.dueBy < today && !deferred(claim, today);
+/** Whether a claim is overdue: it is OPEN or PENDING, not deferred, and its due-by plus its grace days
+ *  (those of its person's grade in force on its date; none by default) is before the sheet's today. */
+export function overdue(claim: Claim, today: string | null, grace = 0): boolean {
+  return isOpen(claim) && today !== null && plusDays(claim.dueBy, grace) < today && !deferred(claim, today);
 }
 
 /** Cents shown with two decimals. */
@@ -376,6 +382,8 @@ export class PersonClaims {
   readonly latePct = input.required<(date: string) => string>();
   /** The sheet's policy date (yyyy-mm-dd); blank for its today. */
   readonly policyDate = input.required<string>();
+  /** The grace days in force on a date for a grade (0 for none). */
+  readonly graceOn = input.required<(grade: string | null, date: string) => number>();
   /** The ids of the claims selected to act on together. */
   readonly selectedIds = input.required<ReadonlySet<number>>();
   /** The people on the sheet, in the order they were added: a claim can move to any other. */
@@ -451,6 +459,7 @@ export class PersonClaims {
       pct: this.latePct(),
       today: this.session.today(),
       policyDate: this.policyDate(),
+      grace: (c: Claim) => this.graceOf(c),
     };
     const due = claimDueCents(claim, this.rates.ofGradeOn(this.grades(), claim.date), this.floor(), late);
     return due === null ? NO_RATE : money(due);
@@ -461,7 +470,12 @@ export class PersonClaims {
   }
 
   protected isOverdue(claim: Claim): boolean {
-    return overdue(claim, this.session.today());
+    return overdue(claim, this.session.today(), this.graceOf(claim));
+  }
+
+  /** The claim's grace days: those in force on its date for the person's grade in force then. */
+  private graceOf(claim: Claim): number {
+    return this.graceOn()(gradeOn(this.grades(), claim.date), claim.date);
   }
 
   protected isDeferred(claim: Claim): boolean {

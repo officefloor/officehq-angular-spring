@@ -407,7 +407,7 @@ public class ClaimService {
         String old = settledDueText(claim);
         BigDecimal figure = liveFigureOf(sheetId, person, claim, null);
         claim.setSettledDue(figure == null ? null
-                : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, claim, figure, true, null)), null));
+                : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, person, claim, figure, true, null)), null));
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(line("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber())
@@ -621,7 +621,7 @@ public class ClaimService {
         BigDecimal figure = figureOf(sheetId, person, claim, asOf);
         boolean open = claim.getStatus().isOpen() && !claim.deferredOn(todayOr(sheetId, asOf));
         return figure == null ? null
-                : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, claim, figure, open, asOf)), asOf);
+                : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, person, claim, figure, open, asOf)), asOf);
     }
 
     /** The day that stands for the sheet's today: the given one, else the sheet's today. */
@@ -634,26 +634,36 @@ public class ClaimService {
         return claim.isCorrection() ? due : due.max(settings.floor(sheetId, claim.getDate(), asOf));
     }
 
-    /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by is
-     *  before the sheet's today) or a correction, else the late percent of the figure for every 30-day
-     *  boundary it is overdue past (its due-by plus 30, 60, 90 ... days), the late percent in force on that
+    /** The date a claim is overdue after: its due-by plus the grace days in force on its date for the
+     *  person's grade in force on its date (as they stood at the end of a day; null: as they stand now). */
+    public LocalDate overdueFrom(String sheetId, Person person, Claim claim, LocalDate asOf) {
+        String grade = grades.gradeOn(person.getId(), claim.getDate(), asOf);
+        return claim.getDueBy().plusDays(settings.graceFor(sheetId, grade, claim.getDate(), asOf));
+    }
+
+    /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by
+     *  plus its grace, see overdueFrom, is before the sheet's today) or a correction, else the late percent of
+     *  the figure for every 30-day boundary it is overdue past (its due-by plus its grace plus 30, 60, 90 ...
+     *  days), the late percent in force on that
      *  boundary date of the figure, rounded to two decimals as the claim's date decides (see roundingOf), the
      *  charges added up. Never bound by a statement: it follows the
      *  sheet's today. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
      *  claim as if it were still OPEN. */
-    private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure, boolean open, LocalDate asOf) {
+    private BigDecimal lateChargeOf(String sheetId, Person person, Claim claim, BigDecimal figure, boolean open,
+            LocalDate asOf) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
         if (!open || claim.isCorrection()) {
             return none;
         }
-        long days = ChronoUnit.DAYS.between(claim.getDueBy(), todayOr(sheetId, asOf));
+        LocalDate from = overdueFrom(sheetId, person, claim, asOf);
+        long days = ChronoUnit.DAYS.between(from, todayOr(sheetId, asOf));
         if (days < 30) {
             return none;
         }
         RoundingMode rounding = roundingOf(sheetId, claim, asOf);
         BigDecimal charge = none;
         for (long boundary = 1; boundary <= days / 30; boundary++) {
-            BigDecimal pct = settings.latePct(sheetId, claim.getDueBy().plusDays(30 * boundary), asOf);
+            BigDecimal pct = settings.latePct(sheetId, from.plusDays(30 * boundary), asOf);
             if (pct.signum() != 0) {
                 charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
             }

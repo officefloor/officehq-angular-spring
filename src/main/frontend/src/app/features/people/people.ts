@@ -312,6 +312,7 @@ interface StatementTaken {
                   [floor]="floor()"
                   [latePct]="settings.latePctOn()"
                   [policyDate]="settings.policyDate()"
+                  [graceOn]="settings.graceOn()"
                   [selectedIds]="selectedClaims()"
                   [people]="people()"
                   [viewer]="viewer()"
@@ -462,7 +463,14 @@ export class People {
     pct: this.settings.latePctOn(),
     today: this.session.today(),
     policyDate: this.settings.policyDate(),
+    grace: this.graceOf(),
   }));
+  /** A claim's grace days: those in force on its date for its person's grade in force then. */
+  private readonly graceOf = computed(() => {
+    const graceOn = this.settings.graceOn();
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    return (c: Claim) => graceOn(gradeOn(grades.get(c.personId) ?? [], c.date), c.date);
+  });
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
@@ -546,9 +554,10 @@ export class People {
   /** Each person's claims that count and are overdue, by person id. */
   private readonly overdueByPerson = computed(() => {
     const today = this.session.today();
+    const grace = this.graceOf();
     const map = new Map<number, Claim[]>();
     for (const c of this.live()) {
-      if (overdue(c, today)) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
+      if (overdue(c, today, grace(c))) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
     }
     return map;
   });

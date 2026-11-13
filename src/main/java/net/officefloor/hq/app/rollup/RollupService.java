@@ -146,7 +146,7 @@ public class RollupService {
     /** A person's figures from their claims that count: the sum of their amounts, and the sum of the
      *  figures they show, or none when the grade in force on the sheet's today has no rate in force
      *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
-     *  sums the dues of those that are OPEN or PENDING with a due-by before the sheet's today. */
+     *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today. */
     private Figures figuresOf(String sheetId, LocalDate today, Person person, List<Claim> counted) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
@@ -157,7 +157,7 @@ public class RollupService {
             BigDecimal figure = claimService.dueOf(sheetId, person, claim);
             if (figure != null) {
                 due = due.add(figure);
-                if (claim.getStatus().isOpen() && claim.getDueBy().isBefore(today)) {
+                if (claim.getStatus().isOpen() && claimService.overdueFrom(sheetId, person, claim, null).isBefore(today)) {
                     overdue = overdue.add(figure);
                 }
             }

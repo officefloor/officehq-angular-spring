@@ -149,6 +149,16 @@ export class SettingStore {
     const recorded = this.dated()['late-pct'];
     return (date: string) => valueOn(recorded, date) ?? LATE_PCT;
   });
+  /** The grace days in force on a date for a grade: a claim of that grade and date is overdue only once
+   *  its due-by plus them is before the sheet's today; 0 when the grade has none then (blank). */
+  readonly graceOn = computed(() => {
+    const dated = this.dated();
+    return (grade: string | null, date: string) => {
+      if (grade === null) return 0;
+      const days = valueOn(dated[`grace-${grade}`], date);
+      return days === undefined || days === null ? 0 : Number(days);
+    };
+  });
   readonly policyDate = signal('');
   readonly periodNumberingFrom = signal('');
   readonly entryDate = signal('');
@@ -272,6 +282,26 @@ export class SettingStore {
   /** The terms in days a claim of the grade is added with: the grade's own, else the sheet's. */
   termsOf(grade: string): number {
     return this.gradeTerms()[grade] ?? this.terms();
+  }
+
+  /** A grade's grace days in force on the sheet's today as text; blank for none. */
+  graceOf(grade: string): string {
+    return this.onToday(`grace-${grade}`) ?? '';
+  }
+
+  /** Record a grade's grace days on the active sheet from a date (null for the sheet's today); null
+   *  records none (blank). */
+  async setGradeGrace(grade: string, value: number | null, from: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/settings/grace/${encodeURIComponent(grade)}`,
+        { value, from },
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
   }
 
   /** Record a grade's own terms on the active sheet from a date (null for the sheet's today). */
@@ -600,6 +630,25 @@ export class SettingStore {
             (input)="typeGradeTermsFrom(g, value($event))"
           />
         }
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace for grade {{ g }} (days; blank for none)</label>
+          <input
+            [id]="'setting-grace-' + g"
+            [attr.data-testid]="'setting-grace-' + g"
+            inputmode="numeric"
+            [value]="gradeGrace()[g] ?? ''"
+            (focus)="typeGradeGrace(g, gradeGrace()[g] ?? '')"
+            (input)="typeGradeGrace(g, value($event))"
+          />
+          <label [for]="'setting-grace-' + g + '-from'">Grace for grade {{ g }} from</label>
+          <input
+            [id]="'setting-grace-' + g + '-from'"
+            [attr.data-testid]="'setting-grace-' + g + '-from'"
+            placeholder="yyyy-mm-dd"
+            [value]="gradeGraceFrom()[g] ?? ''"
+            (input)="typeGradeGraceFrom(g, value($event))"
+          />
+        }
         <label for="setting-late-pct">Late percent</label>
         <input
           id="setting-late-pct"
@@ -715,6 +764,17 @@ export class SettingStore {
           }
         </p>
       }
+      @for (g of grades; track g) {
+        <p>
+          Grace in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ store.graceOf(g) }}</strong>
+          @if (store.graceOf(g) === '') {
+            <span>none</span>
+          } @else {
+            <span>days</span>
+          }
+        </p>
+      }
       <p>
         Late percent in force:
         <strong data-testid="setting-late-pct-current">{{ store.latePct() }}</strong>
@@ -794,6 +854,10 @@ export class Settings {
   protected readonly gradeTerms = signal<Record<string, string>>({});
   /** The from-dates typed for the grades' terms, by grade; blank for the sheet's today. */
   protected readonly gradeTermsFrom = signal<Record<string, string>>({});
+  /** The grades' grace days typed since the last save, by grade; blank records none. */
+  protected readonly gradeGrace = signal<Record<string, string>>({});
+  /** The from-dates typed for the grades' grace days, by grade; blank for the sheet's today. */
+  protected readonly gradeGraceFrom = signal<Record<string, string>>({});
   protected readonly latePct = signal('');
   protected readonly latePctTyped = signal(false);
   protected readonly latePctFrom = signal('');
@@ -820,6 +884,16 @@ export class Settings {
 
   protected typeGradeTerms(grade: string, typed: string): void {
     this.gradeTerms.update((all) => ({ ...all, [grade]: typed }));
+    this.settingsError.set(null);
+  }
+
+  protected typeGradeGrace(grade: string, typed: string): void {
+    this.gradeGrace.update((all) => ({ ...all, [grade]: typed }));
+    this.settingsError.set(null);
+  }
+
+  protected typeGradeGraceFrom(grade: string, typed: string): void {
+    this.gradeGraceFrom.update((all) => ({ ...all, [grade]: typed }));
     this.settingsError.set(null);
   }
 
@@ -904,6 +978,7 @@ export class Settings {
     const terms = this.terms().trim();
     const saveTerms = this.termsTyped();
     const gradeTerms = Object.entries(this.gradeTerms()).map(([grade, days]) => [grade, days.trim()] as const);
+    const gradeGrace = Object.entries(this.gradeGrace()).map(([grade, days]) => [grade, days.trim()] as const);
     const latePct = this.latePct().trim();
     const saveLatePct = this.latePctTyped();
     const policyDate = this.policyDate().trim();
@@ -927,6 +1002,9 @@ export class Settings {
     const gradeTermsFrom: Record<string, string> = Object.fromEntries(
       Object.entries(this.gradeTermsFrom()).map(([grade, from]) => [grade, from.trim()]),
     );
+    const gradeGraceFrom: Record<string, string> = Object.fromEntries(
+      Object.entries(this.gradeGraceFrom()).map(([grade, from]) => [grade, from.trim()]),
+    );
     const froms: [boolean, string, string][] = [
       [saveLimit, limitFrom, 'the clerk limit'],
       [saveFloor, floorFrom, 'the floor'],
@@ -935,6 +1013,7 @@ export class Settings {
       [saveNoteThreshold, noteThresholdFrom, 'the note threshold'],
       [saveTerms, termsFrom, 'the terms'],
       ...gradeTerms.map(([grade]) => [true, gradeTermsFrom[grade] ?? '', `the terms for grade ${grade}`] as [boolean, string, string]),
+      ...gradeGrace.map(([grade]) => [true, gradeGraceFrom[grade] ?? '', `the grace for grade ${grade}`] as [boolean, string, string]),
       [saveLatePct, latePctFrom, 'the late percent'],
     ];
     if (saveLimit && limit !== '' && !AMOUNT.test(limit)) {
@@ -964,6 +1043,11 @@ export class Settings {
     const badGrade = gradeTerms.find(([, days]) => !DAYS.test(days));
     if (badGrade) {
       this.settingsError.set(`Type terms for grade ${badGrade[0]} of 0 or more whole days.`);
+      return;
+    }
+    const badGrace = gradeGrace.find(([, days]) => days !== '' && !DAYS.test(days));
+    if (badGrace) {
+      this.settingsError.set(`Type grace for grade ${badGrace[0]} of 0 or more whole days, or leave it blank for none.`);
       return;
     }
     if (saveLatePct && !AMOUNT.test(latePct)) {
@@ -1004,6 +1088,7 @@ export class Settings {
     this.noteThresholdTyped.set(false);
     this.termsTyped.set(false);
     this.gradeTerms.set({});
+    this.gradeGrace.set({});
     this.latePctTyped.set(false);
     this.policyDateTyped.set(false);
     this.periodNumberingFromTyped.set(false);
@@ -1023,6 +1108,9 @@ export class Settings {
         for (const [grade, days] of gradeTerms) {
           await this.store.setGradeTerms(grade, Number(days), fromOf(gradeTermsFrom[grade] ?? ''));
         }
+        for (const [grade, days] of gradeGrace) {
+          await this.store.setGradeGrace(grade, days === '' ? null : Number(days), fromOf(gradeGraceFrom[grade] ?? ''));
+        }
         if (saveLatePct) await this.store.setLatePct(latePct, fromOf(latePctFrom));
         if (savePolicyDate) await this.store.setPolicyDate(policyDate === '' ? null : policyDate);
         if (saveNumberingFrom) await this.store.setPeriodNumberingFrom(numberingFrom === '' ? null : numberingFrom);
@@ -1038,6 +1126,7 @@ export class Settings {
         if (saveNoteThreshold) this.noteThresholdTyped.set(true);
         if (saveTerms) this.termsTyped.set(true);
         this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
+        this.gradeGrace.update((typed) => ({ ...Object.fromEntries(gradeGrace), ...typed }));
         if (saveLatePct) this.latePctTyped.set(true);
         if (savePolicyDate) this.policyDateTyped.set(true);
         if (saveNumberingFrom) this.periodNumberingFromTyped.set(true);

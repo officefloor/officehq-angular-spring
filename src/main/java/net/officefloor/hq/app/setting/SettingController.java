@@ -62,7 +62,7 @@ public class SettingController {
     public record DatedView(String from, String value) {
         static DatedView of(SettingValue v) {
             String value = v.getValue() == null ? null
-                    : v.getKey().startsWith("terms") ? String.valueOf(v.getValue().intValue())
+                    : SettingService.wholeDays(v.getKey()) ? String.valueOf(v.getValue().intValue())
                     : v.getValue().toPlainString();
             return new DatedView(v.getFrom().toString(), value);
         }
@@ -107,6 +107,10 @@ public class SettingController {
     /** Terms of 0 or more whole days. Each figure setting is recorded from its from-date; null for the
      *  sheet's today. */
     public record TermsRequest(@NotNull @Min(0) @Max(36500) Integer value, LocalDate from) {
+    }
+
+    /** A grade's grace days: 0 or more whole days; null records none (blank). */
+    public record GradeGraceRequest(@Min(0) @Max(36500) Integer value, LocalDate from) {
     }
 
     /** A late percent of 0.00 or more with up to two decimals. */
@@ -257,6 +261,18 @@ public class SettingController {
             @RequestBody @Validated TermsRequest request) {
         String sheet = sheetId.trim();
         service.setGradeTerms(sheet, SignedInUser.decode(user), grade, request.value(), request.from());
+        return view(sheet);
+    }
+
+    /** Set a grade's (A, B or C) grace days; the overdue claims and late charges they move are followed in the audit. */
+    @PutMapping("/grace/{grade}")
+    public SettingsView setGradeGrace(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated GradeGraceRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        rollups.track(sheet, by, () -> service.setGradeGrace(sheet, by, grade, request.value(), request.from()));
         return view(sheet);
     }
 
