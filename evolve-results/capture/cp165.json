@@ -1,0 +1,64 @@
+{
+  "checkpoint": 165,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp165_escalate",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains an escalation gap (settings, a number of days, blank means off, not dated;\nSETTING_CHANGED key=escalate-after value=<days>). Reminding a claim whose previous reminder was at\nleast that many days before the sheet's today escalates it: ESCALATE naming the claim is written\nafter the REMIND line, once per claim ever.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains an escalation gap (settings, a number of days, blank means off, not dated;\nSETTING_CHANGED key=escalate-after value=<days>). Reminding a claim whose previous reminder was at\nleast that many days before the sheet's today escalates it: ESCALATE naming the claim is written\nafter the REMIND line, once per claim ever.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3221299ebd42b013cadce047ce261937f750d8ae",
+  "reset_sha": "",
+  "preagent_sha": "e668f1a9c905d6a0025dc04bdbd10866ed86374f",
+  "prev_sha": "e668f1a9c905d6a0025dc04bdbd10866ed86374f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6990257999999999,
+    "input_tokens": 32,
+    "output_tokens": 8886,
+    "cache_read_tokens": 619089,
+    "cache_creation_tokens": 49670,
+    "num_turns": 16,
+    "duration_ms": 313472,
+    "duration_api_ms": 77439,
+    "model": "claude-opus-5-5",
+    "session_id": "c4c21bb2-f623-44ed-82c6-564c2e533295",
+    "stop_reason": "success",
+    "result_text": "I added the escalation gap, and all 4 Playwright tests in `bin/e2e` pass.\n\n**What it does now**\n- Settings has a new **Escalation gap** field (`setting-escalate-after`). It takes a whole number of days, blank turns it off, and it isn't dated. Saving it writes `SETTING_CHANGED \u2026 key=escalate-after value=<days>`, with an empty value when cleared.\n- When a claim is reminded, it escalates if escalation is on, the claim was reminded before, that earlier reminder was at least the gap's number of days before the sheet's today, and the claim has never escalated. An `ESCALATE` line naming the claim is then written right after its `REMIND` line, with the same fields.\n- Because each claim can escalate only once, a later reminder after an even longer gap doesn't write `ESCALATE` again.\n\n**Where the changes are**\n- **Stored data:** migration `V90__escalate_after.sql` adds an `escalate_after` days column to the sheet and an `escalated` flag (default false) to the claim.\n- **Server:**\n  - `Sheet`, `Claim`, `SheetService.setEscalateAfter` and the new endpoint `PUT /api/sheets/{id}/settings/escalate-after`.\n  - The sheet data the screen loads now includes the gap.\n  - The escalation check is in `ClaimService.remind`.\n- **Front end:** a new `setEscalateAfter` in `session.ts` and the field in the settings form (`settings.ts`), wired the same way as the existing grace-days setting.\n\nThe change request didn't cover cloning a sheet. I made a clone copy both the gap and each claim's escalated flag, the same way it already copies `reminded_on`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6990257999999999,
+        "num_turns": 16,
+        "duration_ms": 313472,
+        "duration_api_ms": 77439,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp165.agent.jsonl",
+  "agent_diff_file": "cp165.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
