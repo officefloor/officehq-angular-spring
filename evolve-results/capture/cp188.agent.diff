@@ -1,0 +1,109 @@
+diff --git a/src/main/java/net/officefloor/hq/app/history/AsOf.java b/src/main/java/net/officefloor/hq/app/history/AsOf.java
+index a5f3d63c1..73f3124ae 100644
+--- a/src/main/java/net/officefloor/hq/app/history/AsOf.java
++++ b/src/main/java/net/officefloor/hq/app/history/AsOf.java
+@@ -49,6 +49,7 @@ public class AsOf {
+         then.setToday(asOf);
+         // the parent is not dated: the sheet names the one it names now
+         then.setParent(now.getParent());
++        then.setSource(now.getSource());
+         return then;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index c8daf5296..b2f1671b5 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -145,6 +145,11 @@ public class Sheet {
+     @Column(name = "parent")
+     private String parent;
+ 
++    /** The id of the sheet this one was cloned from: a grade with no rate in force on a date here nor on its
++     *  parents takes the source's, and so on up the source's parents and source; none means not a clone. */
++    @Column(name = "source")
++    private String source;
++
+     /** Whether the sheet is archived: everything stays visible and every change is refused. */
+     @Column(name = "archived", nullable = false)
+     private boolean archived;
+@@ -412,6 +417,14 @@ public class Sheet {
+         this.parent = parent;
+     }
+ 
++    public String getSource() {
++        return source;
++    }
++
++    public void setSource(String source) {
++        this.source = source;
++    }
++
+     public Integer getGraceDays() {
+         return graceDays;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 9019acaa3..58c07b1a1 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -102,8 +102,8 @@ public class SheetCloneService {
+         String id = sheet.getId();
+         jdbc.update("INSERT INTO sheet (id, created_by, created_at, today, last_claim_number, last_settle_batch,"
+                 + " policy_date, period_numbering_from, grace_days, archived, entry_date, pot, parent, alert_threshold,"
+-                + " escalate_after, review_sla, proof_kinds) SELECT ?, ?, ?, today, 0, last_settle_batch, policy_date, period_numbering_from,"
+-                + " grace_days, FALSE, entry_date, pot, parent, alert_threshold, escalate_after, review_sla, proof_kinds FROM sheet WHERE id = ?", target, user, Timestamp.from(Instant.now()), id);
++                + " escalate_after, review_sla, proof_kinds, source) SELECT ?, ?, ?, today, 0, last_settle_batch, policy_date, period_numbering_from,"
++                + " grace_days, FALSE, entry_date, pot, parent, alert_threshold, escalate_after, review_sla, proof_kinds, id FROM sheet WHERE id = ?", target, user, Timestamp.from(Instant.now()), id);
+         jdbc.update("INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)"
+                 + " SELECT ?, setting_key, from_date, setting_value FROM sheet_setting WHERE sheet_id = ?", target, id);
+         jdbc.update("INSERT INTO sheet_permission (sheet_id, action, roles)"
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index ec727f52d..bdf5be551 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -25,17 +25,30 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     /** How many levels up a sheet's rates are taken from its ancestors. */
+     int ANCESTOR_LEVELS = 3;
+ 
+-    /** The sheet's parent, the parent's parent and so on, nearest first, up to three levels up. */
++    /** The sheets whose rates a grade with no rate in force on a date here takes, nearest first: the sheet's
++     *  parent, the parent's parent and so on up to three levels up; then, for a clone, the sheet it was cloned
++     *  from and that sheet's own ancestors the same way (its parents, then its source), and so on. */
+     default List<String> ancestors(String id) {
+         List<String> found = new ArrayList<>();
+-        String at = id;
+-        while (found.size() < ANCESTOR_LEVELS) {
+-            String parent = findById(at).map(Sheet::getParent).orElse(null);
+-            if (parent == null || parent.equals(id) || found.contains(parent)) {
++        String from = id;
++        while (from != null) {
++            String at = from;
++            int levels = 0;
++            while (levels < ANCESTOR_LEVELS) {
++                String parent = findById(at).map(Sheet::getParent).orElse(null);
++                if (parent == null || parent.equals(id) || found.contains(parent)) {
++                    break;
++                }
++                found.add(parent);
++                levels++;
++                at = parent;
++            }
++            String source = findById(from).map(Sheet::getSource).orElse(null);
++            if (source == null || source.equals(id) || found.contains(source)) {
+                 break;
+             }
+-            found.add(parent);
+-            at = parent;
++            found.add(source);
++            from = source;
+         }
+         return found;
+     }
+diff --git a/src/main/resources/db/migration/V104__sheet_source.sql b/src/main/resources/db/migration/V104__sheet_source.sql
+new file mode 100644
+index 000000000..c836a3e6f
+--- /dev/null
++++ b/src/main/resources/db/migration/V104__sheet_source.sql
+@@ -0,0 +1,3 @@
++-- The sheet a sheet was cloned from: a grade with no rate in force on a date on the sheet nor on its parents
++-- takes the source's, then the source's parents' and source's, and so on. None means not a clone. Not dated.
++ALTER TABLE sheet ADD COLUMN source VARCHAR(200);
