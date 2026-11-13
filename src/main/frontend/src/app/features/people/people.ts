@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, money, overdue, statusAsOf } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, statusAsOf } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -204,6 +204,7 @@ interface StatementTaken {
             <th scope="col">Stated on</th>
             <th scope="col">Retired</th>
             <th scope="col">Retired from</th>
+            <th scope="col">Active</th>
             <th scope="col">On hold</th>
             <th scope="col">Holds</th>
             <th scope="col">Watched</th>
@@ -232,6 +233,7 @@ interface StatementTaken {
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
               <td data-testid="person-hold">{{ p.holds.length > 0 ? 'yes' : 'no' }}</td>
               <td>
                 <ul [attr.aria-label]="'Holds of ' + p.name">
@@ -422,6 +424,18 @@ export class People {
     for (const c of this.live()) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
     return map;
   });
+  /** The ids of the people who are active: they have an OPEN or PENDING claim that counts dated
+   *  within the 30 days up to and including the sheet's today. */
+  protected readonly activeIds = computed(() => {
+    const today = this.session.today();
+    if (today === null) return new Set<number>();
+    const since = plusDays(today, -29);
+    return new Set(
+      this.live()
+        .filter((c) => isOpen(c) && since <= c.date && c.date <= today)
+        .map((c) => c.personId),
+    );
+  });
   /** Each person's claims, newest first, by person id. */
   private readonly claimsByPerson = computed(() => {
     const map = new Map<number, Claim[]>();
@@ -495,14 +509,15 @@ export class People {
       ]),
     );
   });
-  /** Per grade: the people not retired on it on the sheet's today, and their due-totals added up
-   *  (skipping those with no figure), as their rows show them. */
+  /** Per grade: the people not retired on it on the sheet's today, their due-totals added up
+   *  (skipping those with no figure), as their rows show them, and how many of them are active. */
   protected readonly gradeSummary = computed(() => {
     const current = this.people().filter((p) => !p.retired);
     return this.grades.map((grade) => {
       const on = current.filter((p) => this.gradeOf(p) === grade);
       const due = on.reduce((sum, p) => sum + (this.dueCentsBy(p) ?? 0), 0);
-      return { grade, count: on.length, dueTotal: money(due) };
+      const active = on.filter((p) => this.activeIds().has(p.id)).length;
+      return { grade, count: on.length, dueTotal: money(due), active };
     });
   });
   /** Per period: the due-total its row shows, the sum of the people's figures for it. */

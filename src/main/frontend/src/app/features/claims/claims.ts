@@ -141,7 +141,7 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
 }
 
 /** A date (yyyy-mm-dd) some days on. */
-function plusDays(date: string, days: number): string {
+export function plusDays(date: string, days: number): string {
   return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 }
 

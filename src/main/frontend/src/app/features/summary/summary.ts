@@ -6,6 +6,8 @@ export interface GradeSummary {
   count: number;
   /** Their due-totals added up, skipping those with no figure (two decimals). */
   dueTotal: string;
+  /** How many of them are active. */
+  active: number;
 }
 
 export interface PeriodSummary {
@@ -34,6 +36,7 @@ export interface StatusSummary {
             <th scope="col">Grade</th>
             <th scope="col">People</th>
             <th scope="col">Due</th>
+            <th scope="col">Active</th>
           </tr>
         </thead>
         <tbody>
@@ -42,6 +45,7 @@ export interface StatusSummary {
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
