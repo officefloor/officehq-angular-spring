@@ -78,9 +78,9 @@ public class ClaimService {
 
     /** Add a claim for a person; a missing date takes the sheet's entry date, else its today. One added while the period
      *  its due-by falls in is soft-closed is a late entry, and one whose due-by falls in a closed period is refused.
-     *  Its due-by is fixed now: its
-     *  date plus the person's own terms, else the terms in force on that date for the person's grade then, moved past
-     *  the sheet's holidays now. A negative amount is a
+     *  Its due-by is fixed now: the
+     *  business day after its date that is the person's own terms, else the terms in force on that date for the
+     *  person's grade then, counted skipping weekends and the sheet's holidays now. A negative amount is a
      *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
@@ -795,13 +795,13 @@ public class ClaimService {
         return note == null ? "" : note.trim();
     }
 
-    /** The due-by of a claim of the person dated on a date, fixed as it is added: its date plus its
-     *  terms, moved past the holidays on the sheet now to the next day that is not one. */
+    /** The due-by of a claim of the person dated on a date, fixed as it is added: the terms-th
+     *  business day after its date, skipping weekends and the holidays on the sheet now. */
     private LocalDate dueBy(String sheetId, Person person, LocalDate on) {
-        return holidays.pastHolidays(sheetId, on.plusDays(termsFor(sheetId, person, on)));
+        return holidays.businessDaysAfter(sheetId, on, termsFor(sheetId, person, on));
     }
 
-    /** The terms in days a claim of the person dated on a date takes: the person's own, else their
+    /** The terms in business days a claim of the person dated on a date takes: the person's own, else their
      *  grade's in force then, else the sheet's. */
     private int termsFor(String sheetId, Person person, LocalDate on) {
         return person.getTerms() != null ? person.getTerms()

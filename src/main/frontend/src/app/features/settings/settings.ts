@@ -37,7 +37,7 @@ interface SettingsView {
   floor: string;
   /** The cap (two decimals): the most a person's due-total can be; null when there is none. */
   cap: string | null;
-  /** The terms in whole days: a claim is due by its date plus them. */
+  /** The terms in whole days: a claim is due by the business day that many after its date. */
   terms: number;
   /** The late percent (two decimals): an overdue claim's due gains it of its figure for every full
    *  30 days it is overdue. */
@@ -566,7 +566,7 @@ export class SettingStore {
           [value]="noteThresholdFrom()"
           (input)="noteThresholdFrom.set(value($event)); settingsError.set(null)"
         />
-        <label for="setting-terms">Terms (days)</label>
+        <label for="setting-terms">Terms (business days)</label>
         <input
           id="setting-terms"
           data-testid="setting-terms"
@@ -583,7 +583,7 @@ export class SettingStore {
           (input)="termsFrom.set(value($event)); settingsError.set(null)"
         />
         @for (g of grades; track g) {
-          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (business days)</label>
           <input
             [id]="'setting-terms-' + g"
             [attr.data-testid]="'setting-terms-' + g"

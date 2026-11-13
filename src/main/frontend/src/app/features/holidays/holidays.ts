@@ -50,7 +50,7 @@ export class HolidayStore {
   }
 }
 
-// The sheet's holidays, which a claim's due-by is moved past when it is added, and the entry that
+// The sheet's holidays, which a claim's terms skip as non-business days when it is added, and the entry that
 // adds one.
 @Component({
   selector: 'app-holidays',

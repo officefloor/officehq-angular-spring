@@ -25,7 +25,7 @@ interface Person {
   grades: PersonGrade[];
   /** Raised on every save; an editor saves only the version it loaded. */
   version: number;
-  /** The person's own terms in days, which fix the due-by of their claims; null for none. */
+  /** The person's own terms in business days, which fix the due-by of their claims; null for none. */
   terms: number | null;
   /** How many statements were taken for the person. */
   statementCount: number;
@@ -100,7 +100,7 @@ interface StatementTaken {
           [value]="gradeFrom()"
           (input)="gradeFrom.set(value($event)); error.set(null)"
         />
-        <label for="person-form-terms">Terms (days)</label>
+        <label for="person-form-terms">Terms (business days)</label>
         <input
           id="person-form-terms"
           data-testid="person-form-terms"
