@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -7,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -52,16 +54,16 @@ public class PersonController {
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named. */
+     *  they were named, and whether the signed-in user watches them. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            List<HoldView> holds, List<Long> patronIds) {
+            List<HoldView> holds, List<Long> patronIds, boolean watched) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
-                StatementSummary statements, List<PersonHold> holds, List<Long> patronIds) {
+                StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
-                    holds.stream().map(HoldView::of).toList(), patronIds);
+                    holds.stream().map(HoldView::of).toList(), patronIds, watched);
         }
     }
 
@@ -88,6 +90,10 @@ public class PersonController {
     public record HoldRequest(LocalDate from, LocalDate to) {
     }
 
+    /** Whether the signed-in user is to watch the person. */
+    public record WatchRequest(@NotNull Boolean watched) {
+    }
+
     /** A patron to name: the id of another person on the sheet. */
     public record PatronRequest(@NotNull Long patronId) {
     }
@@ -109,8 +115,10 @@ public class PersonController {
 
     /** The sheet's people in the order they were added. */
     @GetMapping
-    public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
+    public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(value = SignedInUser.HEADER, required = false) String user) {
         String sheet = sheetId.trim();
+        Set<Long> watched = user == null ? Set.of() : service.watchedIds(sheet, SignedInUser.decode(user));
         Map<Long, StatementSummary> summaries = statements.summaries(sheet);
         Map<Long, List<Long>> patrons = service.patronIds(sheet);
         Map<Long, List<PersonGrade>> given = grades.bySheet(sheet);
@@ -120,7 +128,7 @@ public class PersonController {
                 .map(p -> PersonView.of(p, given.getOrDefault(p.getId(), List.of()), today,
                         summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         holds.getOrDefault(p.getId(), List.of()),
-                        patrons.getOrDefault(p.getId(), List.of())))
+                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))
                 .toList();
     }
 
@@ -132,7 +140,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(),
-                request.grade())));
+                request.grade())), by);
     }
 
     /** Change a person's name and give them a grade from a date; refused when the person was saved since the editor loaded them. */
@@ -142,7 +150,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
-                request.name(), request.grade(), request.gradeFrom())));
+                request.name(), request.grade(), request.gradeFrom())), by);
     }
 
     /** Retire a person from a date. */
@@ -151,7 +159,7 @@ public class PersonController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody RetireRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return withStatements(service.retire(sheet, by, id, request.from()));
+        return withStatements(service.retire(sheet, by, id, request.from()), by);
     }
 
     /** Put a hold on a person from a date to an optional to-date. */
@@ -161,7 +169,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by,
-                () -> service.hold(sheet, by, id, request.from(), request.to())));
+                () -> service.hold(sheet, by, id, request.from(), request.to())), by);
     }
 
     /** Name another person on the sheet as a person's patron. */
@@ -170,7 +178,16 @@ public class PersonController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PatronRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return withStatements(service.addPatron(sheet, by, id, request.patronId()));
+        return withStatements(service.addPatron(sheet, by, id, request.patronId()), by);
+    }
+
+    /** Start or stop the signed-in user watching a person. */
+    @PostMapping("/{id}/watch")
+    public PersonView watch(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated WatchRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(service.watch(sheet, by, id, request.watched()), by);
     }
 
     /** A date that is not a real yyyy-mm-dd date, or a hold that ends before it starts, is refused. */
@@ -182,14 +199,15 @@ public class PersonController {
     /** Someone else saved the person since the editor loaded them: the person as stored now. */
     @ExceptionHandler(StalePersonException.class)
     @ResponseStatus(HttpStatus.PRECONDITION_FAILED)
-    public PersonView stale(StalePersonException e) {
-        return withStatements(e.getCurrent());
+    public PersonView stale(StalePersonException e, HttpServletRequest request) {
+        String user = request.getHeader(SignedInUser.HEADER);
+        return withStatements(e.getCurrent(), user == null ? null : SignedInUser.decode(user));
     }
 
-    private PersonView withStatements(Person person) {
+    private PersonView withStatements(Person person, String user) {
         return PersonView.of(person, grades.of(person.getId()), sheets.today(person.getSheetId()),
                 statements.summary(person.getSheetId(), person.getId()), service.holds(person.getId()),
-                service.patronIds(person.getId()));
+                service.patronIds(person.getId()), user != null && service.watches(person.getId(), user));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */

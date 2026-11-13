@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -20,13 +21,16 @@ public class PersonService {
     private final PersonPatronRepository patrons;
     private final PersonGradeService grades;
     private final PersonHoldRepository holds;
+    private final PersonWatchRepository watches;
     private final SheetService sheets;
     private final EntityManager entityManager;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
-            PersonHoldRepository holds, SheetService sheets, EntityManager entityManager, Audit audit) {
+            PersonHoldRepository holds, PersonWatchRepository watches, SheetService sheets,
+            EntityManager entityManager, Audit audit) {
         this.people = people;
+        this.watches = watches;
         this.patrons = patrons;
         this.grades = grades;
         this.holds = holds;
@@ -149,6 +153,40 @@ public class PersonService {
         audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " patron=" + patron.getName());
         return person;
+    }
+
+    /** Start or stop a user watching a person; a person already in that state is left as they are,
+     *  writing nothing. */
+    @Transactional
+    public Person watch(String sheetId, String user, Long id, boolean on) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        var existing = watches.findByPersonIdAndUser(id, user);
+        if (on && existing.isEmpty()) {
+            watches.saveAndFlush(new PersonWatch(sheetId, id, user));
+            audit.recordOnCommit("PERSON_WATCHED sheet=" + sheetId + " by=" + user + " name=" + person.getName());
+        } else if (!on && existing.isPresent()) {
+            watches.delete(existing.get());
+            watches.flush();
+            audit.recordOnCommit("PERSON_UNWATCHED sheet=" + sheetId + " by=" + user + " name=" + person.getName());
+        }
+        return person;
+    }
+
+    /** The ids of the people a user watches on the sheet. */
+    public Set<Long> watchedIds(String sheetId, String user) {
+        return watches.findBySheetIdAndUser(sheetId, user).stream().map(PersonWatch::getPersonId)
+                .collect(Collectors.toSet());
+    }
+
+    /** Whether a user watches a person. */
+    public boolean watches(Long personId, String user) {
+        return watches.findByPersonIdAndUser(personId, user).isPresent();
+    }
+
+    /** A person's watchers, in the order they started watching. */
+    public List<String> watchers(Long personId) {
+        return watches.findByPersonIdOrderByIdAsc(personId).stream().map(PersonWatch::getUser).toList();
     }
 
     private void record(String event, String sheetId, String user, Person person, String grade) {

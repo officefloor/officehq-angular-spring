@@ -73,7 +73,8 @@ public class QuickAddController {
         QuickAddService.Added added = service.add(sheet, by, request.name(), request.amount());
         Long personId = added.person().getId();
         return new QuickAddView(PersonView.of(added.person(), grades.of(personId), sheets.today(sheet),
-                statements.summary(sheet, personId), people.holds(personId), people.patronIds(personId)),
+                statements.summary(sheet, personId), people.holds(personId), people.patronIds(personId),
+                people.watches(personId, by)),
                 ClaimView.of(added.claim(), added.claim().getDate(),
                         claims.logOf(added.claim().getId()))); // never a correction: rounds by its own date
     }

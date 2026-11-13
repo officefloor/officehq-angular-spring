@@ -39,6 +39,8 @@ interface Person {
   holds: Hold[];
   /** The ids of the person's patrons, in the order they were named. */
   patronIds: number[];
+  /** Whether the signed-in user watches the person. */
+  watched: boolean;
 }
 
 /** A statement taken: the person's statements as their row shows them, and their claims as it
@@ -193,6 +195,7 @@ interface StatementTaken {
             <th scope="col">Retired from</th>
             <th scope="col">On hold</th>
             <th scope="col">Holds</th>
+            <th scope="col">Watched</th>
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
             <th scope="col">Excess</th>
@@ -225,6 +228,7 @@ interface StatementTaken {
                   }
                 </ul>
               </td>
+              <td data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</td>
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
@@ -264,6 +268,15 @@ interface StatementTaken {
                   (click)="takeStatement(p)"
                 >
                   Statement
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-watch"
+                  [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name"
+                  [attr.aria-pressed]="p.watched"
+                  (click)="toggleWatch(p)"
+                >
+                  {{ p.watched ? 'Unwatch' : 'Watch' }}
                 </button>
                 <label [for]="'person-retire-date-' + p.id">Retire from</label>
                 <input
@@ -670,6 +683,24 @@ export class People {
       this.holdDates.update((dates) => ({ ...dates, [person.id]: {} }));
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be put on hold.` });
+    }
+  }
+
+  /** Start or stop the signed-in user watching a person; their row then shows it. */
+  protected async toggleWatch(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/watch`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { watched: !person.watched }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch {
+      this.rowError.set({
+        id: person.id,
+        message: `${person.name} could not be ${person.watched ? 'unwatched' : 'watched'}.`,
+      });
     }
   }
 

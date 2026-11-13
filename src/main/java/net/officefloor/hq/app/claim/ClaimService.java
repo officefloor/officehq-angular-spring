@@ -17,6 +17,8 @@ import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
+import net.officefloor.hq.app.person.PersonWatch;
+import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.setting.Permission;
@@ -44,11 +46,14 @@ public class ClaimService {
     private final SheetService sheets;
     private final PeriodRepository periods;
     private final SettingService settings;
+    private final PersonWatchRepository watches;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
-            PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, Audit audit) {
+            PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
+            Audit audit) {
         this.periods = periods;
+        this.watches = watches;
         this.settings = settings;
         this.claims = claims;
         this.logs = logs;
@@ -169,6 +174,9 @@ public class ClaimService {
             line += " due=" + settledDueText(saved);
         }
         audit.recordOnCommit(line);
+        if (to == ClaimStatus.SETTLED) {
+            notifyWatchers(sheetId, user, person, saved);
+        }
         return saved;
     }
 
@@ -248,6 +256,7 @@ public class ClaimService {
         log(sheetId, user, person, saved);
         audit.recordOnCommit(line("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber())
                 + " due=" + settledDueText(saved));
+        notifyWatchers(sheetId, user, person, saved);
         return saved;
     }
 
@@ -305,6 +314,7 @@ public class ClaimService {
         log(sheetId, user, person, saved);
         audit.recordOnCommit(line("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber())
                 + " old=" + old + " new=" + settledDueText(saved));
+        notifyWatchers(sheetId, user, person, saved);
         return saved;
     }
 
@@ -546,6 +556,14 @@ public class ClaimService {
     private Person person(String sheetId, Long personId) {
         return people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
+    }
+
+    /** One NOTIFY line for each user watching the claim's person, in the order they started watching. */
+    private void notifyWatchers(String sheetId, String user, Person person, Claim claim) {
+        for (PersonWatch watch : watches.findByPersonIdOrderByIdAsc(person.getId())) {
+            audit.recordOnCommit("NOTIFY sheet=" + sheetId + " by=" + user + " user=" + watch.getUser()
+                    + " person=" + person.getName() + " number=" + claim.getNumber());
+        }
     }
 
     private void record(String event, String sheetId, String user, Person person, Claim claim) {
