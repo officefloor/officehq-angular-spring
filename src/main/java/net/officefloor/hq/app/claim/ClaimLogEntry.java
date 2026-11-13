@@ -55,6 +55,14 @@ public class ClaimLogEntry {
         return claimId;
     }
 
+    public ClaimStatus getStatus() {
+        return status;
+    }
+
+    public LocalDate getOn() {
+        return on;
+    }
+
     /** The line as the claim shows it: <STATUS> by <user> on <date> due=<due>. */
     public String text() {
         return status + " by " + by + " on " + on + " due=" + due;

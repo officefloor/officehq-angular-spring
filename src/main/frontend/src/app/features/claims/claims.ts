@@ -56,6 +56,17 @@ export function deferred(claim: Claim, today: string | null): boolean {
   return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
 }
 
+/** The status a claim had at the end of a day, as its status log records it: the last status it
+ *  moved to on or before that day; null when it was added after it. */
+export function statusAsOf(claim: Claim, day: string): ClaimStatus | null {
+  let status: ClaimStatus | null = null;
+  for (const line of claim.log) {
+    const match = /^(\S+) by .* on (\d{4}-\d{2}-\d{2}) due=\S+$/.exec(line);
+    if (match && match[2] <= day) status = match[1] as ClaimStatus;
+  }
+  return status;
+}
+
 /** Whether a claim is a correction: its amount is negative. */
 export function isCorrection(claim: Claim): boolean {
   return cents(claim.amount) < 0;

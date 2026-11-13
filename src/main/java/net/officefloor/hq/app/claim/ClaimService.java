@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -304,6 +305,18 @@ public class ClaimService {
     public Map<Long, List<String>> logsOf(String sheetId) {
         return logs.findBySheetIdOrderByIdAsc(sheetId).stream().collect(Collectors.groupingBy(
                 ClaimLogEntry::getClaimId, Collectors.mapping(ClaimLogEntry::text, Collectors.toList())));
+    }
+
+    /** The status each of the sheet's claims had at the end of a day, by claim id, as its status log
+     *  records it: the last status it moved to on or before that day. A claim added after it has none. */
+    public Map<Long, ClaimStatus> statusesAsOf(String sheetId, LocalDate day) {
+        Map<Long, ClaimStatus> statuses = new HashMap<>();
+        for (ClaimLogEntry entry : logs.findBySheetIdOrderByIdAsc(sheetId)) {
+            if (!entry.getOn().isAfter(day)) {
+                statuses.put(entry.getClaimId(), entry.getStatus());
+            }
+        }
+        return statuses;
     }
 
     /** Log the status a claim has just moved to (or been added in): by whom, on the sheet's today, and

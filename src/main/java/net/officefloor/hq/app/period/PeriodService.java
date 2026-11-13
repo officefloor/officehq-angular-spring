@@ -12,6 +12,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -75,7 +76,8 @@ public class PeriodService {
     }
 
     /** Close a period, fixing each person's due-total for it, for everyone on the sheet, and its own
-     *  due-total, their sum: the figures shown on the claims that count dated in it
+     *  due-total, their sum: the figures shown on the claims dated in it that counted at the end of its last day (by the
+     *  status each had then, as its status log records it)
      *  (a claim with no figure adds nothing; an OPEN claim dated within its person's hold and not bound by a statement counts for nothing). A period already closed is refused. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
@@ -91,9 +93,11 @@ public class PeriodService {
         LocalDate today = sheets.today(sheetId);
         Map<Long, BigDecimal> personTotals = new LinkedHashMap<>();
         byId.keySet().forEach(id -> personTotals.put(id, BigDecimal.ZERO.setScale(2)));
+        Map<Long, ClaimStatus> atEnd = claimService.statusesAsOf(sheetId, period.getTo());
         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !claim.countsLive(holds.getOrDefault(person.getId(), List.of()), today)
+            if (person == null
+                    || !claim.countsAsOf(atEnd.get(claim.getId()), holds.getOrDefault(person.getId(), List.of()), today)
                     || !period.contains(claim.getDate())) {
                 continue;
             }

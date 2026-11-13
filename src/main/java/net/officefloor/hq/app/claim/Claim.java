@@ -250,4 +250,11 @@ public class Claim {
     public boolean countsLive(List<PersonHold> holds, LocalDate today) {
         return counts() && !deferredOn(today) && (stated || !heldBy(holds));
     }
+
+    /** Whether the claim counts in a period's live figures, given the status it had at the end of the
+     *  period's last day (null when it was added after): that status counts, and the live rules leave
+     *  it in (not deferred on the sheet's today, and not held unless bound by a statement). */
+    public boolean countsAsOf(ClaimStatus then, List<PersonHold> holds, LocalDate today) {
+        return then != null && then.counts() && !deferredOn(today) && (stated || !heldBy(holds));
+    }
 }

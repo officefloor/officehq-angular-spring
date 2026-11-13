@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, money, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, money, overdue, statusAsOf } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -379,14 +379,17 @@ export class People {
   protected readonly claims = signal<Claim[]>([]);
   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
    *  on the sheet's today, and an OPEN one dated within one of its person's holds and not bound by a statement. */
-  private readonly live = computed(() => {
+  private readonly live = computed(() => this.claims().filter((c) => counts(c) && this.liveRulesKeep()(c)));
+  /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and not an OPEN
+   *  one dated within one of its person's holds and not bound by a statement. */
+  private readonly liveRulesKeep = computed(() => {
     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
     const held = (c: Claim) =>
       c.status === 'OPEN' &&
       !c.stated &&
       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
     const today = this.session.today();
-    return this.claims().filter((c) => counts(c) && !deferred(c, today) && !held(c));
+    return (c: Claim) => !deferred(c, today) && !held(c);
   });
   /** Each person's claims that count toward what is claimed and due, by person id. */
   private readonly countedByPerson = computed(() => {
@@ -430,9 +433,10 @@ export class People {
     money(this.people().reduce((sum, p) => sum + this.overdueCentsOf(p), 0)),
   );
   /** Each person's due-total for each period, in cents, by period id then person id: while the
-   *  period is open, the dues shown on their claims that count in live totals whose date falls in it
-   *  (a claim with no figure adds nothing); once it is closed, the figures fixed then (a person added
-   *  later has none and counts 0.00). */
+   *  period is open, the dues shown now on their claims whose date falls in it and that counted by the
+   *  status they had at the end of its last day, as their status logs record it, and the live rules
+   *  leave in (a claim with no figure adds nothing); once it is closed, the figures fixed then (a
+   *  person added later has none and counts 0.00). */
   protected readonly personPeriodCents = computed(() => {
     const periods = this.periods.periods();
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
@@ -441,10 +445,13 @@ export class People {
       const fixed = Object.entries(period.closed ? period.closedPersonTotals : {});
       totals.set(period.id, new Map(fixed.map(([id, total]) => [Number(id), cents(total)])));
     }
-    for (const c of this.live()) {
+    const keep = this.liveRulesKeep();
+    for (const c of this.claims()) {
       const period = periodOf(periods, c.date);
       const theirs = grades.get(c.personId);
       if (period === null || period.closed || theirs === undefined) continue;
+      const then = statusAsOf(c, period.to);
+      if (then === null || !['OPEN', 'PENDING', 'SETTLED'].includes(then) || !keep(c)) continue;
       const rates = this.rates.ofGradeOn(theirs, c.date);
       const byPerson = totals.get(period.id)!;
       const due = claimDueCents(c, rates, this.floor(), this.late()) ?? 0;
