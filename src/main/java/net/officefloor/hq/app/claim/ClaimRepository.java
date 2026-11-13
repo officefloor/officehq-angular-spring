@@ -42,5 +42,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("update Claim c set c.lockedBy = null where c.sheetId = :sheetId and c.lockedBy is not null")
     int releaseLocks(@Param("sheetId") String sheetId);
 
+    /** Whether a claim on the sheet other than the given one (null: any) carries the reference key. */
+    @Query("select count(c) > 0 from Claim c where c.sheetId = :sheetId and c.refKey = :refKey"
+            + " and (:id is null or c.id <> :id)")
+    boolean refInUse(@Param("sheetId") String sheetId, @Param("refKey") String refKey, @Param("id") Long id);
+
     Optional<Claim> findByIdAndSheetIdAndPersonId(Long id, String sheetId, Long personId);
 }

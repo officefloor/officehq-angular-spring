@@ -57,6 +57,8 @@ export interface Claim {
   lockedBy: string | null;
   /** Whether the claim was added while the period its date falls in was soft-closed. */
   lateEntry: boolean;
+  /** The claim's external reference, unique on the sheet without regard to case; null when it has none. */
+  ref: string | null;
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -227,6 +229,13 @@ const NUMBER = /^\S+$/;
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set(null)"
       />
+      <label [for]="'claim-ref-' + personId()">Reference</label>
+      <input
+        [id]="'claim-ref-' + personId()"
+        data-testid="claim-form-ref"
+        [value]="ref()"
+        (input)="ref.set(value($event)); error.set(null)"
+      />
       <button type="submit" data-testid="claim-form-submit">
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
@@ -247,6 +256,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-amount">{{ c.amount }}</span>
           <span data-testid="claim-date">{{ c.date }}</span>
           <span data-testid="claim-note">{{ c.note }}</span>
+          <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-due-by">{{ dueBy(c) }}</span>
           <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span>
@@ -416,6 +426,7 @@ export class PersonClaims {
   protected readonly date = signal('');
   protected readonly note = signal('');
   protected readonly corrects = signal('');
+  protected readonly ref = signal('');
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
@@ -588,6 +599,7 @@ export class PersonClaims {
     this.date.set(claim.date);
     this.note.set(claim.note);
     this.corrects.set(claim.corrects ?? '');
+    this.ref.set(claim.ref ?? '');
     this.error.set(null);
   }
 
@@ -718,7 +730,7 @@ export class PersonClaims {
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}`;
     try {
       const saved = await firstValueFrom(
-        this.http.put<Claim>(url, { amount, date: claim.date, note: claim.note, corrects: claim.corrects }),
+        this.http.put<Claim>(url, { amount, date: claim.date, note: claim.note, corrects: claim.corrects, ref: claim.ref }),
       );
       if (this.session.sheetId() !== sheet) return;
       this.setInlineAmount(claim.id, '');
@@ -825,6 +837,7 @@ export class PersonClaims {
     this.date.set('');
     this.note.set('');
     this.corrects.set('');
+    this.ref.set('');
     this.error.set(null);
   }
 
@@ -899,6 +912,7 @@ export class PersonClaims {
       date: this.date().trim() || null,
       note: this.note().trim(),
       corrects: corrects === '' ? null : corrects,
+      ref: this.ref().trim() || null,
     };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims`;
@@ -912,7 +926,11 @@ export class PersonClaims {
       this.reset();
     } catch {
       const what = negative ? 'correction' : 'claim';
-      this.error.set(id === null ? `The ${what} could not be added.` : `The ${what} could not be saved.`);
+      this.error.set(
+        id === null
+          ? `The ${what} could not be added: its reference may already be used on the sheet.`
+          : `The ${what} could not be saved: its reference may already be used on the sheet.`,
+      );
     } finally {
       this.busy.set(false);
     }

@@ -69,6 +69,9 @@ public class History {
                         was.withRest(is.getNumber(), is.getOpenedBy(), is.getNote(), is.getProofs(),
                                 is.getSplitFrom(), is.isLateEntry());
                     }
+                    if (is != null) {
+                        was.setRef(is.getRef());
+                    }
                     return was;
                 },
                 now.get(0).getSheetId(), day).forEach(was -> then.put(was.getId(), was));

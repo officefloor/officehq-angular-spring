@@ -85,6 +85,14 @@ public class ClaimService {
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
             String corrects) {
+        return add(sheetId, user, personId, amount, date, note, corrects, null);
+    }
+
+    /** Add a claim as above, carrying an external reference (blank: none); one already used on the
+     *  sheet, without regard to case, is refused. */
+    @Transactional
+    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
+            String corrects, String ref) {
         Person person = person(sheetId, personId);
         corrects = numberOf(corrects);
         LocalDate on = date != null ? date : settings.defaultClaimDate(sheetId);
@@ -92,26 +100,31 @@ public class ClaimService {
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
+        ref = refOf(ref);
+        refuseRefInUse(sheetId, ref, null);
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, dueBy, noteOf(note), corrects);
+        claim.setRef(ref);
         boolean late = periods.softClosedOn(sheetId, dueBy);
         if (late) {
             claim.markLateEntry();
         }
         Claim added = claims.saveAndFlush(claim);
         log(sheetId, user, person, added);
-        record("CLAIM_ADDED", sheetId, user, person, added);
+        audit.recordOnCommit(line("CLAIM_ADDED", sheetId, user, person, added, added.getNumber())
+                + (added.getRef() != null ? " ref=" + added.getRef() : ""));
         if (late) {
             record("LATE_ENTRY", sheetId, user, person, added);
         }
         return added;
     }
 
-    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's entry date, else
-     *  its today. Any
+    /** Change a DRAFT claim's amount, date, note and external reference (blank: none; one another
+     *  claim on the sheet already uses, without regard to case, is refused); a missing date takes the
+     *  sheet's entry date, else its today. Any
      *  other claim is refused: an OPEN one is changed by voiding it and adding a new one. */
     @Transactional
     public Claim update(String sheetId, String user, Long personId, Long id, BigDecimal amount, LocalDate date,
-            String note, String corrects) {
+            String note, String corrects, String ref) {
         Person person = person(sheetId, personId);
         corrects = numberOf(corrects);
         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
@@ -126,7 +139,10 @@ public class ClaimService {
         refuseClosed(sheetId, claim.getDueBy());
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
+        ref = refOf(ref);
+        refuseRefInUse(sheetId, ref, claim.getId());
         claim.setAmount(scaled(amount));
+        claim.setRef(ref);
         claim.setCorrects(corrects);
         claim.setDate(on);
         claim.setNote(noteOf(note));
@@ -750,6 +766,19 @@ public class ClaimService {
         }
     }
 
+    /** Whether a claim on the sheet other than the given one (null: any) already uses the reference,
+     *  without regard to case; a null reference is never in use. */
+    public boolean refInUse(String sheetId, String ref, Long exceptId) {
+        return ref != null && claims.refInUse(sheetId, Claim.keyOf(ref), exceptId);
+    }
+
+    /** A reference another claim on the sheet already uses cannot be given again. */
+    private void refuseRefInUse(String sheetId, String ref, Long exceptId) {
+        if (refInUse(sheetId, ref, exceptId)) {
+            throw new RefInUseException("The reference " + ref + " is already used on the sheet");
+        }
+    }
+
     /** A claim whose due-by falls inside a closed period cannot be added, edited, opened, settled or voided. */
     private void refuseClosed(String sheetId, LocalDate dueBy) {
         if (periods.closedOn(sheetId, dueBy)) {
@@ -799,6 +828,11 @@ public class ClaimService {
     /** A claim number as typed: trimmed, null when blank. */
     private static String numberOf(String number) {
         return number == null || number.isBlank() ? null : number.trim();
+    }
+
+    /** An external reference as typed: trimmed, null when blank. */
+    public static String refOf(String ref) {
+        return ref == null || ref.isBlank() ? null : ref.trim();
     }
 
     private static String noteOf(String note) {

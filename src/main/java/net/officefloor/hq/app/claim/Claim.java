@@ -12,6 +12,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import net.officefloor.hq.app.history.HistoryListener;
 import net.officefloor.hq.app.person.PersonHold;
 
@@ -106,6 +107,14 @@ public class Claim {
     /** Whether the claim was added while the period its date falls in was soft-closed. */
     @Column(name = "late_entry", nullable = false, updatable = false)
     private boolean lateEntry;
+
+    /** The claim's external reference as typed (trimmed); null when it has none. */
+    @Column(name = "ref")
+    private String ref;
+
+    /** The reference in lower case, unique on the sheet; null when the claim has none. */
+    @Column(name = "ref_key")
+    private String refKey;
 
     protected Claim() {
     }
@@ -216,6 +225,21 @@ public class Claim {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    /** Give the claim an external reference, or take it away (null). */
+    public void setRef(String ref) {
+        this.ref = ref;
+        this.refKey = keyOf(ref);
+    }
+
+    /** A reference as it is compared on the sheet, without regard to case; null for none. */
+    public static String keyOf(String ref) {
+        return ref == null ? null : ref.toLowerCase(Locale.ROOT);
     }
 
     public ClaimStatus getStatus() {

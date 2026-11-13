@@ -17,6 +17,7 @@ import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.rollup.RollupService;
 import java.util.NoSuchElementException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.annotation.Validated;
@@ -48,12 +49,12 @@ public class ClaimController {
      *  to it; splitFrom is the number of the claim it was split off (null when it was not); lockedBy is
      *  the user whose open editor locks it (null when no one's does); lateEntry is whether it was
      *  added while its period was soft-closed; remindedOn is the last day a reminder was written for it
-     *  (null when none was). */
+     *  (null when none was); ref is its external reference (null when it has none). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            LocalDate remindedOn) {
+            LocalDate remindedOn, String ref) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -62,18 +63,19 @@ public class ClaimController {
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
-                    claim.getRemindedOn());
+                    claim.getRemindedOn(), claim.getRef());
         }
     }
 
     /** A claim's fields: an amount with up to two decimals (a negative one is a correction), a date
      *  (blank takes the sheet's today), a note (may be empty) and, for a correction, the number of
-     *  the claim it corrects. */
+     *  the claim it corrects, and an external reference (blank: none). */
     public record ClaimRequest(
             @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 2000) String note,
-            @Size(max = 255) String corrects) {
+            @Size(max = 255) String corrects,
+            @Size(max = 255) String ref) {
     }
 
     /** The date an OPEN claim is deferred until. */
@@ -155,7 +157,7 @@ public class ClaimController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return view(sheet, rollups.track(sheet, by, () -> service.add(sheet, by, personId, request.amount(),
-                request.date(), request.note(), request.corrects())));
+                request.date(), request.note(), request.corrects(), request.ref())));
     }
 
     /** Change a DRAFT claim's amount, date and note. */
@@ -166,7 +168,7 @@ public class ClaimController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return view(sheet, rollups.track(sheet, by, () -> service.update(sheet, by, personId, id,
-                request.amount(), request.date(), request.note(), request.corrects())));
+                request.amount(), request.date(), request.note(), request.corrects(), request.ref())));
     }
 
     /** Open a claim's editor: lock the DRAFT claim to the user until they save or cancel it. */
@@ -340,7 +342,7 @@ public class ClaimController {
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
             SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class,
-            RemindRefusedException.class})
+            RemindRefusedException.class, RefInUseException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

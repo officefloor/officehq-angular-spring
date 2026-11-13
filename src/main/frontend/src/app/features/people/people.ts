@@ -140,7 +140,7 @@ interface StatementTaken {
         <p role="alert" data-testid="quick-error">{{ message }}</p>
       }
       <form (submit)="pasteClaims($event)" aria-label="Paste claims">
-        <label for="paste-claims">Paste claims, one per line as name,amount,date,note</label>
+        <label for="paste-claims">Paste claims, one per line as name,amount,date,note (end the note with " #&lt;reference&gt;" to give a reference)</label>
         <textarea
           id="paste-claims"
           data-testid="paste-claims"
@@ -1316,7 +1316,8 @@ export class People {
     } catch {
       this.pasteError.set(
         'The claims could not be added: every line needs a name on the sheet, an amount of 0.00 or more ' +
-          'with up to two decimals, and a date (or blank) outside a closed period and before the person retired.',
+          'with up to two decimals, and a date (or blank) outside a closed period and before the person retired; ' +
+          'a reference given as " #<reference>" at the end of a note must not already be used on the sheet.',
       );
     } finally {
       this.pasteBusy.set(false);
