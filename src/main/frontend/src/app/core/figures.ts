@@ -57,7 +57,7 @@ export class Figures {
     for (const c of this.claims.live().filter((c) => c.personId === p.id)) {
       if (c.settledDue !== null || (bound(c) && c.statedDue !== null)) keptFigure = true;
       // a claim priced at the grade in force on its date keeps a figure too
-      else if (!bound(c) && this.rates.inForce(gradeOn(p.grades, c.date), c.date) !== undefined) keptFigure = true;
+      else if (!bound(c) && this.rates.inForceFor(gradeOn(p.grades, c.date), c.date, c.id) !== undefined) keptFigure = true;
       sum += this.figureCents(c, p);
     }
     const today = this.session.today();
@@ -188,7 +188,7 @@ export class Figures {
     if (c.settledDue !== null) return hundredths(c.settledDue);
     const f = bound(c)
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
-      : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c));
+      : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c), c.id);
     return f === null ? 0n : this.claims.chargedCents(c, f);
   }
 
@@ -197,7 +197,7 @@ export class Figures {
     if (c.settledDue !== null) return c.settledDue;
     const f = bound(c)
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
-      : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c));
+      : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c), c.id);
     return f === null ? NO_RATE : money(this.claims.chargedCents(c, f));
   }
 
@@ -214,7 +214,7 @@ export class Figures {
       const p = people.get(c.personId);
       if (!p || !isOpen(c) || bound(c) || gradeOn(p.grades, c.date) !== grade) continue;
       const roundOn = this.claims.roundingDate(c);
-      const now = this.rates.dueCents(hundredths(c.amount), grade, c.date, roundOn);
+      const now = this.rates.dueCents(hundredths(c.amount), grade, c.date, roundOn, c.id);
       const was = now === null ? null : this.claims.chargedCents(c, now);
       const will = this.claims.chargedCents(c, rounded(hundredths(c.amount) * rate, 10000n, this.session.roundsHalfUp(roundOn)));
       if (was === will) continue;
@@ -272,7 +272,7 @@ export class Figures {
       else if (bound(c)) due = c.statedDue === null ? null : hundredths(c.statedDue);
       else {
         const grade = grades.get(c.personId);
-        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date, this.claims.roundingDate(c));
+        due = grade === undefined ? null : this.rates.dueCents(hundredths(c.amount), gradeOn(grade, c.date), c.date, this.claims.roundingDate(c), c.id);
       }
       if (due !== null && c.settledDue === null) due = this.claims.chargedCents(c, due);
       const byPerson = sums.get(period.id) ?? new Map<number, bigint>();

@@ -7,7 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.Rollup;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,19 +18,23 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Keeps each sheet's rates for each grade, each from a date or from the beginning of time.
  *  perhaps through a to-date. Setting a grade's rate for a from-date it already has keeps the rate
- *  it replaces as an older version and makes the new one, with its to-date, the one in force. */
+ *  it replaces as an older version and makes the new one, with its to-date, the one in force.
+ *  A rate saved with a from-date on or after the sheet's today is forward-only: it applies only to the
+ *  claims added after it was saved, those already on the sheet keeping what applied to them. */
 @Service
 public class RateService {
 
     private final RateRepository rates;
     private final RateVersionRepository versions;
     private final SheetRepository sheets;
+    private final ClaimRepository claims;
     private final Rollup rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, RateVersionRepository versions, SheetRepository sheets, Rollup rollup,
-            Audit audit) {
+    public RateService(RateRepository rates, RateVersionRepository versions, SheetRepository sheets,
+            ClaimRepository claims, Rollup rollup, Audit audit) {
         this.rollup = rollup;
+        this.claims = claims;
         this.rates = rates;
         this.versions = versions;
         this.sheets = sheets;
@@ -64,17 +70,26 @@ public class RateService {
         }
         BigDecimal value = pct.setScale(2);
         Rollup.Snapshot before = rollup.take(sheetId);
+        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElse(null);
+        boolean forward = from != null && today != null && !from.isBefore(today);
+        // every claim added later has a higher id than those on the sheet now
+        long forwardAfter = forward ? claims.maxId() : 0;
         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
         if (rate == null) {
             try {
-                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, value));
+                rate = rates.saveAndFlush(forward ? new Rate(sheetId, grade, from, to, value, forwardAfter)
+                        : new Rate(sheetId, grade, from, to, value));
             } catch (DataIntegrityViolationException e) {
                 // Another user set the same grade and from-date's first rate at the same moment.
                 throw new RateConflictException();
             }
         } else {
             versions.save(new RateVersion(rate, user));
-            rate.newVersion(value, to);
+            if (forward) {
+                rate.newVersion(value, to, forwardAfter);
+            } else {
+                rate.newVersion(value, to);
+            }
             rate = rates.saveAndFlush(rate);
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user

@@ -17,6 +17,7 @@ import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PatronRepository;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.role.ActionNotAllowedException;
 import net.officefloor.hq.app.role.RoleService;
@@ -87,7 +88,8 @@ public class SheetCloneService {
         Map<Long, Long> personIds = copyPeople(id, target);
         copyPools(id, target, personIds);
         copyPeriods(id, target);
-        copyClaims(id, target, personIds);
+        List<long[]> claimIds = copyClaims(id, target, personIds);
+        remapRates(target, claimIds);
         keepHistory(target);
         audit.recordOnCommit("SHEET_CLONE_MADE sheet=" + id + " by=" + user + " to=" + target);
         audit.recordOnCommit("SHEET_CLONED sheet=" + target + " by=" + user + " from=" + id);
@@ -107,8 +109,8 @@ public class SheetCloneService {
                 + " SELECT ?, action, roles FROM sheet_permission WHERE sheet_id = ?", target, id);
         jdbc.update("INSERT INTO sheet_role (sheet_id, user_name, role)"
                 + " SELECT ?, user_name, role FROM sheet_role WHERE sheet_id = ? ORDER BY id", target, id);
-        jdbc.update("INSERT INTO rate (sheet_id, grade, rate, from_date, to_date)"
-                + " SELECT ?, grade, rate, from_date, to_date FROM rate WHERE sheet_id = ? ORDER BY id", target, id);
+        jdbc.update("INSERT INTO rate (sheet_id, grade, rate, from_date, to_date, earlier)"
+                + " SELECT ?, grade, rate, from_date, to_date, earlier FROM rate WHERE sheet_id = ? ORDER BY id", target, id);
         jdbc.update("INSERT INTO holiday (sheet_id, holiday_date)"
                 + " SELECT ?, holiday_date FROM holiday WHERE sheet_id = ? ORDER BY id", target, id);
         jdbc.update("INSERT INTO void_reason (sheet_id, reason)"
@@ -177,7 +179,7 @@ public class SheetCloneService {
 
     /** Copy the claims with their status logs and comments, unbound by any statement, then number those that
      *  had a number afresh in the order they were opened. */
-    private void copyClaims(String id, String target, Map<Long, Long> personIds) {
+    private List<long[]> copyClaims(String id, String target, Map<Long, Long> personIds) {
         Map<Long, Long> positions = new HashMap<>();
         jdbc.query("SELECT id, list_position FROM person WHERE sheet_id = ?",
                 rs -> {
@@ -228,6 +230,26 @@ public class SheetCloneService {
                     numbers.get(jdbc.queryForObject("SELECT corrects_number FROM claim WHERE id = ?", String.class, ids[1])),
                     numbers.get(jdbc.queryForObject("SELECT split_from FROM claim WHERE id = ?", String.class, ids[1])),
                     ids[1]);
+        }
+        return copied;
+    }
+
+    /** A forward-only rate of the clone keeps applying only to the claims that came after it: each claim id its
+     *  earlier entries name becomes the new id of the last claim copied with an id at most that (copied in id
+     *  order), or 0 when none was. */
+    private void remapRates(String target, List<long[]> claimIds) {
+        for (Map<String, Object> r : jdbc.queryForList("SELECT id, earlier FROM rate WHERE sheet_id = ?"
+                + " AND earlier IS NOT NULL", target)) {
+            String earlier = Rate.remapEarlier((String) r.get("earlier"), upTo -> {
+                long mapped = 0;
+                for (long[] ids : claimIds) {
+                    if (ids[0] <= upTo) {
+                        mapped = ids[1];
+                    }
+                }
+                return mapped;
+            });
+            jdbc.update("UPDATE rate SET earlier = ? WHERE id = ?", earlier, r.get("id"));
         }
     }
 

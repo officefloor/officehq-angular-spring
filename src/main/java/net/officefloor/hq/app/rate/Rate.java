@@ -9,6 +9,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.function.LongUnaryOperator;
 import net.officefloor.hq.app.history.History;
 
 /** The sheet's rate for a grade from a date (or from the beginning of time when it has none),
@@ -43,6 +47,42 @@ public class Rate {
     @Column(name = "version", nullable = false)
     private int version = 1;
 
+    /** What the claims already on the sheet when a forward-only version was saved use instead of it, oldest
+     *  first, as 'upTo:rate:to' entries separated by ';' (see {@link Earlier}); none when the rate applies to
+     *  every claim. */
+    @Column(name = "earlier")
+    private String earlier;
+
+    /** What the claims whose id is at most {@code upTo} (and above the entry before's) use of this grade and
+     *  from-date: a rate through a to-date, or none ({@code rate} null). */
+    public record Earlier(long upTo, BigDecimal rate, LocalDate toDate) {
+
+        static List<Earlier> parse(String text) {
+            List<Earlier> list = new ArrayList<>();
+            if (text == null || text.isEmpty()) {
+                return list;
+            }
+            for (String entry : text.split(";")) {
+                String[] f = entry.split(":", -1);
+                list.add(new Earlier(Long.parseLong(f[0]), "-".equals(f[1]) ? null : new BigDecimal(f[1]),
+                        f[2].isEmpty() ? null : LocalDate.parse(f[2])));
+            }
+            return list;
+        }
+
+        static String format(List<Earlier> list) {
+            if (list.isEmpty()) {
+                return null;
+            }
+            List<String> entries = new ArrayList<>();
+            for (Earlier e : list) {
+                entries.add(e.upTo() + ":" + (e.rate() == null ? "-" : e.rate().toPlainString()) + ":"
+                        + (e.toDate() == null ? "" : e.toDate().toString()));
+            }
+            return String.join(";", entries);
+        }
+    }
+
     protected Rate() {
     }
 
@@ -52,6 +92,13 @@ public class Rate {
         this.fromDate = fromDate;
         this.toDate = toDate;
         this.rate = rate;
+    }
+
+    /** A rate saved forward-only: the claims whose id is at most {@code forwardAfter} have none of this grade
+     *  and from-date. */
+    public Rate(String sheetId, String grade, LocalDate fromDate, LocalDate toDate, BigDecimal rate, long forwardAfter) {
+        this(sheetId, grade, fromDate, toDate, rate);
+        this.earlier = Earlier.format(List.of(new Earlier(forwardAfter, null, null)));
     }
 
     public Long getId() {
@@ -95,10 +142,54 @@ public class Rate {
         return version;
     }
 
-    /** Replace the rate with a newer version, through a to-date; the caller keeps the one it replaces. */
+    /** What the claims already on the sheet when a forward-only version was saved use instead, oldest first. */
+    public List<Earlier> getEarlier() {
+        return Earlier.parse(earlier);
+    }
+
+    /** Replace the rate with a newer version, through a to-date; the caller keeps the one it replaces. The new
+     *  version applies to every claim. */
     public void newVersion(BigDecimal rate, LocalDate toDate) {
         this.rate = rate;
         this.toDate = toDate;
         this.version++;
+        this.earlier = null;
+    }
+
+    /** Replace the rate with a newer forward-only version: the claims whose id is at most {@code forwardAfter}
+     *  keep using what they used before. */
+    public void newVersion(BigDecimal rate, LocalDate toDate, long forwardAfter) {
+        List<Earlier> list = getEarlier();
+        long last = list.isEmpty() ? Long.MIN_VALUE : list.get(list.size() - 1).upTo();
+        if (forwardAfter > last) {
+            list.add(new Earlier(forwardAfter, this.rate, this.toDate));
+        }
+        this.rate = rate;
+        this.toDate = toDate;
+        this.version++;
+        this.earlier = Earlier.format(list);
+    }
+
+    /** A rate's earlier entries as stored, the claim id each names mapped (a clone's claims have new ids). */
+    public static String remapEarlier(String earlier, LongUnaryOperator map) {
+        List<Earlier> list = new ArrayList<>();
+        for (Earlier e : Earlier.parse(earlier)) {
+            list.add(new Earlier(map.applyAsLong(e.upTo()), e.rate(), e.toDate()));
+        }
+        return Earlier.format(list);
+    }
+
+    /** The rate as it applies to a claim (none given: one added now): this one, or what an earlier claim
+     *  uses instead of a forward-only version, or none when the claim has none of this grade and from-date. */
+    public Optional<Rate> forClaim(Long claimId) {
+        if (claimId != null && earlier != null) {
+            for (Earlier e : getEarlier()) {
+                if (claimId <= e.upTo()) {
+                    return e.rate() == null ? Optional.empty()
+                            : Optional.of(new Rate(sheetId, grade, fromDate, e.toDate(), e.rate()));
+                }
+            }
+        }
+        return Optional.of(this);
     }
 }

@@ -13,6 +13,16 @@ export interface Rate {
   rate: string;
   /** How many versions the rate has had; the one shown is the newest. */
   version: number;
+  /** What the claims already on the sheet when a forward-only version was saved use instead, oldest first. */
+  earlier?: Earlier[];
+}
+
+/** The claims whose id is at most `upTo` (and above the entry before's) use this rate (null: none of this
+ *  grade and from-date) through this to-date (null: for good). */
+export interface Earlier {
+  upTo: number;
+  rate: string | null;
+  to: string | null;
 }
 
 /** What due shows for a grade with no rate. */
@@ -23,6 +33,8 @@ export const NO_RATE = 'n/a';
 // is the latest on or before it, a rate with no from-date applying from the beginning of time; none
 // is in force when the date is after that rate's to-date. A grade with none in force on a date takes the
 // one in force then on the sheet's parent, then the parent's parent, up to three levels up.
+// A rate saved with a from-date on or after the sheet's today is forward-only: a claim already on the
+// sheet then keeps what applied to it (its `earlier` entries), the rate applying to those added later.
 // Due is worked out in whole cents and hundredths of a percent, with BigInt, so it is exact.
 @Injectable({ providedIn: 'root' })
 export class Rates {
@@ -45,6 +57,17 @@ export class Rates {
     return undefined;
   }
 
+  /** The grade's rate in force on a date for a claim (by id; none: one added now), each rate as it applies
+   *  to that claim; undefined when none applies. */
+  inForceFor(grade: string, date: string, claimId?: number): Rate | undefined {
+    if (claimId === undefined) return this.inForce(grade, date);
+    for (const rates of [this.rates(), ...this.inherited()]) {
+      const found = inForceAmong(forClaim(rates, claimId), grade, date);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
   /** A grade's rate in force on the sheet's today, with two decimals, or n/a when it has none. */
   current(grade: string): string {
     const today = this.session.today();
@@ -53,9 +76,10 @@ export class Rates {
 
   /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded to cents as
    *  a claim dated `roundOn` rounds (half up before the policy date, else half to even): the rate figure,
-   *  before any late charge or floor; null when no rate of the grade applies then. */
-  dueCents(amountCents: bigint, grade: string, date: string, roundOn: string = date): bigint | null {
-    const rate = this.inForce(grade, date);
+   *  before any late charge or floor; null when no rate of the grade applies then. Given a claim's id, each
+   *  rate as it applies to that claim. */
+  dueCents(amountCents: bigint, grade: string, date: string, roundOn: string = date, claimId?: number): bigint | null {
+    const rate = this.inForceFor(grade, date, claimId);
     if (rate === undefined) return null;
     return rounded(amountCents * hundredths(rate.rate), 10000n, this.session.roundsHalfUp(roundOn));
   }
@@ -153,6 +177,18 @@ function inForceAmong(rates: Rate[], grade: string, date: string): Rate | undefi
     if (r.grade === grade && (r.from === null || r.from <= date)) found = r;
   }
   return found && (found.to === null || date <= found.to) ? found : undefined;
+}
+
+/** One sheet's rates as they apply to a claim: a forward-only rate saved after the claim was added gives way
+ *  to what applied to the claim before it, or is left out when nothing of that grade and from-date did. */
+function forClaim(rates: Rate[], claimId: number): Rate[] {
+  const out: Rate[] = [];
+  for (const r of rates) {
+    const e = r.earlier?.find((x) => claimId <= x.upTo);
+    if (!e) out.push(r);
+    else if (e.rate !== null) out.push({ ...r, rate: e.rate, to: e.to });
+  }
+  return out;
 }
 
 /** By grade, then from-date, the one with none first. */

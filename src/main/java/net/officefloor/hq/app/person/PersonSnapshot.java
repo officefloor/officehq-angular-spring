@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A snapshot of a person written as the sheet's today moved on: the day being left and their due-total
- *  then (none when it was n/a). */
+ *  then (none when it was n/a), and the today it moved to. */
 @Entity
 @Table(name = "person_snapshot")
 public class PersonSnapshot {
@@ -31,19 +31,30 @@ public class PersonSnapshot {
     @Column(name = "due_total")
     private BigDecimal dueTotal;
 
+    /** The sheet's today the snapshot was taken into; none for one kept before this was. */
+    @Column(name = "taken_on")
+    private LocalDate takenOn;
+
     protected PersonSnapshot() {
     }
 
-    public PersonSnapshot(String sheetId, Long personId, LocalDate day, BigDecimal dueTotal) {
+    public PersonSnapshot(String sheetId, Long personId, LocalDate day, BigDecimal dueTotal, LocalDate takenOn) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.day = day;
         this.dueTotal = dueTotal;
+        this.takenOn = takenOn;
     }
 
     /** The same snapshot, of another person (on this sheet or another). */
     public PersonSnapshot copyTo(String otherSheetId, Long otherPersonId) {
-        return new PersonSnapshot(otherSheetId, otherPersonId, day, dueTotal);
+        return new PersonSnapshot(otherSheetId, otherPersonId, day, dueTotal, takenOn);
+    }
+
+    /** Whether the snapshot was taken by the end of a date: by the day change into a today on or before it
+     *  (one kept before that was recorded, by its day being left being before it). */
+    public boolean takenBy(LocalDate date) {
+        return takenOn == null ? day.isBefore(date) : !takenOn.isAfter(date);
     }
 
     public Long getId() {

@@ -928,7 +928,7 @@ public class ClaimService {
             }
             BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
                     : claim.isBound() ? claim.getStatedDue()
-                    : Rollup.inForce(ratesThen, then.gradeOn(claim.getDate()), claim.getDate())
+                    : Rollup.inForce(ratesThen, then.gradeOn(claim.getDate()), claim.getDate(), claim)
                             .map(rate -> Rollup.rated(onDate, claim, claimsThen, rate)).orElse(null);
             if (due != null) {
                 total = total.add(Rollup.charged(onDate, claim, then, due));
@@ -1169,7 +1169,7 @@ public class ClaimService {
         Sheet sheet = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new);
         RoundingMode rounding = sheet.rounding(roundingDate(claim));
         return Rollup.inForce(rates.findWithAncestors(claim.getSheetId(), sheetRows.ancestors(claim.getSheetId())),
-                        person.gradeOn(claim.getDate()), claim.getDate())
+                        person.gradeOn(claim.getDate()), claim.getDate(), claim)
                 .map(rate -> due(claim.getAmount(), rate, rounding))
                 .orElse(null);
     }

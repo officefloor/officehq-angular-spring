@@ -97,7 +97,7 @@ public class Rollup {
                     figure = charged(sheet, claim, person, kept);
                 } else if (!claim.isBound()) {
                     // a claim priced at the grade in force on its date keeps a figure too
-                    BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
+                    BigDecimal live = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate(), claim)
                             .map(rate -> rated(sheet, claim, sheetClaims, rate))
                             .orElse(null);
                     if (live != null) {
@@ -188,7 +188,7 @@ public class Rollup {
             } else if (claim.isBound()) {
                 due = claim.getStatedDue();
             } else {
-                due = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate())
+                due = inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate(), claim)
                         .map(rate -> rated(sheet, claim, sheetClaims, rate))
                         .orElse(null);
             }
@@ -353,6 +353,15 @@ public class Rollup {
 
     private static String show(BigDecimal due) {
         return due == null ? "n/a" : due.toPlainString();
+    }
+
+    /** The grade's rate in force on a date for a claim: as {@link #inForce(List, String, LocalDate)}, each rate
+     *  as it applies to the claim (a forward-only rate not to a claim already on the sheet when it was saved,
+     *  which keeps what applied to it). */
+    public static Optional<Rate> inForce(List<Rate> sheetRates, String grade, LocalDate date, Claim claim) {
+        List<Rate> forClaim = new ArrayList<>();
+        sheetRates.forEach(r -> r.forClaim(claim.getId()).ifPresent(forClaim::add));
+        return inForce(forClaim, grade, date);
     }
 
     /** The grade's rate in force on a date: the latest from-date on or before it, none first; none

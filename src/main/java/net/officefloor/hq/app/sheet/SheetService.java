@@ -127,7 +127,7 @@ public class SheetService {
             rollup.recordSnapshot(id, user, before);
             LocalDate left = sheet.getToday();
             before.people().forEach((personId, figures) -> snapshots.save(
-                    new PersonSnapshot(id, personId, left, figures.dueTotal())));
+                    new PersonSnapshot(id, personId, left, figures.dueTotal(), today)));
             claims.unlockAll(id);
         }
         sheet.setToday(today);

@@ -376,7 +376,7 @@ export class PersonClaims {
     if (c.settledDue !== null) return c.settledDue;
     const f = bound(c)
       ? (c.statedDue === null ? null : hundredths(c.statedDue))
-      : this.rates.dueCents(hundredths(c.amount), gradeOn(this.grades(), c.date), c.date, this.claims.roundingDate(c));
+      : this.rates.dueCents(hundredths(c.amount), gradeOn(this.grades(), c.date), c.date, this.claims.roundingDate(c), c.id);
     return f === null ? NO_RATE : money(this.claims.chargedCents(c, f));
   }
 

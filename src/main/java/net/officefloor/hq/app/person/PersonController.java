@@ -202,7 +202,7 @@ public class PersonController {
                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
                         PersonService.clashing(p, treeNames), asOf == null ? snapshots.getOrDefault(p.getId(), List.of())
                                 : snapshots.getOrDefault(p.getId(), List.of()).stream()
-                                        .filter(s -> s.getDay().isBefore(asOf)).toList()))
+                                        .filter(s -> s.takenBy(asOf)).toList()))
                 .toList();
     }
 

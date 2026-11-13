@@ -30,13 +30,24 @@ public class RateController {
 
     /** A grade's rate as the screen shows it: its from-date (YYYY-MM-DD, none when it applies from
      *  the beginning of time), its to-date (none when it applies on for good) and a percent with two
-     *  decimals, the newest of its versions, with how many it has had. */
-    public record RateView(String grade, String from, String to, String rate, int version) {
+     *  decimals, the newest of its versions, with how many it has had; and what the claims already on the
+     *  sheet when a forward-only version was saved use instead of it, oldest first. */
+    public record RateView(String grade, String from, String to, String rate, int version, List<EarlierView> earlier) {
 
         static RateView of(Rate rate) {
             return new RateView(rate.getGrade(), rate.getFromDate() == null ? null : rate.getFromDate().toString(),
                     rate.getToDate() == null ? null : rate.getToDate().toString(), rate.getRate().toPlainString(),
-                    rate.getVersion());
+                    rate.getVersion(), rate.getEarlier().stream().map(EarlierView::of).toList());
+        }
+    }
+
+    /** The claims whose id is at most upTo (and above the entry before's) use this rate (none: no rate of
+     *  this grade and from-date) through this to-date (none: for good). */
+    public record EarlierView(long upTo, String rate, String to) {
+
+        static EarlierView of(Rate.Earlier e) {
+            return new EarlierView(e.upTo(), e.rate() == null ? null : e.rate().toPlainString(),
+                    e.toDate() == null ? null : e.toDate().toString());
         }
     }
 
