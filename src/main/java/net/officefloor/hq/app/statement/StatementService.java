@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -101,5 +102,32 @@ public class StatementService {
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted);
         return theirs;
+    }
+
+    /** A steward cancels a person's last statement: the claims it bound become live again (a figure
+     *  bound by an earlier statement is not restored) and it is no longer counted. Anyone else, or a
+     *  person with no statement, is refused. Returns their claims, newest first. */
+    @Transactional
+    public List<Claim> cancel(String sheetId, String user, Long personId) {
+        sheets.lock(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new StatementCancelRefusedException(user + " is not a steward: only a steward cancels a statement");
+        }
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        if (theirs.isEmpty()) {
+            throw new StatementCancelRefusedException(person.getName() + " has no statement to cancel");
+        }
+        Statement last = theirs.get(theirs.size() - 1);
+        List<Claim> theirClaims = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
+        List<Claim> bound = theirClaims.stream().filter(Claim::isStated).toList();
+        bound.forEach(Claim::unbind);
+        claims.saveAllAndFlush(bound);
+        statements.delete(last);
+        statements.flush();
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + last.getDueTotal());
+        return theirClaims;
     }
 }

@@ -286,6 +286,14 @@ interface StatementTaken {
                 </button>
                 <button
                   type="button"
+                  data-testid="person-unstate"
+                  [attr.aria-label]="'Cancel the last statement for ' + p.name"
+                  (click)="cancelStatement(p)"
+                >
+                  Cancel statement
+                </button>
+                <button
+                  type="button"
                   data-testid="person-watch"
                   [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name"
                   [attr.aria-pressed]="p.watched"
@@ -939,6 +947,30 @@ export class People {
       );
     } catch {
       this.rowError.set({ id: person.id, message: `A statement could not be taken for ${person.name}.` });
+    }
+  }
+
+  /** Cancel a person's last statement: their row shows the one before it, and their claims are live again. */
+  protected async cancelStatement(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
+    try {
+      const cancelled = await firstValueFrom(this.http.delete<StatementTaken>(url));
+      if (this.session.sheetId() !== sheet) return;
+      const live = new Map(cancelled.claims.map((c) => [c.id, c]));
+      this.claims.update((list) => list.map((c) => live.get(c.id) ?? c));
+      const { count, lastDueTotal, lastDate } = cancelled.statements;
+      this.people.update((list) =>
+        list.map((p) =>
+          p.id === person.id
+            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate }
+            : p,
+        ),
+      );
+    } catch {
+      this.rowError.set({ id: person.id, message: `The last statement for ${person.name} could not be cancelled.` });
     }
   }
 

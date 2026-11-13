@@ -128,7 +128,7 @@ public class PeriodService {
         return closeFixing(sheetId, user, period, "");
     }
 
-    /** Close, as a close by hand would, every open period whose to-date plus the sheet's grace days is
+    /** Close, as a close by hand would, every open period (not closed or soft-closed) whose to-date plus the sheet's grace days is
      *  before the sheet's today, in order of their to-dates, each recorded with auto=yes; nothing when
      *  the grace days are blank (off). The sheet's permission matrix governs a close by hand, not this
      *  one. Made when the sheet's today is changed, after it is set. */
@@ -141,7 +141,7 @@ public class PeriodService {
         }
         LocalDate today = sheets.today(sheetId);
         periods.findBySheetIdOrderByFromAsc(sheetId).stream()
-                .filter(p -> !p.isClosed() && p.getTo().plusDays(grace).isBefore(today))
+                .filter(p -> !p.isClosed() && !p.isSoftClosed() && p.getTo().plusDays(grace).isBefore(today))
                 .sorted(Comparator.comparing(Period::getTo))
                 .forEach(p -> closeFixing(sheetId, user, p, " auto=yes"));
     }

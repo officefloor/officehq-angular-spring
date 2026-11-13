@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -50,6 +51,24 @@ public class StatementController {
                 .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim),
                         claimService.logOf(claim.getId()))).toList();
         return new StatementTaken(service.summary(sheet, personId), claims);
+    }
+
+    /** Cancel the person's last statement: their statements as their row then shows them, and their
+     *  claims, newest first, now live again. */
+    @DeleteMapping
+    public StatementTaken cancel(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        List<ClaimView> claims = rollups.track(sheet, by, () -> service.cancel(sheet, by, personId)).stream()
+                .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim),
+                        claimService.logOf(claim.getId()))).toList();
+        return new StatementTaken(service.summary(sheet, personId), claims);
+    }
+
+    @ExceptionHandler(StatementCancelRefusedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public void refused() {
     }
 
     @ExceptionHandler(NoSuchElementException.class)
