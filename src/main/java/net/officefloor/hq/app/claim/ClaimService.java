@@ -639,9 +639,10 @@ public class ClaimService {
         if (figure != null) {
             Sheet sheet = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
             LocalDate lateFrom = sheet.lateFrom(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate());
+            BigDecimal floored = sheet.floored(figure, claim.getDate());
             due = claim.isCorrection() ? figure
-                    : sheet.floored(claim.isWaived() ? figure
-                            : figure.add(sheet.lateCharge(figure, lateFrom, claim.getDate())), claim.getDate());
+                    : claim.isWaived() ? floored
+                    : floored.add(sheet.lateCharge(floored, lateFrom, claim.getDate()));
         }
         claim.setSettledDue(due);
         logStatus(claim, person, user);
@@ -1362,8 +1363,8 @@ public class ClaimService {
         return figure == null ? null : charged(claim, person, figure);
     }
 
-    /** A claim's due from its figure: its late charge on the sheet's today on top while it is OPEN or
-     *  PENDING, then at least the floor in force on its date (a correction has neither). */
+    /** A claim's due from its figure: at least the floor in force on its date, then its late charge on the
+     *  sheet's today, worked out on that floored figure, on top while it is OPEN or PENDING (a correction has neither). */
     private BigDecimal charged(Claim claim, Person person, BigDecimal figure) {
         return Rollup.charged(sheetRows.findById(claim.getSheetId()), claim, person, figure);
     }

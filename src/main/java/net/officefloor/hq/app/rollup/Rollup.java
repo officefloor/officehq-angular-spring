@@ -414,8 +414,8 @@ public class Rollup {
                 .findFirst().map(Claim::getDate).orElse(claim.getDate());
     }
 
-    /** A claim's due from its figure: its late charge on top while it is OPEN or PENDING (only those go
-     *  overdue), then at least the sheet's floor in force on its date. A settled claim's due is frozen (it
+    /** A claim's due from its figure: at least the sheet's floor in force on its date, then its late charge,
+     *  worked out on that floored figure, on top while it is OPEN or PENDING (only those go overdue). A settled claim's due is frozen (it
      *  already holds the charge and floor fixed when it was settled), as is a bound one's (its statement bound
      *  the due as shown then, charge and floor included); a correction has neither late charge nor floor, and a
      *  waived claim no late charge. */
@@ -423,8 +423,11 @@ public class Rollup {
         if (claim.getSettledDue() != null || claim.isBound() || claim.isCorrection()) {
             return figure;
         }
-        return sheet.map(s -> s.floored(claim.getStatus().isOpen() && !claim.isWaived()
-                ? figure.add(s.lateCharge(figure, lateFrom(sheet, claim, person), claim.getDate())) : figure, claim.getDate()))
+        return sheet.map(s -> {
+                    BigDecimal floored = s.floored(figure, claim.getDate());
+                    return claim.getStatus().isOpen() && !claim.isWaived()
+                            ? floored.add(s.lateCharge(floored, lateFrom(sheet, claim, person), claim.getDate())) : floored;
+                })
                 .orElse(figure);
     }
 

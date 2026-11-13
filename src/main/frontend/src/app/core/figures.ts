@@ -246,8 +246,8 @@ export class Figures {
     return { upTo30: money(sum.upTo30), upTo60: money(sum.upTo60), over60: money(sum.over60) };
   });
 
-  /** A claim's figure: its settled due, else the figure its person's last statement bound it to, else its live due at the rate in force on its date, an overdue claim's late charge on top, at
-   *  least the floor;
+  /** A claim's figure: its settled due, else the figure its person's last statement bound it to, else its live due at the rate in force on its date, at least the floor, an overdue
+   *  claim's late charge on that floored figure on top;
    *  nothing when it has no figure. */
   figureCents(c: Claim, p: Person): bigint {
     if (c.settledDue !== null) return hundredths(c.settledDue);

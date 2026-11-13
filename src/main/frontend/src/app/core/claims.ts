@@ -291,13 +291,14 @@ export class Claims {
   }
 
   /** A claim's due from its figure (the rate figure, or the one its statement bound), in cents: the figure
-   *  with its late charge on top, at least the sheet's floor in force on the claim's date (the floor applied
-   *  last); a correction takes neither charge nor floor, and a bound figure already holds both. */
+   *  at least the sheet's floor in force on the claim's date, with the late charge worked out on that floored
+   *  figure on top (the floor applied first); a correction takes neither charge nor floor, and a bound figure
+   *  already holds both. */
   chargedCents(c: Claim, figureCents: bigint): bigint {
     if (c.amount.startsWith('-') || bound(c)) return figureCents;
-    const due = figureCents + this.lateCents(c, figureCents);
     const floor = hundredths(this.session.floorOn(c.date));
-    return due < floor ? floor : due;
+    const floored = figureCents < floor ? floor : figureCents;
+    return floored + this.lateCents(c, floored);
   }
 
   /** The date a claim's figures round by: its own, or for a correction the date of the claim of the same
