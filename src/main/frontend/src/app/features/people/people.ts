@@ -545,7 +545,7 @@ export class People {
     money(trimmedSum(this.people().map((p) => this.overdueCentsOf(p)))),
   );
   /** Each person's due-total for each period, in cents, by period id then person id: while the
-   *  period is open, the dues shown now on their claims whose date falls in it and that counted by the
+   *  period is open, the dues shown now on their claims whose due-by falls in it and that counted by the
    *  status they had at the end of its last day, as their status logs record it, and the live rules
    *  leave in (a claim with no figure adds nothing); once it is closed or soft-closed, the figures fixed then (a
    *  person added later has none and counts 0.00). */
@@ -559,7 +559,7 @@ export class People {
     }
     const keep = this.liveRulesKeep();
     for (const c of this.claims()) {
-      const period = periodOf(periods, c.date);
+      const period = periodOf(periods, c.dueBy);
       const theirs = grades.get(c.personId);
       if (period === null || period.closed || period.softClosed || theirs === undefined) continue;
       const then = statusAsOf(c, period.to);

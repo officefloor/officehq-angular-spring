@@ -462,9 +462,9 @@ export class PersonClaims {
     return deferred(claim, this.session.today());
   }
 
-  /** The name of the period the claim's date falls in; empty when it falls in none. */
+  /** The name of the period the claim's due-by falls in; empty when it falls in none. */
   protected periodNameOf(claim: Claim): string {
-    return periodOf(this.periods.periods(), claim.date)?.name ?? '';
+    return periodOf(this.periods.periods(), claim.dueBy)?.name ?? '';
   }
 
   /** Open the editor on a DRAFT claim, locking it for other users until it is saved or cancelled.
@@ -513,8 +513,8 @@ export class PersonClaims {
     if (this.viewer()) {
       return 'The claim cannot be edited: a viewer can change nothing on this sheet.';
     }
-    if (periodOf(this.periods.periods(), claim.date)?.closed) {
-      return `The claim cannot be edited: it is dated in the closed period ${periodOf(this.periods.periods(), claim.date)?.name}.`;
+    if (periodOf(this.periods.periods(), claim.dueBy)?.closed) {
+      return `The claim cannot be edited: it is due by a day in the closed period ${periodOf(this.periods.periods(), claim.dueBy)?.name}.`;
     }
     if (claim.lockedBy !== null && claim.lockedBy !== user) {
       return `The claim cannot be edited: ${claim.lockedBy} is editing it.`;
@@ -597,7 +597,7 @@ export class PersonClaims {
   }
 
   /** Re-date an OPEN or PENDING claim to the date typed on its row; anyone but a steward, a claim
-   *  that is not OPEN or PENDING, a claim in a closed period or a new date inside one, or a new date
+   *  that is not OPEN or PENDING, a claim due by a day in a closed period, or a new date
    *  after its person's retirement, is refused on the row. */
   protected async redate(claim: Claim): Promise<void> {
     this.rowError.set(null);
@@ -619,7 +619,7 @@ export class PersonClaims {
         id: claim.id,
         message: forbidden
           ? 'The claim could not be re-dated: only a steward can re-date a claim.'
-          : 'The claim could not be re-dated: only an open or pending claim outside a closed period can be, to a date outside one and not after its person retired.',
+          : 'The claim could not be re-dated: only an open or pending claim outside a closed period can be, to a date not after its person retired.',
       });
     }
   }

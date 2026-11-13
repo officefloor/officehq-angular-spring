@@ -129,7 +129,7 @@ public class PeriodService {
     }
 
     /** Close a period (one soft-closed too, fixing its figures afresh), fixing each person's due-total for it, for everyone on the sheet, and its own
-     *  due-total, their sum: the figures shown on the claims dated in it that counted at the end of its last day (by the
+     *  due-total, their sum: the figures shown on the claims due by a day in it that counted at the end of its last day (by the
      *  status each had then, as its status log records it)
      *  (a claim with no figure adds nothing; an OPEN claim dated within its person's hold and not bound by a statement counts for nothing). A period already closed, or a close by a role the sheet's permission matrix does not allow, is refused. */
     @Transactional
@@ -217,7 +217,7 @@ public class PeriodService {
             if (person == null
                     || !claim.countsAsOf(atEnd.get(claim.getId()), holds.getOrDefault(person.getId(), List.of()),
                             person.getRetiredFrom(), today)
-                    || !period.contains(claim.getDate())) {
+                    || !period.contains(claim.getDueBy())) {
                 continue;
             }
             BigDecimal due = claimService.dueOf(sheetId, person, claim);
