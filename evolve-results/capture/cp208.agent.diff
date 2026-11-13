@@ -1,0 +1,124 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 246576ef8..02e61a23f 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -69,7 +69,8 @@ public class Claim {
+     @Column(name = "corrects_number")
+     private String corrects;
+ 
+-    /** Given when the claim is opened; none while a draft or once voided. */
++    /** Given when the claim is settled (or approved); none before then, and kept by a void. Claims numbered
++     *  when opened, before that rule, keep theirs. */
+     @Column(name = "claim_number")
+     private String number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 825662523..3e08670e4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -42,7 +42,7 @@ import org.springframework.web.bind.annotation.RestController;
+ @RequestMapping("/api/sheets/{sheetId}")
+ public class ClaimController {
+ 
+-    /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD, no number unless opened,
++    /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD, no number unless settled (or numbered before that rule),
+      *  the due fixed when it was settled (none while its due is live)
+      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
+      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 73296ca52..d023f3b7c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -290,7 +290,6 @@ public class ClaimService {
+             to = ClaimStatus.REVIEW;
+             claim.setOpenedBy(user);
+         } else if (to == ClaimStatus.OPEN) {
+-            number = sheets.nextClaimNumber(sheetId, claim.getDueBy());
+             claim.setOpenedBy(user);
+         }
+         if (to == ClaimStatus.SETTLED) {
+@@ -303,6 +302,9 @@ public class ClaimService {
+                 to = ClaimStatus.PENDING;
+             } else {
+                 claim.setSettledDue(due);
++                if (number == null) {
++                    number = sheets.nextClaimNumber(sheetId, claim.getDueBy());
++                }
+             }
+         }
+         claim.setStatus(to);
+@@ -408,7 +410,7 @@ public class ClaimService {
+         return updated;
+     }
+ 
+-    /** Review a REVIEW claim: it becomes OPEN, numbered now, keeping who opened it; writes CLAIM_REVIEWED
++    /** Review a REVIEW claim: it becomes OPEN, still unnumbered until settled, keeping who opened it; writes CLAIM_REVIEWED
+      *  then CLAIM_OPENED. Refused unless the claim is REVIEW and the user is a steward. */
+     @Transactional
+     public Claim review(String sheetId, String user, long claimId) {
+@@ -424,12 +426,10 @@ public class ClaimService {
+                 .orElseThrow(PersonNotFoundException::new);
+         Rollup.Snapshot before = rollup.take(sheetId);
+         audit("CLAIM_REVIEWED", claim, person, user);
+-        String number = sheets.nextClaimNumber(sheetId, claim.getDueBy());
+-        claim.setNumber(number);
+         claim.setStatus(ClaimStatus.OPEN);
+         logStatus(claim, person, user);
+         Claim updated = claims.saveAndFlush(claim);
+-        audit("CLAIM_OPENED", updated, person, user, number, "");
++        audit("CLAIM_OPENED", updated, person, user);
+         rollup.recordChanges(sheetId, user, before);
+         return updated;
+     }
+@@ -461,6 +461,9 @@ public class ClaimService {
+         BigDecimal due = figure == null ? null : charged(claim, person, figure);
+         refuseUnproved(claim, person, due);
+         claim.setSettledDue(due);
++        if (claim.getNumber() == null) {
++            claim.setNumber(sheets.nextClaimNumber(sheetId, claim.getDueBy()));
++        }
+         claim.setStatus(ClaimStatus.SETTLED);
+         logStatus(claim, person, user);
+         Claim updated = claims.saveAndFlush(claim);
+@@ -733,7 +736,7 @@ public class ClaimService {
+     }
+ 
+     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date and takes the next
+-     *  number in the sequence it is numbered in (its old number is never used again; a DRAFT has none),
++     *  number in the sequence it is numbered in (its old number is never used again; a claim not yet settled has none),
+      *  loses any figure a statement bound it to (live again until its new person's next statement), and is
+      *  listed as its new person's newest claim. Refused unless the user's role may reassign, and for a settled or
+      *  voided claim, a claim in a closed period, the claim's own person, or a person retired on its date. */
+@@ -779,7 +782,7 @@ public class ClaimService {
+ 
+     /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any figure a
+      *  statement bound it to; a new OPEN claim of the person with the amount split off, the same date and
+-     *  note, the next number, opened by the user and due by the terms-th business day after its date (by the terms in
++     *  note, no number until it is settled, opened by the user and due by the terms-th business day after its date (by the terms in
+      *  force on it and the sheet's holidays), is
+      *  listed as the sheet's newest, naming the original's number as split from. Refused unless the user's
+      *  role may open a claim, the claim is OPEN and not deferred, and the amount is above 0.00 and below the
+@@ -814,13 +817,12 @@ public class ClaimService {
+         split.setListOrder(claims.maxListOrder(sheetId) + 1);
+         split.setLateEntry(periods.softClosedOn(sheetId, split.getDueBy()));
+         split.setStatus(ClaimStatus.OPEN);
+-        split.setNumber(sheets.nextClaimNumber(sheetId, split.getDueBy()));
+         split.setOpenedBy(user);
+         split.setSplitFrom(claim.getNumber());
+         split.setTags(claim.getTags());
+         logStatus(split, person, user);
+         split = claims.saveAndFlush(split);
+-        audit("CLAIM_SPLIT", kept, person, user, kept.getNumber(), " into=" + split.getNumber());
++        audit("CLAIM_SPLIT", kept, person, user, kept.getNumber(), " into=" + (split.getNumber() == null ? "" : split.getNumber()));
+         audit("CLAIM_OPENED", split, person, user);
+         rollup.recordChanges(sheetId, user, before);
+         return new Split(kept, split);
+@@ -851,7 +853,7 @@ public class ClaimService {
+     public record BulkOpened(int opened, int refused, List<Claim> claims) {
+     }
+ 
+-    /** Open the chosen claims together, numbering them in list order (people in the order they were added,
++    /** Open the chosen claims together, in list order (people in the order they were added,
+      *  each person's claims newest first); a claim that cannot be opened is left as it is and counted as
+      *  refused, as is one not on the sheet. */
+     @Transactional
