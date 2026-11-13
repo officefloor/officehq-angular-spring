@@ -1,0 +1,582 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index c5c8659f3..75161ac5e 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { People, Person, gradeOn, retiredBy } from './people';
+-import { hundredths, rounded } from './rates';
++import { halfEven, hundredths, rounded } from './rates';
+ import { Session, addDays, daysBetween, isDate } from './session';
+ 
+ /** The kinds a proof can be; one added with none chosen is a receipt. */
+@@ -72,6 +72,19 @@ export interface Claim {
+   waived: boolean;
+   /** Whether it is on hold: while OPEN or PENDING and bound by no statement, it counts in claimed but in no due figure. */
+   held: boolean;
++  /** Its shares, in the order shared: the other people holding a part of its due. */
++  shares: ClaimShare[];
++}
++
++/** A share of a claim: the person holding it and their percent, two decimals. */
++export interface ClaimShare {
++  personId: number;
++  share: string;
++}
++
++/** A holder's part of a claim's due, in cents: the due times their share divided by 100, rounded half to even. */
++export function partCents(dueCents: bigint, share: string): bigint {
++  return halfEven(dueCents * hundredths(share), 10000n);
+ }
+ 
+ /** A line of a claim: its label, a whole quantity of at least 1 and a unit amount, two decimals. */
+@@ -603,6 +616,32 @@ export class Claims {
+     }
+   }
+ 
++  /** Share a percent of a claim's due with another person on the sheet; an error message when refused (no
++   *  person chosen, a share not above 0.00 or of more than two decimals, the claim's own person, a person
++   *  already holding a share, shares adding up to more than 100.00, or a SETTLED, VOID or DELETED claim). */
++  async share(id: number, personId: number | null, share: string): Promise<string | null> {
++    const sid = this.session.sheetId();
++    const user = this.session.user();
++    if (!user || !sid) return 'Load a sheet first.';
++    if (personId === null) return 'Choose a person to share the claim with.';
++    if (!/^\d+(\.\d{1,2})?$/.test(share.trim()) || hundredths(share.trim()) <= 0n) {
++      return 'Enter a share above 0.00 with up to two decimals.';
++    }
++    try {
++      const claim = await firstValueFrom(
++        this.http.post<Claim>(
++          `${this.url(sid)}/claims/${id}/shares`,
++          { personId, share: share.trim() },
++          { headers: { 'X-User': user } },
++        ),
++      );
++      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
++      return null;
++    } catch (e) {
++      return failed('share', e);
++    }
++  }
++
+   /** Comment on a claim; an error message when refused (an empty comment). */
+   async comment(id: number, text: string): Promise<string | null> {
+     const sid = this.session.sheetId();
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 043d2398e..9619558e0 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -1,5 +1,5 @@
+ import { Injectable, computed, inject } from '@angular/core';
+-import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
++import { Claim, Claims, bound, countsAt, isOpen, partCents, statusAt } from './claims';
+ import { CrewView, Crews } from './crews';
+ import { GRADES, People, Person, gradeOn } from './people';
+ import { Period, Periods } from './periods';
+@@ -51,7 +51,8 @@ export class Figures {
+     return cap === null ? null : hundredths(cap);
+   }
+ 
+-  /** The sum of the figures of a person's claims that count live (not left out by a hold): a settled claim's frozen due, else the
++  /** The sum of the figures of a person's claims that count live (not left out by a hold), less the parts others
++   *  hold of them, and the parts they hold of other people's: a settled claim's frozen due, else the
+    *  figure their last statement bound it to, else its live due at the rate in force on its date (a
+    *  claim with no figure adds nothing). Null when the grade in force on the sheet's today has no rate
+    *  there and no claim has a figure. */
+@@ -62,19 +63,53 @@ export class Figures {
+       if (c.settledDue !== null || (bound(c) && c.statedDue !== null)) keptFigure = true;
+       // a claim priced at the grade in force on its date keeps a figure too
+       else if (!bound(c) && this.rates.inForceFor(gradeOn(p.grades, c.date), c.date, c.id) !== undefined) keptFigure = true;
+-      sum += this.figureCents(c, p);
++      sum += this.ownCents(c, p);
++    }
++    for (const { c, part } of this.heldParts(p)) {
++      // a part of a claim with a figure keeps a figure too
++      if (this.hasFigure(c)) keptFigure = true;
++      sum += part;
+     }
+     const today = this.session.today();
+     const rated = today ? this.rates.inForce(gradeOn(p.grades, today), today) !== undefined : false;
+     return rated || keptFigure ? sum : null;
+   }
+ 
+-  /** The due of a person's SETTLED claims that count live, at their frozen figures, corrections included. */
++  /** A claim's figure less the parts its holders hold of it: what its own person counts of it. */
++  ownCents(c: Claim, p: Person): bigint {
++    const due = this.figureCents(c, p);
++    return (c.shares ?? []).reduce((rest, s) => rest - partCents(due, s.share), due);
++  }
++
++  /** The parts a person holds of other people's claims that count live, each with its claim: the claim's
++   *  figure times their share divided by 100, rounded half to even. */
++  heldParts(p: Person): { c: Claim; part: bigint }[] {
++    const parts: { c: Claim; part: bigint }[] = [];
++    for (const c of this.claims.live()) {
++      const held = (c.shares ?? []).find((s) => s.personId === p.id);
++      const owner = held && this.people.people().find((o) => o.id === c.personId);
++      if (!held || !owner) continue;
++      parts.push({ c, part: partCents(this.figureCents(c, owner), held.share) });
++    }
++    return parts;
++  }
++
++  /** Whether a claim has a figure: settled, bound to one, or priced at the grade in force on its date. */
++  private hasFigure(c: Claim): boolean {
++    if (c.settledDue !== null) return true;
++    if (bound(c)) return c.statedDue !== null;
++    const owner = this.people.people().find((o) => o.id === c.personId);
++    return owner !== undefined && this.rates.inForceFor(gradeOn(owner.grades, c.date), c.date, c.id) !== undefined;
++  }
++
++  /** The due of a person's SETTLED claims that count live, at their frozen figures, corrections included, less
++   *  the parts others hold of them, and the parts they hold of other people's. */
+   settledCents(p: Person): bigint {
+-    return this.claims
++    const own = this.claims
+       .live()
+       .filter((c) => c.personId === p.id && c.status === 'SETTLED')
+-      .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
++      .reduce((sum, c) => sum + this.ownCents(c, p), 0n);
++    return this.heldParts(p).filter(({ c }) => c.status === 'SETTLED').reduce((sum, { part }) => sum + part, own);
+   }
+ 
+   /** The due of a person's SETTLED claims that count live and correct nothing, at their frozen figures. */
+@@ -85,12 +120,14 @@ export class Figures {
+       .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+   }
+ 
+-  /** The due of a person's OPEN and PENDING claims that count live (not deferred or retired-and-excluded). */
++  /** The due of a person's OPEN and PENDING claims that count live (not deferred or retired-and-excluded), less
++   *  the parts others hold of them, and the parts they hold of other people's. */
+   openCents(p: Person): bigint {
+-    return this.claims
++    const own = this.claims
+       .live()
+       .filter((c) => c.personId === p.id && isOpen(c))
+-      .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
++      .reduce((sum, c) => sum + this.ownCents(c, p), 0n);
++    return this.heldParts(p).filter(({ c }) => isOpen(c)).reduce((sum, { part }) => sum + part, own);
+   }
+ 
+   /** Everyone's settled-total added up (not trimmed). */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 7b3f1afe4..edca9b092 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -101,6 +101,7 @@ import { VoidReasons } from '../../core/void-reasons';
+           <span>Period <span data-testid="claim-period">{{ periods.of(c.dueBy)?.name ?? '' }}</span></span>
+           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
++          <span>Shared with <span data-testid="claim-shares">{{ sharesShown(c) }}</span></span>
+           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
+           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
+@@ -239,6 +240,28 @@ import { VoidReasons } from '../../core/void-reasons';
+           <button type="button" data-testid="claim-hold" [disabled]="acting() === c.id" (click)="toggleHold(c)">
+             {{ c.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+           </button>
++          <label [for]="'claim-share-select-' + c.id">Share with</label>
++          <select
++            [id]="'claim-share-select-' + c.id"
++            data-testid="claim-share-select"
++            (change)="setShareField(c.id, 'personId', value($event))"
++          >
++            <option value="" [selected]="!shareFields()[c.id]?.personId">Choose a person</option>
++            @for (p of everyone(); track p.id) {
++              <option [value]="p.id" [selected]="shareFields()[c.id]?.personId === '' + p.id">{{ p.name }}</option>
++            }
++          </select>
++          <label [for]="'claim-share-pct-' + c.id">Share percent</label>
++          <input
++            [id]="'claim-share-pct-' + c.id"
++            data-testid="claim-share-pct"
++            inputmode="decimal"
++            [value]="shareFields()[c.id]?.share ?? ''"
++            (input)="setShareField(c.id, 'share', value($event))"
++          />
++          <button type="button" data-testid="claim-share-add" [disabled]="acting() === c.id" (click)="share(c)">
++            Share<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
++          </button>
+           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+           <input
+             [id]="'claim-defer-date-' + c.id"
+@@ -347,6 +370,10 @@ export class PersonClaims {
+   protected readonly list = computed(() => this.claims.of(this.personId()));
+   /** The other people on the sheet, whom a steward can move a claim to. */
+   protected readonly others = computed(() => this.people.people().filter((p) => p.id !== this.personId()));
++  /** Everyone on the sheet, whom a claim can be shared with (the server refuses the claim's own person). */
++  protected readonly everyone = computed(() => this.people.people());
++  /** The person chosen and the percent typed to share each claim with, by claim id. */
++  protected readonly shareFields = signal<Record<number, { personId?: string; share?: string }>>({});
+   /** The person chosen to move each claim to, by claim id. */
+   protected readonly reassignTo = signal<Record<number, number>>({});
+   protected readonly amount = signal('');
+@@ -586,6 +613,30 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** A claim's holders as its row shows them: <name> <share>, comma and space separated, in the order shared. */
++  protected sharesShown(c: Claim): string {
++    const names = new Map(this.people.people().map((p) => [p.id, p.name]));
++    return (c.shares ?? []).map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
++  }
++
++  protected setShareField(id: number, key: 'personId' | 'share', text: string): void {
++    this.clearActionError(id);
++    this.shareFields.update((f) => ({ ...f, [id]: { ...f[id], [key]: text } }));
++  }
++
++  /** Share the claim with the person chosen at the percent typed. */
++  protected async share(c: Claim): Promise<void> {
++    this.clearActionError(c.id);
++    this.acting.set(c.id);
++    try {
++      const f = this.shareFields()[c.id] ?? {};
++      const err = await this.claims.share(c.id, f.personId ? Number(f.personId) : null, f.share ?? '');
++      if (err) this.actionError.set({ id: c.id, message: err });
++    } finally {
++      this.acting.set(null);
++    }
++  }
++
+   protected setReassignTo(id: number, personId: string): void {
+     this.clearActionError(id);
+     this.reassignTo.update((r) => {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 02e61a23f..2256bcebc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -18,6 +18,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.Optional;
+ import net.officefloor.hq.app.history.History;
+ 
+ /** A claim by a person on a sheet: an amount (two decimals), a date, a note, a status and, once opened,
+@@ -169,6 +170,12 @@ public class Claim {
+     @OrderColumn(name = "seq")
+     private List<ClaimLine> lines = new ArrayList<>();
+ 
++    /** Its shares, in the order shared: the other people holding a part of its due. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "claim_share", joinColumns = @JoinColumn(name = "claim_id"))
++    @OrderColumn(name = "seq")
++    private List<ClaimShare> shares = new ArrayList<>();
++
+     protected Claim() {
+     }
+ 
+@@ -505,4 +512,23 @@ public class Claim {
+         lines.add(new ClaimLine(label, qty, unit));
+         amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+     }
++
++    public List<ClaimShare> getShares() {
++        return shares == null ? List.of() : List.copyOf(shares);
++    }
++
++    /** Share a percent of its due with another person, after the shares it has. */
++    public void addShare(Long personId, BigDecimal share) {
++        shares.add(new ClaimShare(personId, share));
++    }
++
++    /** The parts of a due its holders hold, added up. */
++    public BigDecimal sharedPart(BigDecimal due) {
++        return getShares().stream().map(s -> s.part(due)).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
++    }
++
++    /** The share a person holds of it; none when they hold none. */
++    public Optional<ClaimShare> shareOf(Long personId) {
++        return getShares().stream().filter(s -> s.getPersonId().equals(personId)).findFirst();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 3e08670e4..f2894d6fa 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -49,13 +49,14 @@ public class ClaimController {
+      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count and how many of them are receipts and photos,
+      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
+      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
+-     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held. */
++     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held, and its shares, in the order shared. */
+     public record ClaimView(long id, long personId, String amount, String date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
+             int proofs, int proofReceipts, int proofPhotos, String splitFrom, String lockedBy, boolean lateEntry,
+             String remindedOn, String ref, List<String> tags, String voidReason,
+-            List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived, boolean held) {
++            List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived, boolean held,
++            List<ShareView> shares) {
+ 
+         public static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+@@ -72,7 +73,8 @@ public class ClaimController {
+                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
+                     claim.getTags(), claim.getVoidReason(),
+                     claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch(),
+-                    claim.getLines().stream().map(LineView::of).toList(), claim.isWaived(), claim.isHeld());
++                    claim.getLines().stream().map(LineView::of).toList(), claim.isWaived(), claim.isHeld(),
++                    claim.getShares().stream().map(ShareView::of).toList());
+         }
+     }
+ 
+@@ -102,6 +104,14 @@ public class ClaimController {
+         }
+     }
+ 
++    /** A share of a claim: the person holding it and their percent, two decimals. */
++    public record ShareView(long personId, String share) {
++
++        static ShareView of(ClaimShare share) {
++            return new ShareView(share.getPersonId(), share.getShare().toPlainString());
++        }
++    }
++
+     /** A claim's fields; a missing date takes the sheet's today, a missing note is empty. A negative
+      *  amount (a correction) names the number of the claim it corrects. */
+     public record ClaimRequest(
+@@ -469,6 +479,29 @@ public class ClaimController {
+                 request.label() == null ? "" : request.label().trim(), request.qty(), request.unit()));
+     }
+ 
++    /** The person to share a claim with and their percent. */
++    public record ShareRequest(Long personId, @Digits(integer = 3, fraction = 10) BigDecimal share) {
++    }
++
++    /** Share a percent of a claim's due with another person on the sheet. */
++    @PostMapping("/claims/{claimId}/shares")
++    public ClaimView share(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid ShareRequest request) {
++        if (request.personId() == null || request.share() == null) {
++            throw new ClaimShareException("Choose a person and enter their share.");
++        }
++        return ClaimView.of(service.share(sheetId.trim(), user.trim(), claimId, request.personId(), request.share()));
++    }
++
++    /** A share that is not allowed is refused with the reason, for the screen to show. */
++    @ExceptionHandler(ClaimShareException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> shareRefused(ClaimShareException e) {
++        return Map.of("message", e.getMessage());
++    }
++
+     /** Re-settle a SETTLED claim at its figure today: a steward freezes it again. */
+     @PostMapping("/claims/{claimId}/resettle")
+     public ClaimView resettle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a57e802b0..37ec9f894 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -567,6 +567,44 @@ public class ClaimService {
+         return updated;
+     }
+ 
++    /** Share a percent (two decimals, above 0.00) of a claim's due with another person on the sheet, who holds
++     *  that part of it from then on; write CLAIM_SHARED. Refused for the claim's own person, a person already
++     *  holding a share of it, shares that would add up to more than 100.00, and a SETTLED, VOID or DELETED claim. */
++    @Transactional
++    public Claim share(String sheetId, String user, long claimId, long withPersonId, BigDecimal share) {
++        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        ClaimStatus status = claim.getStatus();
++        if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
++            throw new ClaimShareException("A " + status + " claim cannot be shared.");
++        }
++        if (share.signum() <= 0 || share.stripTrailingZeros().scale() > 2) {
++            throw new ClaimShareException("A share is a percent above 0.00, with two decimals.");
++        }
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(PersonNotFoundException::new);
++        Person with = people.findByIdAndSheetId(withPersonId, sheetId).orElseThrow(PersonNotFoundException::new);
++        if (with.getId().equals(person.getId())) {
++            throw new ClaimShareException("The claim is already " + person.getName() + "'s.");
++        }
++        if (claim.shareOf(with.getId()).isPresent()) {
++            throw new ClaimShareException(with.getName() + " already holds a share of the claim.");
++        }
++        BigDecimal total = claim.getShares().stream().map(ClaimShare::getShare).reduce(share, BigDecimal::add);
++        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
++            throw new ClaimShareException("The claim's shares would add up to more than 100.00.");
++        }
++        Rollup.Snapshot before = rollup.take(sheetId);
++        BigDecimal shown = share.setScale(2);
++        claim.addShare(with.getId(), shown);
++        Claim updated = claims.saveAndFlush(claim);
++        // A change to its shares alone may not reach the entity listener: keep its state for the as-of view.
++        history.saved(updated);
++        audit("CLAIM_SHARED", updated, person, user, updated.getNumber(),
++                " with=" + with.getName() + " share=" + shown.toPlainString());
++        rollup.recordChanges(sheetId, user, before);
++        return updated;
++    }
++
+     /** Comment on a claim: keep the text with the user and the sheet's today, and write COMMENT_ADDED.
+      *  Refused for an empty comment. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimShare.java b/src/main/java/net/officefloor/hq/app/claim/ClaimShare.java
+new file mode 100644
+index 000000000..59b75f4ca
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimShare.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.claim;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Embeddable;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++
++/** A share of a claim: another person on the sheet holding a percent (two decimals, above 0.00) of its due. */
++@Embeddable
++public class ClaimShare {
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(name = "share_pct", nullable = false)
++    private BigDecimal share;
++
++    protected ClaimShare() {
++    }
++
++    public ClaimShare(Long personId, BigDecimal share) {
++        this.personId = personId;
++        this.share = share;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public BigDecimal getShare() {
++        return share;
++    }
++
++    /** The holder's part of a due: the due times the share divided by 100, rounded half to even to cents. */
++    public BigDecimal part(BigDecimal due) {
++        return due.multiply(share).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimShareException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimShareException.java
+new file mode 100644
+index 000000000..5fe5cd08c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimShareException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A share of a claim that is not allowed. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimShareException extends RuntimeException {
++
++    public ClaimShareException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 634ddc31c..784618467 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -15,6 +15,7 @@ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimShare;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.StatusChange;
+ import net.officefloor.hq.app.history.AsOf;
+@@ -40,7 +41,8 @@ public class Rollup {
+ 
+     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
+ 
+-    /** A person's figures; a null due-total is n/a. Their score is the due of their settled claims that count
++    /** A person's figures; a null due-total is n/a. Their due-total counts their own claims less the parts
++     *  others hold of them, and the parts they hold of other people's claims. Their score is the due of their settled claims that count
+      *  and correct nothing divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
+     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score) {
+     }
+@@ -104,6 +106,8 @@ public class Rollup {
+         BigDecimal claimedTotal = ZERO;
+         List<BigDecimal> dues = new ArrayList<>();
+         List<BigDecimal> overdues = new ArrayList<>();
++        Map<Long, Person> byId = new LinkedHashMap<>();
++        sheetPeople.forEach(p -> byId.put(p.getId(), p));
+         for (Person person : sheetPeople) {
+             BigDecimal claimed = ZERO;
+             BigDecimal due = ZERO;
+@@ -136,7 +140,8 @@ public class Rollup {
+                     }
+                 }
+                 if (figure != null) {
+-                    due = due.add(figure);
++                    // the parts its holders hold are theirs, not its person's
++                    due = due.add(figure.subtract(claim.sharedPart(figure)));
+                     if (overdue(sheet, claim, person, today)) {
+                         overdue = overdue.add(figure);
+                     }
+@@ -149,6 +154,18 @@ public class Rollup {
+                     overdueCount++;
+                 }
+             }
++            for (Claim claim : sheetClaims) {
++                Optional<ClaimShare> held = claim.shareOf(person.getId());
++                Person owner = byId.get(claim.getPersonId());
++                if (held.isEmpty() || owner == null || !countsClaimed(claim, owner, today)) {
++                    continue;
++                }
++                BigDecimal figure = figure(sheet, claim, owner, sheetClaims, sheetRates);
++                if (figure != null) {
++                    keptFigure = true;
++                    due = due.add(held.get().part(figure));
++                }
++            }
+             BigDecimal score = settled.subtract(BigDecimal.valueOf(500L * overdueCount))
+                     .movePointLeft(2).setScale(0, RoundingMode.HALF_EVEN);
+             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
+@@ -163,6 +180,23 @@ public class Rollup {
+         return new Snapshot(figures, claimedTotal, trimmed(dues), trimmed(overdues));
+     }
+ 
++    /** A claim's figure as its person's due-total counts it: its settled due, else the figure its statement
++     *  bound, else its live due, charged; none when it has none. */
++    private static BigDecimal figure(Optional<Sheet> sheet, Claim claim, Person person, List<Claim> sheetClaims,
++            List<Rate> sheetRates) {
++        BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
++                : claim.isBound() ? claim.getStatedDue() : null;
++        if (kept != null) {
++            return charged(sheet, claim, person, kept);
++        }
++        if (claim.isBound()) {
++            return null;
++        }
++        return inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate(), claim)
++                .map(rate -> charged(sheet, claim, person, rated(sheet, claim, sheetClaims, rate)))
++                .orElse(null);
++    }
++
+     /** The figures of every descendant of a sheet (its children, their children and so on; the sheet itself
+      *  left out), each sheet's due- and overdue-total as that sheet shows it, added up. */
+     public Consolidated descendants(String sheetId) {
+diff --git a/src/main/resources/db/migration/V115__claim_share.sql b/src/main/resources/db/migration/V115__claim_share.sql
+new file mode 100644
+index 000000000..16fcac63b
+--- /dev/null
++++ b/src/main/resources/db/migration/V115__claim_share.sql
+@@ -0,0 +1,9 @@
++-- Each claim's shares: a person on the sheet holding a part of its due, as a percent with two decimals, in
++-- the order shared. Existing claims start with none.
++CREATE TABLE claim_share (
++    claim_id  BIGINT        NOT NULL REFERENCES claim (id),
++    seq       INT           NOT NULL,
++    person_id BIGINT        NOT NULL,
++    share_pct DECIMAL(5, 2) NOT NULL,
++    PRIMARY KEY (claim_id, seq)
++);
