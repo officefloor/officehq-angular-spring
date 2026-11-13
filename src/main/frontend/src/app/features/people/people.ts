@@ -120,6 +120,7 @@ interface StatementTaken {
         />
         Show retired
       </label>
+      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
@@ -507,6 +508,25 @@ export class People {
         message: `${person.name} could not be ${person.held ? 'taken off hold' : 'put on hold'}.`,
       });
     }
+  }
+
+  /** Download everyone, retired people included, in list order as CSV: name, the grade in force
+   *  on the sheet's today, the retired-from date (or nothing) and the due-total as shown. */
+  protected exportCsv(): void {
+    const field = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const lines = [
+      'name,grade,retired-from,due-total',
+      ...this.people().map((p) =>
+        [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueBy(p)].map(field).join(','),
+      ),
+    ];
+    const blob = new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `people-${this.session.sheetId() ?? 'sheet'}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   protected claimsOf(personId: number): Claim[] {
