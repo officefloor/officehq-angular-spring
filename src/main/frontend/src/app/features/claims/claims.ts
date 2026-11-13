@@ -38,6 +38,9 @@ export interface Claim {
   /** The date the claim's live figures round by (yyyy-mm-dd): its own, or for a correction the date
    *  of the claim it corrects. */
   roundsBy: string;
+  /** The date the claim is due by (yyyy-mm-dd), fixed when it was added: its date plus the terms of
+   *  its person's grade in force on that date. */
+  dueBy: string;
 }
 
 /** Whether a claim is a correction: its amount is negative. */
@@ -60,11 +63,9 @@ export function cents(amount: string): number {
   return Math.round(Number(amount) * 100);
 }
 
-/** What a late charge works from: the sheet's late percent (two decimals), its terms in days and
- *  its today; and what a claim's figures round by: the sheet's policy date (blank for its today). */
+/** What a late charge works from: the sheet's late percent (two decimals) and its today; and what a claim's figures round by: the sheet's policy date (blank for its today). */
 export interface Late {
   pct: string;
-  terms: number;
   today: string | null;
   policyDate: string;
 }
@@ -102,19 +103,13 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: number, late: 
 
 /** How many days an OPEN or PENDING claim is past its due-by on the sheet's today; 0 when it is not overdue. */
 function daysOverdue(claim: Claim, late: Late): number {
-  if (!overdue(claim, late.terms, late.today) || late.today === null) return 0;
-  return Math.round((Date.parse(late.today) - Date.parse(dueByOf(claim, late.terms))) / 86_400_000);
-}
-
-/** The date a claim is due by (yyyy-mm-dd): its date plus the terms in days. */
-export function dueByOf(claim: Claim, terms: number): string {
-  const [y, m, d] = claim.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+  if (!overdue(claim, late.today) || late.today === null) return 0;
+  return Math.round((Date.parse(late.today) - Date.parse(claim.dueBy)) / 86_400_000);
 }
 
 /** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
-export function overdue(claim: Claim, terms: number, today: string | null): boolean {
-  return isOpen(claim) && today !== null && dueByOf(claim, terms) < today;
+export function overdue(claim: Claim, today: string | null): boolean {
+  return isOpen(claim) && today !== null && claim.dueBy < today;
 }
 
 /** Cents shown with two decimals. */
@@ -268,8 +263,6 @@ export class PersonClaims {
   readonly grades = input.required<PersonGrade[]>();
   /** The sheet's floor in cents: the least a live due can be. */
   readonly floor = input.required<number>();
-  /** The sheet's terms in days: a claim is due by its date plus them. */
-  readonly terms = input.required<number>();
   /** The sheet's late percent (two decimals). */
   readonly latePct = input.required<string>();
   /** The sheet's policy date (yyyy-mm-dd); blank for its today. */
@@ -314,7 +307,6 @@ export class PersonClaims {
   protected dueOf(claim: Claim): string {
     const late = {
       pct: this.latePct(),
-      terms: this.terms(),
       today: this.session.today(),
       policyDate: this.policyDate(),
     };
@@ -323,11 +315,11 @@ export class PersonClaims {
   }
 
   protected dueBy(claim: Claim): string {
-    return dueByOf(claim, this.terms());
+    return claim.dueBy;
   }
 
   protected isOverdue(claim: Claim): boolean {
-    return overdue(claim, this.terms(), this.session.today());
+    return overdue(claim, this.session.today());
   }
 
   /** The name of the period the claim's date falls in; empty when it falls in none. */

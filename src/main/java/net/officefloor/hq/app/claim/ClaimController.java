@@ -37,17 +37,18 @@ public class ClaimController {
      *  whether a statement bound the claim, statedDue the figure it bound it to (null when none);
      *  corrects is the number of the claim a correction corrects (null when it is not one); roundsBy
      *  is the date its live figures round by against the sheet's policy date (its own date, or for a
-     *  correction the date of the claim it corrects). */
+     *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was
+     *  added. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, LocalDate roundsBy) {
+            String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy) {
         public static ClaimView of(Claim claim, LocalDate roundsBy) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
-                    claim.getCorrects(), roundsBy);
+                    claim.getCorrects(), roundsBy, claim.getDueBy());
         }
     }
 

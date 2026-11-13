@@ -180,7 +180,6 @@ interface StatementTaken {
                   [claims]="claimsOf(p.id)"
                   [grades]="p.grades"
                   [floor]="floor()"
-                  [terms]="settings.terms()"
                   [latePct]="settings.latePct()"
                   [policyDate]="settings.policyDate()"
                   [selectedIds]="selectedClaims()"
@@ -272,11 +271,10 @@ export class People {
   protected readonly settings = inject(SettingStore);
   /** The sheet's floor in cents. */
   protected readonly floor = computed(() => cents(this.settings.floor()));
-  /** What late charges work from: the sheet's late percent, terms and today; and the policy date
+  /** What late charges work from: the sheet's late percent and today; and the policy date
    *  figures round by. */
   private readonly late = computed<Late>(() => ({
     pct: this.settings.latePct(),
-    terms: this.settings.terms(),
     today: this.session.today(),
     policyDate: this.settings.policyDate(),
   }));
@@ -325,11 +323,10 @@ export class People {
   );
   /** Each person's claims that count and are overdue, by person id. */
   private readonly overdueByPerson = computed(() => {
-    const terms = this.settings.terms();
     const today = this.session.today();
     const map = new Map<number, Claim[]>();
     for (const c of this.live()) {
-      if (overdue(c, terms, today)) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
+      if (overdue(c, today)) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
     }
     return map;
   });

@@ -3,6 +3,7 @@ import { Component, Injectable, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT } from '../claims/claims';
+import { GRADES } from '../rates/rates';
 
 export interface RoleView {
   user: string;
@@ -27,6 +28,8 @@ interface SettingsView {
   /** The period numbering from (yyyy-mm-dd): while the sheet's today is on or after it, a claim opened
    *  is numbered within its period; blank for off. */
   periodNumberingFrom: string;
+  /** The grades' own terms in whole days, by grade; a grade not listed takes the sheet's terms. */
+  gradeTerms: Record<string, number>;
 }
 
 /** The floor a sheet starts with. */
@@ -59,6 +62,7 @@ export class SettingStore {
   readonly latePct = signal(LATE_PCT);
   readonly policyDate = signal('');
   readonly periodNumberingFrom = signal('');
+  readonly gradeTerms = signal<Record<string, number>>({});
 
   constructor() {
     effect(() => {
@@ -71,6 +75,7 @@ export class SettingStore {
       this.latePct.set(LATE_PCT);
       this.policyDate.set('');
       this.periodNumberingFrom.set('');
+      this.gradeTerms.set({});
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -116,6 +121,25 @@ export class SettingStore {
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/terms`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
+  /** The terms in days a claim of the grade is added with: the grade's own, else the sheet's. */
+  termsOf(grade: string): number {
+    return this.gradeTerms()[grade] ?? this.terms();
+  }
+
+  /** Set a grade's own terms on the active sheet. */
+  async setGradeTerms(grade: string, value: number): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/settings/terms/${encodeURIComponent(grade)}`,
+        { value },
+      ),
     );
     if (this.session.sheetId() !== sheet) return;
     this.show(saved);
@@ -170,12 +194,14 @@ export class SettingStore {
     this.latePct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
+    this.gradeTerms.set(settings.gradeTerms);
   }
 }
 
 // The sheet's settings: the role given each user name (clerk, the default, or steward) and the
 // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
-// the terms, the days after its date a claim is due by, and the late percent, what an overdue claim's
+// the terms, the days after its date a claim is due by (fixed when the claim is added), and each
+// grade's own terms, which a claim of that grade takes instead, and the late percent, what an overdue claim's
 // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
 // claim's date makes its figures round half up rather than half to even, and the period numbering
 // from, on or after which a claim opened is numbered within its period.
@@ -255,6 +281,16 @@ export class SettingStore {
           [value]="terms()"
           (input)="terms.set(value($event)); termsTyped.set(true); settingsError.set(null)"
         />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms for grade {{ g }} (days)</label>
+          <input
+            [id]="'setting-terms-' + g"
+            [attr.data-testid]="'setting-terms-' + g"
+            inputmode="numeric"
+            [value]="gradeTerms()[g] ?? ''"
+            (input)="typeGradeTerms(g, value($event))"
+          />
+        }
         <label for="setting-late-pct">Late percent</label>
         <input
           id="setting-late-pct"
@@ -301,6 +337,15 @@ export class SettingStore {
         Terms in force:
         <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days
       </p>
+      @for (g of grades; track g) {
+        <p>
+          Terms in force for grade {{ g }}:
+          <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ store.termsOf(g) }}</strong> days
+          @if (store.gradeTerms()[g] === undefined) {
+            <span>(the sheet's terms)</span>
+          }
+        </p>
+      }
       <p>
         Late percent in force:
         <strong data-testid="setting-late-pct-current">{{ store.latePct() }}</strong>
@@ -325,6 +370,7 @@ export class SettingStore {
 export class Settings {
   protected readonly store = inject(SettingStore);
   protected readonly roles = ROLES;
+  protected readonly grades = GRADES;
 
   protected readonly user = signal('');
   protected readonly role = signal('');
@@ -335,6 +381,8 @@ export class Settings {
   protected readonly floorTyped = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTyped = signal(false);
+  /** The grades' terms typed since the last save, by grade. */
+  protected readonly gradeTerms = signal<Record<string, string>>({});
   protected readonly latePct = signal('');
   protected readonly latePctTyped = signal(false);
   protected readonly policyDate = signal('');
@@ -349,6 +397,11 @@ export class Settings {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  protected typeGradeTerms(grade: string, typed: string): void {
+    this.gradeTerms.update((all) => ({ ...all, [grade]: typed }));
+    this.settingsError.set(null);
   }
 
   protected async saveRole(event: Event): Promise<void> {
@@ -386,6 +439,7 @@ export class Settings {
     const saveFloor = this.floorTyped();
     const terms = this.terms().trim();
     const saveTerms = this.termsTyped();
+    const gradeTerms = Object.entries(this.gradeTerms()).map(([grade, days]) => [grade, days.trim()] as const);
     const latePct = this.latePct().trim();
     const saveLatePct = this.latePctTyped();
     const policyDate = this.policyDate().trim();
@@ -404,6 +458,11 @@ export class Settings {
       this.settingsError.set('Type terms of 0 or more whole days.');
       return;
     }
+    const badGrade = gradeTerms.find(([, days]) => !DAYS.test(days));
+    if (badGrade) {
+      this.settingsError.set(`Type terms for grade ${badGrade[0]} of 0 or more whole days.`);
+      return;
+    }
     if (saveLatePct && !AMOUNT.test(latePct)) {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
       return;
@@ -419,6 +478,7 @@ export class Settings {
     this.clerkLimitTyped.set(false);
     this.floorTyped.set(false);
     this.termsTyped.set(false);
+    this.gradeTerms.set({});
     this.latePctTyped.set(false);
     this.policyDateTyped.set(false);
     this.periodNumberingFromTyped.set(false);
@@ -427,6 +487,7 @@ export class Settings {
         if (saveLimit) await this.store.setClerkLimit(limit === '' ? null : limit);
         if (saveFloor) await this.store.setFloor(floor);
         if (saveTerms) await this.store.setTerms(Number(terms));
+        for (const [grade, days] of gradeTerms) await this.store.setGradeTerms(grade, Number(days));
         if (saveLatePct) await this.store.setLatePct(latePct);
         if (savePolicyDate) await this.store.setPolicyDate(policyDate === '' ? null : policyDate);
         if (saveNumberingFrom) await this.store.setPeriodNumberingFrom(numberingFrom === '' ? null : numberingFrom);
@@ -435,6 +496,7 @@ export class Settings {
         if (saveLimit) this.clerkLimitTyped.set(true);
         if (saveFloor) this.floorTyped.set(true);
         if (saveTerms) this.termsTyped.set(true);
+        this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
         if (saveLatePct) this.latePctTyped.set(true);
         if (savePolicyDate) this.policyDateTyped.set(true);
         if (saveNumberingFrom) this.periodNumberingFromTyped.set(true);

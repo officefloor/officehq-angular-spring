@@ -3,7 +3,9 @@ package net.officefloor.hq.app.setting;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -11,21 +13,23 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its terms and
- *  its late percent, its policy date and its period numbering from. */
+/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its terms
+ *  (and any grade's own terms) and its late percent, its policy date and its period numbering from. */
 @Service
 public class SettingService {
 
     private final SheetService sheets;
     private final SheetRepository sheetRepository;
     private final SheetRoleRepository roles;
+    private final GradeTermsRepository gradeTerms;
     private final Audit audit;
 
     public SettingService(SheetService sheets, SheetRepository sheetRepository, SheetRoleRepository roles,
-            Audit audit) {
+            GradeTermsRepository gradeTerms, Audit audit) {
         this.sheets = sheets;
         this.sheetRepository = sheetRepository;
         this.roles = roles;
+        this.gradeTerms = gradeTerms;
         this.audit = audit;
     }
 
@@ -52,6 +56,22 @@ public class SettingService {
     /** The sheet's terms in days: a claim is due by its date plus them. */
     public int terms(String sheetId) {
         return sheets.load(sheetId).getTerms();
+    }
+
+    /** The grades' own terms on the sheet, by grade; a grade not listed takes the sheet's terms. */
+    public Map<String, Integer> gradeTerms(String sheetId) {
+        Map<String, Integer> byGrade = new LinkedHashMap<>();
+        gradeTerms.findBySheetIdOrderByGradeAsc(sheetId).forEach(t -> byGrade.put(t.getGrade(), t.getTerms()));
+        return byGrade;
+    }
+
+    /** The terms in days a claim of the grade takes now: the grade's own, else the sheet's. */
+    public int termsFor(String sheetId, String grade) {
+        if (grade == null) {
+            return terms(sheetId);
+        }
+        return gradeTerms.findBySheetIdAndGrade(sheetId, grade).map(GradeTerms::getTerms)
+                .orElseGet(() -> terms(sheetId));
     }
 
     /** The sheet's late percent: an overdue claim's due gains it of its figure for every full 30 days
@@ -131,6 +151,22 @@ public class SettingService {
         sheet.setTerms(terms);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms value=" + terms);
+        return saved;
+    }
+
+    /** Set a grade's own terms on the sheet. */
+    @Transactional
+    public GradeTerms setGradeTerms(String sheetId, String by, String grade, int terms) {
+        sheets.lock(sheetId);
+        GradeTerms saved = gradeTerms.findBySheetIdAndGrade(sheetId, grade)
+                .map(existing -> {
+                    existing.setTerms(terms);
+                    return existing;
+                })
+                .orElseGet(() -> new GradeTerms(sheetId, grade, terms));
+        saved = gradeTerms.saveAndFlush(saved);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=terms-" + grade + " value="
+                + terms);
         return saved;
     }
 

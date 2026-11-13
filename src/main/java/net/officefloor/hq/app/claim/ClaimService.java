@@ -58,7 +58,8 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
-    /** Add a claim for a person; a missing date takes the sheet's today. A negative amount is a
+    /** Add a claim for a person; a missing date takes the sheet's today. Its due-by is fixed now: its
+     *  date plus the terms of the person's grade in force on that date. A negative amount is a
      *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
@@ -69,7 +70,9 @@ public class ClaimService {
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note), corrects));
+        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, grades.gradeOn(personId, on)));
+        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, dueBy, noteOf(note),
+                corrects));
         record("CLAIM_ADDED", sheetId, user, person, added);
         return added;
     }
@@ -272,8 +275,8 @@ public class ClaimService {
         return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure));
     }
 
-    /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its date plus the
-     *  terms is before the sheet's today) or a correction, else the late percent of the figure for every full 30 days
+    /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by is
+     *  before the sheet's today) or a correction, else the late percent of the figure for every full 30 days
      *  it is overdue, rounded to two decimals as the claim's date decides (see roundingOf). Never bound by a statement: it follows the
      *  sheet's today. */
     private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure) {
@@ -281,8 +284,7 @@ public class ClaimService {
         if (!claim.getStatus().isOpen() || claim.isCorrection()) {
             return none;
         }
-        LocalDate dueBy = claim.getDate().plusDays(settings.terms(sheetId));
-        long days = ChronoUnit.DAYS.between(dueBy, sheets.today(sheetId));
+        long days = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId));
         if (days < 30) {
             return none;
         }

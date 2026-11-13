@@ -6,10 +6,12 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -40,9 +42,10 @@ public class SettingController {
 
     /** The sheet's settings: the roles assigned, the clerk limit (two decimals; null for none) and
      *  the floor (two decimals), the terms (whole days), the late percent (two decimals) and the policy
-     *  date (blank for the sheet's today) and the period numbering from (blank for off). */
+     *  date (blank for the sheet's today) and the period numbering from (blank for off), and the grades'
+     *  own terms by grade (a grade not listed takes the sheet's terms). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, int terms, String latePct,
-            String policyDate, String periodNumberingFrom) {
+            String policyDate, String periodNumberingFrom, Map<String, Integer> gradeTerms) {
     }
 
     /** A role for a user name: clerk or steward. */
@@ -129,6 +132,17 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Set a grade's (A, B or C) own terms; they fix the due-by of the grade's claims added from now on. */
+    @PutMapping("/terms/{grade}")
+    public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated TermsRequest request) {
+        String sheet = sheetId.trim();
+        service.setGradeTerms(sheet, SignedInUser.decode(user), grade, request.value());
+        return view(sheet);
+    }
+
     /** Change the sheet's late percent; the figures it moves are followed in the audit. */
     @PutMapping("/late-pct")
     public SettingsView setLatePct(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -168,7 +182,7 @@ public class SettingController {
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
                 limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString(), service.terms(sheet),
                 service.latePct(sheet).toPlainString(), policyDate != null ? policyDate.toString() : "",
-                numberingFrom != null ? numberingFrom.toString() : "");
+                numberingFrom != null ? numberingFrom.toString() : "", service.gradeTerms(sheet));
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
