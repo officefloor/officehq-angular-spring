@@ -29,13 +29,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     /** A plan as the screen shows it: the amount with two decimals, dates YYYY-MM-DD, every so many days or
-     *  the day of the month (the other null), and how many claims it has made so far. */
+     *  the day of the month (the other null), how many claims it has made so far, and its next dates: the first
+     *  five plan dates after the sheet's today and on or before its end. */
     public record PlanView(long id, long personId, String amount, String start, Integer every, Integer day,
-            String end, int generated) {
+            String end, int generated, List<String> nextDates) {
 
-        static PlanView of(Plan p) {
+        static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart().toString(),
-                    p.getEvery(), p.getDay(), p.getEnd().toString(), p.getGeneratedCount());
+                    p.getEvery(), p.getDay(), p.getEnd().toString(), p.getGeneratedCount(),
+                    p.nextDates(today, 5).stream().map(LocalDate::toString).toList());
         }
     }
 
@@ -61,7 +63,10 @@ public class PlanController {
     @GetMapping("/plans")
     public List<PlanView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return service.list(sheetId.trim()).stream().map(PlanView::of).toList();
+        String sid = sheetId.trim();
+        List<Plan> plans = service.list(sid);
+        LocalDate today = service.today(sid);
+        return plans.stream().map(p -> PlanView.of(p, today)).toList();
     }
 
     /** Add a plan to a person. */
@@ -69,8 +74,10 @@ public class PlanController {
     public PlanView add(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable long personId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PlanRequest request) {
-        return PlanView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.start(),
-                request.every(), request.day(), request.end()));
+        String sid = sheetId.trim();
+        Plan plan = service.add(sid, user.trim(), personId, request.amount(), request.start(), request.every(),
+                request.day(), request.end());
+        return PlanView.of(plan, service.today(sid));
     }
 
     /** Make the plans' claims due by the sheet's today. */
@@ -79,7 +86,7 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         PlanService.Generated done = service.generate(sheetId.trim(), user.trim());
         return new GenerateView(done.claims().size(), done.claims().stream().map(ClaimView::of).toList(),
-                done.plans().stream().map(PlanView::of).toList());
+                done.plans().stream().map(p -> PlanView.of(p, done.today())).toList());
     }
 
     /** A plan that cannot be added is refused with the reason, for the screen to show. */

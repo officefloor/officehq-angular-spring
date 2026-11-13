@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Plans } from '../../core/plans';
 
-// A person's plans, each with how many claims it has made so far, and a form adding one, run every so many days
+// A person's plans, each with how many claims it has made so far and its next five dates, and a form adding one, run every so many days
 // or monthly on a day of the month (a bad amount, interval or day, or an end before the start, is refused with
 // an error on the row).
 @Component({
@@ -18,7 +18,8 @@ import { Plans } from '../../core/plans';
             every <span data-testid="plan-every">{{ pl.every }}</span> days
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>,
-          made <span data-testid="plan-generated">{{ pl.generated }}</span>
+          made <span data-testid="plan-generated">{{ pl.generated }}</span>;
+          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
         </li>
       }
     </ul>

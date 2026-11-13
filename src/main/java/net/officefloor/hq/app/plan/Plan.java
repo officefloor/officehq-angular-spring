@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -107,25 +108,40 @@ public class Plan {
         return generated.size();
     }
 
-    /** The plan dates up to its end and the given day that it has made no claim for yet, earliest first. A
-     *  monthly plan's dates are its day in every month from the start's month, a day beyond the month's length
-     *  falling on its last day, dates before the start left out. */
+    /** The plan dates up to its end and the given day that it has made no claim for yet, earliest first. */
     public List<LocalDate> datesDue(LocalDate today) {
         LocalDate last = end.isBefore(today) ? end : today;
+        return dates(start, last, Integer.MAX_VALUE).stream().filter(d -> !generated.contains(d)).toList();
+    }
+
+    /** The first so many plan dates after the given day and on or before its end, earliest first, whether or
+     *  not it has made a claim for them. */
+    public List<LocalDate> nextDates(LocalDate today, int count) {
+        return dates(today.plusDays(1), end, count);
+    }
+
+    /** The plan dates from the given first to last day, earliest first, at most so many. A monthly plan's dates
+     *  are its day in every month from the start's month, a day beyond the month's length falling on its last
+     *  day, dates before the start left out. */
+    private List<LocalDate> dates(LocalDate first, LocalDate last, int max) {
         List<LocalDate> out = new ArrayList<>();
         if (day != null) {
-            for (YearMonth m = YearMonth.from(start); !m.atDay(1).isAfter(last); m = m.plusMonths(1)) {
+            for (YearMonth m = YearMonth.from(start); !m.atDay(1).isAfter(last) && out.size() < max;
+                    m = m.plusMonths(1)) {
                 LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
-                if (!d.isBefore(start) && !d.isAfter(last) && !generated.contains(d)) {
+                if (!d.isBefore(start) && !d.isBefore(first) && !d.isAfter(last)) {
                     out.add(d);
                 }
             }
             return out;
         }
-        for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
-            if (!generated.contains(d)) {
-                out.add(d);
-            }
+        LocalDate d = start;
+        if (d.isBefore(first)) {
+            long steps = (ChronoUnit.DAYS.between(start, first) + every - 1) / every;
+            d = start.plusDays(steps * every);
+        }
+        for (; !d.isAfter(last) && out.size() < max; d = d.plusDays(every)) {
+            out.add(d);
         }
         return out;
     }

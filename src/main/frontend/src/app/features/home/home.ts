@@ -260,12 +260,14 @@ export class Home {
     this.todayError.set(null);
     this.savingToday.set(true);
     try {
-      // A today change may close periods past their grace days, so the periods are re-read; it also
-      // releases every claim's lock, closing their editors.
+      // A today change may close periods past their grace days, and moves the plans' next dates, so the
+      // periods and plans are re-read; it also releases every claim's lock, closing their editors.
       const was = this.session.today();
       const err = await this.session.setToday(this.todayInput());
       if (err === null && this.session.today() !== was) this.claims.unlockAll();
-      this.todayError.set(err ?? (await this.periods.load()));
+      this.todayError.set(
+        err ?? (await Promise.all([this.periods.load(), this.plans.load()])).find((e) => e !== null) ?? null,
+      );
     } finally {
       this.savingToday.set(false);
     }

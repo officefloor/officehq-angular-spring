@@ -17,6 +17,8 @@ export interface Plan {
   day: number | null;
   end: string;
   generated: number;
+  /** The first five plan dates after the sheet's today and on or before the end, earliest first. */
+  nextDates: string[];
 }
 
 /** A plan's fields as typed. */

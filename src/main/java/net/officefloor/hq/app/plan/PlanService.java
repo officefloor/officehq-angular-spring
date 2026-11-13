@@ -40,6 +40,12 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    /** The sheet's today, from which the plans' next dates are told. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
+    }
+
     /** Add a plan to a person, run every so many days or monthly on a day of the month (exactly one of them);
      *  an amount a claim would refuse (below 0.00), an interval below 1 day, a day of the month outside 1 to 31,
      *  or an end before the start is refused. */
@@ -72,8 +78,8 @@ public class PlanService {
         return plan;
     }
 
-    /** What a generate did: the claims it made, in the order made, and the sheet's plans. */
-    public record Generated(List<Claim> claims, List<Plan> plans) {
+    /** What a generate did: the claims it made, in the order made, the sheet's plans, and its today. */
+    public record Generated(List<Claim> claims, List<Plan> plans, LocalDate today) {
     }
 
     /** For every plan on the sheet in the order they were added, make a DRAFT claim of its amount with an
@@ -97,6 +103,6 @@ public class PlanService {
             }
             plans.saveAndFlush(plan);
         }
-        return new Generated(made, all);
+        return new Generated(made, all, today);
     }
 }
