@@ -10,7 +10,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Keeps the role each sheet gives a user name: clerk (any name with none), steward or viewer; and the
+/** Keeps the role each sheet gives a user name: clerk (any name with none), steward, viewer or restricted; and the
  *  delegations of the steward role, under which a user acts as a steward while the sheet's today is in range. */
 @Service
 public class RoleService {

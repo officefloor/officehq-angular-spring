@@ -134,6 +134,24 @@ export class Figures {
     return today !== null && this.roles.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
   });
 
+  /** The ids of the people a restricted user's people list shows: the person with the user's name and
+   *  everyone in a crew they lead or belong to; null when the signed-in user is not restricted (a user
+   *  delegated the steward role acts as a steward). Every other figure is still over everyone. */
+  readonly visibleIds = computed(() => {
+    const user = this.session.user();
+    if (!user || this.steward()) return null;
+    if (!this.roles.roles().some((r) => r.user === user && r.role === 'restricted')) return null;
+    const ids = new Set<number>();
+    const p = this.me();
+    if (!p) return ids;
+    ids.add(p.id);
+    for (const c of this.crews.crews()) {
+      const crew = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
+      if (crew.includes(p.id)) crew.forEach((id) => ids.add(id));
+    }
+    return ids;
+  });
+
   /** A steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count,
    *  counted; null when the signed-in user is not a steward. */
   readonly dashboard = computed(() => {

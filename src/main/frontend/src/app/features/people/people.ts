@@ -635,10 +635,14 @@ export class PeopleList {
   /** The last refused switch of a column, until the next switch. */
   protected readonly columnsError = signal<string | null>(null);
   protected readonly grades = GRADES;
-  /** The people the list shows: everyone, or only those not retired unless show retired is on. */
-  protected readonly shown = computed(() =>
-    this.people.showRetired() ? this.people.people() : this.people.people().filter((p) => !p.retired),
-  );
+  /** The people the list shows: everyone, or only those not retired unless show retired is on; for a
+   *  restricted user, only the people of their crews and themselves. */
+  protected readonly shown = computed(() => {
+    const visible = this.figures.visibleIds();
+    return this.people
+      .people()
+      .filter((p) => (this.people.showRetired() || !p.retired) && (visible === null || visible.has(p.id)));
+  });
   /** The sort keys the list can be shown in. */
   protected readonly sortKeys = SORT_KEYS;
   /** How this user's screen orders the list; only what is shown, never the stored positions. */

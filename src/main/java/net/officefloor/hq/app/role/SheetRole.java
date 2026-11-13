@@ -18,6 +18,8 @@ public class SheetRole {
     public static final String CLERK = "clerk";
     public static final String STEWARD = "steward";
     public static final String VIEWER = "viewer";
+    /** Sees on the people list only the people of the crews they lead or belong to, and themselves. */
+    public static final String RESTRICTED = "restricted";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

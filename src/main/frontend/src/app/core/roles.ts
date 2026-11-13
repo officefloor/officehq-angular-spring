@@ -18,11 +18,12 @@ export interface DelegationView {
 }
 
 /** The roles a sheet can give a user name; a name given none is a clerk. */
-export const ROLES = ['clerk', 'steward', 'viewer'] as const;
+export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
 
 // The roles the active sheet gives user names, re-read from the server each time the sheet is loaded.
 // A steward settles any claim; a clerk only one whose due is within the sheet's clerk limit; a viewer
-// sees the sheet and changes nothing. A steward can delegate the steward role to a user for a from-date to
+// sees the sheet and changes nothing; a restricted user sees on the people list only the people of the crews
+// they lead or belong to, and themselves. A steward can delegate the steward role to a user for a from-date to
 // a to-date: while the sheet's today is inside them the user acts as a steward.
 @Injectable({ providedIn: 'root' })
 export class Roles {
