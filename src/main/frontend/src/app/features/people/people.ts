@@ -612,6 +612,14 @@ function compareKeys(a: string, b: string): number {
                 >
                   Merge<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-merge-undo"
+                  [disabled]="merging() === p.id"
+                  (click)="undoMerge(p)"
+                >
+                  Undo merge<span class="visually-hidden"> into {{ p.name }}</span>
+                </button>
                 <label [for]="'person-transfer-to-' + p.id">Transfer to sheet<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   [id]="'person-transfer-to-' + p.id"
@@ -1171,6 +1179,23 @@ export class PeopleList {
         return;
       }
       this.mergeChoices.update((cs) => ({ ...cs, [p.id]: '' }));
+      await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.crews.load(), this.periods.load()]);
+    } finally {
+      this.merging.set(null);
+    }
+  }
+
+  /** Undo the last merge into a person: the merged person is back with the claims that came from them, so
+   *  everything on the sheet is re-read as after a merge. */
+  protected async undoMerge(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.merging.set(p.id);
+    try {
+      const err = await this.people.undoMerge(p.id);
+      if (err) {
+        this.actionError.set({ id: p.id, message: err });
+        return;
+      }
       await Promise.all([this.people.load(), this.claims.load(), this.pools.load(), this.crews.load(), this.periods.load()]);
     } finally {
       this.merging.set(null);

@@ -495,6 +495,14 @@ public class PersonController {
         return view(service.merge(sheetId.trim(), user.trim(), personId, request.intoId()), user.trim());
     }
 
+    /** Undo the last merge into a person: the merged person is back on the sheet; answers them. */
+    @PostMapping("/{personId}/merge/undo")
+    public PersonView undoMerge(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return view(service.undoMerge(sheetId.trim(), user.trim(), personId), user.trim());
+    }
+
     /** A merge that is not allowed is refused with the reason, for the screen to show. */
     @ExceptionHandler(MergeRefusedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

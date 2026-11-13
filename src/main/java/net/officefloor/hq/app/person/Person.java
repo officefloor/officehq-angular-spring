@@ -341,6 +341,41 @@ public class Person {
         aliases.add(new PersonAlias(sheetId, trimmed, copy));
     }
 
+    /** Take back an alias they were given: the last of theirs equal to it; whether they had it. */
+    public boolean removeAlias(String alias) {
+        for (int i = aliases.size() - 1; i >= 0; i--) {
+            if (aliases.get(i).getAlias().equals(alias)) {
+                aliases.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Give them back what they had as they stood before (a detached copy of them): every grade they were given,
+     *  their terms, tags, past retirements, aliases, flag and approver; not their holds. Their contact is given
+     *  back only when told. */
+    public void restoreFrom(Person was, boolean withContact) {
+        grades.clear();
+        was.grades.forEach(g -> grades.add(new PersonGrade(g.getGrade(), g.getFromDate())));
+        terms = was.terms;
+        datedTerms.clear();
+        was.datedTerms.forEach(t -> datedTerms.add(new PersonTerms(t.getTerms(), t.getFromDate())));
+        tags = was.tags;
+        retirements.clear();
+        was.retirements.forEach(r -> retirements.add(new PersonRetirement(r.getFromDate(), r.getToDate())));
+        aliases.clear();
+        was.aliases.forEach(a -> aliases.add(new PersonAlias(sheetId, a.getAlias(), a.getAliasCopy())));
+        if (withContact) {
+            contact = was.contact;
+        }
+        originSheet = was.originSheet;
+        arrivedOn = was.arrivedOn;
+        flagReason = was.flagReason;
+        flagUntil = was.flagUntil;
+        approver = was.approver;
+    }
+
     /** A copy of them for another sheet: every grade they were given (with its from-date), their terms
      *  (each with its from-date), contact, tags and aliases; not their holds. They arrive on that sheet's
      *  today given. */

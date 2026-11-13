@@ -23,6 +23,7 @@ import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.crew.CrewRepository;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.role.RoleService;
@@ -32,6 +33,7 @@ import net.officefloor.hq.app.sheet.SheetNotFoundException;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,11 +60,18 @@ public class PersonService {
     private final PeriodRepository periods;
     private final SheetService sheetService;
     private final SheetTagRepository sheetTags;
+    private final PersonMergeRepository merges;
+    private final History history;
+    private final JdbcTemplate jdbc;
 
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
             PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles,
             ClaimRepository claims, PoolRepository pools, PeriodRepository periods, SheetService sheetService,
-            SheetTagRepository sheetTags, PersonSnapshotRepository snapshots, CrewRepository crews) {
+            SheetTagRepository sheetTags, PersonSnapshotRepository snapshots, CrewRepository crews,
+            PersonMergeRepository merges, History history, JdbcTemplate jdbc) {
+        this.merges = merges;
+        this.history = history;
+        this.jdbc = jdbc;
         this.crews = crews;
         this.snapshots = snapshots;
         this.sheetTags = sheetTags;
@@ -544,9 +553,13 @@ public class PersonService {
             throw new MergeRefusedException("A retired person cannot be merged.");
         }
         Rollup.Snapshot before = rollup.take(sheetId);
+        // kept so the merge can be undone: the merged person as they stand now, and the claims that came from them
+        PersonMerge record = new PersonMerge(sheetId, from.getId(), into.getId(), user, today(sheetId),
+                history.state(from));
         List<Claim> moving = new ArrayList<>(
                 claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, from.getId()));
         moving.sort(Comparator.comparing(Claim::getId));
+        moving.forEach(c -> record.getClaimIds().add(c.getId()));
         long order = claims.maxListOrder(sheetId);
         for (Claim claim : moving) {
             claim.setPersonId(into.getId());
@@ -598,6 +611,7 @@ public class PersonService {
         people.flush();
         names.forEach(into::addAlias);
         Person merged = people.saveAndFlush(into);
+        merges.saveAndFlush(record);
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + from.getName()
                 + " into=" + merged.getName());
         rollup.recordChanges(sheetId, user, before);
@@ -731,6 +745,8 @@ public class PersonService {
         if (into != null) {
             names.forEach(into::addAlias);
             arrived = people.saveAndFlush(into);
+            // a merge by transfer is the last merge into them, and cannot be undone
+            merges.save(new PersonMerge(to, from.getId(), into.getId(), user, target.getToday(), null));
         }
 
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + from.getName()
@@ -744,6 +760,67 @@ public class PersonService {
         }
         rollup.recordChanges(to, user, beforeThere);
         return arrived;
+    }
+
+    /** The steward who made the last merge into a person undoes it on the same sheet's today it was made: the
+     *  merged person is back, with the same id, at the end of the list, with what they had before it (not their
+     *  holds, watchers or contact when another now has it), with the claims that came from them as those are now,
+     *  and with their own name and aliases, which leave the other's. Patron, pool, crew, period, statement and
+     *  snapshot changes the merge made stay. Refused for anyone else, on a later day, for a person whose last
+     *  merge into them is undone or was by transfer (or who has none), and when one of the merged person's names
+     *  is in use on the sheet's tree other than as the other's alias. */
+    @Transactional
+    public Person undoMerge(String sheetId, String user, long personId) {
+        Sheet sheet = sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
+        Person into = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new MergeRefusedException("Only a steward may undo a merge.");
+        }
+        PersonMerge last = merges.findFirstBySheetIdAndIntoIdOrderByIdDesc(sheetId, into.getId())
+                .filter(m -> !m.isUndone() && m.getState() != null)
+                .orElseThrow(() -> new MergeRefusedException(into.getName() + " has no merge to undo."));
+        if (!last.getMadeBy().equals(user)) {
+            throw new MergeRefusedException("Only " + last.getMadeBy() + " can undo the last merge into "
+                    + into.getName() + ".");
+        }
+        if (!last.getMadeOn().equals(sheet.getToday())) {
+            throw new MergeRefusedException("The last merge into " + into.getName()
+                    + " can only be undone on the day it was made.");
+        }
+        Person was = history.read(last.getState(), Person.class);
+        List<String> names = new ArrayList<>();
+        names.add(was.getName());
+        names.addAll(was.getAliases());
+        Rollup.Snapshot before = rollup.take(sheetId);
+
+        // their names leave the other's aliases first, so they are free for them again
+        names.forEach(into::removeAlias);
+        Person left = people.saveAndFlush(into);
+        Set<String> tree = namesInTree(sheetId, null);
+        for (String name : names) {
+            if (people.nameTaken(sheetId, name, null) || tree.contains(name.toLowerCase(Locale.ROOT))) {
+                throw new MergeRefusedException("The name " + name + " is now in use.");
+            }
+        }
+        // back with the id they had, at the end of the list
+        jdbc.update("INSERT INTO person (id, sheet_id, name, list_position, version) VALUES (?, ?, ?, ?, 0)",
+                last.getFromId(), sheetId, was.getName(), people.maxPosition(sheetId) + 1);
+        Person restored = people.findById(last.getFromId()).orElseThrow(PersonNotFoundException::new);
+        restored.restoreFrom(was, was.getContact() == null || !people.contactTaken(sheetId, was.getContact(), null));
+        restored = people.saveAndFlush(restored);
+
+        List<Claim> returning = claims.findAllById(last.getClaimIds()).stream()
+                .filter(c -> sheetId.equals(c.getSheetId()) && into.getId().equals(c.getPersonId())).toList();
+        returning.forEach(c -> c.setPersonId(last.getFromId()));
+        claims.saveAll(returning);
+        claims.flush();
+        last.undo();
+        merges.saveAndFlush(last);
+
+        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + user + " name=" + restored.getName()
+                + " from=" + left.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return restored;
     }
 
     /** On the sheet a transfer brought a person to, a steward undoes it on the same sheet's today they arrived:

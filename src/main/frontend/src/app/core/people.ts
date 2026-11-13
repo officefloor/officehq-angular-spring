@@ -609,6 +609,21 @@ export class People {
     }
   }
 
+  /** Undo the last merge into a person; an error message when refused. */
+  async undoMerge(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/merge/undo`, null, { headers: { 'X-User': user } }),
+      );
+      return null;
+    } catch (e) {
+      return failed('merge undo', e);
+    }
+  }
+
   /** Transfer a person to another sheet by its id; an error message when refused. */
   async transfer(id: number, toSheetId: string): Promise<string | null> {
     const sid = this.session.sheetId();

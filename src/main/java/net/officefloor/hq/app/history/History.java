@@ -171,6 +171,16 @@ public class History {
         return Optional.ofNullable(asOf(type, sheetId, date).get(String.valueOf(id)));
     }
 
+    /** A row's state now, as kept, to be read back with {@link #read}. */
+    public String state(Object entity) {
+        return json.writeValueAsString(entity);
+    }
+
+    /** A detached row from a state kept by {@link #state}. */
+    public <T> T read(String state, Class<T> type) {
+        return json.readValue(state, type);
+    }
+
     /** A detached copy of a row as it is now, for a screen to reckon on without touching the stored one. */
     public <T> T copy(T entity, Class<T> type) {
         return json.readValue(json.writeValueAsString(entity), type);
