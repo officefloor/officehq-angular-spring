@@ -338,6 +338,11 @@ export class Claims {
     return this.claims().filter((c) => c.personId === personId);
   }
 
+  /** How many of a person's claims are in this status. */
+  countOf(personId: number, status: ClaimStatus): number {
+    return this.claims().filter((c) => c.personId === personId && c.status === status).length;
+  }
+
   /** A person's claimed, with two decimals. */
   claimed(personId: number): string {
     return money(this.claimedCents().get(personId) ?? 0);
