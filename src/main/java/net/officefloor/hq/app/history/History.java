@@ -14,11 +14,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Patron;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.Statement;
 import net.officefloor.hq.app.person.Watch;
+import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.role.Delegation;
 import net.officefloor.hq.app.role.SheetRole;
@@ -30,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The versions of a sheet, its people, their claims, its rates, its periods, the statements taken, the
- * patrons named, the watches kept, the roles given and the delegations made: each change keeps the state it left the
+ * patrons named, the watches kept, the roles given, the delegations made, and the pools and crews with their members: each change keeps the state it left the
  * row in, with the sheet's today when it was made, so the rows can be read back as of a date — as the
  * changes made while the sheet's today was on or before it left them, each row's latest such change by the
  * order they were made, a change made later not counting whatever its today.
@@ -100,6 +102,12 @@ public class History {
         } else if (entity instanceof Delegation delegation) {
             sheetId = delegation.getSheetId();
             entityId = String.valueOf(delegation.getId());
+        } else if (entity instanceof Pool pool) {
+            sheetId = pool.getSheetId();
+            entityId = String.valueOf(pool.getId());
+        } else if (entity instanceof Crew crew) {
+            sheetId = crew.getSheetId();
+            entityId = String.valueOf(crew.getId());
         } else {
             throw new IllegalArgumentException("No history kept of " + entity.getClass());
         }

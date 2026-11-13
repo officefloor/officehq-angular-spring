@@ -4,11 +4,13 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Patron;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.Statement;
 import net.officefloor.hq.app.person.Watch;
+import net.officefloor.hq.app.pool.Pool;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.role.Delegation;
 import net.officefloor.hq.app.role.SheetRole;
@@ -108,6 +110,16 @@ public class AsOf {
     /** The delegations, in the order they were made. */
     public List<Delegation> delegations(String sheetId, LocalDate asOf) {
         return sorted(Delegation.class, sheetId, asOf, Comparator.comparing(Delegation::getId));
+    }
+
+    /** The pools, in the order they were added. */
+    public List<Pool> pools(String sheetId, LocalDate asOf) {
+        return sorted(Pool.class, sheetId, asOf, Comparator.comparing(Pool::getId));
+    }
+
+    /** The crews, in the order they were made. */
+    public List<Crew> crews(String sheetId, LocalDate asOf) {
+        return sorted(Crew.class, sheetId, asOf, Comparator.comparing(Crew::getId));
     }
 
     private <T> List<T> sorted(Class<T> type, String sheetId, LocalDate asOf, Comparator<T> order) {

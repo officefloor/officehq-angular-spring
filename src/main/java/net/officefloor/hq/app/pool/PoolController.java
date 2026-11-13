@@ -10,11 +10,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.history.AsOf;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -45,9 +48,24 @@ public class PoolController {
      *  over the others; none when every member is retired). Its cut of the pool's pot (two decimals; 0.00 for a person
      *  on hold on the sheet's today, whose share is spread over the others); none when the pool is unbalanced or
      *  has no pot. A member whose dates (from, to: optional) do not include the sheet's today is left out
-     *  entirely: it counts 0.00 toward the total and has no cut. */
+     *  entirely: it counts 0.00 toward the total and has no cut. Its cut at the end of each period whose to-date is
+     *  on or before the sheet's today, by from-date (cuts). */
     public record PoolMemberView(Long personId, Long poolId, String name, String share, boolean retired, String cut,
-            LocalDate from, LocalDate to, boolean active) {
+            LocalDate from, LocalDate to, boolean active, List<PeriodCut> cuts) {
+
+        PoolMemberView withCuts(List<PeriodCut> cuts) {
+            return new PoolMemberView(personId, poolId, name, share, retired, cut, from, to, active, cuts);
+        }
+
+        /** Whether it is the same member as another of the same pool: the same person, or the same pool. */
+        boolean same(PoolMemberView other) {
+            return Objects.equals(personId, other.personId) && Objects.equals(poolId, other.poolId);
+        }
+    }
+
+    /** A member's cut as it stood at the end of a period (its to-date as the sheet's today, with the pool, its
+     *  members, the pot and the holds as they were then); none when there was none. */
+    public record PeriodCut(String period, String cut) {
     }
 
     /** A pool, with its total share and whether that is exactly 100.00. A crew is a pool too (crew set): its id is
@@ -157,7 +175,7 @@ public class PoolController {
                 members.add(new PoolMemberView(m.getPersonId(), m.getMemberPoolId(), name,
                         m.getShare().setScale(2).toPlainString(), retired[i],
                         cuts[i] == null ? null : cuts[i].toPlainString(), m.getFromDate(), m.getToDate(),
-                        active[i]));
+                        active[i], List.of()));
             }
             return new PoolView(pool.getId() == null ? 0 : pool.getId(), pool.getName(), members,
                     total.setScale(2).toPlainString(), balanced, false);
@@ -207,6 +225,31 @@ public class PoolController {
         }
     }
 
+    /** The views with each member's cut at the end of each period whose to-date is on or before today, by
+     *  from-date: its cut in the pools as they stood then (then, by that date). */
+    static List<PoolView> withHistory(List<PoolView> views, List<Period> periods, LocalDate today,
+            Function<LocalDate, List<PoolView>> then) {
+        List<Period> ended = periods.stream()
+                .filter(p -> today != null && p.getToDate() != null && !p.getToDate().isAfter(today)).toList();
+        List<List<PoolView>> past = ended.stream().map(p -> then.apply(p.getToDate())).toList();
+        List<PoolView> out = new ArrayList<>();
+        for (PoolView v : views) {
+            List<PoolMemberView> members = new ArrayList<>();
+            for (PoolMemberView m : v.members()) {
+                List<PeriodCut> cuts = new ArrayList<>();
+                for (int i = 0; i < ended.size(); i++) {
+                    String cut = past.get(i).stream().filter(p -> p.id() == v.id() && p.crew() == v.crew())
+                            .flatMap(p -> p.members().stream()).filter(m::same).findFirst()
+                            .map(PoolMemberView::cut).orElse(null);
+                    cuts.add(new PeriodCut(ended.get(i).getName(), cut));
+                }
+                members.add(m.withCuts(cuts));
+            }
+            out.add(new PoolView(v.id(), v.name(), members, v.totalShare(), v.balanced(), v.crew()));
+        }
+        return out;
+    }
+
     public record PoolRequest(@Size(max = 200) String name) {
     }
 
@@ -217,10 +260,12 @@ public class PoolController {
     private final CrewService crews;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final PeriodService periods;
     private final AsOf asOf;
 
     public PoolController(PoolService service, CrewService crews, PersonRepository people, SheetService sheets,
-            AsOf asOf) {
+            PeriodService periods, AsOf asOf) {
+        this.periods = periods;
         this.service = service;
         this.crews = crews;
         this.people = people;
@@ -239,9 +284,16 @@ public class PoolController {
         if (asOf == null) {
             return views(sid);
         }
-        Map<Long, Person> then = this.asOf.people(sid, asOf).stream()
+        return withHistory(viewsAsOf(sid, asOf), this.asOf.periods(sid, asOf), asOf, d -> viewsAsOf(sid, d));
+    }
+
+    /** The pools as they stood at the end of a date: their members, the people, the pot and the holds then, the
+     *  date as the sheet's today. */
+    private List<PoolView> viewsAsOf(String sheetId, LocalDate date) {
+        Map<Long, Person> then = asOf.people(sheetId, date).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        return PoolView.of(service.list(sid), crews.list(sid), then, this.asOf.sheet(sid, asOf).getPot(), asOf);
+        return PoolView.of(asOf.pools(sheetId, date), asOf.crews(sheetId, date), then,
+                asOf.sheet(sheetId, date).getPot(), date);
     }
 
     /** Add a pool to the sheet. */
@@ -265,7 +317,9 @@ public class PoolController {
     }
 
     private List<PoolView> views(String sheetId) {
-        return PoolView.of(service.list(sheetId), crews.list(sheetId), people(sheetId), sheets.pot(sheetId), sheets.today(sheetId));
+        LocalDate today = sheets.today(sheetId);
+        return withHistory(PoolView.of(service.list(sheetId), crews.list(sheetId), people(sheetId), sheets.pot(sheetId),
+                today), periods.list(sheetId), today, d -> viewsAsOf(sheetId, d));
     }
 
     private PoolView view(String sheetId, Pool pool) {

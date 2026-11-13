@@ -21,6 +21,15 @@ export interface PoolMemberView {
   to: string | null;
   /** Whether its dates include the sheet's today; one that is not is left out of the pool entirely. */
   active: boolean;
+  /** Its cut as it stood at the end of each period whose to-date is on or before the sheet's today (the pool, its
+   *  members, the pot and the holds as they were then), by from-date; null when there was none. */
+  cuts: PeriodCut[];
+}
+
+/** A member's cut at the end of a period, by the period's name. */
+export interface PeriodCut {
+  period: string;
+  cut: string | null;
 }
 
 /** A pool: its members, their total share, and whether that is exactly 100.00. */

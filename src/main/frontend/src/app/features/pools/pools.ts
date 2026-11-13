@@ -7,7 +7,8 @@ import { Session } from '../../core/session';
 // One pool's row: its members with their shares, its total share and whether it is balanced (exactly
 // 100.00; a retired member counts 0.00), each member's cut of the pool's pot while balanced (the sheet's pot, or
 // its cut in the pool it is a member of), and a form adding a person or another pool (pool:<name>) with a share,
-// from and to a date when given. A member whose dates do not include the sheet's today is left out entirely. A crew's
+// from and to a date when given. Each member shows its cut at the end of each period that has ended by the sheet's
+// today, as things stood then. A member whose dates do not include the sheet's today is left out entirely. A crew's
 // pool has no such form: its members are kept by the crew.
 @Component({
   selector: 'app-pool-row',
@@ -24,6 +25,9 @@ import { Session } from '../../core/session';
           <span data-testid="pool-member-name">{{ m.name }}</span>
           <span data-testid="pool-share">{{ m.share }}</span>
           <span data-testid="pool-cut">{{ m.cut ?? '' }}</span>
+          @for (c of m.cuts; track c.period) {
+            <span [attr.data-testid]="'pool-cut-' + c.period">{{ c.cut ?? '' }}</span>
+          }
           @if (m.from || m.to) {
             <span data-testid="pool-member-dates">{{ m.from ?? '' }}–{{ m.to ?? '' }}</span>
           }

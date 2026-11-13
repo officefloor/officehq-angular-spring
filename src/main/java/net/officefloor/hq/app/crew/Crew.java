@@ -3,6 +3,7 @@ package net.officefloor.hq.app.crew;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -10,13 +11,16 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import net.officefloor.hq.app.history.History;
 
 /** A sheet's crew: a name, a lead (a person of the sheet), and its members, each another person of the sheet. */
 @Entity
+@EntityListeners(History.class)
 @Table(name = "crew")
 public class Crew {
 
@@ -36,6 +40,11 @@ public class Crew {
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @JoinColumn(name = "crew_id", nullable = false)
     private List<CrewMember> members = new ArrayList<>();
+
+    /** Moved on by each save, a change to its members too, so the history keeps each change. */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     protected Crew() {
     }
