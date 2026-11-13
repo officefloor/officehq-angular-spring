@@ -57,7 +57,7 @@ public class StatementController {
         LocalDate asOf = request != null ? request.asOf() : null;
         List<ClaimView> claims = rollups.track(sheet, by, () -> service.take(sheet, by, personId, asOf)).stream()
                 .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim),
-                        claimService.logOf(claim.getId()))).toList();
+                        claimService.logOf(claim.getId()), claimService.commentsOf(claim.getId()))).toList();
         return new StatementTaken(service.summary(sheet, personId), claims);
     }
 
@@ -70,7 +70,7 @@ public class StatementController {
         String by = SignedInUser.decode(user);
         List<ClaimView> claims = rollups.track(sheet, by, () -> service.cancel(sheet, by, personId)).stream()
                 .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim),
-                        claimService.logOf(claim.getId()))).toList();
+                        claimService.logOf(claim.getId()), claimService.commentsOf(claim.getId()))).toList();
         return new StatementTaken(service.summary(sheet, personId), claims);
     }
 

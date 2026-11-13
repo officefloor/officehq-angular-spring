@@ -50,7 +50,7 @@ public class PasteController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return new PasteView(service.paste(sheet, by, request.text()).stream()
-                .map(c -> ClaimView.of(c, c.getDate(), claims.logOf(c.getId()))) // never a correction
+                .map(c -> ClaimView.of(c, c.getDate(), claims.logOf(c.getId()), List.of())) // never a correction
                 .toList());
     }
 

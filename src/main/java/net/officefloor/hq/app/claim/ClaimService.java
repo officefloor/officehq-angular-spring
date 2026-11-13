@@ -49,6 +49,7 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
+    private final ClaimCommentRepository comments;
     private final PersonRepository people;
     private final RateService rates;
     private final PersonGradeService grades;
@@ -62,7 +63,8 @@ public class ClaimService {
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
-            HolidayService holidays, VoidReasonService voidReasons, Audit audit) {
+            HolidayService holidays, VoidReasonService voidReasons, ClaimCommentRepository comments, Audit audit) {
+        this.comments = comments;
         this.holidays = holidays;
         this.voidReasons = voidReasons;
         this.periods = periods;
@@ -424,6 +426,36 @@ public class ClaimService {
         audit.recordOnCommit(line("CLAIM_PROOF_ADDED", sheetId, user, person, saved, saved.getNumber())
                 + " proofs=" + saved.getProofs());
         return saved;
+    }
+
+    /** Comment on a claim in any status: the comment is kept with the user and the sheet's today, and
+     *  COMMENT_ADDED is written ending with its text. A blank comment is refused. */
+    @Transactional
+    public Claim addComment(String sheetId, String user, Long personId, Long id, String text) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.isEmpty()) {
+            throw new CommentRefusedException("A comment cannot be empty");
+        }
+        comments.save(new ClaimComment(sheetId, claim.getId(), user, sheets.today(sheetId), trimmed));
+        audit.recordOnCommit(line("COMMENT_ADDED", sheetId, user, person, claim, claim.getNumber())
+                + " text=" + trimmed);
+        return claim;
+    }
+
+    /** A claim's comments, oldest first, each as <user> on <date>: <text>. */
+    public List<String> commentsOf(Long claimId) {
+        return comments.findByClaimIdOrderByIdAsc(claimId).stream().map(ClaimComment::line).toList();
+    }
+
+    /** The comments on the sheet's claims by claim id, each oldest first, as they stood at the end of a
+     *  day: those written while the sheet's today was on or before it (null: every one). */
+    public Map<Long, List<String>> commentsOf(String sheetId, LocalDate asOf) {
+        return comments.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(comment -> asOf == null || !comment.getOn().isAfter(asOf))
+                .collect(Collectors.groupingBy(ClaimComment::getClaimId,
+                        Collectors.mapping(ClaimComment::line, Collectors.toList())));
     }
 
     /** A steward rejects a PENDING claim with a reason: it is OPEN again, bound again by the person's

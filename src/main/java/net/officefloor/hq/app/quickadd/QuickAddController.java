@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -76,7 +77,7 @@ public class QuickAddController {
                 statements.summary(sheet, personId), people.holds(personId), people.patronIds(personId),
                 people.watches(personId, by)),
                 ClaimView.of(added.claim(), added.claim().getDate(),
-                        claims.logOf(added.claim().getId()))); // never a correction: rounds by its own date
+                        claims.logOf(added.claim().getId()), List.of())); // never a correction: rounds by its own date
     }
 
     /** A claim dated in a closed period or after its person retired, or a name taken at the same moment, is refused. */

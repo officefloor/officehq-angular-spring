@@ -51,13 +51,13 @@ public class ClaimController {
      *  added while its period was soft-closed; remindedOn is the last day a reminder was written for it
      *  (null when none was); ref is its external reference (null when it has none); tags are its tags,
      *  sorted (empty when it has none); voidReason is the reason it was voided with (null when none
-     *  was given). */
+     *  was given); comments are its comments, oldest first, each as <user> on <date>: <text>. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            LocalDate remindedOn, String ref, List<String> tags, String voidReason) {
-        public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
+            LocalDate remindedOn, String ref, List<String> tags, String voidReason, List<String> comments) {
+        public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log, List<String> comments) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
@@ -66,7 +66,7 @@ public class ClaimController {
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), claim.getTags(),
-                    claim.getVoidReason());
+                    claim.getVoidReason(), comments);
         }
     }
 
@@ -89,6 +89,10 @@ public class ClaimController {
 
     /** The reason a claim is voided with, chosen from the sheet's list; blank or absent for none. */
     public record VoidRequest(@Size(max = 255) String reason) {
+    }
+
+    /** A comment on a claim: its text, which must not be blank. */
+    public record CommentRequest(@Size(max = 2000) String text) {
     }
 
     /** Why a steward rejects a PENDING claim. */
@@ -152,9 +156,11 @@ public class ClaimController {
         String sheet = sheetId.trim();
         LocalDate asOf = AsOf.parse(asOfHeader);
         Map<Long, List<String>> logs = service.logsOf(sheet, asOf);
+        Map<Long, List<String>> comments = service.commentsOf(sheet, asOf);
         List<Claim> claims = asOf == null ? service.list(sheet) : history.claims(service.list(sheet), asOf);
         return claims.stream()
-                .map(claim -> ClaimView.of(claim, service.roundsBy(sheet, claim), logs.getOrDefault(claim.getId(), List.of())))
+                .map(claim -> ClaimView.of(claim, service.roundsBy(sheet, claim), logs.getOrDefault(claim.getId(), List.of()),
+                        comments.getOrDefault(claim.getId(), List.of())))
                 .toList();
     }
 
@@ -326,6 +332,16 @@ public class ClaimController {
         return view(sheet, service.addProof(sheet, by, personId, id));
     }
 
+    /** Comment on a claim, kept with the user and the sheet's today; an empty comment is refused. */
+    @PostMapping("/people/{personId}/claims/{id}/comments")
+    public ClaimView addComment(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated CommentRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, service.addComment(sheet, by, personId, id, request.text()));
+    }
+
     /** Void a DRAFT, OPEN or PENDING claim, or (a steward, within 7 days of its settlement) a SETTLED
      *  one; while the sheet's list of void reasons is not empty, with a reason chosen from it. */
     @PostMapping("/people/{personId}/claims/{id}/void")
@@ -346,7 +362,8 @@ public class ClaimController {
     }
 
     private ClaimView view(String sheet, Claim claim) {
-        return ClaimView.of(claim, service.roundsBy(sheet, claim), service.logOf(claim.getId()));
+        return ClaimView.of(claim, service.roundsBy(sheet, claim), service.logOf(claim.getId()),
+                service.commentsOf(claim.getId()));
     }
 
     /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,
@@ -359,12 +376,12 @@ public class ClaimController {
      *  void without a reason from the sheet's list while it has one, or a
      *  re-date of a claim that is not OPEN or PENDING, or opening or saving the editor of a claim
      *  another user's editor locks, or a reminder of a claim that is not OPEN or PENDING or was already
-     *  reminded on the sheet's today, is refused. */
+     *  reminded on the sheet's today, or an empty comment, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
             SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class,
-            RemindRefusedException.class, RefInUseException.class, DataIntegrityViolationException.class})
+            RemindRefusedException.class, CommentRefusedException.class, RefInUseException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

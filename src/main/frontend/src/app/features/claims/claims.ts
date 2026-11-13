@@ -64,6 +64,8 @@ export interface Claim {
   tags: string[];
   /** The reason on the sheet's list the claim was voided with; null when it was given none. */
   voidReason: string | null;
+  /** The claim's comments, oldest first, each as <user> on <date>: <text>. */
+  comments: string[];
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -346,6 +348,26 @@ const NUMBER = /^\S+$/;
           <button type="button" data-testid="claim-split" [attr.aria-label]="'Split claim ' + c.id" (click)="split(c)">
             Split
           </button>
+          <ol data-testid="claim-comments" [attr.aria-label]="'Comments on claim ' + c.id">
+            @for (line of c.comments; track $index) {
+              <li data-testid="claim-comments-line">{{ line }}</li>
+            }
+          </ol>
+          <label [for]="'claim-comment-text-' + c.id">Comment</label>
+          <input
+            [id]="'claim-comment-text-' + c.id"
+            data-testid="claim-comment-text"
+            [value]="commentTexts()[c.id] ?? ''"
+            (input)="setCommentText(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-comment-add"
+            [attr.aria-label]="'Comment on claim ' + c.id"
+            (click)="addComment(c)"
+          >
+            Comment
+          </button>
           <button type="button" data-testid="claim-proof" [attr.aria-label]="'Add a proof to claim ' + c.id" (click)="addProof(c)">
             Add proof
           </button>
@@ -474,6 +496,9 @@ export class PersonClaims {
 
   /** The amount typed on each claim's row to split off it, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+
+  /** The comment typed on each claim's row, by claim id. */
+  protected readonly commentTexts = signal<Record<number, string>>({});
 
   /** The new amount typed on each claim's row to save in place, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
@@ -836,6 +861,33 @@ export class PersonClaims {
         id: claim.id,
         message: 'A proof could not be added: a settled or voided claim, or one in a closed period, takes no more.',
       });
+    }
+  }
+
+  protected setCommentText(id: number, text: string): void {
+    this.commentTexts.update((texts) => ({ ...texts, [id]: text }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Comment on a claim with the text typed on its row; an empty comment, or any comment by a viewer,
+   *  on an archived sheet or in the as-of view, is refused on the row. */
+  protected async addComment(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = (this.commentTexts()[claim.id] ?? '').trim();
+    if (text === '') {
+      this.rowError.set({ id: claim.id, message: 'Type the comment to add to the claim.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/comments`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { text }));
+      if (this.session.sheetId() !== sheet) return;
+      this.setCommentText(claim.id, '');
+      this.saved.emit(saved);
+    } catch {
+      this.rowError.set({ id: claim.id, message: 'The comment could not be added: this sheet takes no changes from you now.' });
     }
   }
 
