@@ -52,7 +52,7 @@ public class PersonController {
             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, Integer baseTerms,
             List<TermsView> datedTerms, String contact,
             List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots,
-            List<String> statementLines) {
+            List<String> statementLines, String flag) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
                 boolean watched, boolean clashing, List<PersonSnapshot> snapshots) {
@@ -68,7 +68,7 @@ public class PersonController {
                     watched, person.termsOn(today), person.getTerms(),
                     person.getDatedTerms().stream().map(TermsView::of).toList(), person.getContact(), person.getAliases(), clashing,
                     person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList(),
-                    statementLines(statements));
+                    statementLines(statements), person.flagShownOn(today));
         }
 
         /** One line per statement standing, in the order they were taken (one taken as of an earlier date
@@ -191,6 +191,10 @@ public class PersonController {
 
     /** The date a person is retired from; none takes the sheet's today. */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** A flag's reason and the last date it is in force on. */
+    public record FlagRequest(@Size(max = 1000) String reason, LocalDate until) {
     }
 
     private final PersonService service;
@@ -355,6 +359,23 @@ public class PersonController {
     @ExceptionHandler(HoldRefusedException.class)
     @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
     public Map<String, String> holdRefused(HoldRefusedException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** Flag a person with a reason until a date. */
+    @PostMapping("/{personId}/flag")
+    public PersonView flag(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid FlagRequest request) {
+        Person flagged = service.flag(sheetId.trim(), user.trim(), personId, request.reason(), request.until());
+        return view(flagged, user.trim());
+    }
+
+    /** A flag that cannot be put on is refused with the reason, for the screen to show. */
+    @ExceptionHandler(FlagRefusedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Map<String, String> flagRefused(FlagRefusedException e) {
         return Map.of("message", e.getMessage());
     }
 

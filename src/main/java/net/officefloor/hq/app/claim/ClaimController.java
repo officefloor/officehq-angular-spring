@@ -695,6 +695,14 @@ public class ClaimController {
         return Map.of("message", e.getMessage());
     }
 
+    /** An open of a flagged person's claim by anyone but a steward is refused with the reason, for the screen
+     *  to show. */
+    @ExceptionHandler(ClaimFlaggedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Map<String, String> flaggedRefused(ClaimFlaggedException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     /** A split that is not allowed is refused with the reason, for the screen to show. */
     @ExceptionHandler(ClaimSplitException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

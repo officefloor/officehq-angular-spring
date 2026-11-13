@@ -254,6 +254,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
         if (to == ClaimStatus.OPEN) {
+            refuseFlagged(sheetId, user, person);
             refuseNoteless(claim, shownDue(claim, person));
             refuseOverCap(claim);
         }
@@ -767,7 +768,7 @@ public class ClaimService {
             try {
                 opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
             } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException
-                    | ActionNotAllowedException | ClaimNoteException | ClaimCapException e) {
+                    | ActionNotAllowedException | ClaimNoteException | ClaimCapException | ClaimFlaggedException e) {
                 // refused: left as it is
             }
         }
@@ -1034,6 +1035,13 @@ public class ClaimService {
         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException();
+        }
+    }
+
+    /** Refuse opening a claim of a person flagged on the sheet's today, by anyone but a steward. */
+    private void refuseFlagged(String sheetId, String user, Person person) {
+        if (person.flaggedOn(sheets.today(sheetId)) && !roles.isSteward(sheetId, user)) {
+            throw new ClaimFlaggedException(person.getName() + " is flagged; only a steward may open their claims.");
         }
     }
 

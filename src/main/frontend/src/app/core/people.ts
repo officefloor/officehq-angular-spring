@@ -99,6 +99,8 @@ export interface Person {
   /** Their statement lines, one per statement standing, oldest first by date, as
    *  `<statement date> <due-total>` (n/a when it was). */
   statementLines: string[];
+  /** The reason of their flag while it is in force on the sheet's today; null when none is. */
+  flag: string | null;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -367,6 +369,27 @@ export class People {
       return null;
     } catch (e) {
       return failed('retire', e);
+    }
+  }
+
+  /** Flag a person with a reason until a date (YYYY-MM-DD); an error message when refused (anyone but a
+   *  steward, or a blank reason). */
+  async flag(id: number, reason: string, until: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!reason.trim()) return 'Enter a reason for the flag.';
+    const d = until.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'Enter the until date as YYYY-MM-DD.';
+    try {
+      const person = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/flag`, { reason: reason.trim(), until: d }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string') return e.error.message;
+      return failed('flag', e);
     }
   }
 

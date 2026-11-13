@@ -496,6 +496,30 @@ function compareKeys(a: string, b: string): number {
                 >
                   Unretire<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <span>Flag: <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span></span>
+                <label [for]="'person-flag-reason-' + p.id">Flag reason<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-flag-reason-' + p.id"
+                  data-testid="person-flag-reason"
+                  [value]="flagEntries()[p.id]?.reason ?? ''"
+                  (input)="setFlagEntry(p.id, 'reason', value($event))"
+                />
+                <label [for]="'person-flag-until-' + p.id">until<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-flag-until-' + p.id"
+                  data-testid="person-flag-until"
+                  placeholder="YYYY-MM-DD"
+                  [value]="flagEntries()[p.id]?.until ?? ''"
+                  (input)="setFlagEntry(p.id, 'until', value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-flag"
+                  [disabled]="flagging() === p.id"
+                  (click)="flag(p)"
+                >
+                  Flag<span class="visually-hidden"> {{ p.name }}</span>
+                </button>
                 <label [for]="'person-hold-from-' + p.id">Hold from<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   [id]="'person-hold-from-' + p.id"
@@ -621,6 +645,10 @@ export class PeopleList {
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The date typed on each person's row to take their statement as of; blank takes it now. */
   protected readonly statementDates = signal<Record<number, string>>({});
+  /** The flag reason and until-date typed on each person's row. */
+  protected readonly flagEntries = signal<Record<number, { reason: string; until: string }>>({});
+  /** The id of the person being flagged. */
+  protected readonly flagging = signal<number | null>(null);
   /** The id of the person being retired. */
   protected readonly retiring = signal<number | null>(null);
   /** The id of the person being moved. */
@@ -942,6 +970,23 @@ export class PeopleList {
       if (err) this.actionError.set({ id: p.id, message: err });
     } finally {
       this.moving.set(null);
+    }
+  }
+
+  protected setFlagEntry(id: number, field: 'reason' | 'until', text: string): void {
+    this.clearActionError(id);
+    this.flagEntries.update((fs) => ({ ...fs, [id]: { ...(fs[id] ?? { reason: '', until: '' }), [field]: text } }));
+  }
+
+  protected async flag(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.flagging.set(p.id);
+    try {
+      const entry = this.flagEntries()[p.id];
+      const err = await this.people.flag(p.id, entry?.reason ?? '', entry?.until ?? '');
+      if (err) this.actionError.set({ id: p.id, message: err });
+    } finally {
+      this.flagging.set(null);
     }
   }
 

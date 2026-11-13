@@ -368,7 +368,9 @@ public class PersonService {
         Rollup.Snapshot before = rollup.take(sheetId);
         LocalDate today = today(sheetId);
         person.setName(name.trim());
-        boolean termsChanged = person.setTerms(terms, termsFrom);
+        // the terms entered differing from those in force on today count as a change, even when the
+        // stored terms they replace were already the same (dated terms still in force over them)
+        boolean termsChanged = !Objects.equals(terms, person.termsOn(today)) | person.setTerms(terms, termsFrom);
         boolean contactChanged = !Objects.equals(key, person.getContact());
         person.setContact(key);
         if (tags != null) {
@@ -766,6 +768,27 @@ public class PersonService {
                 + " from=" + on);
         rollup.recordChanges(sheetId, user, before);
         return retired;
+    }
+
+    /** Flag a person with a reason until a date; anyone but a steward is refused, as is a blank reason or
+     *  no until-date. */
+    @Transactional
+    public Person flag(String sheetId, String user, long personId, String reason, LocalDate until) {
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new FlagRefusedException("Only a steward may flag a person.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new FlagRefusedException("Enter a reason for the flag.");
+        }
+        if (until == null) {
+            throw new FlagRefusedException("Enter the date the flag is in force until.");
+        }
+        person.flag(reason.trim(), until);
+        Person flagged = saved(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user + " name=" + flagged.getName()
+                + " reason=" + reason.trim() + " until=" + until);
+        return flagged;
     }
 
     /** Unretire a retired person on the sheet's today, their retirement kept as a past one; anyone not

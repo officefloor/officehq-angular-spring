@@ -88,6 +88,14 @@ public class Person {
     @Column(name = "arrived_on")
     private LocalDate arrivedOn;
 
+    /** The reason a steward flagged them for; null when never flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last date their flag is in force on; null when never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** Their place in the sheet's list; set when they are first saved, next after everyone on the sheet. */
     @Column(name = "list_position", nullable = false)
     private Long position;
@@ -281,6 +289,22 @@ public class Person {
     /** Put them on hold from a date, to a date when one is given. */
     public void hold(LocalDate from, LocalDate to) {
         holds.add(new PersonHold(from, to));
+    }
+
+    /** Flag them with a reason until a date, replacing any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    /** Whether their flag is in force on a day (the sheet's today): it is on or before its until-date. */
+    public boolean flaggedOn(LocalDate today) {
+        return flagUntil != null && today != null && !today.isAfter(flagUntil);
+    }
+
+    /** The reason of their flag in force on a day (the sheet's today); null when none is. */
+    public String flagShownOn(LocalDate today) {
+        return flaggedOn(today) ? flagReason : null;
     }
 
     /** Their aliases, sorted as names are compared: without regard to case. */

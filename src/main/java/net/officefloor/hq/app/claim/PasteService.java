@@ -106,7 +106,8 @@ public class PasteService {
                 done.add(claims.changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
             } catch (PeriodClosedException | PersonRetiredException | ClaimCorrectionException
                     | ClaimRefException | ClaimStatusException | ClaimNotDraftException | ClaimLockedException
-                    | ClaimLineException | ClaimNoteException | ClaimCapException | ActionNotAllowedException e) {
+                    | ClaimLineException | ClaimNoteException | ClaimCapException | ActionNotAllowedException
+                    | ClaimFlaggedException e) {
                 throw new ClaimPasteException("Line " + line.number() + ": " + e.getMessage());
             }
         }
