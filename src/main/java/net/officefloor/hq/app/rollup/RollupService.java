@@ -102,7 +102,7 @@ public class RollupService {
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
         Map<Long, List<Claim>> counted = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
-                .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of())))
+                .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of()), today))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;

@@ -88,11 +88,12 @@ public class PeriodService {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
+        LocalDate today = sheets.today(sheetId);
         Map<Long, BigDecimal> personTotals = new LinkedHashMap<>();
         byId.keySet().forEach(id -> personTotals.put(id, BigDecimal.ZERO.setScale(2)));
         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !claim.countsLive(holds.getOrDefault(person.getId(), List.of()))
+            if (person == null || !claim.countsLive(holds.getOrDefault(person.getId(), List.of()), today)
                     || !period.contains(claim.getDate())) {
                 continue;
             }

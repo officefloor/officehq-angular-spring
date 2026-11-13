@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, money, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, money, overdue } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -377,15 +377,16 @@ export class People {
   protected readonly holdDates = signal<Record<number, { from?: string; to?: string }>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
-  /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except an OPEN
-   *  one dated within one of its person's holds and not bound by a statement. */
+  /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
+   *  on the sheet's today, and an OPEN one dated within one of its person's holds and not bound by a statement. */
   private readonly live = computed(() => {
     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
     const held = (c: Claim) =>
       c.status === 'OPEN' &&
       !c.stated &&
       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
-    return this.claims().filter((c) => counts(c) && !held(c));
+    const today = this.session.today();
+    return this.claims().filter((c) => counts(c) && !deferred(c, today) && !held(c));
   });
   /** Each person's claims that count toward what is claimed and due, by person id. */
   private readonly countedByPerson = computed(() => {

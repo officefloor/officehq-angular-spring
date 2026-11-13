@@ -80,8 +80,8 @@ public class StatementService {
         boolean anyFigure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            // A held claim is left out of the statement, whether or not an earlier one bound it.
-            if (!claim.counts() || claim.heldBy(holds)) {
+            // A held or deferred claim is left out of the statement, whether or not an earlier one bound it.
+            if (!claim.counts() || claim.heldBy(holds) || claim.deferredOn(today)) {
                 claim.unbind();
                 continue;
             }

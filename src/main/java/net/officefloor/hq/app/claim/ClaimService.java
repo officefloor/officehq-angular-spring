@@ -127,6 +127,9 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new OwnClaimSettleRefusedException(user);
         }
+        if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
+            throw new StatusChangeRefusedException(claim.getStatus(), to);
+        }
         // Taken while the claim is still OPEN, so a settled due freezes in the late charge it has
         // gathered by then.
         BigDecimal due = to == ClaimStatus.SETTLED ? dueOf(sheetId, person, claim) : null;
@@ -154,6 +157,27 @@ public class ClaimService {
             line += " due=" + settledDueText(saved);
         }
         audit.recordOnCommit(line);
+        return saved;
+    }
+
+    /** Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it
+     *  the claim counts in no total, is not overdue, cannot be settled and no statement binds it. A
+     *  claim that is not OPEN, a date not after today, or a claim dated in a closed period, is refused. */
+    @Transactional
+    public Claim defer(String sheetId, String user, Long personId, Long id, LocalDate until) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new DeferRefusedException("A " + claim.getStatus() + " claim cannot be deferred");
+        }
+        if (!until.isAfter(sheets.today(sheetId))) {
+            throw new DeferRefusedException("A claim is deferred to a date after the sheet's today");
+        }
+        claim.setDeferredUntil(until);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(line("CLAIM_DEFERRED", sheetId, user, person, saved, saved.getNumber())
+                + " until=" + until);
         return saved;
     }
 
@@ -321,10 +345,12 @@ public class ClaimService {
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue() : liveFigureOf(sheetId, person, claim);
     }
 
-    /** The due a claim shows: its figure plus its late charge; null when it has no figure. */
+    /** The due a claim shows: its figure plus its late charge (none while it is deferred: it is not
+     *  overdue then); null when it has no figure. */
     public BigDecimal dueOf(String sheetId, Person person, Claim claim) {
         BigDecimal figure = figureOf(sheetId, person, claim);
-        return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure, claim.getStatus().isOpen()));
+        boolean open = claim.getStatus().isOpen() && !claim.deferredOn(sheets.today(sheetId));
+        return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure, open));
     }
 
     /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by is

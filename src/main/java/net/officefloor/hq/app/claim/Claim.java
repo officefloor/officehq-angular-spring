@@ -79,6 +79,10 @@ public class Claim {
     @Column(name = "corrects_number")
     private String corrects;
 
+    /** The date an OPEN claim is deferred until; null when it was never deferred. */
+    @Column(name = "deferred_until")
+    private LocalDate deferredUntil;
+
     protected Claim() {
     }
 
@@ -203,6 +207,20 @@ public class Claim {
         this.statedDue = null;
     }
 
+    public LocalDate getDeferredUntil() {
+        return deferredUntil;
+    }
+
+    public void setDeferredUntil(LocalDate deferredUntil) {
+        this.deferredUntil = deferredUntil;
+    }
+
+    /** Whether the claim is deferred on a day: it is OPEN and that day is before its deferred-until
+     *  date. From that date on it is an OPEN claim like any other. */
+    public boolean deferredOn(LocalDate today) {
+        return status == ClaimStatus.OPEN && deferredUntil != null && today.isBefore(deferredUntil);
+    }
+
     /** Whether the claim counts toward what is claimed and due: only OPEN, PENDING and SETTLED ones do. */
     public boolean counts() {
         return status.counts();
@@ -213,9 +231,10 @@ public class Claim {
         return status == ClaimStatus.OPEN && holds.stream().anyMatch(hold -> hold.contains(date));
     }
 
-    /** Whether the claim counts in live totals given its person's holds: one that counts, unless it
-     *  is held and not bound by a statement (a bound claim stays in whatever its date). */
-    public boolean countsLive(List<PersonHold> holds) {
-        return counts() && (stated || !heldBy(holds));
+    /** Whether the claim counts in live totals on the sheet's today given its person's holds: one that
+     *  counts and is not deferred, unless it is held and not bound by a statement (a bound claim stays
+     *  in whatever its date). */
+    public boolean countsLive(List<PersonHold> holds, LocalDate today) {
+        return counts() && !deferredOn(today) && (stated || !heldBy(holds));
     }
 }

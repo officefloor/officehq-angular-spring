@@ -39,17 +39,19 @@ public class ClaimController {
      *  corrects is the number of the claim a correction corrects (null when it is not one); roundsBy
      *  is the date its live figures round by against the sheet's policy date (its own date, or for a
      *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was
-     *  added; log is its status log, oldest first, one line per status it has had. */
+     *  added; log is its status log, oldest first, one line per status it has had; deferredUntil is
+     *  the date it was deferred until (null when it never was). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log) {
+            String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
+            LocalDate deferredUntil) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
-                    claim.getCorrects(), roundsBy, claim.getDueBy(), log);
+                    claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil());
         }
     }
 
@@ -61,6 +63,10 @@ public class ClaimController {
             LocalDate date,
             @Size(max = 2000) String note,
             @Size(max = 255) String corrects) {
+    }
+
+    /** The date an OPEN claim is deferred until. */
+    public record DeferRequest(@NotNull LocalDate until) {
     }
 
     /** Why a steward rejects a PENDING claim. */
@@ -208,6 +214,16 @@ public class ClaimController {
                 () -> service.reassign(sheet, by, personId, id, request.toPersonId())));
     }
 
+    /** Defer an OPEN claim until a date after the sheet's today. */
+    @PostMapping("/people/{personId}/claims/{id}/defer")
+    public ClaimView defer(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated DeferRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.defer(sheet, by, personId, id, request.until())));
+    }
+
     /** Void a DRAFT, OPEN or PENDING claim. */
     @PostMapping("/people/{personId}/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -227,10 +243,11 @@ public class ClaimController {
 
     /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,
      *  any change to a claim dated in a closed period, a claim dated after its person retired, or a
-     *  correction that does not name a SETTLED claim of its person, or a move the claim does not allow,
-     *  is refused. */
+     *  correction that does not name a SETTLED claim of its person, a move the claim does not allow,
+     *  or a deferral the claim does not allow, is refused. */
     @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
-            PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class})
+            PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
+            DeferRefusedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }
