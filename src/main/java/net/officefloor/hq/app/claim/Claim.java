@@ -409,10 +409,12 @@ public class Claim {
         this.deferredUntil = deferredUntil;
     }
 
-    /** Deferred on a day: OPEN, with a deferred-until date after it. From that date on it is an OPEN claim
-     *  like any other. */
+    /** Deferred on a day: counting by its status, bound by no statement, with a deferred-until date after it.
+     *  While a statement binds it the deferral waits: it counts, can be settled and stays bound; once the
+     *  binding ends (the statement is cancelled, or the next one leaves it unbound) the deferral takes effect.
+     *  From its date on it is a claim like any other. */
     public boolean deferredOn(LocalDate today) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && today != null && today.isBefore(deferredUntil);
+        return status.counts() && !stated && deferredUntil != null && today != null && today.isBefore(deferredUntil);
     }
 
     public int getProofs() {

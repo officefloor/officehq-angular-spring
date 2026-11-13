@@ -38,7 +38,7 @@ export interface Claim {
   /** Its status log: one line per status it has had, oldest first. */
   statusLog: StatusLine[];
   /** The date it was deferred until (YYYY-MM-DD); null when never deferred. It is deferred only while
-   *  OPEN and the sheet's today is before it (see `Claims.deferred`). */
+   *  counting, bound by no statement, and the sheet's today is before it (see `Claims.deferred`). */
   deferredUntil: string | null;
   /** How many proofs it has. One whose due is above the proof threshold in force on its date cannot be
    *  settled or approved with none. */
@@ -284,18 +284,18 @@ export class Claims {
     return went !== undefined && addDays(went.on, sla) < today;
   }
 
-  /** Whether a claim shows as deferred: its deferred-until date is after the sheet's today, whatever its
-   *  status (a deferred claim voided keeps showing it). Only an OPEN one is left out of totals (`deferred`). */
+  /** Whether a claim shows as deferred: bound by no statement, its deferred-until date after the sheet's
+   *  today, whatever its status (a deferred claim voided keeps showing it). While a statement binds it the
+   *  deferral waits, taking effect once the binding ends. Only a counting one is left out of totals (`deferred`). */
   deferredShown(c: Claim): boolean {
     const today = this.session.shownToday();
-    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+    return !c.stated && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
-  /** Whether a claim is deferred: OPEN, with a deferred-until date after the sheet's today. Until then it
-   *  counts in no total, is not overdue and cannot be settled. */
+  /** Whether a claim is deferred: counting by its status, bound by no statement, with a deferred-until date
+   *  after the sheet's today. Until then it counts in no total, is not overdue and cannot be settled. */
   deferred(c: Claim): boolean {
-    const today = this.session.shownToday();
-    return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+    return counts(c) && this.deferredShown(c);
   }
 
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, for each full 30 days
