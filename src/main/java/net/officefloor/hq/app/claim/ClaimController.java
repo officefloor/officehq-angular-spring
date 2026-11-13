@@ -3,7 +3,6 @@ package net.officefloor.hq.app.claim;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -40,8 +39,8 @@ public class ClaimController {
      *  is the date its live figures round by against the sheet's policy date (its own date, or for a
      *  correction the date of the claim it corrects). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Long number, String settledDue, String openedBy, boolean stated,
-            String statedDue, Long corrects, LocalDate roundsBy) {
+            ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+            String statedDue, String corrects, LocalDate roundsBy) {
         public static ClaimView of(Claim claim, LocalDate roundsBy) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -59,7 +58,7 @@ public class ClaimController {
             @NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount,
             LocalDate date,
             @Size(max = 2000) String note,
-            @Positive Long corrects) {
+            @Size(max = 255) String corrects) {
     }
 
     /** The claims selected to open together. */

@@ -41,10 +41,11 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The claim's number on its sheet, given when it is opened and kept when it is
-     *  voided (never reused); null for a claim never opened. */
+    /** The claim's number, given when it is opened and kept when it is voided (never reused): the
+     *  sheet-wide number (1, 2, ...), or under period numbering <period>-<n> or X-<n>; null for a
+     *  claim never opened. */
     @Column(name = "claim_number")
-    private Long number;
+    private String number;
 
     /** The due fixed when the claim was settled; null until then, or when its grade had no rate. */
     @Column(name = "settled_due", precision = 12, scale = 2)
@@ -64,12 +65,12 @@ public class Claim {
 
     /** The number of the claim this correction corrects; null for a claim that is not a correction. */
     @Column(name = "corrects_number")
-    private Long corrects;
+    private String corrects;
 
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, Long corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note, String corrects) {
         this.sheetId = sheetId;
         this.corrects = corrects;
         this.personId = personId;
@@ -98,11 +99,11 @@ public class Claim {
         this.amount = amount;
     }
 
-    public Long getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Long corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 
@@ -135,11 +136,11 @@ public class Claim {
         this.status = status;
     }
 
-    public Long getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Long number) {
+    public void setNumber(String number) {
         this.number = number;
     }
 

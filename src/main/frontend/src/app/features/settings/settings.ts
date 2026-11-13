@@ -24,6 +24,9 @@ interface SettingsView {
   /** The policy date (yyyy-mm-dd): a claim dated before it rounds half up, one on or after it half to
    *  even; blank for the sheet's today. */
   policyDate: string;
+  /** The period numbering from (yyyy-mm-dd): while the sheet's today is on or after it, a claim opened
+   *  is numbered within its period; blank for off. */
+  periodNumberingFrom: string;
 }
 
 /** The floor a sheet starts with. */
@@ -55,6 +58,7 @@ export class SettingStore {
   readonly terms = signal(TERMS);
   readonly latePct = signal(LATE_PCT);
   readonly policyDate = signal('');
+  readonly periodNumberingFrom = signal('');
 
   constructor() {
     effect(() => {
@@ -66,6 +70,7 @@ export class SettingStore {
       this.terms.set(TERMS);
       this.latePct.set(LATE_PCT);
       this.policyDate.set('');
+      this.periodNumberingFrom.set('');
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -138,6 +143,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's period numbering from; null leaves it blank (off). */
+  async setPeriodNumberingFrom(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/period-numbering-from`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const settings = await firstValueFrom(
       this.http.get<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings`),
@@ -153,6 +169,7 @@ export class SettingStore {
     this.terms.set(settings.terms);
     this.latePct.set(settings.latePct);
     this.policyDate.set(settings.policyDate);
+    this.periodNumberingFrom.set(settings.periodNumberingFrom);
   }
 }
 
@@ -160,9 +177,10 @@ export class SettingStore {
 // clerk limit, the highest due a clerk can settle, the floor, the least a claim's live due can be,
 // the terms, the days after its date a claim is due by, and the late percent, what an overdue claim's
 // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
-// claim's date makes its figures round half up rather than half to even.
-// Saving sends only the settings typed into since the last save; the clerk limit and the policy date
-// count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
+// claim's date makes its figures round half up rather than half to even, and the period numbering
+// from, on or after which a claim opened is numbered within its period.
+// Saving sends only the settings typed into since the last save; the clerk limit, the policy date and
+// the period numbering from count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
 @Component({
   selector: 'app-settings',
   template: `
@@ -254,6 +272,15 @@ export class SettingStore {
           (focus)="policyDateTyped.set(true)"
           (input)="policyDate.set(value($event)); policyDateTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-period-numbering-from">Period numbering from</label>
+        <input
+          id="setting-period-numbering-from"
+          data-testid="setting-period-numbering-from"
+          placeholder="yyyy-mm-dd"
+          [value]="periodNumberingFrom()"
+          (focus)="periodNumberingFromTyped.set(true)"
+          (input)="periodNumberingFrom.set(value($event)); periodNumberingFromTyped.set(true); settingsError.set(null)"
+        />
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as message) {
@@ -285,6 +312,13 @@ export class SettingStore {
           <span>the sheet's today</span>
         }
       </p>
+      <p>
+        Period numbering from:
+        <strong data-testid="setting-period-numbering-from-current">{{ store.periodNumberingFrom() }}</strong>
+        @if (store.periodNumberingFrom() === '') {
+          <span>off</span>
+        }
+      </p>
     </section>
   `,
 })
@@ -305,6 +339,8 @@ export class Settings {
   protected readonly latePctTyped = signal(false);
   protected readonly policyDate = signal('');
   protected readonly policyDateTyped = signal(false);
+  protected readonly periodNumberingFrom = signal('');
+  protected readonly periodNumberingFromTyped = signal(false);
   protected readonly settingsError = signal<string | null>(null);
   /** Whether a role submit is waiting for its answer; a second one meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -354,6 +390,8 @@ export class Settings {
     const saveLatePct = this.latePctTyped();
     const policyDate = this.policyDate().trim();
     const savePolicyDate = this.policyDateTyped();
+    const numberingFrom = this.periodNumberingFrom().trim();
+    const saveNumberingFrom = this.periodNumberingFromTyped();
     if (saveLimit && limit !== '' && !AMOUNT.test(limit)) {
       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
@@ -374,11 +412,16 @@ export class Settings {
       this.settingsError.set('Type a policy date as yyyy-mm-dd, or leave it blank for the sheet\'s today.');
       return;
     }
+    if (saveNumberingFrom && numberingFrom !== '' && !DATE.test(numberingFrom)) {
+      this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
+      return;
+    }
     this.clerkLimitTyped.set(false);
     this.floorTyped.set(false);
     this.termsTyped.set(false);
     this.latePctTyped.set(false);
     this.policyDateTyped.set(false);
+    this.periodNumberingFromTyped.set(false);
     const save = async () => {
       try {
         if (saveLimit) await this.store.setClerkLimit(limit === '' ? null : limit);
@@ -386,6 +429,7 @@ export class Settings {
         if (saveTerms) await this.store.setTerms(Number(terms));
         if (saveLatePct) await this.store.setLatePct(latePct);
         if (savePolicyDate) await this.store.setPolicyDate(policyDate === '' ? null : policyDate);
+        if (saveNumberingFrom) await this.store.setPeriodNumberingFrom(numberingFrom === '' ? null : numberingFrom);
       } catch {
         // What was typed stays to be saved again.
         if (saveLimit) this.clerkLimitTyped.set(true);
@@ -393,6 +437,7 @@ export class Settings {
         if (saveTerms) this.termsTyped.set(true);
         if (saveLatePct) this.latePctTyped.set(true);
         if (savePolicyDate) this.policyDateTyped.set(true);
+        if (saveNumberingFrom) this.periodNumberingFromTyped.set(true);
         this.settingsError.set('The settings could not be saved.');
       }
     };

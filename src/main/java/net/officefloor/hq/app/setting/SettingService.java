@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its terms and
- *  its late percent and its policy date. */
+ *  its late percent, its policy date and its period numbering from. */
 @Service
 public class SettingService {
 
@@ -69,6 +69,11 @@ public class SettingService {
     public LocalDate policyDate(String sheetId) {
         LocalDate set = policyDateSet(sheetId);
         return set != null ? set : sheets.today(sheetId);
+    }
+
+    /** The sheet's period numbering from; null when it is blank (off). */
+    public LocalDate periodNumberingFrom(String sheetId) {
+        return sheets.load(sheetId).getPeriodNumberingFrom();
     }
 
     /** How a claim dated on the given date rounds: half up before the policy date, half to even on or
@@ -151,6 +156,18 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=policy-date value="
                 + (policyDate != null ? policyDate.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's period numbering from; null leaves it blank (off). */
+    @Transactional
+    public Sheet setPeriodNumberingFrom(String sheetId, String by, LocalDate from) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setPeriodNumberingFrom(from);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=period-numbering-from value="
+                + (from != null ? from.toString() : ""));
         return saved;
     }
 }

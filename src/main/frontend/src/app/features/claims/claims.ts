@@ -19,9 +19,9 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The claim's number on the sheet, given when it is opened and kept when it is voided; null for a
-   *  claim never opened. */
-  number: number | null;
+  /** The claim's number, given when it is opened and kept when it is voided: sheet-wide (1, 2, ...)
+   *  or, under period numbering, <period>-<n> or X-<n>; null for a claim never opened. */
+  number: string | null;
   /** The due fixed when the claim was settled (two decimals); null until then, or when its grade
    *  had no rate to work from. */
   settledDue: string | null;
@@ -32,7 +32,7 @@ export interface Claim {
   /** The figure the statement bound the claim to (two decimals); null when unbound or it had none. */
   statedDue: string | null;
   /** The number of the claim a correction (a negative amount) corrects; null when it is not one. */
-  corrects: number | null;
+  corrects: string | null;
   /** The date the claim's live figures round by (yyyy-mm-dd): its own, or for a correction the date
    *  of the claim it corrects. */
   roundsBy: string;
@@ -123,8 +123,8 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 /** A claim's amount: any amount with up to two decimals; a negative one is a correction. */
 const CLAIM_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
 
-/** A claim number a correction names. */
-const NUMBER = /^\d+$/;
+/** A claim number a correction names: sheet-wide (1, 2, ...) or within a period (P1-1, X-1). */
+const NUMBER = /^\S+$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
 // opened, saves its changes.
@@ -159,7 +159,6 @@ const NUMBER = /^\d+$/;
       <input
         [id]="'claim-corrects-' + personId()"
         data-testid="claim-form-corrects"
-        inputmode="numeric"
         [value]="corrects()"
         (input)="corrects.set(value($event)); error.set(null)"
       />
@@ -297,7 +296,7 @@ export class PersonClaims {
     this.amount.set(claim.amount);
     this.date.set(claim.date);
     this.note.set(claim.note);
-    this.corrects.set(claim.corrects === null ? '' : String(claim.corrects));
+    this.corrects.set(claim.corrects ?? '');
     this.error.set(null);
   }
 
@@ -362,7 +361,7 @@ export class PersonClaims {
       amount,
       date: this.date().trim() || null,
       note: this.note().trim(),
-      corrects: corrects === '' ? null : Number(corrects),
+      corrects: corrects === '' ? null : corrects,
     };
     const id = this.editingId();
     const base = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims`;

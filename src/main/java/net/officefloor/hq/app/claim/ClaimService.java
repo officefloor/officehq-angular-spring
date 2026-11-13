@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonGradeService;
@@ -27,6 +28,9 @@ public class ClaimService {
 
     /** Written for a due that has no rate to work from. */
     private static final String NO_RATE = "n/a";
+
+    /** The name a claim's period number takes when its date falls in no period. */
+    private static final String NO_PERIOD = "X";
 
     private final ClaimRepository claims;
     private final PersonRepository people;
@@ -58,8 +62,9 @@ public class ClaimService {
      *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
-            Long corrects) {
+            String corrects) {
         Person person = person(sheetId, personId);
+        corrects = numberOf(corrects);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
         refuseRetired(person, on);
@@ -73,8 +78,9 @@ public class ClaimService {
      *  other claim is refused: an OPEN one is changed by voiding it and adding a new one. */
     @Transactional
     public Claim update(String sheetId, String user, Long personId, Long id, BigDecimal amount, LocalDate date,
-            String note, Long corrects) {
+            String note, String corrects) {
         Person person = person(sheetId, personId);
+        corrects = numberOf(corrects);
         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
         if (claim.getStatus() != ClaimStatus.DRAFT) {
@@ -102,7 +108,9 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
         // read below is its latest state.
-        Long number = to == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
+        if (to == ClaimStatus.OPEN) {
+            sheets.lock(sheetId);
+        }
         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
         refuseClosed(sheetId, claim.getDate());
@@ -120,7 +128,7 @@ public class ClaimService {
         }
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
-            claim.setNumber(number);
+            claim.setNumber(nextNumber(sheetId, claim.getDate()));
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(due);
@@ -138,6 +146,26 @@ public class ClaimService {
         }
         audit.recordOnCommit(line);
         return saved;
+    }
+
+    /** The number a claim opened now takes: under period numbering (set, and the sheet's today on or
+     *  after it) the next within the period its date falls in, <period>-<n>, or X-<n> when it falls
+     *  in none; otherwise the sheet's next sheet-wide number. Taken with the sheet locked. */
+    private String nextNumber(String sheetId, LocalDate date) {
+        LocalDate from = settings.periodNumberingFrom(sheetId);
+        if (from == null || sheets.today(sheetId).isBefore(from)) {
+            return String.valueOf(sheets.nextClaimNumber(sheetId));
+        }
+        String prefix = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(period -> period.contains(date))
+                .findFirst().map(Period::getName).orElse(NO_PERIOD) + "-";
+        long last = claims.numbers(sheetId).stream()
+                .filter(number -> number.startsWith(prefix))
+                .map(number -> number.substring(prefix.length()))
+                .filter(n -> n.matches("\\d{1,18}"))
+                .mapToLong(Long::parseLong)
+                .max().orElse(0);
+        return prefix + (last + 1);
     }
 
     /** The figure a claim shows: the due fixed when it was settled, else the figure its person's
@@ -216,7 +244,7 @@ public class ClaimService {
 
     /** A negative amount (a correction) must name the number of a SETTLED claim of the same person;
      *  any other amount names none. */
-    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, Long corrects) {
+    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new CorrectionRefusedException("Only a negative amount corrects a claim");
@@ -257,11 +285,11 @@ public class ClaimService {
     }
 
     /** One audit line about a claim; a claim with a number carries it at the end. */
-    private void record(String event, String sheetId, String user, Person person, Claim claim, Long number) {
+    private void record(String event, String sheetId, String user, Person person, Claim claim, String number) {
         audit.recordOnCommit(line(event, sheetId, user, person, claim, number));
     }
 
-    private static String line(String event, String sheetId, String user, Person person, Claim claim, Long number) {
+    private static String line(String event, String sheetId, String user, Person person, Claim claim, String number) {
         return event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
                 + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
                 + (number != null ? " number=" + number : "");
@@ -269,6 +297,11 @@ public class ClaimService {
 
     private static BigDecimal scaled(BigDecimal amount) {
         return amount.setScale(2, RoundingMode.UNNECESSARY);
+    }
+
+    /** A claim number as typed: trimmed, null when blank. */
+    private static String numberOf(String number) {
+        return number == null || number.isBlank() ? null : number.trim();
     }
 
     private static String noteOf(String note) {

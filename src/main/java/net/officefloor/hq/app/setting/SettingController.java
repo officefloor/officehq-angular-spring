@@ -40,9 +40,9 @@ public class SettingController {
 
     /** The sheet's settings: the roles assigned, the clerk limit (two decimals; null for none) and
      *  the floor (two decimals), the terms (whole days), the late percent (two decimals) and the policy
-     *  date (blank for the sheet's today). */
+     *  date (blank for the sheet's today) and the period numbering from (blank for off). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, int terms, String latePct,
-            String policyDate) {
+            String policyDate, String periodNumberingFrom) {
     }
 
     /** A role for a user name: clerk or steward. */
@@ -67,6 +67,10 @@ public class SettingController {
 
     /** A policy date; null leaves it blank (the sheet's today). */
     public record PolicyDateRequest(LocalDate value) {
+    }
+
+    /** A period numbering from date; null leaves it blank (off). */
+    public record PeriodNumberingFromRequest(LocalDate value) {
     }
 
     private final SettingService service;
@@ -147,12 +151,24 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's period numbering from; it numbers only claims opened from then on. */
+    @PutMapping("/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated PeriodNumberingFromRequest request) {
+        String sheet = sheetId.trim();
+        service.setPeriodNumberingFrom(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     private SettingsView view(String sheet) {
         BigDecimal limit = service.clerkLimit(sheet);
         LocalDate policyDate = service.policyDateSet(sheet);
+        LocalDate numberingFrom = service.periodNumberingFrom(sheet);
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
                 limit != null ? limit.toPlainString() : null, service.floor(sheet).toPlainString(), service.terms(sheet),
-                service.latePct(sheet).toPlainString(), policyDate != null ? policyDate.toString() : "");
+                service.latePct(sheet).toPlainString(), policyDate != null ? policyDate.toString() : "",
+                numberingFrom != null ? numberingFrom.toString() : "");
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
