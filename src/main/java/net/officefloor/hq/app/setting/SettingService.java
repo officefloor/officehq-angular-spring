@@ -16,10 +16,10 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its cap, its terms
+/** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its cap, its proof threshold, its terms
  *  (and any grade's own terms) and its late percent, its policy date and its period numbering from. The
  *  settings that carry a figure are dated: each value recorded is in force from its from-date. A claim's
- *  floor, late percent and terms are those in force on its date; the clerk limit and the cap those in
+ *  floor, late percent, terms and proof threshold are those in force on its date; the clerk limit and the cap those in
  *  force on the sheet's today. */
 @Service
 public class SettingService {
@@ -88,6 +88,12 @@ public class SettingService {
     /** The sheet's cap in force on its today: the most a person's due-total can be; null when there is none. */
     public BigDecimal cap(String sheetId) {
         return inForce(sheetId, "cap", sheets.today(sheetId)).map(SettingValue::getValue).orElse(null);
+    }
+
+    /** The sheet's proof threshold in force on a date: a claim of that date whose due is above it cannot
+     *  be settled or approved while it has no proofs; null when there is none. */
+    public BigDecimal proofThreshold(String sheetId, LocalDate on) {
+        return inForce(sheetId, "proof-threshold", on).map(SettingValue::getValue).orElse(null);
     }
 
     /** A person's due-total held to the sheet's cap; a due-total of none (n/a) is not capped. */
@@ -183,6 +189,14 @@ public class SettingService {
     @Transactional
     public SettingValue setCap(String sheetId, String by, BigDecimal cap, LocalDate from) {
         return record(sheetId, by, "cap", cap != null ? cap.setScale(2, RoundingMode.UNNECESSARY) : null, from);
+    }
+
+    /** Record the sheet's proof threshold from a date (null for the sheet's today); a null threshold
+     *  records none. */
+    @Transactional
+    public SettingValue setProofThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
+        return record(sheetId, by, "proof-threshold",
+                threshold != null ? threshold.setScale(2, RoundingMode.UNNECESSARY) : null, from);
     }
 
     /** Record the sheet's terms from a date (null for the sheet's today). */

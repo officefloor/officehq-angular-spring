@@ -46,14 +46,14 @@ public class SettingController {
      *  the floor (two decimals), the cap (two decimals; null for none), the terms (whole days), the late percent (two decimals) and the policy
      *  date (blank for the sheet's today) and the period numbering from (blank for off), and the grades'
      *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
-     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap). */
+     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
-     *  terms, null for no clerk limit or cap. */
+     *  terms, null for no clerk limit, cap or proof threshold. */
     public record DatedView(String from, String value) {
         static DatedView of(SettingValue v) {
             String value = v.getValue() == null ? null
@@ -77,6 +77,10 @@ public class SettingController {
 
     /** A cap of 0.00 or more with up to two decimals; null removes the cap. */
     public record CapRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
+    }
+
+    /** A proof threshold of 0.00 or more with up to two decimals; null removes the threshold. */
+    public record ProofThresholdRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
     /** Terms of 0 or more whole days. Each figure setting is recorded from its from-date; null for the
@@ -151,6 +155,16 @@ public class SettingController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         rollups.track(sheet, by, () -> service.setCap(sheet, by, request.value(), request.from()));
+        return view(sheet);
+    }
+
+    /** Change the sheet's proof threshold. */
+    @PutMapping("/proof-threshold")
+    public SettingsView setProofThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ProofThresholdRequest request) {
+        String sheet = sheetId.trim();
+        service.setProofThreshold(sheet, SignedInUser.decode(user), request.value(), request.from());
         return view(sheet);
     }
 

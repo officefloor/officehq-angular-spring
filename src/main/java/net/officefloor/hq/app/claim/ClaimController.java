@@ -40,18 +40,20 @@ public class ClaimController {
      *  is the date its live figures round by against the sheet's policy date (its own date, or for a
      *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was
      *  added; log is its status log, oldest first, one line per status it has had; deferredUntil is
-     *  the date it was deferred until (null when it never was). */
+     *  the date it was deferred until (null when it never was); proofs is how many proofs were added
+     *  to it. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
-            LocalDate deferredUntil) {
+            LocalDate deferredUntil, int proofs) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
-                    claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil());
+                    claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
+                    claim.getProofs());
         }
     }
 
@@ -224,6 +226,15 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.defer(sheet, by, personId, id, request.until())));
     }
 
+    /** Add a proof to a claim that is not SETTLED or VOID. */
+    @PostMapping("/people/{personId}/claims/{id}/proof")
+    public ClaimView addProof(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, service.addProof(sheet, by, personId, id));
+    }
+
     /** Void a DRAFT, OPEN or PENDING claim. */
     @PostMapping("/people/{personId}/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -244,10 +255,11 @@ public class ClaimController {
     /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,
      *  any change to a claim dated in a closed period, a claim dated after its person retired, or a
      *  correction that does not name a SETTLED claim of its person, a move the claim does not allow,
-     *  or a deferral the claim does not allow, is refused. */
+     *  a deferral the claim does not allow, a proof added to a SETTLED or VOID claim, or settling or
+     *  approving a claim above the proof threshold with no proofs, is refused. */
     @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
-            DeferRefusedException.class})
+            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

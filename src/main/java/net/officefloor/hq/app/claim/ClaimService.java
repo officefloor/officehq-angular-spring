@@ -133,6 +133,9 @@ public class ClaimService {
         // Taken while the claim is still OPEN, so a settled due freezes in the late charge it has
         // gathered by then.
         BigDecimal due = to == ClaimStatus.SETTLED ? dueOf(sheetId, person, claim) : null;
+        if (to == ClaimStatus.SETTLED) {
+            refuseUnproved(sheetId, claim, due);
+        }
         if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, due)) {
             to = ClaimStatus.PENDING;
         }
@@ -190,12 +193,31 @@ public class ClaimService {
         if (user.equals(claim.getOpenedBy())) {
             throw new OwnClaimSettleRefusedException(user);
         }
-        claim.setSettledDue(dueOf(sheetId, person, claim));
+        BigDecimal due = dueOf(sheetId, person, claim);
+        refuseUnproved(sheetId, claim, due);
+        claim.setSettledDue(due);
         claim.setStatus(ClaimStatus.SETTLED);
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
         audit.recordOnCommit(line("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber())
                 + " due=" + settledDueText(saved));
+        return saved;
+    }
+
+    /** Add a proof to a claim: its proofs count rises by one. A SETTLED or VOID claim, or one dated in
+     *  a closed period, is refused. */
+    @Transactional
+    public Claim addProof(String sheetId, String user, Long personId, Long id) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ProofRefusedException(claim.getStatus());
+        }
+        claim.addProof();
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(line("CLAIM_PROOF_ADDED", sheetId, user, person, saved, saved.getNumber())
+                + " proofs=" + saved.getProofs());
         return saved;
     }
 
@@ -408,6 +430,15 @@ public class ClaimService {
             return false;
         }
         return settings.roleOf(sheetId, user) == Role.CLERK;
+    }
+
+    /** A claim whose due is above the proof threshold in force on its date cannot be settled or
+     *  approved while it has no proofs; a due of n/a, or no threshold, asks for none. */
+    private void refuseUnproved(String sheetId, Claim claim, BigDecimal due) {
+        BigDecimal threshold = settings.proofThreshold(sheetId, claim.getDate());
+        if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
+            throw new ProofRequiredException(due, threshold);
+        }
     }
 
     /** A negative amount (a correction) must name the number of a SETTLED claim of the same person;

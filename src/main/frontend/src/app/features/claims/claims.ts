@@ -46,6 +46,8 @@ export interface Claim {
   log: string[];
   /** The date the claim was deferred until (yyyy-mm-dd); null when it never was. */
   deferredUntil: string | null;
+  /** How many proofs were added to the claim. */
+  proofs: number;
 }
 
 /** Whether a claim is deferred on the sheet's today: it is OPEN and today is before the date it was
@@ -213,6 +215,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
+          <span data-testid="claim-proofs">{{ c.proofs }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim ' + c.id">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line }}</li>
@@ -247,6 +250,9 @@ const NUMBER = /^\S+$/;
           />
           <button type="button" data-testid="claim-defer" [attr.aria-label]="'Defer claim ' + c.id" (click)="defer(c)">
             Defer
+          </button>
+          <button type="button" data-testid="claim-proof" [attr.aria-label]="'Add a proof to claim ' + c.id" (click)="addProof(c)">
+            Add proof
           </button>
           <button type="button" data-testid="claim-void" [attr.aria-label]="'Void claim ' + c.id" (click)="act(c, 'void')">
             Void
@@ -427,6 +433,25 @@ export class PersonClaims {
     }
   }
 
+  /** Add a proof to a claim, raising its proofs count by one; a SETTLED or VOID claim, or one dated
+   *  in a closed period, is refused on the row. */
+  protected async addProof(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/proof`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, null));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch {
+      this.rowError.set({
+        id: claim.id,
+        message: 'A proof could not be added: a settled or voided claim, or one in a closed period, takes no more.',
+      });
+    }
+  }
+
   /** A steward moves a DRAFT, OPEN or PENDING claim to the person chosen on its row; anyone else, a
    *  SETTLED or VOID claim, or no person chosen, is refused on the row. */
   protected async reassign(claim: Claim): Promise<void> {
@@ -491,6 +516,8 @@ export class PersonClaims {
         message:
           forbidden && action === 'settle'
             ? 'The claim could not be settled: whoever opened it cannot settle it.'
+            : !forbidden && (action === 'settle' || action === 'approve')
+              ? `The claim could not be ${PAST[action]}: one due above the proof threshold needs a proof first, and its status must allow it.`
             : forbidden && action === 'resettle'
               ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
               : forbidden

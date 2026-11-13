@@ -38,7 +38,7 @@ public class BulkSettleService {
             try {
                 settled.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
                         claim.getPersonId(), claim.getId(), ClaimStatus.SETTLED)));
-            } catch (StatusChangeRefusedException | OwnClaimSettleRefusedException | PeriodClosedException
+            } catch (StatusChangeRefusedException | OwnClaimSettleRefusedException | ProofRequiredException | PeriodClosedException
                     | NoSuchElementException refused) {
                 // Left as it is: its change rolled back with its own transaction.
             }

@@ -10,8 +10,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A value recorded for one of a sheet's dated settings (floor, late-pct, terms, terms-&lt;grade&gt;,
- *  clerk-limit, cap): in force from its from-date until the next one recorded for the key. Null only
- *  for the clerk limit or the cap, where it means none. */
+ *  clerk-limit, cap, proof-threshold): in force from its from-date until the next one recorded for the
+ *  key. Null only for the clerk limit, the cap or the proof threshold, where it means none. */
 @Entity
 @Table(name = "sheet_setting_value")
 public class SettingValue {
