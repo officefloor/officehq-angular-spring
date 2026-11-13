@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, linkedSignal, signal } from '@angular/core';
 import { ClaimTemplates } from '../../core/claim-templates';
 import { Claims } from '../../core/claims';
 import { Holidays } from '../../core/holidays';
@@ -8,7 +8,9 @@ import { Plans } from '../../core/plans';
 import { Pools } from '../../core/pools';
 import { Rates } from '../../core/rates';
 import { Roles } from '../../core/roles';
+import { LocaleFigures } from '../../core/locale-figures';
 import { Session, isDate } from '../../core/session';
+import { LOCALES, UserLocale } from '../../core/user-locale';
 import { VoidReasons } from '../../core/void-reasons';
 import { AuditPanel } from '../audit/audit';
 import { ClaimTemplatesPanel } from '../claim-templates/claim-templates';
@@ -35,6 +37,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
+  hostDirectives: [LocaleFigures],
   imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, ClaimTemplatesPanel, ClassicSummaryPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
@@ -43,6 +46,24 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
       }
       <section aria-label="Session" data-testid="session-bar">
         <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+        <form (submit)="saveLocale($event)">
+          <label for="user-locale">Your locale</label>
+          <select
+            id="user-locale"
+            data-testid="user-locale"
+            [value]="localeInput()"
+            (change)="localeInput.set(value($event)); localeError.set(null)"
+          >
+            @for (l of locales; track l) {
+              <option [value]="l" [selected]="l === localeInput()">{{ l }}</option>
+            }
+          </select>
+          <button type="submit" data-testid="user-locale-save" [disabled]="savingLocale()">Save locale</button>
+        </form>
+        <p>Locale: <strong data-testid="user-locale-current">{{ userLocale.locale() }}</strong></p>
+        @if (localeError(); as err) {
+          <p role="alert" data-testid="user-locale-error">{{ err }}</p>
+        }
         <form (submit)="load($event)">
           <label for="sheet-id-input">Sheet id</label>
           <input
@@ -146,6 +167,8 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 })
 export class Home {
   protected readonly session = inject(Session);
+  protected readonly userLocale = inject(UserLocale);
+  protected readonly locales = LOCALES;
   private readonly people = inject(People);
   private readonly claims = inject(Claims);
   private readonly rates = inject(Rates);
@@ -171,6 +194,10 @@ export class Home {
   protected readonly clonedTo = signal<string | null>(null);
   protected readonly asOfInput = signal('');
   protected readonly asOfError = signal<string | null>(null);
+  /** The locale chosen in the select; follows the user's saved locale each time it is re-read. */
+  protected readonly localeInput = linkedSignal(() => this.userLocale.locale());
+  protected readonly localeError = signal<string | null>(null);
+  protected readonly savingLocale = signal(false);
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
@@ -178,7 +205,21 @@ export class Home {
 
   protected signIn(e: Event): void {
     e.preventDefault();
-    this.signinError.set(this.session.signIn(this.nameInput()) ? null : 'Enter your name.');
+    const signedIn = this.session.signIn(this.nameInput());
+    this.signinError.set(signedIn ? null : 'Enter your name.');
+    if (signedIn) void this.userLocale.load();
+  }
+
+  protected async saveLocale(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.savingLocale()) return; // a second submit before the first has answered
+    this.localeError.set(null);
+    this.savingLocale.set(true);
+    try {
+      this.localeError.set(await this.userLocale.choose(this.localeInput()));
+    } finally {
+      this.savingLocale.set(false);
+    }
   }
 
   protected async load(e: Event): Promise<void> {
@@ -197,7 +238,7 @@ export class Home {
   private async loadSheet(id: string): Promise<string | null> {
     return (
       (await this.session.loadSheet(id)) ??
-      (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
+      (await Promise.all([this.userLocale.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
       null
     );
   }

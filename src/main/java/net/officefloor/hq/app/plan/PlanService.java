@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonNotFoundException;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +23,12 @@ public class PlanService {
     private final PersonRepository people;
     private final ClaimService claims;
     private final SheetService sheets;
+    private final RoleService roles;
     private final Audit audit;
 
     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
-            Audit audit) {
+            RoleService roles, Audit audit) {
+        this.roles = roles;
         this.plans = plans;
         this.people = people;
         this.claims = claims;
@@ -84,11 +87,15 @@ public class PlanService {
 
     /** For every plan on the sheet in the order they were added, make a DRAFT claim of its amount with an
      *  empty note on each plan date up to its end and the sheet's today it has made none for yet; a date the
-     *  claim form refuses is skipped, and tried again next time. */
+     *  claim form refuses is skipped, and tried again next time. Like a bulk action, a viewer's generate goes
+     *  through with nothing made. */
     @Transactional
     public Generated generate(String sheetId, String user) {
         LocalDate today = sheets.today(sheetId);
         List<Plan> all = plans.findBySheetIdOrderByIdAsc(sheetId);
+        if (roles.isViewer(sheetId, user)) {
+            return new Generated(List.of(), all, today);
+        }
         List<Claim> made = new ArrayList<>();
         for (Plan plan : all) {
             if (people.findByIdAndSheetId(plan.getPersonId(), sheetId).isEmpty()) {
