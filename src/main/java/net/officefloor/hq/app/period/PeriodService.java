@@ -197,7 +197,8 @@ public class PeriodService {
         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
             if (person == null
-                    || !claim.countsAsOf(atEnd.get(claim.getId()), holds.getOrDefault(person.getId(), List.of()), today)
+                    || !claim.countsAsOf(atEnd.get(claim.getId()), holds.getOrDefault(person.getId(), List.of()),
+                            person.getRetiredFrom(), today)
                     || !period.contains(claim.getDate())) {
                 continue;
             }

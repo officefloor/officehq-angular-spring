@@ -418,18 +418,24 @@ export class People {
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
-   *  on the sheet's today, and an OPEN one dated within one of its person's holds and not bound by a statement. */
+   *  on the sheet's today, and, unless bound by a statement, an OPEN one dated within one of its person's
+   *  holds or an OPEN or PENDING one whose person is retired by the sheet's today. */
   private readonly live = computed(() => this.claims().filter((c) => counts(c) && this.liveRulesKeep()(c)));
-  /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and not an OPEN
-   *  one dated within one of its person's holds and not bound by a statement. */
+  /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and, unless bound
+   *  by a statement, not an OPEN one dated within one of its person's holds, nor an OPEN or PENDING one
+   *  whose person's retirement date is on or before the sheet's today. */
   private readonly liveRulesKeep = computed(() => {
     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
+    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
+    const today = this.session.today();
     const held = (c: Claim) =>
       c.status === 'OPEN' &&
-      !c.stated &&
       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
-    const today = this.session.today();
-    return (c: Claim) => !deferred(c, today) && !held(c);
+    const retired = (c: Claim) => {
+      const from = retiredFrom.get(c.personId) ?? null;
+      return isOpen(c) && from !== null && today !== null && from <= today;
+    };
+    return (c: Claim) => !deferred(c, today) && (c.stated || !(held(c) || retired(c)));
   });
   /** Each person's claims that count toward what is claimed and due, by person id. */
   private readonly countedByPerson = computed(() => {

@@ -164,7 +164,7 @@ public class PersonController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody RetireRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return withStatements(service.retire(sheet, by, id, request.from()), by);
+        return withStatements(rollups.track(sheet, by, () -> service.retire(sheet, by, id, request.from())), by);
     }
 
     /** Put a hold on a person from a date to an optional to-date. */

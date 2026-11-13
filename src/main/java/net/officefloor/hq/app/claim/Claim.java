@@ -294,17 +294,24 @@ public class Claim {
         return status == ClaimStatus.OPEN && holds.stream().anyMatch(hold -> hold.contains(date));
     }
 
-    /** Whether the claim counts in live totals on the sheet's today given its person's holds: one that
-     *  counts and is not deferred, unless it is held and not bound by a statement (a bound claim stays
-     *  in whatever its date). */
-    public boolean countsLive(List<PersonHold> holds, LocalDate today) {
-        return counts() && !deferredOn(today) && (stated || !heldBy(holds));
+    /** Whether the claim is left out for its person's retirement: it is OPEN or PENDING and the
+     *  sheet's today is on or after the date they are retired from (null: not retired). */
+    public boolean retiredOn(LocalDate retiredFrom, LocalDate today) {
+        return status.isOpen() && retiredFrom != null && !today.isBefore(retiredFrom);
+    }
+
+    /** Whether the claim counts in live totals on the sheet's today given its person's holds and
+     *  retirement date: one that counts and is not deferred, unless it is held, or OPEN or PENDING once
+     *  its person is retired, and not bound by a statement (a bound claim stays in whatever its date). */
+    public boolean countsLive(List<PersonHold> holds, LocalDate retiredFrom, LocalDate today) {
+        return counts() && !deferredOn(today) && (stated || !(heldBy(holds) || retiredOn(retiredFrom, today)));
     }
 
     /** Whether the claim counts in a period's live figures, given the status it had at the end of the
      *  period's last day (null when it was added after): that status counts, and the live rules leave
-     *  it in (not deferred on the sheet's today, and not held unless bound by a statement). */
-    public boolean countsAsOf(ClaimStatus then, List<PersonHold> holds, LocalDate today) {
-        return then != null && then.counts() && !deferredOn(today) && (stated || !heldBy(holds));
+     *  it in (not deferred on the sheet's today, and not held or retired out unless bound by a statement). */
+    public boolean countsAsOf(ClaimStatus then, List<PersonHold> holds, LocalDate retiredFrom, LocalDate today) {
+        return then != null && then.counts() && !deferredOn(today)
+                && (stated || !(heldBy(holds) || retiredOn(retiredFrom, today)));
     }
 }

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,8 +104,11 @@ public class RollupService {
         LocalDate today = sheets.today(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
+        Map<Long, LocalDate> retiredFrom = new HashMap<>();
+        sheetPeople.forEach(person -> retiredFrom.put(person.getId(), person.getRetiredFrom()));
         Map<Long, List<Claim>> counted = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
-                .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of()), today))
+                .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of()),
+                        retiredFrom.get(claim.getPersonId()), today))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;
