@@ -31,20 +31,22 @@ public class PeriodController {
 
     /** A period as the screen shows it: its name, its from and to dates (YYYY-MM-DD), whether it is
      *  closed or soft-closed and, once either, the due-total fixed then and each person's fixed then, by person id
-     *  (two decimals). */
+     *  (two decimals); and its cap on each person's open claims in it (none: no cap). */
     public record PeriodView(long id, String name, String from, String to, boolean closed, boolean soft, String closedTotal,
-            Map<Long, String> closedPersonTotals) {
+            Map<Long, String> closedPersonTotals, Integer cap) {
 
         static PeriodView of(Period p) {
             Map<Long, String> people = new TreeMap<>();
             p.getClosedPersonTotals().forEach((id, total) -> people.put(id, total.toPlainString()));
             return new PeriodView(p.getId(), p.getName(), p.getFromDate().toString(), p.getToDate().toString(),
-                    p.isClosed(), p.isSoftClosed(), p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), people);
+                    p.isClosed(), p.isSoftClosed(), p.getClosedTotal() == null ? null : p.getClosedTotal().toPlainString(), people,
+                    p.getCap());
         }
     }
 
+    /** A period to add: its cap on each person's open claims in it is a whole number of 1 or more, or none. */
     public record PeriodRequest(@NotBlank @Size(max = 200) String name, @NotNull LocalDate from,
-            @NotNull LocalDate to) {
+            @NotNull LocalDate to, @Min(1) Integer cap) {
     }
 
     /** The months to generate periods for: a blank from-date takes the sheet's today. */
@@ -79,7 +81,8 @@ public class PeriodController {
     public PeriodView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PeriodRequest request) {
-        return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.from(), request.to()));
+        return PeriodView.of(service.add(sheetId.trim(), user.trim(), request.name(), request.from(), request.to(),
+                request.cap()));
     }
 
     /** Generate a period per calendar month from the from-date's month to the to-date's month, leaving out

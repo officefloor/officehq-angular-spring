@@ -662,6 +662,14 @@ public class ClaimController {
         return Map.of("message", e.getMessage());
     }
 
+    /** An open of a claim whose person already has as many open claims in its period as the period's cap is
+     *  refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimCapException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> capRefused(ClaimCapException e) {
+        return Map.of("message", e.getMessage());
+    }
+
     /** A split that is not allowed is refused with the reason, for the screen to show. */
     @ExceptionHandler(ClaimSplitException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
@@ -28,6 +30,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("select count(c) > 0 from Claim c where c.sheetId = :sheetId and lower(c.ref) = lower(:ref)"
             + " and (:excluded is null or c.id <> :excluded)")
     boolean refUsed(@Param("sheetId") String sheetId, @Param("ref") String ref, @Param("excluded") Long excluded);
+
+    /** How many of a person's claims in the statuses are due by a day from one date to another, both inclusive. */
+    long countBySheetIdAndPersonIdAndStatusInAndDueByBetween(String sheetId, Long personId,
+            Collection<ClaimStatus> statuses, LocalDate from, LocalDate to);
 
     boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
             ClaimStatus status);

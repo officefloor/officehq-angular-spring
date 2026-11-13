@@ -44,12 +44,15 @@ public class PeriodService {
     }
 
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         // Locking the sheet makes two users' periods go one after the other, so neither misses an overlap.
         sheets.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         String n = name.trim();
         if (from.isAfter(to)) {
             throw new PeriodRefusedException("The from-date must be on or before the to-date.");
+        }
+        if (cap != null && cap < 1) {
+            throw new PeriodRefusedException("The cap must be a whole number of 1 or more.");
         }
         List<Period> existing = periods.findBySheetIdOrderByFromDateAsc(sheetId);
         if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(n))) {
@@ -60,12 +63,12 @@ public class PeriodService {
         });
         Period period;
         try {
-            period = periods.saveAndFlush(new Period(sheetId, n, from, to));
+            period = periods.saveAndFlush(new Period(sheetId, n, from, to, cap));
         } catch (DataIntegrityViolationException e) {
             throw new PeriodRefusedException("That period name is already in use.");
         }
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
-                + " period=" + n + " from=" + from + " to=" + to);
+                + " period=" + n + " from=" + from + " to=" + to + (cap != null ? " cap=" + cap : ""));
         return period;
     }
 

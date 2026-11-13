@@ -3,7 +3,7 @@ import { Figures } from '../../core/figures';
 import { Period, Periods } from '../../core/periods';
 
 // The sheet's periods: one form adds a period, another generates one per calendar month, a third the twelve of a fiscal year,
-// and the list shows each with its dates, the fiscal year its from-date falls in, and its
+// and the list shows each with its dates, its cap on each person's open claims in it, the fiscal year its from-date falls in, and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
 // whether it is closed or soft-closed, with buttons to close it, soft-close it and reopen it (by the roles the sheet allows).
 @Component({
@@ -34,6 +34,14 @@ import { Period, Periods } from '../../core/periods';
           placeholder="YYYY-MM-DD"
           [value]="to()"
           (input)="to.set(value($event)); error.set(null)"
+        />
+        <label for="period-form-cap">Open claims cap per person (blank for none)</label>
+        <input
+          id="period-form-cap"
+          data-testid="period-form-cap"
+          inputmode="numeric"
+          [value]="cap()"
+          (input)="cap.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="period-form-submit" [disabled]="saving()">Add period</button>
         @if (error(); as err) {
@@ -79,7 +87,7 @@ import { Period, Periods } from '../../core/periods';
       }
       <table data-testid="period-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Actions</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Cap</th><th scope="col">Actions</th></tr>
         </thead>
         <tbody>
           @for (p of periods.periods(); track p.id) {
@@ -90,6 +98,7 @@ import { Period, Periods } from '../../core/periods';
               <td data-testid="period-fy">{{ periods.fiscalYearOf(p.from) }}</td>
               <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.soft ? 'soft' : 'no' }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 <button type="button" data-testid="period-close" [disabled]="acting() === p.id" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
@@ -116,6 +125,7 @@ export class PeriodsPanel {
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
+  protected readonly cap = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   /** The generate form: its dates, how many it last made, and its refusal. */
@@ -198,12 +208,13 @@ export class PeriodsPanel {
     this.error.set(null);
     this.saving.set(true);
     try {
-      const err = await this.periods.add({ name: this.name(), from: this.from(), to: this.to() });
+      const err = await this.periods.add({ name: this.name(), from: this.from(), to: this.to(), cap: this.cap() });
       if (err) this.error.set(err);
       else {
         this.name.set('');
         this.from.set('');
         this.to.set('');
+        this.cap.set('');
       }
     } finally {
       this.saving.set(false);

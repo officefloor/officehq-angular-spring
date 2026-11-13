@@ -19,6 +19,8 @@ export interface Period {
   /** Each person's due-total for it fixed when it was closed, two decimals, by person id; empty while
    *  open. A person missing here (added after it closed) has 0.00. */
   closedPersonTotals: Record<number, string>;
+  /** The most OPEN or PENDING claims a person may have in it; null for no cap. */
+  cap: number | null;
 }
 
 export interface PeriodFields {
@@ -26,6 +28,8 @@ export interface PeriodFields {
   /** Blank takes the sheet's today. */
   from: string;
   to: string;
+  /** A whole number of 1 or more; blank for no cap. */
+  cap: string;
 }
 
 // The active sheet's periods, by from-date, re-read from the server each time the sheet is loaded.
@@ -69,13 +73,17 @@ export class Periods {
     if (!name) return 'Enter a name.';
     if (!isDate(from) || !isDate(to)) return 'Enter the from and to dates as YYYY-MM-DD.';
     if (from > to) return 'The from-date must be on or before the to-date.';
+    const capText = f.cap.trim();
+    if (capText && !/^[0-9]+$/.test(capText)) return 'Enter the cap as a whole number, or leave it blank.';
+    const cap = capText ? Number(capText) : null;
+    if (cap !== null && cap < 1) return 'The cap must be 1 or more.';
     if (this.periods().some((p) => p.name.toLowerCase() === name.toLowerCase())) return 'That period name is already in use.';
     const clash = this.periods().find((p) => p.from <= to && from <= p.to);
     if (clash) return `The period overlaps ${clash.name}.`;
     const sid = this.session.sheetId()!;
     try {
       const period = await firstValueFrom(
-        this.http.post<Period>(this.url(sid), { name, from, to }, { headers: { 'X-User': this.session.user()! } }),
+        this.http.post<Period>(this.url(sid), { name, from, to, cap }, { headers: { 'X-User': this.session.user()! } }),
       );
       if (this.session.sheetId() === sid) this.periods.update((ps) => [...ps, period].sort(byFrom));
       return null;
@@ -83,7 +91,9 @@ export class Periods {
       if (e instanceof HttpErrorResponse && e.status === 409) {
         return 'The period overlaps another, or its name is already in use.';
       }
-      if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, and the from and to dates as YYYY-MM-DD.';
+      if (e instanceof HttpErrorResponse && e.status === 400) {
+        return 'Enter a name, the from and to dates as YYYY-MM-DD, and a cap of 1 or more (or none).';
+      }
       return e instanceof HttpErrorResponse ? `Could not add period (${e.status}).` : 'Could not add period.';
     }
   }

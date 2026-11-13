@@ -165,8 +165,8 @@ public class SheetCloneService {
 
     /** Copy the periods, all open. */
     private void copyPeriods(String id, String target) {
-        jdbc.update("INSERT INTO period (sheet_id, name, from_date, to_date, closed, soft_closed)"
-                + " SELECT ?, name, from_date, to_date, FALSE, FALSE FROM period WHERE sheet_id = ? ORDER BY id",
+        jdbc.update("INSERT INTO period (sheet_id, name, from_date, to_date, closed, soft_closed, claim_cap)"
+                + " SELECT ?, name, from_date, to_date, FALSE, FALSE, claim_cap FROM period WHERE sheet_id = ? ORDER BY id",
                 target, id);
     }
 

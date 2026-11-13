@@ -49,6 +49,10 @@ public class Period {
     @Column(name = "soft_closed", nullable = false)
     private boolean softClosed;
 
+    /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
+    @Column(name = "claim_cap")
+    private Integer cap;
+
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
 
@@ -63,10 +67,15 @@ public class Period {
     }
 
     public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate) {
+        this(sheetId, name, fromDate, toDate, null);
+    }
+
+    public Period(String sheetId, String name, LocalDate fromDate, LocalDate toDate, Integer cap) {
         this.sheetId = sheetId;
         this.name = name;
         this.fromDate = fromDate;
         this.toDate = toDate;
+        this.cap = cap;
     }
 
     public Long getId() {
@@ -87,6 +96,11 @@ public class Period {
 
     public LocalDate getToDate() {
         return toDate;
+    }
+
+    /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
+    public Integer getCap() {
+        return cap;
     }
 
     public boolean isClosed() {

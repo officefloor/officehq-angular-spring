@@ -15,6 +15,7 @@ import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.holiday.HolidayService;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -253,6 +254,7 @@ public class ClaimService {
                 .orElseThrow(PersonNotFoundException::new);
         if (to == ClaimStatus.OPEN) {
             refuseNoteless(claim, shownDue(claim, person));
+            refuseOverCap(claim);
         }
         Rollup.Snapshot before = rollup.take(sheetId);
         String number = claim.getNumber();
@@ -694,7 +696,7 @@ public class ClaimService {
             try {
                 opened.add(changeStatus(sheetId, user, claim.getId(), ClaimStatus.OPEN));
             } catch (ClaimStatusException | PeriodClosedException | ClaimNotFoundException
-                    | ActionNotAllowedException | ClaimNoteException e) {
+                    | ActionNotAllowedException | ClaimNoteException | ClaimCapException e) {
                 // refused: left as it is
             }
         }
@@ -961,6 +963,23 @@ public class ClaimService {
         sheetRows.findForUpdateById(sheetId).orElseThrow(SheetNotFoundException::new);
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException();
+        }
+    }
+
+    /** Refuse opening a claim that belongs to a period with a cap (the one containing its due-by) when its
+     *  person already has that many OPEN or PENDING claims in the period. */
+    private void refuseOverCap(Claim claim) {
+        Optional<Period> period = periods.findBySheetIdOrderByFromDateAsc(claim.getSheetId()).stream()
+                .filter(p -> p.contains(claim.getDueBy())).findFirst();
+        if (period.isEmpty() || period.get().getCap() == null) {
+            return;
+        }
+        Period p = period.get();
+        long open = claims.countBySheetIdAndPersonIdAndStatusInAndDueByBetween(claim.getSheetId(),
+                claim.getPersonId(), List.of(ClaimStatus.OPEN, ClaimStatus.PENDING), p.getFromDate(), p.getToDate());
+        if (open >= p.getCap()) {
+            throw new ClaimCapException("The person already has " + p.getCap() + " open claims in period "
+                    + p.getName() + ".");
         }
     }
 
