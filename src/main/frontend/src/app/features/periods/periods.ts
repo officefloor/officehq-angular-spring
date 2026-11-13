@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { Figures } from '../../core/figures';
 import { Period, Periods } from '../../core/periods';
 
-// The sheet's periods: one form adds a period, another generates one per calendar month, a third the twelve of a fiscal year,
+// The sheet's periods: one form adds a period, another generates one per calendar month, a third the twelve of a fiscal year, a fourth the four calendar quarters of a year,
 // and the list shows each with its dates, its cap on each person's open claims in it, the fiscal year its from-date falls in, and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
 // whether it is closed or soft-closed, with buttons to close it, soft-close it and reopen it (by the roles the sheet allows), and whether it is locked, with buttons for a
@@ -80,6 +80,18 @@ import { Period, Periods } from '../../core/periods';
           (input)="fyYear.set(value($event)); genError.set(null)"
         />
         <button type="submit" data-testid="period-generate-fy" [disabled]="generating()">Generate fiscal year</button>
+      </form>
+      <form (submit)="generateQuarters($event)" data-testid="period-generate-quarters-form">
+        <label for="period-generate-quarters-year">Generate the calendar quarters of year (YYYY)</label>
+        <input
+          id="period-generate-quarters-year"
+          data-testid="period-generate-quarters-year"
+          inputmode="numeric"
+          placeholder="YYYY"
+          [value]="quartersYear()"
+          (input)="quartersYear.set(value($event)); genError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-quarters" [disabled]="generating()">Generate quarters</button>
       </form>
       @if (generated() !== null) {
         <p>Made <span data-testid="period-generated">{{ generated() }}</span> period(s)</p>
@@ -162,6 +174,8 @@ export class PeriodsPanel {
   protected readonly genError = signal<string | null>(null);
   /** The fiscal year typed for the fiscal-year generator, which shares the count and refusal above. */
   protected readonly fyYear = signal('');
+  /** The calendar year typed for the quarters generator, which shares the count and refusal above. */
+  protected readonly quartersYear = signal('');
   /** The opening balances paste: its text, how many lines it last added, and its refusal. */
   protected readonly openingText = signal('');
   protected readonly importing = signal(false);
@@ -237,14 +251,23 @@ export class PeriodsPanel {
     }
   }
 
-  protected async generateFy(e: Event): Promise<void> {
+  protected generateFy(e: Event): Promise<void> {
+    return this.runGenerator(e, () => this.periods.generateFiscalYear(this.fyYear()));
+  }
+
+  protected generateQuarters(e: Event): Promise<void> {
+    return this.runGenerator(e, () => this.periods.generateQuarters(this.quartersYear()));
+  }
+
+  /** Run one of the generators, clearing the last count and refusal, then showing the new one. */
+  private async runGenerator(e: Event, run: () => Promise<number | string>): Promise<void> {
     e.preventDefault();
     if (this.generating()) return;
     this.generated.set(null);
     this.genError.set(null);
     this.generating.set(true);
     try {
-      const made = await this.periods.generateFiscalYear(this.fyYear());
+      const made = await run();
       if (typeof made === 'string') this.genError.set(made);
       else this.generated.set(made);
     } finally {

@@ -63,6 +63,10 @@ public class PeriodController {
     public record GenerateFiscalYearRequest(@NotNull @Min(1) @Max(9998) Integer year) {
     }
 
+    /** The calendar year to generate the four quarters of. */
+    public record GenerateQuartersRequest(@NotNull @Min(1) @Max(9999) Integer year) {
+    }
+
     /** Opening balances to paste: lines of name,period,amount. */
     public record OpeningsRequest(@NotNull @Size(max = 100000) String text) {
     }
@@ -118,6 +122,16 @@ public class PeriodController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid GenerateFiscalYearRequest request) {
         return service.generateFiscalYear(sheetId.trim(), user.trim(), request.year()).stream()
+                .map(PeriodView::of).toList();
+    }
+
+    /** Generate the four calendar quarters of a year, named yyyy-Q1 to yyyy-Q4, leaving out any quarter whose
+     *  name is taken or that overlaps a period. The periods made. */
+    @PostMapping("/generate-quarters")
+    public List<PeriodView> generateQuarters(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid GenerateQuartersRequest request) {
+        return service.generateQuarters(sheetId.trim(), user.trim(), request.year()).stream()
                 .map(PeriodView::of).toList();
     }
 

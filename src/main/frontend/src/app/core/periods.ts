@@ -151,6 +151,27 @@ export class Periods {
     }
   }
 
+  /** Generate the four calendar quarters of a year, named <yyyy>-Q1 to <yyyy>-Q4, leaving out any quarter
+   *  whose name is taken or that overlaps a period: how many were made, or an error message when refused. */
+  async generateQuarters(year: string): Promise<number | string> {
+    if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
+    const y = year.trim();
+    if (!/^\d{4}$/.test(y) || Number(y) < 1) return 'Enter the year as YYYY.';
+    const sid = this.session.sheetId()!;
+    try {
+      const made = await firstValueFrom(
+        this.http.post<Period[]>(`${this.url(sid)}/generate-quarters`, { year: Number(y) },
+          { headers: { 'X-User': this.session.user()! } }),
+      );
+      if (this.session.sheetId() === sid) this.periods.update((ps) => [...ps, ...made].sort(byFrom));
+      return made.length;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not add periods.';
+      if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the year as YYYY.';
+      return e instanceof HttpErrorResponse ? `Could not generate periods (${e.status}).` : 'Could not generate periods.';
+    }
+  }
+
   /** The fiscal year (FY<yyyy>) a date (YYYY-MM-DD) falls in, by the sheet's fiscal start month: named by the
    *  calendar year its first day falls in. */
   fiscalYearOf(date: string): string {
