@@ -104,10 +104,6 @@ public class Rollup {
                     // a claim that corrects another is left out of claimed
                     claimed = claimed.add(claim.getAmount());
                 }
-                if (heldOut(claim, person, today)) {
-                    // a hold leaves a claim in claimed, but out of the due figures
-                    continue;
-                }
                 BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
                         : claim.isBound() ? claim.getStatedDue() : null;
                 BigDecimal figure = null;
@@ -387,12 +383,11 @@ public class Rollup {
         return person != null && claim.getStatus().isOpen() && !claim.isBound() && person.retiredBy(today);
     }
 
-    /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by
-     *  no statement, and held itself, or dated within one of its person's holds, or its person's retirement
-     *  date is reached on the sheet's today. */
+    /** Whether a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by no
+     *  statement, and its person's retirement date is reached on the sheet's today. A hold no longer does:
+     *  it only takes a person's cut out of the pools. */
     public static boolean heldOut(Claim claim, Person person, LocalDate today) {
-        return person != null && claim.getStatus().isOpen() && !claim.isBound()
-                && (claim.isHeld() || person.heldOn(claim.getDate()) || person.retiredBy(today));
+        return retiredOut(claim, person, today);
     }
 
     /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on

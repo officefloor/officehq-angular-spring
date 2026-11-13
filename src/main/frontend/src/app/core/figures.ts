@@ -77,7 +77,7 @@ export class Figures {
       .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
   }
 
-  /** The due of a person's OPEN and PENDING claims that count live (not held, deferred or retired-and-excluded). */
+  /** The due of a person's OPEN and PENDING claims that count live (not deferred or retired-and-excluded). */
   openCents(p: Person): bigint {
     return this.claims
       .live()

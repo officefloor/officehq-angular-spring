@@ -545,8 +545,8 @@ public class ClaimService {
         return updated;
     }
 
-    /** Hold an OPEN or PENDING claim, or release it when held: while held it leaves the live totals as a
-     *  held person's claims do; write CLAIM_HELD or CLAIM_RELEASED. Refused for a claim in any other status. */
+    /** Hold an OPEN or PENDING claim, or release it when held: a hold no longer leaves the live totals;
+     *  write CLAIM_HELD or CLAIM_RELEASED. Refused for a claim in any other status. */
     @Transactional
     public Claim toggleHold(String sheetId, String user, long claimId) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);

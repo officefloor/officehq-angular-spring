@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { People, Person, gradeOn, heldOn, retiredBy } from './people';
+import { People, Person, gradeOn, retiredBy } from './people';
 import { hundredths, rounded } from './rates';
 import { Session, addDays, daysBetween, isDate } from './session';
 
@@ -187,16 +187,15 @@ export class Claims {
     return this.claims().filter((c) => !leftOut(c) && !this.deferred(c));
   });
 
-  /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound
-   *  by no statement, and held itself, or dated within one of its person's holds, or its person's
-   *  retirement date is reached on the sheet's today. */
+  /** Whether a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by no
+   *  statement, and its person's retirement date is reached on the sheet's today. A hold no longer does. */
   private readonly leftOut = computed(() => {
     const today = this.session.today();
     const byId = new Map(this.people.people().map((p) => [p.id, p]));
     return (c: Claim): boolean => {
       const p = byId.get(c.personId);
       return isOpen(c) && !bound(c) && p !== undefined
-        && (c.held || heldOn(p.holds, c.date) || retiredBy(p, today));
+        && retiredBy(p, today);
     };
   });
 
