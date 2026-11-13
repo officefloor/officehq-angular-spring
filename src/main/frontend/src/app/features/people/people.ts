@@ -184,6 +184,7 @@ function compareKeys(a: string, b: string): number {
       </select>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+      <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
       <section aria-label="Grade or retire selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select
@@ -957,6 +958,20 @@ export class PeopleList {
       }
     }
     download(lines, 'claims.csv');
+  }
+
+  /** Download the period figures as CSV: people in list order, each with the periods in the order
+   *  added, with the figure and carried amount as their rows show them. */
+  protected async exportPeriods(): Promise<void> {
+    await this.session.loaded();
+    const periods = [...this.periods.periods()].sort((a, b) => a.id - b.id);
+    const lines = [['person', 'period', 'figure', 'carried']];
+    for (const p of this.people.people()) {
+      for (const period of periods) {
+        lines.push([p.name, period.name, this.figures.personPeriodDue(period, p.id), this.figures.personPeriodCarried(period, p.id)]);
+      }
+    }
+    download(lines, 'periods.csv');
   }
 
   /** Download the person's statement as CSV: their claims bound by their last statement, oldest
