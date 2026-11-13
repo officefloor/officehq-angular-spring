@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -22,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.history.History;
 
@@ -44,6 +46,8 @@ public class Sheet {
     /** The rounding modes a sheet can set: each value, and how it rounds. */
     public static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
             "half-up", RoundingMode.HALF_UP, "half-even", RoundingMode.HALF_EVEN);
+    /** The policy settings: every change to one of them is a new policy version. */
+    public static final Set<String> POLICY_KEYS = Set.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT, CLERK_LIMIT);
     /** The actions the permission matrix covers, and the roles that may take each by the standing rule. */
     public static final Map<String, List<String>> STANDING_PERMISSIONS = Map.of(
             "open", List.of("clerk", "steward"), "settle", List.of("clerk", "steward"),
@@ -83,6 +87,12 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<SheetSetting> settings = new ArrayList<>();
+
+    /** The policy versions, in the order made: a version's number is its place in the list, from 1. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_policy_version", joinColumns = @JoinColumn(name = "sheet_id"))
+    @OrderColumn(name = "version_index")
+    private List<PolicyVersion> policyVersions = new ArrayList<>();
 
     /** The permission matrix: for an action, the roles that may take it, comma separated; an action with none
      *  keeps the standing rule. Not dated. */
@@ -238,6 +248,25 @@ public class Sheet {
     public void setSetting(String key, LocalDate from, String value) {
         settings.removeIf(s -> s.getKey().equals(key) && s.getFromDate().equals(from));
         settings.add(new SheetSetting(key, from, value));
+        if (POLICY_KEYS.contains(key)) {
+            policyVersions.add(new PolicyVersion(key, from));
+        }
+    }
+
+    /** The policy versions, in the order made. */
+    public List<PolicyVersion> getPolicyVersions() {
+        return List.copyOf(policyVersions);
+    }
+
+    /** The current policy version: the number of versions made; 0 before the first. */
+    public int getPolicyVersion() {
+        return policyVersions.size();
+    }
+
+    /** The policy version in force on a date: the number of versions whose from-date is on or before it (a
+     *  version with none counts always). */
+    public int policyVersionOn(LocalDate date) {
+        return (int) policyVersions.stream().filter(v -> v.countsOn(date)).count();
     }
 
     /** The value of a setting in force on a date: the one with the latest from-date on or before it; empty
@@ -254,14 +283,20 @@ public class Sheet {
 
     /** The largest due a clerk may settle, in force on the sheet's today; none when there is no limit. */
     public BigDecimal getClerkLimit() {
-        return decimalOn(CLERK_LIMIT, today, null);
+        return clerkLimitOn(today);
     }
 
-    /** The clerk limit for a grade, in force on the sheet's today: the grade's own (clerk-limit-<grade>) when
-     *  one is set then, else the sheet's; none when neither is. */
-    public BigDecimal clerkLimitFor(String grade) {
-        BigDecimal own = grade == null ? null : decimalOn(CLERK_LIMIT + "-" + grade, today, null);
-        return own != null ? own : getClerkLimit();
+    /** The largest due a clerk may settle of a claim dated on a date: the one in force then; none when there
+     *  is no limit. */
+    public BigDecimal clerkLimitOn(LocalDate date) {
+        return decimalOn(CLERK_LIMIT, date, null);
+    }
+
+    /** The clerk limit for a grade of a claim dated on a date, in force then: the grade's own
+     *  (clerk-limit-<grade>) when one is set then, else the sheet's; none when neither is. */
+    public BigDecimal clerkLimitFor(String grade, LocalDate date) {
+        BigDecimal own = grade == null ? null : decimalOn(CLERK_LIMIT + "-" + grade, date, null);
+        return own != null ? own : clerkLimitOn(date);
     }
 
     /** The least a claim's live due can be on a date; 1.00 before every from-date. */
@@ -276,7 +311,12 @@ public class Sheet {
 
     /** The most a person's due-total can be, in force on the sheet's today; none when there is no cap. */
     public BigDecimal getCap() {
-        return decimalOn(CAP, today, null);
+        return capOn(today);
+    }
+
+    /** The cap in force on a date; none when there is no cap then. */
+    public BigDecimal capOn(LocalDate date) {
+        return decimalOn(CAP, date, null);
     }
 
     /** The proof threshold in force on a date: a claim dated then whose due is above it needs a proof to be
@@ -323,17 +363,18 @@ public class Sheet {
         return reviewThresholdOn(today);
     }
 
-    /** A person's due-total as it counts, with their cut total: at most the cap less the cut total (not below
-     *  0.00); none (n/a) stays none. */
-    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal) {
-        BigDecimal limit = capLess(cutTotal);
+    /** A person's due-total as it counts, with their cut total: at most the cap in force on the date of their
+     *  latest claim that counts (none: the sheet's today) less the cut total (not below 0.00); none (n/a) stays
+     *  none. */
+    public BigDecimal capped(BigDecimal dueTotal, BigDecimal cutTotal, LocalDate latest) {
+        BigDecimal limit = capLess(cutTotal, latest);
         return dueTotal == null || limit == null ? dueTotal : dueTotal.min(limit);
     }
 
-    /** The most a person's due-total can be with their cut total: the cap less it, not below 0.00; none when
-     *  there is no cap. */
-    public BigDecimal capLess(BigDecimal cutTotal) {
-        BigDecimal cap = getCap();
+    /** The most a person's due-total can be with their cut total: the cap in force on the date of their latest
+     *  claim that counts (none: the sheet's today) less it, not below 0.00; none when there is no cap then. */
+    public BigDecimal capLess(BigDecimal cutTotal, LocalDate latest) {
+        BigDecimal cap = capOn(latest == null ? today : latest);
         return cap == null ? null : cap.subtract(cutTotal == null ? BigDecimal.ZERO : cutTotal).max(BigDecimal.ZERO.setScale(2));
     }
 

@@ -34,7 +34,7 @@ export class Figures {
   private readonly roles = inject(Roles);
   private readonly session = inject(Session);
 
-  /** A person's due-total: the sum of their figures, at most the sheet's cap less their cut total (not below
+  /** A person's due-total: the sum of their figures, at most the cap in force on their latest claim's date less their cut total (not below
    *  0.00). Null (n/a) is not capped. */
   dueCents(p: Person): bigint | null {
     const sum = this.sumCents(p);
@@ -50,9 +50,15 @@ export class Figures {
     return sum !== null && cap !== null && sum > cap ? sum - cap : 0n;
   }
 
-  /** The most a person's due-total can be: the sheet's cap less their cut total, not below 0.00; null for no cap. */
+  /** The most a person's due-total can be: the cap in force on the date of their latest claim that counts (none:
+   *  the sheet's today) less their cut total, not below 0.00; null for no cap then. */
   private capCents(p: Person): bigint | null {
-    const cap = this.session.cap();
+    let latest: string | null = null;
+    for (const c of this.claims.live()) {
+      if (c.personId === p.id && (latest === null || c.date > latest)) latest = c.date;
+    }
+    const on = latest ?? this.session.shownToday();
+    const cap = on === null ? null : this.session.capOn(on);
     if (cap === null) return null;
     const left = hundredths(cap) - (this.pools.cutCents().get(p.id) ?? 0n);
     return left > 0n ? left : 0n;

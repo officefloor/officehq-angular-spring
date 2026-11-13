@@ -96,6 +96,7 @@ import { VoidReasons } from '../../core/void-reasons';
           <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
           <span>Tags <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span></span>
           <span>Due <span data-testid="claim-due">{{ figure(c) }}</span></span>
+          <span>Policy <span data-testid="claim-policy">{{ session.policyVersionOn(c.date) }}</span></span>
           <span>Due by <span data-testid="claim-due-by">{{ claims.dueBy(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ claims.overdue(c) ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periods.of(c.dueBy)?.name ?? '' }}</span></span>
@@ -389,7 +390,7 @@ export class PersonClaims {
    *  gives its due, unless fixed when it was settled or bound by the person's last statement. */
   readonly grades = input.required<GradeFrom[]>();
   private readonly people = inject(People);
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   protected readonly list = computed(() => this.claims.of(this.personId()));
   /** The other people on the sheet, whom a steward can move a claim to. */
   protected readonly others = computed(() => this.people.people().filter((p) => p.id !== this.personId()));

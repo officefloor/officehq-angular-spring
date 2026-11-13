@@ -319,7 +319,7 @@ public class ClaimService {
             if (!judged) {
                 refuseUnproved(claim, person, due);
             }
-            if (overLimit(sheetId, user, person, due)) {
+            if (overLimit(sheetId, user, person, claim.getDate(), due)) {
                 to = ClaimStatus.PENDING;
             } else {
                 claim.setSettledDue(due);
@@ -1143,11 +1143,13 @@ public class ClaimService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean figure = false;
         int counted = 0;
+        LocalDate latest = null;
         for (Claim claim : theirs) {
             if (!claim.getStatus().counts() || Rollup.heldOut(claim, person, today) || claim.deferredOn(today)) {
                 claim.setStated(false, null);
                 continue;
             }
+            latest = Rollup.later(latest, claim.getDate());
             BigDecimal due = shownDue(claim, person);
             if (due != null) {
                 total = total.add(due);
@@ -1165,8 +1167,9 @@ public class ClaimService {
         boolean rated = Rollup.inForce(rates.findWithAncestors(sheetId, sheetRows.ancestors(sheetId)), person.gradeOn(today), today).isPresent();
         BigDecimal summed = total;
         BigDecimal cutTotal = rollup.cutTotals(sheetId).get(personId);
+        LocalDate capDate = latest;
         BigDecimal dueTotal = rated || figure
-                ? sheetRows.findById(sheetId).map(s -> s.capped(summed, cutTotal)).orElse(summed) : null;
+                ? sheetRows.findById(sheetId).map(s -> s.capped(summed, cutTotal, capDate)).orElse(summed) : null;
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
@@ -1208,10 +1211,12 @@ public class ClaimService {
         Map<Long, BigDecimal> figures = new HashMap<>();
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean figure = false;
+        LocalDate latest = null;
         for (Claim claim : claimsThen) {
             if (!claim.getStatus().counts() || Rollup.heldOut(claim, then, asOf) || claim.deferredOn(asOf)) {
                 continue;
             }
+            latest = Rollup.later(latest, claim.getDate());
             BigDecimal due = claim.getSettledDue() != null ? claim.getSettledDue()
                     : claim.isBound() ? claim.getStatedDue()
                     : Rollup.inForce(ratesThen, then.gradeOn(claim.getDate()), claim.getDate(), claim)
@@ -1227,7 +1232,7 @@ public class ClaimService {
             claim.setStated(figures.containsKey(claim.getId()), figures.get(claim.getId()));
         }
         boolean rated = Rollup.inForce(ratesThen, then.gradeOn(asOf), asOf).isPresent();
-        BigDecimal dueTotal = rated || figure ? sheetThen.capped(total, rollup.cutTotals(sheetId, asOf).get(personId)) : null;
+        BigDecimal dueTotal = rated || figure ? sheetThen.capped(total, rollup.cutTotals(sheetId, asOf).get(personId), latest) : null;
         int counted = figures.size();
         claims.saveAllAndFlush(theirs);
         statements.saveAndFlush(new Statement(sheetId, personId, asOf, dueTotal, counted));
@@ -1438,12 +1443,12 @@ public class ClaimService {
         }
     }
 
-    /** Whether a clerk is settling a due above the clerk limit in force on the sheet's today for the person's
-     *  grade then (its own when set, else the sheet's); a steward settles anything, and a due of n/a, or no
-     *  limit, is within it. */
-    private boolean overLimit(String sheetId, String user, Person person, BigDecimal due) {
+    /** Whether a clerk is settling a due above the clerk limit in force on the claim's date for the person's
+     *  grade on the sheet's today (its own when set, else the sheet's); a steward settles anything, and a due
+     *  of n/a, or no limit, is within it. */
+    private boolean overLimit(String sheetId, String user, Person person, LocalDate date, BigDecimal due) {
         Sheet sheet = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
-        BigDecimal limit = sheet.clerkLimitFor(person.gradeOn(sheet.getToday()));
+        BigDecimal limit = sheet.clerkLimitFor(person.gradeOn(sheet.getToday()), date);
         return limit != null && due != null && due.compareTo(limit) > 0 && !roles.isSteward(sheetId, user);
     }
 

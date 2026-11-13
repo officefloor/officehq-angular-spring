@@ -81,6 +81,8 @@ export interface SheetView {
   fiscalStartMonth: number;
   /** The alert threshold, two decimals; null when off. */
   alertThreshold: string | null;
+  /** The policy versions' from-dates (YYYY-MM-DD) in the order made; null for one that counts always. */
+  policyVersions: (string | null)[];
 }
 
 /** The figures of a sheet's descendants (its children, their children and so on), each sheet's as that
@@ -166,6 +168,11 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** Every value recorded for the sheet's dated settings, each from a date. */
   readonly settings = signal<DatedSetting[]>([]);
+  /** The from-dates (YYYY-MM-DD; null: counts always) of the sheet's policy versions in the order made: every
+   *  change to the rounding mode, the floor, the cap, the terms, the late percent or the clerk limit is one. */
+  readonly policyVersions = signal<(string | null)[]>([]);
+  /** The sheet's current policy version: the number of versions made; 0 before the first. */
+  readonly policyVersion = computed(() => this.policyVersions().length);
   /** The sheet's clerk limit (two decimals) in force on its today; null when there is none. */
   readonly clerkLimit = computed(() => this.onToday('clerk-limit'));
   /** The sheet's floor (two decimals) in force on its today: the least a claim's live due can be. */
@@ -346,6 +353,7 @@ export class Session {
       this.descendants.set(descendants);
       this.today.set(sheet.today);
       this.settings.set(sheet.settings);
+      this.policyVersions.set(sheet.policyVersions ?? []);
       this.policyDate.set(sheet.policyDate);
       this.periodNumberingFrom.set(sheet.periodNumberingFrom);
       this.permissions.set(sheet.permissions);
@@ -445,7 +453,7 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -467,7 +475,7 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -490,7 +498,7 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -512,7 +520,7 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -539,7 +547,7 @@ export class Session {
           { headers: { 'X-User': user } },
         ),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -566,7 +574,7 @@ export class Session {
           { headers: { 'X-User': user } },
         ),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -593,7 +601,7 @@ export class Session {
           { headers: { 'X-User': user } },
         ),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -620,7 +628,7 @@ export class Session {
           { headers: { 'X-User': user } },
         ),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -647,7 +655,7 @@ export class Session {
           { headers: { 'X-User': user } },
         ),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -669,7 +677,7 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -693,7 +701,7 @@ export class Session {
         this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/terms/${encodeURIComponent(grade)}`,
           { terms: t ? Number(t) : null, from: d || null }, { headers: { 'X-User': user } }),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -717,7 +725,7 @@ export class Session {
         this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/grace/${encodeURIComponent(grade)}`,
           { graceDays: t ? Number(t) : null, from: d || null }, { headers: { 'X-User': user } }),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
@@ -737,6 +745,23 @@ export class Session {
   /** The floor (two decimals) in force on a date: the least a live due of a claim dated then can be. */
   floorOn(date: string): string {
     return this.valueOn('floor', date) ?? STARTING['floor'];
+  }
+
+  /** Keep a saved sheet's dated settings and the policy versions their changes made. */
+  private keepSettings(sheet: SheetView): void {
+    this.settings.set(sheet.settings);
+    this.policyVersions.set(sheet.policyVersions ?? []);
+  }
+
+  /** The cap (two decimals) in force on a date; null when there is none then. */
+  capOn(date: string): string | null {
+    return this.valueOn('cap', date);
+  }
+
+  /** The policy version in force on a date: the number of versions whose from-date is on or before it (one
+   *  with none counts always). */
+  policyVersionOn(date: string): number {
+    return this.policyVersions().filter((from) => from === null || from <= date).length;
   }
 
   /** A grade's grace days in force on a date; 0 when it has none then. */
@@ -1162,7 +1187,7 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      if (this.sheetId() === sheet.id) this.keepSettings(sheet);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

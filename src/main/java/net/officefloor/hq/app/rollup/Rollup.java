@@ -178,10 +178,12 @@ public class Rollup {
             BigDecimal openTotal = ZERO;
             int overdueCount = 0;
             boolean keptFigure = false;
+            LocalDate latest = null;
             for (Claim claim : sheetClaims) {
                 if (!claim.getPersonId().equals(person.getId()) || !countsClaimed(claim, person, today)) {
                     continue;
                 }
+                latest = later(latest, claim.getDate());
                 if (claim.getCorrects() == null || claim.getCorrects().isEmpty()) {
                     // a claim that corrects another is left out of claimed
                     claimed = claimed.add(claim.getAmount());
@@ -246,7 +248,7 @@ public class Rollup {
             BigDecimal score = settled.subtract(BigDecimal.valueOf(500L * overdueCount))
                     .movePointLeft(2).setScale(0, RoundingMode.HALF_EVEN);
             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
-            BigDecimal personDue = rated || keptFigure ? capped(sheet, due, cuts.get(person.getId())) : null;
+            BigDecimal personDue = rated || keptFigure ? capped(sheet, due, cuts.get(person.getId()), latest) : null;
             BigDecimal cut = cuts.getOrDefault(person.getId(), ZERO);
             figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, score,
                     settledTotal, openTotal, cut == null ? ZERO : cut.setScale(2, RoundingMode.HALF_EVEN)));
@@ -734,9 +736,15 @@ public class Rollup {
                 .orElse(figure);
     }
 
-    /** A person's due-total at most the sheet's cap less their cut total. */
-    private static BigDecimal capped(Optional<Sheet> sheet, BigDecimal dueTotal, BigDecimal cutTotal) {
-        return sheet.map(s -> s.capped(dueTotal, cutTotal)).orElse(dueTotal);
+    /** A person's due-total at most the cap in force on the date of their latest claim that counts (none: the
+     *  sheet's today) less their cut total. */
+    private static BigDecimal capped(Optional<Sheet> sheet, BigDecimal dueTotal, BigDecimal cutTotal, LocalDate latest) {
+        return sheet.map(s -> s.capped(dueTotal, cutTotal, latest)).orElse(dueTotal);
+    }
+
+    /** The later of two dates; the other when one is none. */
+    public static LocalDate later(LocalDate a, LocalDate b) {
+        return a == null || (b != null && b.isAfter(a)) ? b : a;
     }
 
     private static boolean sameDue(BigDecimal a, BigDecimal b) {

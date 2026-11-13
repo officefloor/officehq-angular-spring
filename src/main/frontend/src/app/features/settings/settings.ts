@@ -23,6 +23,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // blank keeps the standing rule; not dated), the entry date (while set, the default date of a new claim in
 // place of the sheet's today; blank for off; not dated), the fiscal start month (the month, 1 to 12, a fiscal year
 // starts in; 1 unless set; not dated), and
+// the policy version (every change to the rounding mode, the floor, the cap, the terms, the late percent or the
+// clerk limit makes a new one, numbered from 1), and
 // the role each user name has on the sheet (clerk unless given another), and the delegations of the steward role
 // (a steward gives a user the role from a date to a date, inclusive, by the sheet's today).
 @Component({
@@ -30,6 +32,7 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
   template: `
     <section aria-label="Settings" data-testid="settings">
       <h2>Settings</h2>
+      <p>Policy version: <strong data-testid="policy-version">{{ session.policyVersion() }}</strong></p>
       <form (submit)="save($event)" data-testid="settings-form">
         <label for="setting-clerk-limit">Clerk limit (blank for none)</label>
         <input

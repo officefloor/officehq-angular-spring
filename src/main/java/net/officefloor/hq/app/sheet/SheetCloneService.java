@@ -106,6 +106,8 @@ public class SheetCloneService {
                 + " grace_days, FALSE, entry_date, pot, parent, alert_threshold, escalate_after, review_sla, pending_sla, proof_kinds, default_grade, score_mid, score_high, score_log, max_open, added_grades, id FROM sheet WHERE id = ?", target, user, Timestamp.from(Instant.now()), id);
         jdbc.update("INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)"
                 + " SELECT ?, setting_key, from_date, setting_value FROM sheet_setting WHERE sheet_id = ?", target, id);
+        jdbc.update("INSERT INTO sheet_policy_version (sheet_id, version_index, setting_key, from_date)"
+                + " SELECT ?, version_index, setting_key, from_date FROM sheet_policy_version WHERE sheet_id = ?", target, id);
         jdbc.update("INSERT INTO sheet_permission (sheet_id, action, roles)"
                 + " SELECT ?, action, roles FROM sheet_permission WHERE sheet_id = ?", target, id);
         jdbc.update("INSERT INTO sheet_role (sheet_id, user_name, role)"
