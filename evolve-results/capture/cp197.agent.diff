@@ -1,0 +1,171 @@
+diff --git a/src/main/frontend/src/app/core/audit.ts b/src/main/frontend/src/app/core/audit.ts
+index 476634668..cc830ae50 100644
+--- a/src/main/frontend/src/app/core/audit.ts
++++ b/src/main/frontend/src/app/core/audit.ts
+@@ -27,6 +27,23 @@ export class AuditLog {
+     }
+   }
+ 
++  /** The sheet's activity: one line "<user> <EVENT> <count>" per user and event, by user then event. An error message when that failed. */
++  async activity(): Promise<{ lines: string[] } | { error: string }> {
++    const user = this.session.user();
++    const sid = this.session.sheetId();
++    if (!user || !sid) return { error: 'Load a sheet first.' };
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sid)}/audit/activity`, {
++          headers: { 'X-User': user },
++        }),
++      );
++      return { lines };
++    } catch (e) {
++      return { error: e instanceof HttpErrorResponse ? `Could not read the activity (${e.status}).` : 'Could not read the activity.' };
++    }
++  }
++
+   /** A claim's timeline: the audit lines about it, newest first. An error message when that failed. */
+   async claimLines(claimId: number): Promise<{ lines: string[] } | { error: string }> {
+     const user = this.session.user();
+diff --git a/src/main/frontend/src/app/features/audit/activity.ts b/src/main/frontend/src/app/features/audit/activity.ts
+new file mode 100644
+index 000000000..646177349
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/activity.ts
+@@ -0,0 +1,46 @@
++import { Component, computed, inject, signal } from '@angular/core';
++import { AuditLog } from '../../core/audit';
++import { Session } from '../../core/session';
++
++// The sheet's activity: for every user and every event in the sheet's audit lines, one line
++// "<user> <EVENT> <count>", sorted by user then event. It reads the file; it records nothing.
++@Component({
++  selector: 'app-activity',
++  template: `
++    <section aria-label="Activity" data-testid="activity">
++      <h2>Activity</h2>
++      <button type="button" data-testid="activity-show" (click)="show()">Show activity</button>
++      @if (error(); as err) {
++        <p role="alert" data-testid="activity-error">{{ err }}</p>
++      }
++      <ul data-testid="activity-list" aria-label="Activity lines">
++        @for (line of lines(); track $index) {
++          <li data-testid="activity-line">{{ line }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class ActivityPanel {
++  private readonly audit = inject(AuditLog);
++  private readonly session = inject(Session);
++  protected readonly error = signal<string | null>(null);
++  private readonly shown = signal<{ sheet: string | null; lines: string[] }>({ sheet: null, lines: [] });
++  /** The lines last shown, while they are of the sheet loaded now. */
++  protected readonly lines = computed(() => {
++    const s = this.shown();
++    return s.sheet === this.session.sheetId() ? s.lines : [];
++  });
++  private shows = 0;
++
++  protected async show(): Promise<void> {
++    const show = ++this.shows;
++    const sheet = this.session.sheetId();
++    this.error.set(null);
++    this.shown.set({ sheet: null, lines: [] });
++    const res = await this.audit.activity();
++    if (show !== this.shows) return; // a later press has taken over
++    if ('error' in res) this.error.set(res.error);
++    else this.shown.set({ sheet, lines: res.lines });
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index de64118da..776626409 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -15,6 +15,7 @@ import { Session, isDate } from '../../core/session';
+ import { UserColumns } from '../../core/user-columns';
+ import { LOCALES, UserLocale } from '../../core/user-locale';
+ import { VoidReasons } from '../../core/void-reasons';
++import { ActivityPanel } from '../audit/activity';
+ import { AuditPanel } from '../audit/audit';
+ import { ClaimTemplatesPanel } from '../claim-templates/claim-templates';
+ import { BulkOpen } from '../claims/bulk-open';
+@@ -44,7 +45,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ @Component({
+   selector: 'app-home',
+   hostDirectives: [LocaleFigures],
+-  imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
++  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+   template: `
+     @if (session.user(); as user) {
+       @if (session.sheetId()) {
+@@ -156,6 +157,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+         <app-classic-summary />
+         <app-search />
+         <app-audit />
++        <app-activity />
+       }
+     } @else {
+       <form aria-label="Sign in" (submit)="signIn($event)">
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index b03ac46ec..a4547a619 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -31,6 +31,13 @@ public class AuditController {
+         return service.lines(sheetId.trim(), name);
+     }
+ 
++    /** The sheet's activity: one line "&lt;user&gt; &lt;EVENT&gt; &lt;count&gt;" per user and event, by user then event. */
++    @GetMapping("/activity")
++    public List<String> activity(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
++        return service.activity(sheetId.trim());
++    }
++
+     /** A claim's timeline: the audit lines about it, newest first. */
+     @GetMapping("/claims/{claimId}")
+     public List<String> claim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long claimId,
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+index e3e8953fc..f771662f6 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+@@ -5,7 +5,9 @@ import java.util.Collections;
+ import java.util.ArrayDeque;
+ import java.util.Deque;
+ import java.util.List;
++import java.util.TreeMap;
+ import java.util.TreeSet;
++import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+@@ -68,6 +70,29 @@ public class AuditViewService {
+         return lines;
+     }
+ 
++    /**
++     * The sheet's activity: for every user (by=) and every event (the line's first word) in the sheet's
++     * audit lines, one line "&lt;user&gt; &lt;EVENT&gt; &lt;count&gt;", sorted by user then event.
++     */
++    public List<String> activity(String sheetId) {
++        Pattern sheet = Pattern.compile("(?:^| )sheet=" + Pattern.quote(sheetId) + "(?: |$)");
++        Pattern by = Pattern.compile("(?:^| )by=(.*?)(?= [A-Za-z][\\w-]*=|$)");
++        TreeMap<String, TreeMap<String, Integer>> counts = new TreeMap<>();
++        for (String line : audit.lines()) {
++            if (!sheet.matcher(line).find()) {
++                continue;
++            }
++            Matcher m = by.matcher(line);
++            String user = m.find() ? m.group(1) : "";
++            int space = line.indexOf(' ');
++            String event = space < 0 ? line : line.substring(0, space);
++            counts.computeIfAbsent(user, u -> new TreeMap<>()).merge(event, 1, Integer::sum);
++        }
++        List<String> lines = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, n) -> lines.add(user + " " + event + " " + n)));
++        return lines;
++    }
++
+     /** A key=value field of a line, the value running up to the next field or the line's end. */
+     private static Pattern field(String key, String value) {
+         return Pattern.compile("(?:^| )" + key + "=" + Pattern.quote(value) + "(?= [A-Za-z][\\w-]*=|$)");
