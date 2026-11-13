@@ -48,6 +48,14 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs were added to the claim. */
   proofs: number;
+  /** The number of the claim this claim was split off; null when it was not. */
+  splitFrom: string | null;
+}
+
+/** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
+interface Split {
+  kept: Claim;
+  added: Claim;
 }
 
 /** Whether a claim is deferred on the sheet's today: it is OPEN and today is before the date it was
@@ -238,6 +246,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
+          <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim ' + c.id">
             @for (line of c.log; track $index) {
               <li data-testid="claim-log-line">{{ line }}</li>
@@ -272,6 +281,17 @@ const NUMBER = /^\S+$/;
           />
           <button type="button" data-testid="claim-defer" [attr.aria-label]="'Defer claim ' + c.id" (click)="defer(c)">
             Defer
+          </button>
+          <label [for]="'claim-split-amount-' + c.id">Split off</label>
+          <input
+            [id]="'claim-split-amount-' + c.id"
+            data-testid="claim-split-amount"
+            inputmode="decimal"
+            [value]="splitAmounts()[c.id] ?? ''"
+            (input)="setSplitAmount(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-split" [attr.aria-label]="'Split claim ' + c.id" (click)="split(c)">
+            Split
           </button>
           <button type="button" data-testid="claim-proof" [attr.aria-label]="'Add a proof to claim ' + c.id" (click)="addProof(c)">
             Add proof
@@ -358,6 +378,9 @@ export class PersonClaims {
 
   /** The defer-until date typed on each claim's row, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+
+  /** The amount typed on each claim's row to split off it, by claim id. */
+  protected readonly splitAmounts = signal<Record<number, string>>({});
 
   /** The person chosen on each claim's row to move it to, by claim id (a person id, or blank). */
   protected readonly reassignTo = signal<Record<number, string>>({});
@@ -451,6 +474,42 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message: 'The claim could not be deferred: only an open claim outside a closed period can be, to a date after today.',
+      });
+    }
+  }
+
+  protected setSplitAmount(id: number, amount: string): void {
+    this.splitAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Split the amount typed on its row off an OPEN claim: the claim keeps the rest, and the new OPEN
+   *  claim is listed first. A claim that is not OPEN or is deferred, one in a closed period, an
+   *  amount not above 0.00 and below the claim's, or a role that may not open a claim, is refused on
+   *  the row. */
+  protected async split(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const amount = (this.splitAmounts()[claim.id] ?? '').trim();
+    if (!AMOUNT.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(claim.amount)) {
+      this.rowError.set({ id: claim.id, message: "Type an amount above 0.00 and below the claim's to split off." });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/split`;
+    try {
+      const result = await firstValueFrom(this.http.post<Split>(url, { amount }));
+      if (this.session.sheetId() !== sheet) return;
+      this.setSplitAmount(claim.id, '');
+      this.saved.emit(result.kept);
+      this.saved.emit(result.added);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.rowError.set({
+        id: claim.id,
+        message: forbidden
+          ? 'The claim could not be split: your role may not open a claim on this sheet.'
+          : 'The claim could not be split: only an open claim outside a closed period, not deferred, can be.',
       });
     }
   }

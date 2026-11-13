@@ -87,6 +87,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The number of the claim this claim was split off; null for a claim not split off another. */
+    @Column(name = "split_from", updatable = false)
+    private String splitFrom;
+
     protected Claim() {
     }
 
@@ -99,6 +103,17 @@ public class Claim {
         this.amount = amount;
         this.date = date;
         this.note = note;
+    }
+
+    /** An OPEN claim split off another: the split-off amount, with the same date and note, its own
+     *  due-by, number and opener, naming the claim it was split from. */
+    public static Claim splitOff(Claim from, BigDecimal amount, LocalDate dueBy, String number, String openedBy) {
+        Claim split = new Claim(from.sheetId, from.personId, amount, from.date, dueBy, from.note, null);
+        split.status = ClaimStatus.OPEN;
+        split.number = number;
+        split.openedBy = openedBy;
+        split.splitFrom = from.number;
+        return split;
     }
 
     public Long getId() {
@@ -221,6 +236,10 @@ public class Claim {
 
     public int getProofs() {
         return proofs;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
     }
 
     /** Count one more proof added to the claim. */

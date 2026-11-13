@@ -193,6 +193,44 @@ public class ClaimService {
         return saved;
     }
 
+    /** A split: the claim that kept the rest of its amount, and the claim split off it. */
+    public record Split(Claim kept, Claim added) {
+    }
+
+    /** Split an amount off an OPEN claim: it keeps the rest of its amount and loses any figure a
+     *  statement bound it to, and a new OPEN claim of the split-off amount, with the same date and
+     *  note, the next number, opened by the user and due by its date plus the terms in force on it,
+     *  is listed under the person naming the claim it was split from. A claim that is not OPEN, one
+     *  deferred, one dated in a closed period, an amount not above 0.00 and below the claim's, or a
+     *  user whose role may not open a claim, is refused. */
+    @Transactional
+    public Split split(String sheetId, String user, Long personId, Long id, BigDecimal amount) {
+        Person person = person(sheetId, personId);
+        // Lock the sheet first, as opening does: the new claim takes the next number.
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, personId, id);
+        settings.refuseUnless(sheetId, user, Permission.OPEN);
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN || claim.deferredOn(sheets.today(sheetId))) {
+            throw new SplitRefusedException("A " + claim.getStatus() + " claim cannot be split");
+        }
+        BigDecimal part = scaled(amount);
+        if (part.signum() <= 0 || part.compareTo(claim.getAmount()) >= 0) {
+            throw new SplitRefusedException("A claim is split by an amount above 0.00 and below its own");
+        }
+        claim.setAmount(claim.getAmount().subtract(part));
+        claim.unbind();
+        Claim kept = claims.saveAndFlush(claim);
+        LocalDate on = kept.getDate();
+        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, grades.gradeOn(personId, on), on));
+        Claim added = claims.saveAndFlush(Claim.splitOff(kept, part, dueBy, nextNumber(sheetId, on), user));
+        log(sheetId, user, person, added);
+        audit.recordOnCommit(line("CLAIM_SPLIT", sheetId, user, person, kept, kept.getNumber())
+                + " into=" + added.getNumber());
+        record("CLAIM_OPENED", sheetId, user, person, added);
+        return new Split(kept, added);
+    }
+
     /** A steward approves a PENDING claim: it is SETTLED, its due frozen at this moment. Anyone else,
      *  the user who opened it, or a claim that is not PENDING, is refused. */
     @Transactional

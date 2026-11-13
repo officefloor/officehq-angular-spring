@@ -42,11 +42,11 @@ public class ClaimController {
      *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was
      *  added; log is its status log, oldest first, one line per status it has had; deferredUntil is
      *  the date it was deferred until (null when it never was); proofs is how many proofs were added
-     *  to it. */
+     *  to it; splitFrom is the number of the claim it was split off (null when it was not). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
-            LocalDate deferredUntil, int proofs) {
+            LocalDate deferredUntil, int proofs, String splitFrom) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -54,7 +54,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
-                    claim.getProofs());
+                    claim.getProofs(), claim.getSplitFrom());
         }
     }
 
@@ -74,6 +74,14 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim. */
     public record RejectRequest(@NotBlank @Size(max = 500) String reason) {
+    }
+
+    /** The amount split off an OPEN claim. */
+    public record SplitRequest(@NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount) {
+    }
+
+    /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
+    public record SplitView(ClaimView kept, ClaimView added) {
     }
 
     /** The person on the sheet a claim moves to. */
@@ -227,6 +235,19 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.defer(sheet, by, personId, id, request.until())));
     }
 
+    /** Split an amount off an OPEN claim into a new OPEN claim. */
+    @PostMapping("/people/{personId}/claims/{id}/split")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SplitView split(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated SplitRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        ClaimService.Split split = rollups.track(sheet, by,
+                () -> service.split(sheet, by, personId, id, request.amount()));
+        return new SplitView(view(sheet, split.kept()), view(sheet, split.added()));
+    }
+
     /** Add a proof to a claim that is not SETTLED or VOID. */
     @PostMapping("/people/{personId}/claims/{id}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -257,10 +278,12 @@ public class ClaimController {
      *  any change to a claim dated in a closed period, a claim dated after its person retired, or a
      *  correction that does not name a SETTLED claim of its person, a move the claim does not allow,
      *  a deferral the claim does not allow, a proof added to a SETTLED or VOID claim, or settling or
-     *  approving a claim above the proof threshold with no proofs, is refused. */
+     *  approving a claim above the proof threshold with no proofs, or a split the claim or amount does
+     *  not allow, is refused. */
     @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
-            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class})
+            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class,
+            SplitRefusedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }
