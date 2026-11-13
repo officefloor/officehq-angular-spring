@@ -24,6 +24,21 @@ import { Session } from '../../core/session';
 
       @if (session.sheetId(); as sheet) {
         <p>Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></p>
+        <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+        <form (submit)="saveToday($event)">
+          <label for="sheet-today-date">Change today</label>
+          <input
+            id="sheet-today-date"
+            type="date"
+            data-testid="sheet-today-input"
+            [value]="todayInput()"
+            (input)="todayInput.set(value($event)); todayError.set(null)"
+          />
+          <button type="submit" data-testid="sheet-today-save">Set today</button>
+        </form>
+        @if (todayError(); as error) {
+          <p role="alert" data-testid="sheet-error">{{ error }}</p>
+        }
       } @else {
         <p data-testid="home-empty">No sheet loaded.</p>
       }
@@ -50,6 +65,8 @@ export class Home {
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
+  protected readonly todayInput = signal('');
+  protected readonly todayError = signal<string | null>(null);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -63,6 +80,7 @@ export class Home {
   protected async load(event: Event): Promise<void> {
     event.preventDefault();
     this.sheetError.set(null);
+    this.todayError.set(null);
     const id = this.sheetInput().trim();
     if (!id) {
       this.sheetError.set('Type a sheet id to load.');
@@ -72,6 +90,21 @@ export class Home {
       await this.session.loadSheet(id);
     } catch {
       this.sheetError.set('The sheet could not be loaded.');
+    }
+  }
+
+  protected async saveToday(event: Event): Promise<void> {
+    event.preventDefault();
+    this.todayError.set(null);
+    const today = this.todayInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+      this.todayError.set('Type a date (yyyy-mm-dd) for today.');
+      return;
+    }
+    try {
+      await this.session.setToday(today);
+    } catch {
+      this.todayError.set('Today could not be changed.');
     }
   }
 }
