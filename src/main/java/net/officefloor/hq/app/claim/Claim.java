@@ -180,9 +180,9 @@ public class Claim {
         this.statedDue = null;
     }
 
-    /** Whether the claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
+    /** Whether the claim counts toward what is claimed and due: only OPEN, PENDING and SETTLED ones do. */
     public boolean counts() {
-        return status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED;
+        return status.counts();
     }
 
     /** Whether the claim counts in live totals, its person held or not: while held, only SETTLED ones do. */

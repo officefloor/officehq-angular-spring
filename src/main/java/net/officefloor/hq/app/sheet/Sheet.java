@@ -23,7 +23,7 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private long lastClaimNumber;
 
-    /** The clerk limit: a clerk settles a claim only when its due is at or below it; null for none. */
+    /** The clerk limit: a claim a clerk settles with a due above it goes PENDING a steward's approval; null for none. */
     @Column(name = "clerk_limit")
     private BigDecimal clerkLimit;
 

@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, money, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, isOpen, money, overdue } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -27,7 +27,7 @@ interface Person {
   retired: boolean;
   /** The date the person is retired from; null when they are not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: while held, their OPEN claims count in no live total. */
+  /** Whether the person is on hold: while held, their OPEN and PENDING claims count in no live total. */
   held: boolean;
   /** The ids of the person's patrons, in the order they were named. */
   patronIds: number[];
@@ -291,11 +291,11 @@ export class People {
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
-  /** The sheet's claims that count in live totals: OPEN and SETTLED ones, except a held person's
-   *  OPEN ones. */
+  /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except a held
+   *  person's OPEN and PENDING ones. */
   private readonly live = computed(() => {
     const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
-    return this.claims().filter((c) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId)));
+    return this.claims().filter((c) => counts(c) && !(isOpen(c) && held.has(c.personId)));
   });
   /** Each person's claims that count toward what is claimed and due, by person id. */
   private readonly countedByPerson = computed(() => {
@@ -556,7 +556,7 @@ export class People {
     return this.claimsByPerson().get(personId) ?? [];
   }
 
-  /** A person's OPEN and SETTLED claims; drafts and voided claims do not count. */
+  /** A person's OPEN, PENDING and SETTLED claims; drafts and voided claims do not count. */
   private countedOf(personId: number): Claim[] {
     return this.countedByPerson().get(personId) ?? [];
   }

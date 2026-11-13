@@ -174,7 +174,7 @@ export class SettingStore {
 }
 
 // The sheet's settings: the role given each user name (clerk, the default, or steward) and the
-// clerk limit, the highest due a clerk can settle, the floor, the least a claim's live due can be,
+// clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
 // the terms, the days after its date a claim is due by, and the late percent, what an overdue claim's
 // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
 // claim's date makes its figures round half up rather than half to even, and the period numbering

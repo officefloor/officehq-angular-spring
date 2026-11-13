@@ -5,11 +5,13 @@ import { Session } from '../../core/session';
 import { PeriodStore, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, rateOn } from '../rates/rates';
 
-/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; an OPEN claim a clerk settles above
+ *  the clerk limit is PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
+ *  DRAFT, OPEN or PENDING claim can be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A status change a claim's buttons ask for. */
-type ClaimAction = 'open' | 'settle' | 'void';
+type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
 
 export interface Claim {
   id: number;
@@ -43,9 +45,14 @@ export function isCorrection(claim: Claim): boolean {
   return cents(claim.amount) < 0;
 }
 
-/** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
+/** Whether a claim counts toward what is claimed and due: only OPEN, PENDING and SETTLED ones do. */
 export function counts(claim: Claim): boolean {
-  return claim.status === 'OPEN' || claim.status === 'SETTLED';
+  return isOpen(claim) || claim.status === 'SETTLED';
+}
+
+/** Whether a claim is open: OPEN, or PENDING a steward's approval. */
+export function isOpen(claim: Claim): boolean {
+  return claim.status === 'OPEN' || claim.status === 'PENDING';
 }
 
 /** An amount in cents, from the two-decimal string the server sends. */
@@ -69,12 +76,12 @@ function roundsHalfUp(claim: Claim, late: Late): boolean {
   return policy !== null && claim.roundsBy < policy;
 }
 
-/** A claim's figure in cents: the due fixed when it was settled; otherwise the figure a statement
- *  bound it to; otherwise its amount times the rate in force on its date among its grade's rates,
+/** A claim's figure in cents: the due fixed when it was settled; otherwise, unless it is PENDING
+ *  (no statement binds it then), the figure a statement bound it to; otherwise its amount times the rate in force on its date among its grade's rates,
  *  raised to the sheet's floor (in cents) unless it is a correction; null when it has no figure. */
 function figureCents(claim: Claim, rates: Rate[], floor: number, halfUp: boolean): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
-  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
+  if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateOn(rates, claim.date);
   if (rate === null) return null;
   const due = dueCents(cents(claim.amount), rate, halfUp);
@@ -82,7 +89,7 @@ function figureCents(claim: Claim, rates: Rate[], floor: number, halfUp: boolean
 }
 
 /** A claim's due in cents: its figure plus its late charge, the late percent of the figure for
- *  every full 30 days an OPEN claim is overdue, rounded like a due (a statement never binds the
+ *  every full 30 days an OPEN or PENDING claim is overdue, rounded like a due (a statement never binds the
  *  charge; settling freezes it into the settled due; a correction has none); null when it has no
  *  figure. */
 export function claimDueCents(claim: Claim, rates: Rate[], floor: number, late: Late): number | null {
@@ -93,7 +100,7 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: number, late: 
   return periods > 0 ? figure + dueCents(figure * periods, late.pct, halfUp) : figure;
 }
 
-/** How many days an OPEN claim is past its due-by on the sheet's today; 0 when it is not overdue. */
+/** How many days an OPEN or PENDING claim is past its due-by on the sheet's today; 0 when it is not overdue. */
 function daysOverdue(claim: Claim, late: Late): number {
   if (!overdue(claim, late.terms, late.today) || late.today === null) return 0;
   return Math.round((Date.parse(late.today) - Date.parse(dueByOf(claim, late.terms))) / 86_400_000);
@@ -105,9 +112,9 @@ export function dueByOf(claim: Claim, terms: number): string {
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
-/** Whether a claim is overdue: it is OPEN and its due-by is before the sheet's today. */
+/** Whether a claim is overdue: it is OPEN or PENDING and its due-by is before the sheet's today. */
 export function overdue(claim: Claim, terms: number, today: string | null): boolean {
-  return claim.status === 'OPEN' && today !== null && dueByOf(claim, terms) < today;
+  return isOpen(claim) && today !== null && dueByOf(claim, terms) < today;
 }
 
 /** Cents shown with two decimals. */
@@ -115,7 +122,13 @@ export function money(total: number): string {
   return (total / 100).toFixed(2);
 }
 
-const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
+const PAST: Record<ClaimAction, string> = {
+  open: 'opened',
+  settle: 'settled',
+  approve: 'approved',
+  reject: 'rejected',
+  void: 'voided',
+};
 
 /** An amount of 0.00 or more with up to two decimals. */
 export const AMOUNT = /^\d+(\.\d{1,2})?$/;
@@ -197,6 +210,19 @@ const NUMBER = /^\S+$/;
           <button type="button" data-testid="claim-settle" [attr.aria-label]="'Settle claim ' + c.id" (click)="act(c, 'settle')">
             Settle
           </button>
+          <button type="button" data-testid="claim-approve" [attr.aria-label]="'Approve claim ' + c.id" (click)="act(c, 'approve')">
+            Approve
+          </button>
+          <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+          <input
+            [id]="'claim-reject-reason-' + c.id"
+            data-testid="claim-reject-reason"
+            [value]="rejectReasons()[c.id] ?? ''"
+            (input)="setRejectReason(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-reject" [attr.aria-label]="'Reject claim ' + c.id" (click)="act(c, 'reject')">
+            Reject
+          </button>
           <button type="button" data-testid="claim-void" [attr.aria-label]="'Void claim ' + c.id" (click)="act(c, 'void')">
             Void
           </button>
@@ -250,6 +276,8 @@ export class PersonClaims {
   private readonly busy = signal(false);
   /** The error from the last status change refused, and the claim it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
+  /** The reject reason typed on each claim's row, by claim id. */
+  protected readonly rejectReasons = signal<Record<number, string>>({});
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -300,6 +328,11 @@ export class PersonClaims {
     this.error.set(null);
   }
 
+  protected setRejectReason(id: number, reason: string): void {
+    this.rejectReasons.update((reasons) => ({ ...reasons, [id]: reason }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
   protected reset(): void {
     this.editingId.set(null);
     this.amount.set('');
@@ -309,27 +342,35 @@ export class PersonClaims {
     this.error.set(null);
   }
 
-  /** Open, settle or void a claim; a change its status does not allow, the user who opened it
-   *  settling it, or a clerk settling a due above the clerk limit, is refused on the row. */
+  /** Open, settle, approve, reject (with the reason typed on its row) or void a claim; a clerk
+   *  settling a due above the clerk limit leaves it PENDING. A change its status does not allow, the
+   *  user who opened it settling or approving it, anyone but a steward approving or rejecting it, or
+   *  a reject with no reason, is refused on the row. */
   protected async act(claim: Claim, action: ClaimAction): Promise<void> {
     this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const reason = (this.rejectReasons()[claim.id] ?? '').trim();
+    if (action === 'reject' && reason === '') {
+      this.rowError.set({ id: claim.id, message: 'Type the reason the claim is rejected.' });
+      return;
+    }
     const url =
       `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/${action}`;
     try {
-      const saved = await firstValueFrom(this.http.post<Claim>(url, null));
+      const saved = await firstValueFrom(this.http.post<Claim>(url, action === 'reject' ? { reason } : null));
       if (this.session.sheetId() !== sheet) return;
+      if (action === 'reject') this.setRejectReason(claim.id, '');
       this.saved.emit(saved);
     } catch (e) {
-      const status = action === 'settle' && e instanceof HttpErrorResponse ? e.status : null;
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
       this.rowError.set({
         id: claim.id,
         message:
-          status === 403
+          forbidden && action === 'settle'
             ? 'The claim could not be settled: whoever opened it cannot settle it.'
-            : status === 422
-              ? 'The claim could not be settled: its due is above the clerk limit; a steward must settle it.'
+            : forbidden
+              ? `The claim could not be ${PAST[action]}: only a steward who did not open it can.`
               : `The claim could not be ${PAST[action]}.`,
       });
     }

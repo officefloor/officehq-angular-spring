@@ -61,6 +61,10 @@ public class ClaimController {
             @Size(max = 255) String corrects) {
     }
 
+    /** Why a steward rejects a PENDING claim. */
+    public record RejectRequest(@NotBlank @Size(max = 500) String reason) {
+    }
+
     /** The claims selected to open together. */
     public record BulkOpenRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds) {
     }
@@ -126,14 +130,34 @@ public class ClaimController {
         return new BulkOpenView(result.opened().stream().map(claim -> view(sheet, claim)).toList(), result.refused());
     }
 
-    /** Settle an OPEN claim; the user who opened it cannot. */
+    /** Settle an OPEN claim; the user who opened it cannot. A clerk settling one whose due is above
+     *  the clerk limit leaves it PENDING a steward's approval. */
     @PostMapping("/people/{personId}/claims/{id}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED);
     }
 
-    /** Void a DRAFT or OPEN claim. */
+    /** Approve a PENDING claim: a steward other than whoever opened it settles it. */
+    @PostMapping("/people/{personId}/claims/{id}/approve")
+    public ClaimView approve(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.approve(sheet, by, personId, id)));
+    }
+
+    /** Reject a PENDING claim with a reason: a steward sends it back to OPEN. */
+    @PostMapping("/people/{personId}/claims/{id}/reject")
+    public ClaimView reject(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated RejectRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.reject(sheet, by, personId, id, request.reason())));
+    }
+
+    /** Void a DRAFT, OPEN or PENDING claim. */
     @PostMapping("/people/{personId}/claims/{id}/void")
     public ClaimView voidClaim(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
@@ -159,16 +183,11 @@ public class ClaimController {
     public void refused() {
     }
 
-    /** The user who opened a claim cannot settle it. */
-    @ExceptionHandler(OwnClaimSettleRefusedException.class)
+    /** The user who opened a claim cannot settle or approve it, and only a steward approves or
+     *  rejects a PENDING claim. */
+    @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class})
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public void ownClaim() {
-    }
-
-    /** A clerk cannot settle a claim whose due is above the clerk limit. */
-    @ExceptionHandler(ClerkLimitRefusedException.class)
-    @ResponseStatus(HttpStatus.UNPROCESSABLE_CONTENT)
-    public void overClerkLimit() {
     }
 
     @ExceptionHandler(NoSuchElementException.class)
