@@ -77,6 +77,14 @@ export class Figures {
       .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
   }
 
+  /** The due of a person's SETTLED claims that count live and correct nothing, at their frozen figures. */
+  scoreSettledCents(p: Person): bigint {
+    return this.claims
+      .live()
+      .filter((c) => c.personId === p.id && c.status === 'SETTLED' && !c.corrects)
+      .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+  }
+
   /** The due of a person's OPEN and PENDING claims that count live (not deferred or retired-and-excluded). */
   openCents(p: Person): bigint {
     return this.claims
@@ -231,10 +239,10 @@ export class Figures {
     return this.claims.live().filter((c) => c.personId === p.id && this.claims.overdue(c));
   }
 
-  /** A person's score: their settled figures divided by 100, less 5 for every overdue claim of theirs
+  /** A person's score: their settled figures (corrections left out) divided by 100, less 5 for every overdue claim of theirs
    *  that counts, rounded half to even to a whole number. */
   score(p: Person): string {
-    const tenThousandths = this.settledCents(p) - 50000n * BigInt(this.overdue(p).length);
+    const tenThousandths = this.scoreSettledCents(p) - 50000n * BigInt(this.overdue(p).length);
     return halfEven(tenThousandths, 10000n).toString();
   }
 

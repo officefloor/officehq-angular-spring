@@ -41,7 +41,7 @@ public class Rollup {
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     /** A person's figures; a null due-total is n/a. Their score is the due of their settled claims that count
-     *  divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
+     *  and correct nothing divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score) {
     }
 
@@ -140,7 +140,8 @@ public class Rollup {
                     if (overdue(sheet, claim, person, today)) {
                         overdue = overdue.add(figure);
                     }
-                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                    if (claim.getStatus() == ClaimStatus.SETTLED
+                            && (claim.getCorrects() == null || claim.getCorrects().isEmpty())) {
                         settled = settled.add(figure);
                     }
                 }
