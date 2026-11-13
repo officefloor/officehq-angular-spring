@@ -51,9 +51,14 @@ public class Claim {
     /** The day it is due by: fixed when it is added, from the terms of its person's grade in force on its
      *  date then, counted as that many business days after its date (skipping weekends and the sheet's
      *  holidays listed then); it does not follow later changes to the terms or its date. Adding a holiday
-     *  works it out again, with the same terms, while the claim is not SETTLED or VOID. */
+     *  works it out again, with the same terms, while the claim is not SETTLED or VOID, unless a steward set
+     *  it directly. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** Whether a steward set its due-by directly: it then stays as set, and adding a holiday does not move it. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
 
     /** The terms its due-by was fixed with: that many business days after its date. */
     @Column(name = "terms", nullable = false)
@@ -216,6 +221,7 @@ public class Claim {
         copy.escalated = escalated;
         copy.waived = waived;
         copy.held = held;
+        copy.dueBySet = dueBySet;
         copy.reviewAssignee = reviewAssignee;
         copy.voidReason = voidReason;
         copy.tags = tags;
@@ -480,6 +486,14 @@ public class Claim {
 
     public void setWaived(boolean waived) {
         this.waived = waived;
+    }
+
+    public boolean isDueBySet() {
+        return dueBySet;
+    }
+
+    public void setDueBySet(boolean dueBySet) {
+        this.dueBySet = dueBySet;
     }
 
     public boolean isHeld() {

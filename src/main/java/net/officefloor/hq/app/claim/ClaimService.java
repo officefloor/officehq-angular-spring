@@ -818,6 +818,36 @@ public class ClaimService {
         return updated;
     }
 
+    /** Set the due-by of a DRAFT, OPEN or PENDING claim directly. It stays as set: a holiday added later does
+     *  not move it; its overdue state, late charge, grace and period follow it. Refused unless the user is a
+     *  steward, and for a claim in any other status, a missing date, and a claim whose old or new due-by is in a
+     *  closed period. */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, long claimId, LocalDate dueBy) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ClaimDueBySetException("Only a steward can set a claim's due-by.");
+        }
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ClaimDueBySetException("Only a DRAFT, OPEN or PENDING claim can have its due-by set.");
+        }
+        if (dueBy == null) {
+            throw new ClaimDueBySetException("Enter the new due-by.");
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        refuseClosed(sheetId, dueBy);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        LocalDate old = claim.getDueBy();
+        claim.setDueBy(dueBy);
+        claim.setDueBySet(true);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("CLAIM_DUE_BY_SET", updated, person, user, updated.getNumber(), " old=" + old + " new=" + dueBy);
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date and takes the next
      *  number in the sequence it is numbered in (its old number is never used again; a claim not yet settled has none),
      *  loses any figure a statement bound it to (live again until its new person's next statement), and is

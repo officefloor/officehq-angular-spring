@@ -296,6 +296,17 @@ import { VoidReasons } from '../../core/void-reasons';
           <button type="button" data-testid="claim-redate" [disabled]="acting() === c.id" (click)="redate(c)">
             Re-date<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
           </button>
+          <label [for]="'claim-due-by-new-' + c.id">New due-by</label>
+          <input
+            [id]="'claim-due-by-new-' + c.id"
+            data-testid="claim-due-by-new"
+            placeholder="YYYY-MM-DD"
+            [value]="dueByDates()[c.id] ?? ''"
+            (input)="setDueByDate(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-set-due-by" [disabled]="acting() === c.id" (click)="setDueBy(c)">
+            Set due-by<span class="visually-hidden"> of claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -433,6 +444,7 @@ export class PersonClaims {
   protected readonly settleDates = signal<Record<number, string>>({});
   /** The new date typed to re-date each claim to, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
+  protected readonly dueByDates = signal<Record<number, string>>({});
   /** The amount typed to split off each claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The amount typed to part-settle each claim, by claim id. */
@@ -751,6 +763,22 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.redate(c.id, this.redates()[c.id] ?? '');
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setDueByDate(id: number, date: string): void {
+    this.clearActionError(id);
+    this.dueByDates.update((d) => ({ ...d, [id]: date }));
+  }
+
+  protected async setDueBy(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.setDueBy(c.id, this.dueByDates()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

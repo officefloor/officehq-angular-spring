@@ -550,6 +550,19 @@ public class ClaimController {
         return ClaimView.of(service.redate(sheetId.trim(), user.trim(), claimId, request.date()));
     }
 
+    /** The due-by a steward sets a claim to. */
+    public record DueByRequest(LocalDate dueBy) {
+    }
+
+    /** Set a DRAFT, OPEN or PENDING claim's due-by directly: a steward's action. */
+    @PostMapping("/claims/{claimId}/due-by")
+    public ClaimView setDueBy(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid DueByRequest request) {
+        return ClaimView.of(service.setDueBy(sheetId.trim(), user.trim(), claimId, request.dueBy()));
+    }
+
     /** The amount split off a claim. */
     public record SplitRequest(@NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount) {
     }
@@ -785,6 +798,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimSplitException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> splitRefused(ClaimSplitException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A due-by set that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimDueBySetException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> dueBySetRefused(ClaimDueBySetException e) {
         return Map.of("message", e.getMessage());
     }
 
