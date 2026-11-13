@@ -49,8 +49,15 @@ public class Rollup {
             BigDecimal overdueTotal) {
     }
 
-    /** Figures added up over sheets: the number of people, and each sheet's due- and overdue-total. */
-    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /** Figures added up over sheets: the number of people, and each sheet's due- and overdue-total; and by grade
+     *  the due-totals of the people on it (retired people left out), and by status the number of claims in it. */
+    public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
+            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts) {
+    }
+
+    /** A sheet's due-totals by grade (each person not retired on the grade in force on the sheet's today, a due-total
+     *  of n/a adding nothing), and its claims counted by status. */
+    public record Breakdown(Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts) {
     }
 
     private final PersonRepository people;
@@ -153,6 +160,8 @@ public class Rollup {
         int peopleCount = 0;
         BigDecimal due = ZERO;
         BigDecimal overdue = ZERO;
+        Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
+        Map<ClaimStatus, Integer> statusCounts = new LinkedHashMap<>();
         while (!todo.isEmpty()) {
             for (Sheet child : sheets.findByParentOrderByIdAsc(todo.remove(0))) {
                 if (!seen.add(child.getId())) {
@@ -163,9 +172,32 @@ public class Rollup {
                 peopleCount += snapshot.people().size();
                 due = due.add(snapshot.dueTotal());
                 overdue = overdue.add(snapshot.overdueTotal());
+                Breakdown breakdown = breakdown(child.getId(), date, snapshot);
+                breakdown.gradeDueTotals().forEach((g, d) -> gradeDues.merge(g, d, BigDecimal::add));
+                breakdown.statusCounts().forEach((st, n) -> statusCounts.merge(st, n, Integer::sum));
             }
         }
-        return new Consolidated(peopleCount, due, overdue);
+        return new Consolidated(peopleCount, due, overdue, gradeDues, statusCounts);
+    }
+
+    /** A sheet's breakdown by grade and status, now or as it stood at the end of a date, from its snapshot then. */
+    public Breakdown breakdown(String sheetId, LocalDate date, Snapshot snapshot) {
+        LocalDate today = (date == null ? sheets.findById(sheetId) : Optional.of(asOf.sheet(sheetId, date)))
+                .map(Sheet::getToday).orElse(null);
+        List<Person> sheetPeople = date == null ? people.findBySheetIdOrderByPositionAscIdAsc(sheetId)
+                : asOf.people(sheetId, date);
+        List<Claim> sheetClaims = date == null ? claims.findBySheetIdOrderByIdDesc(sheetId) : asOf.claims(sheetId, date);
+        Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
+        for (Person person : sheetPeople) {
+            Figures figures = snapshot.people().get(person.getId());
+            if (person.isRetired() || figures == null || figures.dueTotal() == null) {
+                continue;
+            }
+            gradeDues.merge(person.gradeOn(today == null ? LocalDate.MAX : today), figures.dueTotal(), BigDecimal::add);
+        }
+        Map<ClaimStatus, Integer> statusCounts = new LinkedHashMap<>();
+        sheetClaims.forEach(c -> statusCounts.merge(c.getStatus(), 1, Integer::sum));
+        return new Breakdown(gradeDues, statusCounts);
     }
 
     /** People's figures added up, leaving out the single highest and the single lowest when there are three

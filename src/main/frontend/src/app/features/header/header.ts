@@ -1,6 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
-import { Figures } from '../../core/figures';
-import { People } from '../../core/people';
+import { Figures, STATUSES } from '../../core/figures';
+import { GRADES, People } from '../../core/people';
 import { hundredths, money } from '../../core/rates';
 import { Session } from '../../core/session';
 
@@ -8,7 +8,8 @@ import { Session } from '../../core/session';
 // each status, and the sheet's due- and overdue-totals — the same figures the summary and the
 // people list show. Then the same figures consolidated over the sheet and all its descendants: each
 // descendant's as that sheet shows them, added to this sheet's own; while the screen shows the sheet as
-// of a date, every sheet of the tree as it stood at the end of that date. And the signed-in user's own due- and overdue-totals, when a
+// of a date, every sheet of the tree as it stood at the end of that date. Likewise per grade the due-totals of
+// the people on it (retired people left out), and per status the number of claims in it. And the signed-in user's own due- and overdue-totals, when a
 // person on the sheet has their name or an alias equal to it; blank otherwise. And the user's crew total: the due-totals of
 // the crews that person leads, added up; blank when they lead none. And, for a steward, a dashboard: the
 // sheet's PENDING and REVIEW claims and its overdue claims that count, counted; blank for anyone else.
@@ -36,6 +37,12 @@ import { Session } from '../../core/session';
         <div><dt>Consolidated people</dt><dd data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</dd></div>
         <div><dt>Consolidated due total</dt><dd data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</dd></div>
         <div><dt>Consolidated overdue total</dt><dd data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</dd></div>
+        @for (g of consolidated().grades; track g.grade) {
+          <div><dt>Consolidated grade {{ g.grade }} due total</dt><dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</dd></div>
+        }
+        @for (s of consolidated().statuses; track s.status) {
+          <div><dt>Consolidated {{ s.status }}</dt><dd [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</dd></div>
+        }
       </dl>
     </header>
   `,
@@ -54,17 +61,31 @@ export class HeaderCounters {
 
   protected readonly consolidated = computed(() => {
     const d = this.session.descendants();
+    const grades = (own: (grade: string) => bigint) =>
+      GRADES.map((grade) => ({ grade, dueTotal: money(own(grade) + hundredths(d.gradeDueTotals[grade] ?? '0.00')) }));
+    const statuses = (own: (status: string) => number) =>
+      STATUSES.map((status) => ({ status, count: own(status) + (d.statusCounts[status] ?? 0) }));
     if (this.session.asOf()) {
       return {
         peopleCount: d.ownPeopleCount + d.peopleCount,
         dueTotal: money(hundredths(d.ownDueTotal) + hundredths(d.dueTotal)),
         overdueTotal: money(hundredths(d.ownOverdueTotal) + hundredths(d.overdueTotal)),
+        grades: grades((g) => hundredths(d.ownGradeDueTotals[g] ?? '0.00')),
+        statuses: statuses((s) => d.ownStatusCounts[s] ?? 0),
       };
     }
+    const current = this.people.people().filter((p) => !p.retired);
+    const counts = this.figures.statusCounts();
     return {
       peopleCount: this.people.people().length + d.peopleCount,
       dueTotal: money(hundredths(this.figures.dueTotal()) + hundredths(d.dueTotal)),
       overdueTotal: money(hundredths(this.figures.overdueTotal()) + hundredths(d.overdueTotal)),
+      grades: grades((g) =>
+        current
+          .filter((p) => this.figures.gradeToday(p) === g)
+          .reduce((sum, p) => sum + (this.figures.dueCents(p) ?? 0n), 0n),
+      ),
+      statuses: statuses((s) => counts.find((c) => c.status === s)?.count ?? 0),
     };
   });
 }

@@ -80,6 +80,13 @@ export interface DescendantFigures {
   ownPeopleCount: number;
   ownDueTotal: string;
   ownOverdueTotal: string;
+  /** By grade, the due-totals (two decimals) of the people on it, retired people left out; a grade with none absent. */
+  gradeDueTotals: Record<string, string>;
+  /** By status, the number of claims in it; a status with none absent. */
+  statusCounts: Record<string, number>;
+  /** The sheet's own, likewise. */
+  ownGradeDueTotals: Record<string, string>;
+  ownStatusCounts: Record<string, number>;
 }
 
 const NO_DESCENDANTS: DescendantFigures = {
@@ -89,6 +96,10 @@ const NO_DESCENDANTS: DescendantFigures = {
   ownPeopleCount: 0,
   ownDueTotal: '0.00',
   ownOverdueTotal: '0.00',
+  gradeDueTotals: {},
+  statusCounts: {},
+  ownGradeDueTotals: {},
+  ownStatusCounts: {},
 };
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by
