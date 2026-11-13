@@ -102,6 +102,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of its proofs are photos; the rest are receipts. */
+    @Column(name = "proof_photos", nullable = false)
+    private int proofPhotos;
+
     /** The number of the claim it was split from; none when it was not split off another. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -189,6 +193,7 @@ public class Claim {
         copy.editedBy = editedBy;
         copy.deferredUntil = deferredUntil;
         copy.proofs = proofs;
+        copy.proofPhotos = proofPhotos;
         copy.splitFrom = splitFrom;
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
@@ -390,9 +395,17 @@ public class Claim {
         return proofs;
     }
 
-    /** Raise its proofs count by one. */
-    public void addProof() {
+    /** How many of its proofs are of the kind. */
+    public int getProofs(ProofKind kind) {
+        return kind == ProofKind.PHOTO ? proofPhotos : proofs - proofPhotos;
+    }
+
+    /** Raise its proofs count by one, a proof of the kind. */
+    public void addProof(ProofKind kind) {
         proofs++;
+        if (kind == ProofKind.PHOTO) {
+            proofPhotos++;
+        }
     }
 
     public String getSplitFrom() {

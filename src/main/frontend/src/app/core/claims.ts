@@ -5,6 +5,10 @@ import { People, Person, gradeOn, heldOn, retiredBy } from './people';
 import { hundredths, rounded } from './rates';
 import { Session, addDays, daysBetween, isDate } from './session';
 
+/** The kinds a proof can be; one added with none chosen is a receipt. */
+export const PROOF_KINDS = ['receipt', 'photo'] as const;
+export type ProofKind = (typeof PROOF_KINDS)[number];
+
 export interface Claim {
   id: number;
   personId: number;
@@ -39,6 +43,10 @@ export interface Claim {
   /** How many proofs it has. One whose due is above the proof threshold in force on its date cannot be
    *  settled or approved with none. */
   proofs: number;
+  /** How many of its proofs are receipts. */
+  proofReceipts: number;
+  /** How many of its proofs are photos. */
+  proofPhotos: number;
   /** The number of the claim it was split from; null when it was not split off another. */
   splitFrom: string | null;
   /** The user whose editor is open on it, locking it for every other user until they save or cancel it,
@@ -510,13 +518,13 @@ export class Claims {
 
   /** Raise a claim's proofs count by one; an error message when refused (a SETTLED or VOID claim, or one in
    *  a closed period). */
-  async addProof(id: number): Promise<string | null> {
+  async addProof(id: number, kind: ProofKind | null = null): Promise<string | null> {
     const sid = this.session.sheetId();
     const user = this.session.user();
     if (!user || !sid) return 'Load a sheet first.';
     try {
       const claim = await firstValueFrom(
-        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/proof`, null, { headers: { 'X-User': user } }),
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/proof`, kind ? { kind } : null, { headers: { 'X-User': user } }),
       );
       if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
       return null;

@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its review threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date), and its escalation gap (days; none: off), and its review SLA (days; none: none).
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its review threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date), and its escalation gap (days; none: off), and its review SLA (days; none: none), and its proof kinds (comma separated; none: none).
      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
@@ -39,7 +39,7 @@ public class SheetController {
             List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
             boolean archived, String noteThreshold, LocalDate entryDate, Integer lastSettleBatch, String pot,
             String parent, int fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold, Integer escalateAfter,
-            Integer reviewSla) {
+            Integer reviewSla, String proofKinds) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -58,7 +58,7 @@ public class SheetController {
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
                     sheet.getRoundingMode(),
                     sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString(),
-                    sheet.getEscalateAfter(), sheet.getReviewSla());
+                    sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getProofKinds());
         }
     }
 
@@ -155,6 +155,11 @@ public class SheetController {
 
     /** The sheet's review SLA in days; missing means none. */
     public record ReviewSlaRequest(@Min(0) @Max(36500) Integer reviewSla) {
+    }
+
+    /** The sheet's proof kinds, comma separated (receipt or photo); missing or blank means none. */
+    public record ProofKindsRequest(
+            @Size(max = 200) @Pattern(regexp = "\\s*((receipt|photo)(\\s*,\\s*(receipt|photo))*)?\\s*") String proofKinds) {
     }
 
     /** The sheet's fiscal start month, 1 to 12. */
@@ -369,6 +374,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid ReviewSlaRequest request) {
         return SheetView.of(service.setReviewSla(id.trim(), user.trim(), request.reviewSla()));
+    }
+
+    /** Change the sheet's proof kinds. */
+    @PutMapping("/{id}/settings/proof-kinds")
+    public SheetView setProofKinds(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ProofKindsRequest request) {
+        return SheetView.of(service.setProofKinds(id.trim(), user.trim(), request.proofKinds()));
     }
 
     /** Change the sheet's fiscal start month. */

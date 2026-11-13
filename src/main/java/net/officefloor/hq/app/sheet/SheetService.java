@@ -301,6 +301,16 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's proof kinds (a comma separated list of receipt or photo; blank: none). Not dated. */
+    @Transactional
+    public Sheet setProofKinds(String id, String user, String kinds) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        String list = kinds == null ? "" : String.join(",", kinds.trim().split("\\s*,\\s*"));
+        sheet.setProofKinds(list.isEmpty() ? null : list);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=proof-kinds value=" + list);
+        return sheet;
+    }
+
     /** Change the sheet's fiscal start month (1 to 12). Not dated. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

@@ -1,7 +1,7 @@
 import { Component, ElementRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { AuditLog } from '../../core/audit';
 import { ClaimTemplates } from '../../core/claim-templates';
-import { Claim, ClaimAction, Claims, bound } from '../../core/claims';
+import { Claim, ClaimAction, Claims, PROOF_KINDS, ProofKind, bound } from '../../core/claims';
 import { Periods } from '../../core/periods';
 import { GradeFrom, People, gradeOn } from '../../core/people';
 import { NO_RATE, Rates, hundredths, money } from '../../core/rates';
@@ -110,6 +110,8 @@ import { VoidReasons } from '../../core/void-reasons';
           <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
           <span>Review late <span data-testid="claim-review-late">{{ claims.reviewLate(c) ? 'yes' : 'no' }}</span></span>
           <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+          <span>Receipts <span data-testid="claim-proofs-receipt">{{ c.proofReceipts }}</span></span>
+          <span>Photos <span data-testid="claim-proofs-photo">{{ c.proofPhotos }}</span></span>
           <span>Deferred <span data-testid="claim-deferred">{{ claims.deferredShown(c) ? 'yes' : 'no' }}</span></span>
           <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
           <span>Reminded <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span></span>
@@ -205,6 +207,17 @@ import { VoidReasons } from '../../core/void-reasons';
               {{ a.label }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
             </button>
           }
+          <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+          <select
+            [id]="'claim-proof-kind-' + c.id"
+            data-testid="claim-proof-kind"
+            (change)="setProofKind(c.id, value($event))"
+          >
+            <option value="" [selected]="!proofKinds()[c.id]">Receipt (default)</option>
+            @for (k of proofKindOptions; track k) {
+              <option [value]="k" [selected]="proofKinds()[c.id] === k">{{ k }}</option>
+            }
+          </select>
           <button type="button" data-testid="claim-proof" [disabled]="acting() === c.id" (click)="addProof(c)">
             Add proof<span class="visually-hidden"> to claim {{ c.amount }} on {{ c.date }}</span>
           </button>
@@ -368,6 +381,10 @@ export class PersonClaims {
   protected readonly voidReasons = inject(VoidReasons);
   /** The void reason chosen for each claim, by claim id. */
   protected readonly voidReasonsChosen = signal<Record<number, string>>({});
+  /** The kinds a proof can be. */
+  protected readonly proofKindOptions = PROOF_KINDS;
+  /** The proof kind chosen for each claim, by claim id; none chosen: a receipt. */
+  protected readonly proofKinds = signal<Record<number, ProofKind>>({});
   protected readonly noRate = NO_RATE;
   /** The id of the claim whose status change is under way. */
   protected readonly acting = signal<number | null>(null);
@@ -478,11 +495,20 @@ export class PersonClaims {
     this.clearActionError(c.id);
     this.acting.set(c.id);
     try {
-      const err = await this.claims.addProof(c.id);
+      const err = await this.claims.addProof(c.id, this.proofKinds()[c.id] ?? null);
       if (err) this.actionError.set({ id: c.id, message: err });
+      else this.setProofKind(c.id, '');
     } finally {
       this.acting.set(null);
     }
+  }
+
+  protected setProofKind(id: number, kind: string): void {
+    this.clearActionError(id);
+    this.proofKinds.update((m) => {
+      const { [id]: _, ...rest } = m;
+      return (PROOF_KINDS as readonly string[]).includes(kind) ? { ...rest, [id]: kind as ProofKind } : rest;
+    });
   }
 
   protected async showTimeline(c: Claim): Promise<void> {

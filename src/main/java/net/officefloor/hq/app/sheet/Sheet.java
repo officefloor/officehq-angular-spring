@@ -115,6 +115,11 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The proof kinds, comma separated: a claim above the proof threshold needs at least one proof of each
+     *  before it can be settled or approved; none means none. Not dated. */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** The month (1 to 12) a fiscal year starts in; a fiscal year is named by the calendar year its first
      *  day falls in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -429,6 +434,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
     }
 
     public int getFiscalStartMonth() {

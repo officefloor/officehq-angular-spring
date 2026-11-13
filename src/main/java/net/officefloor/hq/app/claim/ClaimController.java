@@ -5,6 +5,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,14 +46,14 @@ public class ClaimController {
      *  the due fixed when it was settled (none while its due is live)
      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
-     *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
+     *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count and how many of them are receipts and photos,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
      *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
-            int proofs, String splitFrom, String lockedBy, boolean lateEntry,
+            int proofs, int proofReceipts, int proofPhotos, String splitFrom, String lockedBy, boolean lateEntry,
             String remindedOn, String ref, List<String> tags, String voidReason,
             List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived) {
 
@@ -65,7 +66,8 @@ public class ClaimController {
                     claim.getCorrects(), claim.getDueBy().toString(),
                     claim.getStatusLog().stream().map(StatusLine::of).toList(),
                     claim.getDeferredUntil() == null ? null : claim.getDeferredUntil().toString(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(),
+                    claim.getProofs(), claim.getProofs(ProofKind.RECEIPT), claim.getProofs(ProofKind.PHOTO),
+                    claim.getSplitFrom(), claim.getLockedBy(),
                     claim.isLateEntry(),
                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
@@ -377,12 +379,19 @@ public class ClaimController {
         return ClaimView.of(service.approve(sheetId.trim(), user.trim(), claimId));
     }
 
+    /** The kind of a proof added: receipt or photo; missing means none chosen (a receipt). */
+    public record ProofRequest(@Pattern(regexp = "receipt|photo") String kind) {
+    }
+
     /** Raise a claim's proofs count by one. */
     @PostMapping("/claims/{claimId}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return ClaimView.of(service.addProof(sheetId.trim(), user.trim(), claimId));
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) @Valid ProofRequest request) {
+        String kind = request == null ? null : request.kind();
+        return ClaimView.of(service.addProof(sheetId.trim(), user.trim(), claimId,
+                kind == null ? null : ProofKind.of(kind)));
     }
 
     /** Remind an OPEN or PENDING claim, once per sheet's today. */
