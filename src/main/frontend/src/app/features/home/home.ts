@@ -10,6 +10,7 @@ import { Rates } from '../../core/rates';
 import { Roles } from '../../core/roles';
 import { LocaleFigures } from '../../core/locale-figures';
 import { Session, isDate } from '../../core/session';
+import { UserColumns } from '../../core/user-columns';
 import { LOCALES, UserLocale } from '../../core/user-locale';
 import { VoidReasons } from '../../core/void-reasons';
 import { AuditPanel } from '../audit/audit';
@@ -169,6 +170,7 @@ export class Home {
   protected readonly session = inject(Session);
   protected readonly userLocale = inject(UserLocale);
   protected readonly locales = LOCALES;
+  private readonly userColumns = inject(UserColumns);
   private readonly people = inject(People);
   private readonly claims = inject(Claims);
   private readonly rates = inject(Rates);
@@ -207,7 +209,10 @@ export class Home {
     e.preventDefault();
     const signedIn = this.session.signIn(this.nameInput());
     this.signinError.set(signedIn ? null : 'Enter your name.');
-    if (signedIn) void this.userLocale.load();
+    if (signedIn) {
+      void this.userLocale.load();
+      void this.userColumns.load();
+    }
   }
 
   protected async saveLocale(e: Event): Promise<void> {
@@ -238,7 +243,7 @@ export class Home {
   private async loadSheet(id: string): Promise<string | null> {
     return (
       (await this.session.loadSheet(id)) ??
-      (await Promise.all([this.userLocale.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
+      (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
       null
     );
   }

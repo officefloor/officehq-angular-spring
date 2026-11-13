@@ -5,6 +5,7 @@ import { Figures } from '../../core/figures';
 import { GRADES, People, Person } from '../../core/people';
 import { Periods } from '../../core/periods';
 import { Pools } from '../../core/pools';
+import { COLUMNS, ColumnKey, UserColumns } from '../../core/user-columns';
 import { NO_RATE, halfEven, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
 import { PersonPlans } from '../plans/person-plans';
@@ -211,9 +212,26 @@ function compareKeys(a: string, b: string): number {
           <p role="alert" data-testid="person-error">{{ err }}</p>
         }
       </section>
+      <fieldset>
+        <legend>Columns shown on your screen</legend>
+        @for (c of columnKeys; track c) {
+          <label>
+            <input
+              type="checkbox"
+              [attr.data-testid]="'column-' + c"
+              [checked]="userColumns.shown(c)"
+              (change)="showColumn(c, checked($event))"
+            />
+            {{ c }}
+          </label>
+        }
+        @if (columnsError(); as err) {
+          <p role="alert" data-testid="columns-error">{{ err }}</p>
+        }
+      </fieldset>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Snapshots</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th>@if (col('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th>@if (col('terms')) {<th scope="col">Terms</th>}@if (col('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (col('claimed')) {<th scope="col">Claimed</th>}@if (col('due-total')) {<th scope="col">Due total</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th>@if (col('excess')) {<th scope="col">Excess</th>}@if (col('overdue-count')) {<th scope="col">Overdue</th>}@if (col('overdue-total')) {<th scope="col">Overdue total</th>}<th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th>@if (col('statement-count')) {<th scope="col">Statements</th>}@if (col('stated-total')) {<th scope="col">Last stated</th>}@if (col('statement-date')) {<th scope="col">Stated on</th>}<th scope="col">Snapshots</th>@if (col('retired')) {<th scope="col">Retired</th>}@if (col('hold')) {<th scope="col">On hold</th>}@if (col('patrons')) {<th scope="col">Patrons</th>}@if (col('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -229,24 +247,26 @@ function compareKeys(a: string, b: string): number {
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
-              <td>
-                <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
-                <label [for]="'person-alias-input-' + p.id">Alias<span class="visually-hidden"> for {{ p.name }}</span></label>
-                <input
-                  [id]="'person-alias-input-' + p.id"
-                  data-testid="person-alias-input"
-                  [value]="aliasInputs()[p.id] ?? ''"
-                  (input)="setAliasInput(p.id, value($event))"
-                />
-                <button
-                  type="button"
-                  data-testid="person-alias-add"
-                  [disabled]="addingAlias() === p.id"
-                  (click)="addAlias(p)"
-                >
-                  Add<span class="visually-hidden"> alias for {{ p.name }}</span>
-                </button>
-              </td>
+              @if (col('aliases')) {
+                <td>
+                  <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
+                  <label [for]="'person-alias-input-' + p.id">Alias<span class="visually-hidden"> for {{ p.name }}</span></label>
+                  <input
+                    [id]="'person-alias-input-' + p.id"
+                    data-testid="person-alias-input"
+                    [value]="aliasInputs()[p.id] ?? ''"
+                    (input)="setAliasInput(p.id, value($event))"
+                  />
+                  <button
+                    type="button"
+                    data-testid="person-alias-add"
+                    [disabled]="addingAlias() === p.id"
+                    (click)="addAlias(p)"
+                  >
+                    Add<span class="visually-hidden"> alias for {{ p.name }}</span>
+                  </button>
+                </td>
+              }
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td>
                 <span data-testid="person-grade">{{ gradeToday(p) }}</span>
@@ -271,11 +291,19 @@ function compareKeys(a: string, b: string): number {
                 </button>
               </td>
               <td data-testid="person-active">{{ figures.active(p) ? 'yes' : 'no' }}</td>
-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              @if (col('terms')) {
+                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              }
+              @if (col('contact')) {
+                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              }
               <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
-              <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
-              <td data-testid="person-due-total">{{ due(p) }}</td>
+              @if (col('claimed')) {
+                <td data-testid="person-claimed">{{ claims.claimed(p.id) }}</td>
+              }
+              @if (col('due-total')) {
+                <td data-testid="person-due-total">{{ due(p) }}</td>
+              }
               <td data-testid="person-settled-total">{{ money(figures.settledCents(p)) }}</td>
               <td data-testid="person-open-total">{{ money(figures.openCents(p)) }}</td>
               <td data-testid="person-cut-total">{{ cut(p) }}</td>
@@ -285,18 +313,28 @@ function compareKeys(a: string, b: string): number {
                     <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ figures.personPeriodDue(period, p.id) }}</span></span>
                 }
               </td>
-              <td data-testid="person-excess">{{ excess(p) }}</td>
-              <td data-testid="person-overdue-count">{{ overdue(p).length }}</td>
-              <td data-testid="person-overdue-total">{{ overdueDue(p) }}</td>
+              @if (col('excess')) {
+                <td data-testid="person-excess">{{ excess(p) }}</td>
+              }
+              @if (col('overdue-count')) {
+                <td data-testid="person-overdue-count">{{ overdue(p).length }}</td>
+              }
+              @if (col('overdue-total')) {
+                <td data-testid="person-overdue-total">{{ overdueDue(p) }}</td>
+              }
               @let aged = figures.agedCents(p);
               <td data-testid="person-aged-0-30">{{ money(aged.upTo30) }}</td>
               <td data-testid="person-aged-31-60">{{ money(aged.upTo60) }}</td>
               <td data-testid="person-aged-61">{{ money(aged.over60) }}</td>
-              <td>
-                <span data-testid="person-statement-count">{{ p.statementCount }}</span>
-                <span>Last <span data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</span></span>
-                <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
-              </td>
+              @if (col('statement-count')) {
+                <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              }
+              @if (col('stated-total')) {
+                <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
+              }
+              @if (col('statement-date')) {
+                <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              }
               <td>
                 <ul class="holds">
                   @for (line of p.snapshots; track $index) {
@@ -304,50 +342,58 @@ function compareKeys(a: string, b: string): number {
                   }
                 </ul>
               </td>
-              <td>
-                <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
-                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
-                <ul class="holds">
-                  @for (r of p.retirements; track $index) {
-                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+              @if (col('retired')) {
+                <td>
+                  <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+                  <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                  <ul class="holds">
+                    @for (r of p.retirements; track $index) {
+                      <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                    }
+                  </ul>
+                </td>
+              }
+              @if (col('hold')) {
+                <td>
+                  <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                  <ul class="holds">
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">{{ h.from ?? 'always' }} to {{ h.to ?? 'no end' }}</li>
+                    }
+                  </ul>
+                </td>
+              }
+              @if (col('patrons')) {
+                <td>
+                  <span data-testid="person-patrons">{{ patrons(p) }}</span>
+                  <label [for]="'person-patron-select-' + p.id">Add patron<span class="visually-hidden"> for {{ p.name }}</span></label>
+                  <select
+                    [id]="'person-patron-select-' + p.id"
+                    data-testid="person-patron-select"
+                    [value]="patronChoices()[p.id] ?? ''"
+                    (change)="setPatronChoice(p.id, value($event))"
+                  >
+                    <option value="" [selected]="!patronChoices()[p.id]">Choose…</option>
+                    @for (o of others(p); track o.id) {
+                      <option [value]="'' + o.id" [selected]="'' + o.id === patronChoices()[p.id]">{{ o.name }}</option>
+                    }
+                  </select>
+                  <button
+                    type="button"
+                    data-testid="person-patron-add"
+                    [disabled]="addingPatron() === p.id"
+                    (click)="addPatron(p)"
+                  >
+                    Add<span class="visually-hidden"> patron for {{ p.name }}</span>
+                  </button>
+                  @if (patronError()?.id === p.id) {
+                    <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
                   }
-                </ul>
-              </td>
-              <td>
-                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
-                <ul class="holds">
-                  @for (h of p.holds; track $index) {
-                    <li data-testid="person-hold-line">{{ h.from ?? 'always' }} to {{ h.to ?? 'no end' }}</li>
-                  }
-                </ul>
-              </td>
-              <td>
-                <span data-testid="person-patrons">{{ patrons(p) }}</span>
-                <label [for]="'person-patron-select-' + p.id">Add patron<span class="visually-hidden"> for {{ p.name }}</span></label>
-                <select
-                  [id]="'person-patron-select-' + p.id"
-                  data-testid="person-patron-select"
-                  [value]="patronChoices()[p.id] ?? ''"
-                  (change)="setPatronChoice(p.id, value($event))"
-                >
-                  <option value="" [selected]="!patronChoices()[p.id]">Choose…</option>
-                  @for (o of others(p); track o.id) {
-                    <option [value]="'' + o.id" [selected]="'' + o.id === patronChoices()[p.id]">{{ o.name }}</option>
-                  }
-                </select>
-                <button
-                  type="button"
-                  data-testid="person-patron-add"
-                  [disabled]="addingPatron() === p.id"
-                  (click)="addPatron(p)"
-                >
-                  Add<span class="visually-hidden"> patron for {{ p.name }}</span>
-                </button>
-                @if (patronError()?.id === p.id) {
-                  <p role="alert" data-testid="person-patron-error">{{ patronError()?.message }}</p>
-                }
-              </td>
-              <td data-testid="person-backing">{{ backing(p) }}</td>
+                </td>
+              }
+              @if (col('backing')) {
+                <td data-testid="person-backing">{{ backing(p) }}</td>
+              }
               <td>
                 <span data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</span>
                 <button
@@ -507,6 +553,10 @@ export class PeopleList {
   protected readonly money = money;
   protected readonly periods = inject(Periods);
   private readonly pools = inject(Pools);
+  protected readonly userColumns = inject(UserColumns);
+  protected readonly columnKeys = COLUMNS;
+  /** The last refused switch of a column, until the next switch. */
+  protected readonly columnsError = signal<string | null>(null);
   protected readonly grades = GRADES;
   /** The people the list shows: everyone, or only those not retired unless show retired is on. */
   protected readonly shown = computed(() =>
@@ -561,6 +611,16 @@ export class PeopleList {
   protected readonly watching = signal<number | null>(null);
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = this.figures.dueTotal;
+  /** Whether the user's screen shows this column of the list. */
+  protected col(c: ColumnKey): boolean {
+    return this.userColumns.shown(c);
+  }
+
+  protected async showColumn(c: ColumnKey, shown: boolean): Promise<void> {
+    this.columnsError.set(null);
+    this.columnsError.set(await this.userColumns.show(c, shown));
+  }
+
   /** Everyone's overdue claims that count, counted. */
   protected readonly overdueCount = computed(() =>
     this.people.people().reduce((n, p) => n + this.overdue(p).length, 0),
