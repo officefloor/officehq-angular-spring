@@ -23,6 +23,8 @@ export interface Plan {
   paused: boolean;
   /** The changes of its amount, oldest first: the day made and the new amount. */
   changes: { on: string; amount: string }[];
+  /** The descendant sheet it makes its claims on, for the person of the same name there; null for its own. */
+  sheet: string | null;
 }
 
 /** A plan's fields as typed. */
@@ -32,6 +34,8 @@ export interface PlanFields {
   every: string;
   day: string;
   end: string;
+  /** A descendant sheet to make its claims on; blank for this sheet. */
+  sheet: string;
 }
 
 // The active sheet's plans, in the order they were added, re-read from the server each time the sheet is
@@ -62,7 +66,8 @@ export class Plans {
   }
 
   /** Add a plan to a person, run every so many days or, with a day of the month typed, monthly on that day;
-   *  an error message when refused (a bad amount, interval or day, or an end before the start). */
+   *  an error message when refused (a bad amount, interval or day, an end before the start, or a sheet that is
+   *  not a descendant). */
   async add(personId: number, f: PlanFields): Promise<string | null> {
     const user = this.session.user();
     const sid = this.session.sheetId();
@@ -72,6 +77,7 @@ export class Plans {
     const every = f.every.trim();
     const day = f.day.trim();
     const end = f.end.trim();
+    const sheet = f.sheet.trim() || null;
     if (!/^\d+(\.\d{1,2})?$/.test(amount)) return 'Enter an amount of 0.00 or more with up to two decimals.';
     if (!isDate(start)) return 'Enter a start date as YYYY-MM-DD.';
     if (day) {
@@ -84,7 +90,7 @@ export class Plans {
       const plan = await firstValueFrom(
         this.http.post<Plan>(
           `/api/sheets/${encodeURIComponent(sid)}/people/${personId}/plans`,
-          day ? { amount, start, day: Number(day), end } : { amount, start, every: Number(every), end },
+          day ? { amount, start, day: Number(day), end, sheet } : { amount, start, every: Number(every), end, sheet },
           { headers: { 'X-User': user } },
         ),
       );

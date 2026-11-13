@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -51,10 +52,11 @@ public class PlanService {
 
     /** Add a plan to a person, run every so many days or monthly on a day of the month (exactly one of them);
      *  an amount a claim would refuse (below 0.00), an interval below 1 day, a day of the month outside 1 to 31,
-     *  or an end before the start is refused. */
+     *  or an end before the start is refused. It may name one of the sheet's descendants to make its claims
+     *  on; a sheet that is not a descendant is refused. */
     @Transactional
     public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start,
-            Integer every, Integer day, LocalDate end) {
+            Integer every, Integer day, LocalDate end, String targetSheet) {
         sheets.today(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (amount.signum() < 0) {
@@ -73,11 +75,16 @@ public class PlanService {
         if (end.isBefore(start)) {
             throw new PlanRefusedException("The end cannot be before the start.");
         }
+        String target = targetSheet == null || targetSheet.isBlank() ? null : targetSheet.trim();
+        if (target != null && !sheets.isDescendant(target, sheetId)) {
+            throw new PlanRefusedException("The sheet must be a descendant of this sheet.");
+        }
         BigDecimal a = amount.setScale(2);
-        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, a, start, every, day, end));
+        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, a, start, every, day, end, target));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " amount=" + a.toPlainString() + " start=" + start
-                + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
+                + (day != null ? " day=" + day : " every=" + every) + " end=" + end
+                + (target != null ? " sheet=" + target : ""));
         return plan;
     }
 
@@ -131,7 +138,8 @@ public class PlanService {
     /** For every plan on the sheet in the order they were added, make a DRAFT claim of its amount with an
      *  empty note on each plan date up to its end and the sheet's today it has made none for yet; a date the
      *  claim form refuses is skipped, and tried again next time. Like a bulk action, a viewer's generate goes
-     *  through with nothing made. */
+     *  through with nothing made. A plan naming a descendant sheet makes its claims there, for the person of
+     *  the same name on that sheet (none when there is no such person), by that sheet's rules. */
     @Transactional
     public Generated generate(String sheetId, String user) {
         LocalDate today = sheets.today(sheetId);
@@ -141,11 +149,18 @@ public class PlanService {
         }
         List<Claim> made = new ArrayList<>();
         for (Plan plan : all) {
-            if (people.findByIdAndSheetId(plan.getPersonId(), sheetId).isEmpty()) {
+            Optional<Person> person = people.findByIdAndSheetId(plan.getPersonId(), sheetId);
+            if (person.isEmpty()) {
                 continue; // the person is no longer on the sheet
             }
+            String on = plan.getTargetSheet() != null ? plan.getTargetSheet() : sheetId;
+            Optional<Person> claimant = on.equals(sheetId) ? person : people.findByName(on, person.get().getName());
+            if (claimant.isEmpty()) {
+                continue; // no one of that name on the descendant sheet
+            }
+            long claimantId = claimant.get().getId();
             for (LocalDate date : plan.datesDue(today)) {
-                claims.addIfAccepted(sheetId, user, plan.getPersonId(), plan.getAmount(), date, "")
+                claims.addIfAccepted(on, user, claimantId, plan.getAmount(), date, "")
                         .ifPresent(claim -> {
                             made.add(claim);
                             plan.generated(date);

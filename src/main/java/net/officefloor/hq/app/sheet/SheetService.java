@@ -413,6 +413,13 @@ public class SheetService {
         return sheet;
     }
 
+    /** Whether a sheet is a descendant of another: it exists and has the other among its ancestors, however far
+     *  up (its parent, the parent's parent and so on). */
+    @Transactional(readOnly = true)
+    public boolean isDescendant(String id, String ancestor) {
+        return !id.equals(ancestor) && sheets.existsById(id) && hasAncestor(id, ancestor);
+    }
+
     /** Whether a sheet has another among all its ancestors, however far up. */
     private boolean hasAncestor(String id, String ancestor) {
         Set<String> seen = new HashSet<>();

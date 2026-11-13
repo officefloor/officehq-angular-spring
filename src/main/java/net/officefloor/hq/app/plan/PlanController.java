@@ -31,15 +31,17 @@ public class PlanController {
     /** A plan as the screen shows it: the amount with two decimals, dates YYYY-MM-DD, every so many days or
      *  the day of the month (the other null), how many claims it has made so far, and its next dates: the first
      *  five plan dates after the sheet's today and on or before its end that no pause skips, and whether it is
-     *  paused, and the changes of its amount, oldest first. */
+     *  paused, and the changes of its amount, oldest first, and the descendant sheet it makes its claims on
+     *  (null for its own). */
     public record PlanView(long id, long personId, String amount, String start, Integer every, Integer day,
-            String end, int generated, List<String> nextDates, boolean paused, List<ChangeView> changes) {
+            String end, int generated, List<String> nextDates, boolean paused, List<ChangeView> changes,
+            String sheet) {
 
         static PlanView of(Plan p, LocalDate today) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart().toString(),
                     p.getEvery(), p.getDay(), p.getEnd().toString(), p.getGeneratedCount(),
                     p.nextDates(today, 5).stream().map(LocalDate::toString).toList(), p.isPaused(),
-                    p.getChanges().stream().map(ChangeView::of).toList());
+                    p.getChanges().stream().map(ChangeView::of).toList(), p.getTargetSheet());
         }
     }
 
@@ -59,7 +61,8 @@ public class PlanController {
             @NotNull LocalDate start,
             Integer every,
             Integer day,
-            @NotNull LocalDate end) {
+            @NotNull LocalDate end,
+            @Size(max = 200) String sheet) {
     }
 
     /** How many a generate made, the claims it made in the order made, and the sheet's plans. */
@@ -89,7 +92,7 @@ public class PlanController {
             @RequestBody @Valid PlanRequest request) {
         String sid = sheetId.trim();
         Plan plan = service.add(sid, user.trim(), personId, request.amount(), request.start(), request.every(),
-                request.day(), request.end());
+                request.day(), request.end(), request.sheet());
         return PlanView.of(plan, service.today(sid));
     }
 

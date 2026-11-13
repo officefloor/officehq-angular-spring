@@ -4,7 +4,7 @@ import { Plans } from '../../core/plans';
 // A person's plans, each with how many claims it has made so far, its next five dates and whether it is paused
 // (with buttons pausing and resuming it, a refusal shown on its row), an entry changing its amount for the claims
 // it makes from then on (a bad amount refused on its row) and the list of those changes, oldest first, and a form adding one, run every so many days
-// or monthly on a day of the month (a bad amount, interval or day, or an end before the start, is refused with
+// or monthly on a day of the month, optionally on one of the sheet's descendants (a bad amount, interval or day, or an end before the start, is refused with
 // an error on the row).
 @Component({
   selector: 'app-person-plans',
@@ -20,6 +20,9 @@ import { Plans } from '../../core/plans';
             every <span data-testid="plan-every">{{ pl.every }}</span> days
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>,
+          @if (pl.sheet) {
+            on sheet <span data-testid="plan-sheet">{{ pl.sheet }}</span>,
+          }
           made <span data-testid="plan-generated">{{ pl.generated }}</span>;
           next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>;
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
@@ -84,6 +87,13 @@ import { Plans } from '../../core/plans';
         [value]="day()"
         (input)="day.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-form-sheet-' + personId()">On descendant sheet (optional)</label>
+      <input
+        [id]="'plan-form-sheet-' + personId()"
+        data-testid="plan-form-sheet"
+        [value]="sheet()"
+        (input)="sheet.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input
         [id]="'plan-form-end-' + personId()"
@@ -111,6 +121,7 @@ export class PersonPlans {
   protected readonly every = signal('');
   protected readonly day = signal('');
   protected readonly end = signal('');
+  protected readonly sheet = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   /** Each plan row's error from its last action, by plan id. */
@@ -166,6 +177,7 @@ export class PersonPlans {
         every: this.every(),
         day: this.day(),
         end: this.end(),
+        sheet: this.sheet(),
       });
       if (err) this.error.set(err);
       else {
@@ -174,6 +186,7 @@ export class PersonPlans {
         this.every.set('');
         this.day.set('');
         this.end.set('');
+        this.sheet.set('');
       }
     } finally {
       this.saving.set(false);
