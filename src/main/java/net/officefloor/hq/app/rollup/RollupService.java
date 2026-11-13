@@ -100,6 +100,13 @@ public class RollupService {
         return result;
     }
 
+    /** Record in the audit each person's due-total as it stands now, in list order: the figures of
+     *  the day the sheet's today is about to leave. */
+    public void snapshot(String sheetId, String user) {
+        rollup(sheetId).people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + sheetId
+                + " by=" + user + " name=" + figures.name() + " due-total=" + text(figures.due())));
+    }
+
     private Rollup rollup(String sheetId) {
         LocalDate today = sheets.today(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);

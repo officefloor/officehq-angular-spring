@@ -59,7 +59,8 @@ public class SheetController {
     }
 
     /** Change the sheet's today, closing the periods past their grace days and releasing every claim
-     *  editor's lock when the date moved; the audit records only the figures it moved. */
+     *  editor's lock when the date moved; the audit records each person's due-total on the day being
+     *  left when the date moved, then only the figures it moved. */
     @PutMapping("/{id}/today")
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 200) String id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated TodayRequest request) {
@@ -68,6 +69,9 @@ public class SheetController {
         return SheetView.of(rollups.track(sheet, by,
                 () -> {
                     LocalDate was = service.today(sheet);
+                    if (!was.equals(request.today())) {
+                        rollups.snapshot(sheet, by);
+                    }
                     Sheet changed = service.setToday(sheet, request.today());
                     if (!was.equals(changed.getToday())) {
                         claims.releaseLocks(sheet);

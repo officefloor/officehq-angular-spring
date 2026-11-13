@@ -27,7 +27,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class Audit {
 
     /** The events that only report figures: they never name a delegating steward. */
-    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT");
+    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
 
     private final Path file;
     private final ObjectProvider<SettingService> settings;
