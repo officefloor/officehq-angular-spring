@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -48,7 +49,8 @@ public class PersonController {
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
             List<RetirementView> retirements,
             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots) {
+            List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots,
+            List<String> statementLines) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
                 boolean watched, boolean clashing, List<PersonSnapshot> snapshots) {
@@ -62,7 +64,16 @@ public class PersonController {
                     person.getRetirements().stream().map(RetirementView::of).toList(),
                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
-                    person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList());
+                    person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList(),
+                    statementLines(statements));
+        }
+
+        /** One line per statement standing, oldest first by the date it was taken (in the order taken on
+         *  one date), as `<date> <due-total>` (n/a when it was). */
+        private static List<String> statementLines(List<Statement> statements) {
+            return statements.stream().sorted(Comparator.comparing(Statement::getTakenOn))
+                    .map(s -> s.getTakenOn() + " " + (s.getDueTotal() == null ? "n/a" : s.getDueTotal().toPlainString()))
+                    .toList();
         }
     }
 

@@ -232,7 +232,7 @@ function compareKeys(a: string, b: string): number {
       </fieldset>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th>@if (col('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th>@if (col('terms')) {<th scope="col">Terms</th>}@if (col('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (col('claimed')) {<th scope="col">Claimed</th>}@if (col('due-total')) {<th scope="col">Due total</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th>@if (col('excess')) {<th scope="col">Excess</th>}@if (col('overdue-count')) {<th scope="col">Overdue</th>}@if (col('overdue-total')) {<th scope="col">Overdue total</th>}<th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th>@if (col('statement-count')) {<th scope="col">Statements</th>}@if (col('stated-total')) {<th scope="col">Last stated</th>}@if (col('statement-date')) {<th scope="col">Stated on</th>}<th scope="col">Snapshots</th>@if (col('retired')) {<th scope="col">Retired</th>}@if (col('hold')) {<th scope="col">On hold</th>}@if (col('patrons')) {<th scope="col">Patrons</th>}@if (col('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th>@if (col('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th>@if (col('terms')) {<th scope="col">Terms</th>}@if (col('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (col('claimed')) {<th scope="col">Claimed</th>}@if (col('due-total')) {<th scope="col">Due total</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th>@if (col('excess')) {<th scope="col">Excess</th>}@if (col('overdue-count')) {<th scope="col">Overdue</th>}@if (col('overdue-total')) {<th scope="col">Overdue total</th>}<th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th>@if (col('statement-count')) {<th scope="col">Statements</th>}@if (col('stated-total')) {<th scope="col">Last stated</th>}@if (col('statement-date')) {<th scope="col">Stated on</th>}<th scope="col">Statement lines</th><th scope="col">Snapshots</th>@if (col('retired')) {<th scope="col">Retired</th>}@if (col('hold')) {<th scope="col">On hold</th>}@if (col('patrons')) {<th scope="col">Patrons</th>}@if (col('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -337,6 +337,13 @@ function compareKeys(a: string, b: string): number {
               @if (col('statement-date')) {
                 <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               }
+              <td>
+                <ul class="holds">
+                  @for (line of p.statementLines; track $index) {
+                    <li data-testid="person-statement-line-line">{{ line }}</li>
+                  }
+                </ul>
+              </td>
               <td>
                 <ul class="holds">
                   @for (line of p.snapshots; track $index) {

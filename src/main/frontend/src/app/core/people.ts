@@ -91,6 +91,9 @@ export interface Person {
   /** Their snapshot lines, oldest first: one per day the sheet's today moved on from, as
    *  `<the day being left> <due-total>` (n/a when it was). */
   snapshots: string[];
+  /** Their statement lines, one per statement standing, oldest first by date, as
+   *  `<statement date> <due-total>` (n/a when it was). */
+  statementLines: string[];
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
