@@ -1,0 +1,64 @@
+{
+  "checkpoint": 171,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp171_review-sla",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a review SLA (settings, days, not dated; SETTING_CHANGED key=review-sla\nvalue=<days>; blank means none). A REVIEW claim whose review day (the sheet's today when it went to\nREVIEW) plus the SLA days is before the sheet's today shows review-late yes; the summary counts\nsuch claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cf7c6c5ede39ad9ba4869c8c95f81ea550e14f11",
+  "reset_sha": "",
+  "preagent_sha": "a42eadad51ec89d189d59c1ee4766fd2e10b39b2",
+  "prev_sha": "a42eadad51ec89d189d59c1ee4766fd2e10b39b2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8327406000000002,
+    "input_tokens": 36,
+    "output_tokens": 8831,
+    "cache_read_tokens": 803643,
+    "cache_creation_tokens": 61906,
+    "num_turns": 18,
+    "duration_ms": 296021,
+    "duration_api_ms": 81570,
+    "model": "claude-opus-5-5",
+    "session_id": "5ec26822-b42a-462a-a55d-359a91e0b0e7",
+    "stop_reason": "success",
+    "result_text": "I've added the review SLA, and all 4 Playwright tests in `bin/e2e` pass.\n\n**How it works**\n- **Settings:** a new \"Review SLA\" field (whole days, not dated) saves the value and shows it as the current value. Saving writes `SETTING_CHANGED key=review-sla value=<days>`, and a blank value clears the SLA.\n- **Each claim row** now shows `claim-review-late`. It reads \"yes\" when the claim is in REVIEW and the day it last went to REVIEW plus the SLA days is before the sheet's today. It always reads \"no\" when no SLA is set.\n- **The summary** shows `summary-review-late-count`, the number of claims currently late for review.\n\n**Where the review day comes from:** I didn't add a new column for it. Every status change already records the sheet's today in the claim's status log, so the review day is the date of the claim's latest REVIEW entry there.\n\n**What changed**\n- **Database:** migration `V94__review_sla.sql` adds a `review_sla` column to the sheet table.\n- **Server:** `Sheet`, `SheetService.setReviewSla` and the new `PUT /api/sheets/{id}/settings/review-sla` endpoint. The sheet data sent to the screen now includes the SLA, and copying a sheet (`SheetCloneService`) copies it too.\n- **Screen:** the setting is in `session.ts` and `settings.ts`. The late check is `Claims.reviewLate` in `core/claims.ts`, and the claim rows and summary panel use it.\n\nThe late flag and count are worked out on the screen, not by the server, like the existing \"overdue\" flag.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8327406000000002,
+        "num_turns": 18,
+        "duration_ms": 296021,
+        "duration_api_ms": 81570,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp171.agent.jsonl",
+  "agent_diff_file": "cp171.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
