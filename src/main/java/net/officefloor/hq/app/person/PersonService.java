@@ -286,7 +286,7 @@ public class PersonService {
                     Person now = people.findByIdAndSheetId(match.getId(), sheetId)
                             .orElseThrow(PersonNotFoundException::new);
                     updated.add(update(sheetId, user, now.getId(), now.getVersion(), now.getName(), line.grade(),
-                            null, line.terms() != null ? line.terms() : now.getTerms(),
+                            null, line.terms() != null ? line.terms() : now.getTerms(), null,
                             line.contact() != null ? line.contact() : now.getContact(), null, true));
                 }
             } catch (PersonNameTakenException | PersonContactTakenException | PersonNotFoundException
@@ -330,24 +330,28 @@ public class PersonService {
     @Transactional
     /** Change a person's name, and record the grade from a date (the sheet's today when none is given),
      *  keeping the grades already recorded; a save leaving the grade as it is on the sheet's today, with no
-     *  from-date, records nothing. Their own terms are set to those given (none clears them), and their
-     *  contact to the one given (blank clears it). */
+     *  from-date, records nothing. Their own terms from the beginning of time are set to those given (none
+     *  clears them), and their contact to the one given (blank clears it). */
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
-        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, null, true);
+        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, null, contact, null, true);
     }
 
-    /** As {@link #update}, also setting the tags they carry (normalised; none: kept as they are). */
+    /** As {@link #update}, recording their own terms (none: none of their own) from a date, keeping those
+     *  already recorded (replacing those from that same date), or from the beginning of time when no date is
+     *  given; and setting the tags they carry (normalised; none: kept as they are). */
     @Transactional
     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, List<String> tags) {
-        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, tags, true);
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, List<String> tags) {
+        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, termsFrom, contact, tags,
+                true);
     }
 
     /** As the person form saves, which (form) also refuses a name or alias some other sheet of the tree
      *  uses, so a person who clashes keeps being refused until a rename leaves them clashing with no one. */
     private Person update(String sheetId, String user, long personId, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, List<String> tags, boolean form) {
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, List<String> tags,
+            boolean form) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (person.getVersion() != version) {
             throw new PersonVersionConflictException(person);
@@ -364,8 +368,7 @@ public class PersonService {
         Rollup.Snapshot before = rollup.take(sheetId);
         LocalDate today = today(sheetId);
         person.setName(name.trim());
-        boolean termsChanged = !Objects.equals(terms, person.getTerms());
-        person.setTerms(terms);
+        boolean termsChanged = person.setTerms(terms, termsFrom);
         boolean contactChanged = !Objects.equals(key, person.getContact());
         person.setContact(key);
         if (tags != null) {
@@ -376,7 +379,7 @@ public class PersonService {
             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
         Person updated = saved(person);
-        audit("PERSON_EDITED", updated, user, today, (termsChanged ? " terms=" + (terms == null ? "" : terms) : "")
+        audit("PERSON_EDITED", updated, user, today, (termsChanged ? " terms=" + Objects.toString(updated.termsOn(today), "") : "")
                 + (contactChanged ? " contact=" + (key == null ? "" : key) : ""));
         rollup.recordChanges(sheetId, user, before);
         return updated;
@@ -398,7 +401,7 @@ public class PersonService {
             throw new PersonNotFoundException();
         }
         return picked.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade, from,
-                p.getTerms(), p.getContact(), null, false)).toList();
+                p.getTerms(), null, p.getContact(), null, false)).toList();
     }
 
     /** Give a person an alias, stored trimmed: refused when blank, or when it equals, ignoring case, any

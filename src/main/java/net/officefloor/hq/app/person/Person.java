@@ -42,9 +42,15 @@ public class Person {
     @JoinColumn(name = "person_id", nullable = false)
     private List<PersonGrade> grades = new ArrayList<>();
 
-    /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+    /** Their own terms in days from the beginning of time, ahead of their grade's and the sheet's; null
+     *  when they have none. */
     @Column(name = "terms")
     private Integer terms;
+
+    /** Their own terms recorded from a date, each ahead of those from the beginning of time from then on. */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JoinColumn(name = "person_id", nullable = false)
+    private List<PersonTerms> datedTerms = new ArrayList<>();
 
     /** Their contact, trimmed and lower-cased; null when they have none. Unique on the sheet. */
     @Column(name = "contact")
@@ -141,12 +147,49 @@ public class Person {
         grades.add(new PersonGrade(grade, from));
     }
 
+    /** Their own terms from the beginning of time; null when they have none. */
     public Integer getTerms() {
         return terms;
     }
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    /** Their own terms recorded from a date, by from-date. */
+    public List<PersonTerms> getDatedTerms() {
+        return datedTerms.stream().sorted(Comparator.comparing(PersonTerms::getFromDate)).toList();
+    }
+
+    /** Their own terms in force on a date: those whose from-date is the latest on or before it, else those
+     *  from the beginning of time; null when they have none then. */
+    public Integer termsOn(LocalDate date) {
+        Integer found = terms;
+        for (PersonTerms t : getDatedTerms()) {
+            if (!t.getFromDate().isAfter(date)) {
+                found = t.getTerms();
+            }
+        }
+        return found;
+    }
+
+    /** Record their own terms (null: none) from a date, replacing those recorded from that same date; with no
+     *  date, set those from the beginning of time. Whether anything recorded changed. */
+    public boolean setTerms(Integer terms, LocalDate from) {
+        if (from == null) {
+            boolean changed = !Objects.equals(this.terms, terms);
+            this.terms = terms;
+            return changed;
+        }
+        for (PersonTerms t : datedTerms) {
+            if (t.getFromDate().equals(from)) {
+                boolean changed = !Objects.equals(t.getTerms(), terms);
+                t.setTerms(terms);
+                return changed;
+            }
+        }
+        datedTerms.add(new PersonTerms(terms, from));
+        return true;
     }
 
     public String getOriginSheet() {
@@ -247,14 +290,15 @@ public class Person {
         aliases.add(new PersonAlias(sheetId, trimmed, copy));
     }
 
-    /** A copy of them for another sheet: every grade they were given (with its from-date), their terms,
-     *  contact, tags and aliases; not their holds. */
+    /** A copy of them for another sheet: every grade they were given (with its from-date), their terms
+     *  (each with its from-date), contact, tags and aliases; not their holds. */
     public Person copyTo(String otherSheetId) {
         Person copy = new Person();
         copy.sheetId = otherSheetId;
         copy.name = name;
         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFromDate())));
         copy.terms = terms;
+        datedTerms.forEach(t -> copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFromDate())));
         copy.contact = contact;
         copy.tags = tags;
         copy.originSheet = sheetId;

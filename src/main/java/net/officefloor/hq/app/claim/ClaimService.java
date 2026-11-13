@@ -97,7 +97,8 @@ public class ClaimService {
             String corrects, String ref, List<String> tags) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
-        int terms = person.getTerms() != null ? person.getTerms()
+        Integer own = person.termsOn(on);
+        int terms = own != null ? own
                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseClosed(sheetId, dueBy);
@@ -698,7 +699,8 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(part));
         claim.setStated(false, null);
         Claim kept = claims.saveAndFlush(claim);
-        int terms = person.getTerms() != null ? person.getTerms()
+        Integer own = person.termsOn(claim.getDate());
+        int terms = own != null ? own
                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
                         .termsFor(person.gradeOn(claim.getDate()), claim.getDate());
         Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(),

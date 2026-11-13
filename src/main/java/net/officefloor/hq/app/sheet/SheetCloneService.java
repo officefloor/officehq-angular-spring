@@ -122,7 +122,7 @@ public class SheetCloneService {
                 + " SELECT ?, tag FROM sheet_tag WHERE sheet_id = ? ORDER BY id", target, id);
     }
 
-    /** Copy the people with their grades, holds, retirements, aliases and patrons; the new id of each. */
+    /** Copy the people with their grades, dated terms, holds, retirements, aliases and patrons; the new id of each. */
     private Map<Long, Long> copyPeople(String id, String target) {
         Map<Long, Long> ids = new LinkedHashMap<>();
         for (Map<String, Object> p : jdbc.queryForList("SELECT * FROM person WHERE sheet_id = ? ORDER BY id", id)) {
@@ -134,6 +134,8 @@ public class SheetCloneService {
             ids.put(oldId, newId);
             jdbc.update("INSERT INTO person_grade (person_id, grade, from_date)"
                     + " SELECT ?, grade, from_date FROM person_grade WHERE person_id = ? ORDER BY id", newId, oldId);
+            jdbc.update("INSERT INTO person_terms (person_id, terms, from_date)"
+                    + " SELECT ?, terms, from_date FROM person_terms WHERE person_id = ? ORDER BY id", newId, oldId);
             jdbc.update("INSERT INTO person_hold (person_id, from_date, to_date)"
                     + " SELECT ?, from_date, to_date FROM person_hold WHERE person_id = ? ORDER BY id", newId, oldId);
             jdbc.update("INSERT INTO person_retirement (person_id, from_date, to_date)"

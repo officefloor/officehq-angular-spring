@@ -41,14 +41,16 @@ public class PersonController {
 
     /** A person as the screen shows it, with how many statements were taken of them and the last one's
      *  due-total (n/a when it was) and date; none of either before their first statement; and the ids
-     *  of their patrons. Their grade is the one in force on the sheet's today; grades lists every grade
+     *  of their patrons. Their grade is the one in force on the sheet's today, and terms their own terms
+     *  in force then (baseTerms those from the beginning of time, datedTerms those from a date); grades lists every grade
      *  they were given, each with its from-date (YYYY-MM-DD, none for the first); watched says whether
      *  the signed-in user watches them; clashing says whether their name or an alias is used on another sheet
      *  of the sheet's tree; origin is the sheet they were transferred from, null for anyone else. */
     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
             List<RetirementView> retirements,
-            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
+            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, Integer baseTerms,
+            List<TermsView> datedTerms, String contact,
             List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots,
             List<String> statementLines) {
 
@@ -63,7 +65,8 @@ public class PersonController {
                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
                     person.getRetirements().stream().map(RetirementView::of).toList(),
                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
-                    watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
+                    watched, person.termsOn(today), person.getTerms(),
+                    person.getDatedTerms().stream().map(TermsView::of).toList(), person.getContact(), person.getAliases(), clashing,
                     person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList(),
                     statementLines(statements));
         }
@@ -82,6 +85,14 @@ public class PersonController {
 
         static GradeView of(PersonGrade grade) {
             return new GradeView(grade.getGrade(), grade.getFromDate() == null ? null : grade.getFromDate().toString());
+        }
+    }
+
+    /** Terms a person was given from a date (YYYY-MM-DD); none for no terms of their own. */
+    public record TermsView(Integer terms, String from) {
+
+        static TermsView of(PersonTerms terms) {
+            return new TermsView(terms.getTerms(), terms.getFromDate().toString());
         }
     }
 
@@ -127,6 +138,7 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
             @Min(0) Integer terms,
+            LocalDate termsFrom,
             @Size(max = 200) String contact,
             @Size(max = 2000) String tags,
             @NotNull Long version) {
@@ -264,7 +276,7 @@ public class PersonController {
             @RequestBody @Valid PersonUpdate request) {
         try {
             Person updated = service.update(sheetId.trim(), user.trim(), personId, request.version(),
-                    request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact(),
+                    request.name(), request.grade(), request.gradeFrom(), request.terms(), request.termsFrom(), request.contact(),
                     request.tagList());
             return view(updated, user.trim());
         } catch (ObjectOptimisticLockingFailureException e) {

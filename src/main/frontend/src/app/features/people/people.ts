@@ -69,6 +69,16 @@ function compareKeys(a: string, b: string): number {
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
         />
+        @if (editing() !== null) {
+          <label for="person-form-terms-from">Terms from (blank for the beginning of time)</label>
+          <input
+            id="person-form-terms-from"
+            data-testid="person-form-terms-from"
+            placeholder="YYYY-MM-DD"
+            [value]="termsFrom()"
+            (input)="termsFrom.set(value($event)); error.set(null)"
+          />
+        }
         <label for="person-form-contact">Contact (blank for none)</label>
         <input
           id="person-form-contact"
@@ -654,6 +664,8 @@ export class PeopleList {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in days; blank for none. */
   protected readonly terms = signal('');
+  /** The date the edit's terms apply from; blank for the beginning of time. */
+  protected readonly termsFrom = signal('');
   /** The person's contact; blank for none. */
   protected readonly contact = signal('');
   /** The person's tags, comma separated; blank for none. */
@@ -1033,7 +1045,7 @@ export class PeopleList {
     try {
       const grade = this.inlineGrades()[p.id] ?? this.gradeToday(p);
       const refusal = await this.people.update(p.id, p.version, {
-        name: p.name, grade, gradeFrom: '', terms: p.terms === null ? '' : String(p.terms),
+        name: p.name, grade, gradeFrom: '', terms: p.baseTerms === null ? '' : String(p.baseTerms),
         contact: p.contact ?? '', tags: p.tags.join(', '),
       });
       if (refusal) this.actionError.set({ id: p.id, message: refusal.error });
@@ -1071,7 +1083,8 @@ export class PeopleList {
     this.name.set(p.name);
     this.grade.set(this.gradeToday(p));
     this.gradeFrom.set('');
-    this.terms.set(p.terms === null ? '' : String(p.terms));
+    this.terms.set(p.baseTerms === null ? '' : String(p.baseTerms));
+    this.termsFrom.set('');
     this.contact.set(p.contact ?? '');
     this.tags.set(p.tags.join(', '));
   }
@@ -1082,6 +1095,7 @@ export class PeopleList {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.termsFrom.set('');
     this.contact.set('');
     this.tags.set('');
     this.error.set(null);
@@ -1111,7 +1125,7 @@ export class PeopleList {
     this.saving.set(true);
     try {
       const f = { name: this.name(), grade: this.grade(), gradeFrom: this.gradeFrom(), terms: this.terms(),
-        contact: this.contact(), tags: this.tags() };
+        termsFrom: this.termsFrom(), contact: this.contact(), tags: this.tags() };
       const id = this.editing();
       if (id === null) {
         const err = await this.people.add(f);

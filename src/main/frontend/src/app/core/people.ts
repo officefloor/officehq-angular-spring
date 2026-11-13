@@ -75,8 +75,13 @@ export interface Person {
   patronIds: number[];
   /** Whether the signed-in user watches them. */
   watched: boolean;
-  /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+  /** Their own terms in days in force on the sheet's today, ahead of their grade's and the sheet's; null
+   *  when they have none then. */
   terms: number | null;
+  /** Their own terms from the beginning of time; null when they have none. */
+  baseTerms: number | null;
+  /** Their own terms recorded from a date, by from-date; terms null for none of their own. */
+  datedTerms: { terms: number | null; from: string }[];
   /** Their contact, trimmed and lower-cased; null when they have none. */
   contact: string | null;
   /** The other names they go by, sorted as names are compared: without regard to case. */
@@ -115,6 +120,8 @@ export interface PersonFields {
   gradeFrom?: string;
   /** Their own terms in days; blank for none. */
   terms?: string;
+  /** The date an edit's terms apply from (YYYY-MM-DD); blank for from the beginning of time. */
+  termsFrom?: string;
   /** Their contact; blank for none. */
   contact?: string;
   /** Their tags, comma separated; blank for none. */
@@ -207,7 +214,8 @@ export class People {
     try {
       put(
         await firstValueFrom(
-          this.http.put<Person>(`${this.url(sid)}/${id}`, { ...this.body(f), gradeFrom: f.gradeFrom?.trim() || null, version }, {
+          this.http.put<Person>(`${this.url(sid)}/${id}`, { ...this.body(f), gradeFrom: f.gradeFrom?.trim() || null,
+            termsFrom: f.termsFrom?.trim() || null, version }, {
             headers: { 'X-User': this.session.user()! },
           }),
         ),
@@ -529,6 +537,8 @@ export class People {
     if (!(GRADES as readonly string[]).includes(f.grade)) return 'Choose a grade.';
     const from = f.gradeFrom?.trim();
     if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
+    const termsFrom = f.termsFrom?.trim();
+    if (termsFrom && !/^\d{4}-\d{2}-\d{2}$/.test(termsFrom)) return 'Enter the terms\' from-date as YYYY-MM-DD.';
     const terms = f.terms?.trim();
     if (terms && !/^\d{1,6}$/.test(terms)) return 'Enter the terms as a whole number of days, or leave them blank.';
     if ((f.contact?.trim().length ?? 0) > 200) return 'Enter a contact of at most 200 characters.';
