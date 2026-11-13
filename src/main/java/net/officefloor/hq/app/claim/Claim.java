@@ -69,7 +69,8 @@ public class Claim {
     @Column(name = "corrects_number")
     private String corrects;
 
-    /** Given when the claim is opened; none while a draft or once voided. */
+    /** Given when the claim is settled (or approved); none before then, and kept by a void. Claims numbered
+     *  when opened, before that rule, keep theirs. */
     @Column(name = "claim_number")
     private String number;
 

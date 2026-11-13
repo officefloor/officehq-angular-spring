@@ -42,7 +42,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class ClaimController {
 
-    /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD, no number unless opened,
+    /** A claim as the screen shows it: the amount with two decimals, the date YYYY-MM-DD, no number unless settled (or numbered before that rule),
      *  the due fixed when it was settled (none while its due is live)
      *  who opened it (none while a draft), whether its person's last statement bound it and the figure
      *  it bound (none while unbound, or when that was n/a), and the number a correction corrects (none
