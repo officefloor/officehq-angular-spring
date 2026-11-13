@@ -1,0 +1,192 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index c5e09c46c..f07df7ba4 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -13,7 +13,7 @@ export interface Claim {
+   date: string;
+   note: string;
+   status: ClaimStatus;
+-  /** Given when opened: the next on the sheet (1, 2, ...), or while numbering by period the next in its
++  /** Given when opened: the next on the sheet in its fiscal year (FY2026-1, FY2026-2, ...), or while numbering by period the next in its
+    *  period (<period name>-1, ...) or in no period (X-1, ...); null while a draft. */
+   number: string | null;
+   /** The due fixed when it was settled, two decimals; null while its due is live (not settled, or
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/FiscalClaimSequence.java b/src/main/java/net/officefloor/hq/app/sheet/FiscalClaimSequence.java
+new file mode 100644
+index 000000000..95d363f14
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/FiscalClaimSequence.java
+@@ -0,0 +1,48 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** The sheet-wide numbering of a sheet in one fiscal year (named by the calendar year its first day falls
++ *  in), numbered FY<year>-1, FY<year>-2, ..., shared across the sheet's tree: the next number is one past
++ *  the last any sheet of the tree gave in that fiscal year. */
++@Entity
++@Table(name = "fiscal_claim_sequence")
++public class FiscalClaimSequence {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "fiscal_year", nullable = false)
++    private int fiscalYear;
++
++    /** The last number this sheet gave in the fiscal year; 0 before the first. */
++    @Column(name = "last_number", nullable = false)
++    private int lastNumber;
++
++    protected FiscalClaimSequence() {
++    }
++
++    public FiscalClaimSequence(String sheetId, int fiscalYear) {
++        this.sheetId = sheetId;
++        this.fiscalYear = fiscalYear;
++    }
++
++    public int getLastNumber() {
++        return lastNumber;
++    }
++
++    /** Give out the next number after the given last of the tree. */
++    public String nextClaimNumber(int lastOfTree) {
++        lastNumber = Math.max(lastNumber, lastOfTree) + 1;
++        return "FY" + String.format("%04d", fiscalYear) + "-" + lastNumber;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/FiscalClaimSequenceRepository.java b/src/main/java/net/officefloor/hq/app/sheet/FiscalClaimSequenceRepository.java
+new file mode 100644
+index 000000000..81637c75f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/FiscalClaimSequenceRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.sheet;
++
++import java.util.Collection;
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface FiscalClaimSequenceRepository extends JpaRepository<FiscalClaimSequence, Long> {
++
++    Optional<FiscalClaimSequence> findBySheetIdAndFiscalYear(String sheetId, int fiscalYear);
++
++    List<FiscalClaimSequence> findBySheetIdInAndFiscalYear(Collection<String> sheetIds, int fiscalYear);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 8ce064125..a64724d2f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -61,7 +61,8 @@ public class Sheet {
+     @Column(name = "today", nullable = false)
+     private LocalDate today;
+ 
+-    /** The last number given to a claim opened on the sheet; 0 before the first. */
++    /** The last plain sheet-wide number given to a claim opened on the sheet, before numbering restarted each
++     *  fiscal year (see FiscalClaimSequence); 0 before the first. */
+     @Column(name = "last_claim_number", nullable = false)
+     private int lastClaimNumber;
+ 
+@@ -422,17 +423,9 @@ public class Sheet {
+         return due == null ? null : due.max(floorOn(date));
+     }
+ 
+-    /** Give out the sheet's next claim number. */
+-    public String nextClaimNumber() {
+-        return String.valueOf(++lastClaimNumber);
+-    }
+-
+-    /** Give out the next claim number after the last given on this sheet or any of the others of its tree. */
+-    public String nextClaimNumber(List<Sheet> tree) {
+-        for (Sheet other : tree) {
+-            lastClaimNumber = Math.max(lastClaimNumber, other.lastClaimNumber);
+-        }
+-        return nextClaimNumber();
++    /** The fiscal year a date falls in, named by the calendar year its first day falls in. */
++    public int fiscalYearOf(LocalDate date) {
++        return date.getMonthValue() >= fiscalStartMonth ? date.getYear() : date.getYear() - 1;
+     }
+ 
+     public int getLastSettleBatch() {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 5b552a764..b227d1f79 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -26,6 +26,7 @@ public class SheetService {
+ 
+     private final SheetRepository sheets;
+     private final ClaimSequenceRepository sequences;
++    private final FiscalClaimSequenceRepository fiscalSequences;
+     private final PeriodRepository periods;
+     private final PeriodService periodService;
+     private final Rollup rollup;
+@@ -34,9 +35,11 @@ public class SheetService {
+     private final ClaimRepository claims;
+     private final History history;
+ 
+-    public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences, PeriodRepository periods,
++    public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences,
++            FiscalClaimSequenceRepository fiscalSequences, PeriodRepository periods,
+             PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims,
+             History history) {
++        this.fiscalSequences = fiscalSequences;
+         this.history = history;
+         this.claims = claims;
+         this.sheets = sheets;
+@@ -342,8 +345,9 @@ public class SheetService {
+ 
+     /** The next number for a claim due by a date: while the sheet numbers by period, the next in the
+      *  sequence of the period containing the date (<period name>-1, -2, ...), or of no period (X-1, ...);
+-     *  otherwise the sheet-wide one (1, 2, ...), which the sheets of a tree share: the next after the last
+-     *  given on any of them. None is ever given twice. */
++     *  otherwise the sheet-wide one, which restarts each fiscal year (FY<year>-1, -2, ..., the fiscal year
++     *  the date falls in by the sheet's fiscal start month) and which the sheets of a tree share: the next
++     *  after the last given in that fiscal year on any of them. None is ever given twice. */
+     @Transactional
+     public String nextClaimNumber(String id, LocalDate date) {
+         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+@@ -352,7 +356,15 @@ public class SheetService {
+             List<Sheet> tree = sheets.tree(id).stream().sorted()
+                     .map(other -> sheets.findForUpdateById(other).orElse(null))
+                     .filter(Objects::nonNull).toList();
+-            return sheet.nextClaimNumber(tree);
++            int fiscalYear = sheet.fiscalYearOf(date);
++            List<String> others = tree.stream().map(Sheet::getId).toList();
++            int lastOfTree = fiscalSequences.findBySheetIdInAndFiscalYear(others, fiscalYear).stream()
++                    .mapToInt(FiscalClaimSequence::getLastNumber).max().orElse(0);
++            FiscalClaimSequence sequence = fiscalSequences.findBySheetIdAndFiscalYear(id, fiscalYear)
++                    .orElseGet(() -> new FiscalClaimSequence(id, fiscalYear));
++            String number = sequence.nextClaimNumber(lastOfTree);
++            fiscalSequences.save(sequence);
++            return number;
+         }
+         String prefix = periodPrefix(id, date);
+         ClaimSequence sequence = sequences.findBySheetIdAndPrefix(id, prefix)
+diff --git a/src/main/resources/db/migration/V79__fiscal_claim_sequence.sql b/src/main/resources/db/migration/V79__fiscal_claim_sequence.sql
+new file mode 100644
+index 000000000..daae06dbc
+--- /dev/null
++++ b/src/main/resources/db/migration/V79__fiscal_claim_sequence.sql
+@@ -0,0 +1,11 @@
++-- Sheet-wide numbering restarts each fiscal year: a claim opened is numbered FY<year>-<n> within the fiscal
++-- year (by the sheet's fiscal start month) of its due-by, the sequence shared across the sheet's tree.
++-- The last number each sheet gave in each fiscal year; the next is one past the highest across the tree.
++-- Numbers already given stay.
++CREATE TABLE fiscal_claim_sequence (
++    id          BIGINT       GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    sheet_id    VARCHAR(200) NOT NULL REFERENCES sheet (id),
++    fiscal_year INT          NOT NULL,
++    last_number INT          NOT NULL
++);
++CREATE UNIQUE INDEX fiscal_claim_sequence_year ON fiscal_claim_sequence (sheet_id, fiscal_year);
