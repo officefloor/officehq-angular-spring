@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a2721a692..7a991407d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -184,6 +184,7 @@ function compareKeys(a: string, b: string): number {
+       </select>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
++      <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
+       <section aria-label="Grade or retire selected people">
+         <label for="bulk-grade">Grade selected people</label>
+         <select
+@@ -959,6 +960,20 @@ export class PeopleList {
+     download(lines, 'claims.csv');
+   }
+ 
++  /** Download the period figures as CSV: people in list order, each with the periods in the order
++   *  added, with the figure and carried amount as their rows show them. */
++  protected async exportPeriods(): Promise<void> {
++    await this.session.loaded();
++    const periods = [...this.periods.periods()].sort((a, b) => a.id - b.id);
++    const lines = [['person', 'period', 'figure', 'carried']];
++    for (const p of this.people.people()) {
++      for (const period of periods) {
++        lines.push([p.name, period.name, this.figures.personPeriodDue(period, p.id), this.figures.personPeriodCarried(period, p.id)]);
++      }
++    }
++    download(lines, 'periods.csv');
++  }
++
+   /** Download the person's statement as CSV: their claims bound by their last statement, oldest
+    *  first, with the bound figure as the claim shows it. */
+   protected async exportStatement(p: Person): Promise<void> {
