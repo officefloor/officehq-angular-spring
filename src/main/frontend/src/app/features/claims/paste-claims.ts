@@ -1,8 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { Claims } from '../../core/claims';
 
-// A paste box of name,amount,date,note lines, each a DRAFT claim for the named person; reports how many
-// were added, or why the paste was refused (then nothing is added).
+// A paste box of name,amount,date,note lines, each an OPEN claim for the named person (a matching DRAFT
+// updated and opened); reports how many lines went through, or why the paste was refused (then nothing changes).
 @Component({
   selector: 'app-paste-claims',
   template: `
@@ -15,9 +15,9 @@ import { Claims } from '../../core/claims';
         [value]="text()"
         (input)="text.set(value($event)); error.set(null)"
       ></textarea>
-      <button type="submit" data-testid="paste-submit" [disabled]="running()">Add pasted claims</button>
+      <button type="submit" data-testid="paste-submit" [disabled]="running()">Add and open pasted claims</button>
       @if (added() !== null) {
-        <p>Added <span data-testid="paste-added">{{ added() }}</span></p>
+        <p>Went through <span data-testid="paste-added">{{ added() }}</span></p>
       }
       @if (error(); as err) {
         <p role="alert" data-testid="paste-error">{{ err }}</p>

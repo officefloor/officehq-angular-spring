@@ -146,7 +146,7 @@ public class ClaimController {
     public record PasteRequest(@NotNull @Size(max = 1000000) String text) {
     }
 
-    /** How many a paste added, and the claims it added, in the order of their lines. */
+    /** How many lines a paste put through, and the claims it added or updated and opened, in the order of their lines. */
     public record PasteView(int added, List<ClaimView> claims) {
     }
 
@@ -223,7 +223,7 @@ public class ClaimController {
                 added.personAdded(), ClaimView.of(added.claim()));
     }
 
-    /** Add a DRAFT claim for each pasted line, in order; one refused line refuses them all. */
+    /** Add, or update a matching DRAFT, and open a claim for each pasted line, in order; one refused line refuses them all. */
     @PostMapping("/claims/paste")
     public PasteView paste(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,

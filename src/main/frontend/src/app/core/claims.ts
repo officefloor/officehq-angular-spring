@@ -377,9 +377,9 @@ export class Claims {
     }
   }
 
-  /** Add a DRAFT claim for each pasted line of name,amount,date,note, in order, for the person on the
-   *  sheet with the name; how many were added, or an error message when any line is refused (then the
-   *  server adds none). */
+  /** Add and open a claim for each pasted line of name,amount,date,note, in order, for the person on the
+   *  sheet with the name (a line matching a DRAFT updates and opens it instead); how many lines went
+   *  through, or an error message when any line is refused (then the server changes nothing). */
   async paste(text: string): Promise<number | string> {
     const sid = this.session.sheetId();
     const user = this.session.user();
@@ -393,7 +393,14 @@ export class Claims {
           { headers: { 'X-User': user } },
         ),
       );
-      if (this.session.sheetId() === sid) this.claims.update((cs) => [...[...done.claims].reverse(), ...cs]);
+      if (this.session.sheetId() === sid) {
+        this.claims.update((cs) => {
+          const byId = new Map(done.claims.map((c) => [c.id, c]));
+          const kept = cs.map((c) => byId.get(c.id) ?? c);
+          const fresh = done.claims.filter((c) => !cs.some((k) => k.id === c.id));
+          return [...fresh.reverse(), ...kept];
+        });
+      }
       return done.added;
     } catch (e) {
       return failed('add', e).replace(' claim', ' claims');
