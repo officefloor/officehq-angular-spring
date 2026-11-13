@@ -1,0 +1,81 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index db14443d6..270a57a1b 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -91,6 +91,9 @@ export interface Person {
+   /** Their snapshot lines, oldest first: one per day the sheet's today moved on from, as
+    *  `<the day being left> <due-total>` (n/a when it was). */
+   snapshots: string[];
++  /** Their statement lines, one per statement standing, oldest first by date, as
++   *  `<statement date> <due-total>` (n/a when it was). */
++  statementLines: string[];
+ }
+ 
+ /** A person after a statement, with their claims as it bound them, newest first. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f89c889d6..d16497d03 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -232,7 +232,7 @@ function compareKeys(a: string, b: string): number {
+       </fieldset>
+       <table data-testid="person-list">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th>@if (col('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th>@if (col('terms')) {<th scope="col">Terms</th>}@if (col('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (col('claimed')) {<th scope="col">Claimed</th>}@if (col('due-total')) {<th scope="col">Due total</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th>@if (col('excess')) {<th scope="col">Excess</th>}@if (col('overdue-count')) {<th scope="col">Overdue</th>}@if (col('overdue-total')) {<th scope="col">Overdue total</th>}<th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th>@if (col('statement-count')) {<th scope="col">Statements</th>}@if (col('stated-total')) {<th scope="col">Last stated</th>}@if (col('statement-date')) {<th scope="col">Stated on</th>}<th scope="col">Snapshots</th>@if (col('retired')) {<th scope="col">Retired</th>}@if (col('hold')) {<th scope="col">On hold</th>}@if (col('patrons')) {<th scope="col">Patrons</th>}@if (col('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th>@if (col('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th>@if (col('terms')) {<th scope="col">Terms</th>}@if (col('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (col('claimed')) {<th scope="col">Claimed</th>}@if (col('due-total')) {<th scope="col">Due total</th>}<th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th>@if (col('excess')) {<th scope="col">Excess</th>}@if (col('overdue-count')) {<th scope="col">Overdue</th>}@if (col('overdue-total')) {<th scope="col">Overdue total</th>}<th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th>@if (col('statement-count')) {<th scope="col">Statements</th>}@if (col('stated-total')) {<th scope="col">Last stated</th>}@if (col('statement-date')) {<th scope="col">Stated on</th>}<th scope="col">Statement lines</th><th scope="col">Snapshots</th>@if (col('retired')) {<th scope="col">Retired</th>}@if (col('hold')) {<th scope="col">On hold</th>}@if (col('patrons')) {<th scope="col">Patrons</th>}@if (col('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of sorted(); track p.id) {
+@@ -337,6 +337,13 @@ function compareKeys(a: string, b: string): number {
+               @if (col('statement-date')) {
+                 <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+               }
++              <td>
++                <ul class="holds">
++                  @for (line of p.statementLines; track $index) {
++                    <li data-testid="person-statement-line-line">{{ line }}</li>
++                  }
++                </ul>
++              </td>
+               <td>
+                 <ul class="holds">
+                   @for (line of p.snapshots; track $index) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 52cd07ac4..793271585 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
+ import java.util.Arrays;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+@@ -48,7 +49,8 @@ public class PersonController {
+             String statedTotal, String statementDate, boolean retired, String retiredFrom,
+             List<RetirementView> retirements,
+             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
+-            List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots) {
++            List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots,
++            List<String> statementLines) {
+ 
+         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
+                 boolean watched, boolean clashing, List<PersonSnapshot> snapshots) {
+@@ -62,7 +64,16 @@ public class PersonController {
+                     person.getRetirements().stream().map(RetirementView::of).toList(),
+                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
+                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
+-                    person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList());
++                    person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList(),
++                    statementLines(statements));
++        }
++
++        /** One line per statement standing, oldest first by the date it was taken (in the order taken on
++         *  one date), as `<date> <due-total>` (n/a when it was). */
++        private static List<String> statementLines(List<Statement> statements) {
++            return statements.stream().sorted(Comparator.comparing(Statement::getTakenOn))
++                    .map(s -> s.getTakenOn() + " " + (s.getDueTotal() == null ? "n/a" : s.getDueTotal().toPlainString()))
++                    .toList();
+         }
+     }
+ 

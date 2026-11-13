@@ -1,0 +1,64 @@
+{
+  "checkpoint": 163,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp163_statement-lines",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their statements, one line per statement still standing (a cancelled one is\ngone), oldest first, as <statement date> <due-total>. The statements a merge or a transfer brings\nover show among them, by date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2b1af6107fd104e3eae08b8d59c8854c477961f5",
+  "reset_sha": "",
+  "preagent_sha": "9a40923b2f9abfb1ad9854fde44b9cd52f4db4d1",
+  "prev_sha": "9a40923b2f9abfb1ad9854fde44b9cd52f4db4d1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.724765,
+    "input_tokens": 40,
+    "output_tokens": 7723,
+    "cache_read_tokens": 800885,
+    "cache_creation_tokens": 51246,
+    "num_turns": 20,
+    "duration_ms": 313899,
+    "duration_api_ms": 83288,
+    "model": "claude-opus-5-5",
+    "session_id": "c5b9b489-e856-4b63-9a34-58209c6e1978",
+    "stop_reason": "success",
+    "result_text": "I've added the statement lines to each person's row. Three of the four tests in `bin/e2e` pass. \"statement lines scenario 2\" fails at a check on a claim's due figure, which my change doesn't touch.\n\n**The change**\n- **Server** (`PersonController.java`): the person data the screen loads now includes `statementLines`, one `<date> <due-total>` line per statement on record. They're sorted oldest first by date; statements with the same date stay in the order they were taken. A due-total that was n/a shows as `n/a`, the same as \"last stated\".\n- **No database change was needed.** Statements are already stored per person. Cancelling one deletes it, so it disappears from the list. A merge or transfer already copies the other person's statements over, and sorting by date puts them in place among the person's own.\n- **Front end:** `people.ts` (model) and `features/people/people.ts` (screen) gain a \"Statement lines\" column, with each line under `data-testid=\"person-statement-line-line\"`. No existing ids changed.\n\n**The scenario 2 failure** (`e2e/specs/acceptance.spec.ts:800`): a draft claim is expected to show a due of `1.29` while the sheet is viewed as of 2026-03-20, but it shows `n/a`. Every statement-line check before that point passes, including the one at line 790; the test stops at line 800, so the three statement-line checks after it (lines 852, 1069, 1131) never ran.\n\nI think the cause is the real-world date, though I didn't confirm it from stored data:\n1. The claim gets its rate from the parent sheet (`<sheet>-p`). That sheet was never given a \"today\" of its own, so it took the server's real date, 2026-11-13.\n2. Rate changes are stamped with the sheet's today when they're made, so the parent's rates were all recorded on 2026-11-13.\n3. Viewed as of 2026-03-20, the parent had no rates yet, so the claim has no rate and shows n/a.\n\nThis would only have passed if the test ran before 2026-03-20. Fixing it would mean changing how a parent sheet's rates are dated in the as-of view. That's outside this request, so I left it alone; tell me if you want me to take it on.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.724765,
+        "num_turns": 20,
+        "duration_ms": 313899,
+        "duration_api_ms": 83288,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp163.agent.jsonl",
+  "agent_diff_file": "cp163.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
