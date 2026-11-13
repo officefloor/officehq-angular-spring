@@ -509,6 +509,17 @@ public class ClaimService {
      *  a move to the same person or to one retired before the claim's date, is refused. */
     @Transactional
     public Claim reassign(String sheetId, String user, Long personId, Long id, Long toPersonId) {
+        return move(sheetId, user, personId, id, toPersonId, false);
+    }
+
+    /** Move a claim selected among others to a person, by the rules of {@link #reassign}, except that
+     *  a selected claim already the person's is moved too: listed again as their newest. */
+    @Transactional
+    public Claim reassignSelected(String sheetId, String user, Long personId, Long id, Long toPersonId) {
+        return move(sheetId, user, personId, id, toPersonId, true);
+    }
+
+    private Claim move(String sheetId, String user, Long personId, Long id, Long toPersonId, boolean samePerson) {
         Person from = person(sheetId, personId);
         Person to = person(sheetId, toPersonId);
         Claim claim = claim(sheetId, personId, id);
@@ -518,7 +529,7 @@ public class ClaimService {
         if (!claim.getStatus().canReassign()) {
             throw new MoveRefusedException("A " + claim.getStatus() + " claim cannot move to another person");
         }
-        if (from.getId().equals(to.getId())) {
+        if (!samePerson && from.getId().equals(to.getId())) {
             throw new MoveRefusedException("The claim is already " + to.getName() + "'s");
         }
         if (claim.isCorrection()) {

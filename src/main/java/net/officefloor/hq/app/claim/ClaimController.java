@@ -133,14 +133,25 @@ public class ClaimController {
     public record BulkSettleView(List<ClaimView> settled, int refused) {
     }
 
+    /** The claims selected to move together, and the person on the sheet they move to. */
+    public record BulkReassignRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds, @NotNull Long toPersonId) {
+    }
+
+    /** What a bulk move did: the claims it moved, in list order, and how many of the selected claims
+     *  it refused. */
+    public record BulkReassignView(List<ClaimView> reassigned, int refused) {
+    }
+
     private final ClaimService service;
     private final RollupService rollups;
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
+    private final BulkReassignService bulkReassign;
     private final History history;
 
     public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
-            BulkSettleService bulkSettle, History history) {
+            BulkSettleService bulkSettle, BulkReassignService bulkReassign, History history) {
+        this.bulkReassign = bulkReassign;
         this.history = history;
         this.service = service;
         this.rollups = rollups;
@@ -280,6 +291,18 @@ public class ClaimController {
         String by = SignedInUser.decode(user);
         return view(sheet, rollups.track(sheet, by,
                 () -> service.reassign(sheet, by, personId, id, request.toPersonId())));
+    }
+
+    /** Move the selected claims to a person, in list order, each by the rules of moving one; the rest
+     *  are refused and left as they are. */
+    @PostMapping("/claims/reassign")
+    public BulkReassignView reassignAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkReassignRequest request) {
+        String sheet = sheetId.trim();
+        BulkReassignService.Result result = bulkReassign.reassign(sheet, SignedInUser.decode(user), request.claimIds(),
+                request.toPersonId());
+        return new BulkReassignView(result.reassigned().stream().map(claim -> view(sheet, claim)).toList(),
+                result.refused());
     }
 
     /** Defer an OPEN claim until a date after the sheet's today. */
