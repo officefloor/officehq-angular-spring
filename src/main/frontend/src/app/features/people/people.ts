@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, statusAsOf } from '../claims/claims';
+import { Holidays } from '../holidays/holidays';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -57,7 +58,7 @@ interface StatementTaken {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [Counters, PersonClaims, Periods, Rates, Settings, Summary],
+  imports: [Counters, Holidays, PersonClaims, Periods, Rates, Settings, Summary],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -68,6 +69,7 @@ interface StatementTaken {
     <app-settings />
     <app-rates />
     <app-periods [dueTotals]="periodDueTotals()" />
+    <app-holidays />
     <app-summary [grades]="gradeSummary()" [periods]="periodSummary()" [statuses]="statusSummary()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>

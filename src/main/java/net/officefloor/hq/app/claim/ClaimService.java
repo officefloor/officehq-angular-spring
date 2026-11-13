@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodClosedException;
@@ -51,11 +52,13 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final SettingService settings;
     private final PersonWatchRepository watches;
+    private final HolidayService holidays;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
-            Audit audit) {
+            HolidayService holidays, Audit audit) {
+        this.holidays = holidays;
         this.periods = periods;
         this.watches = watches;
         this.settings = settings;
@@ -76,7 +79,8 @@ public class ClaimService {
     /** Add a claim for a person; a missing date takes the sheet's entry date, else its today. One added while the period
      *  its due-by falls in is soft-closed is a late entry, and one whose due-by falls in a closed period is refused.
      *  Its due-by is fixed now: its
-     *  date plus the person's own terms, else the terms in force on that date for the person's grade then. A negative amount is a
+     *  date plus the person's own terms, else the terms in force on that date for the person's grade then, moved past
+     *  the sheet's holidays now. A negative amount is a
      *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
@@ -84,7 +88,7 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         corrects = numberOf(corrects);
         LocalDate on = date != null ? date : settings.defaultClaimDate(sheetId);
-        LocalDate dueBy = on.plusDays(termsFor(sheetId, person, on));
+        LocalDate dueBy = dueBy(sheetId, person, on);
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
@@ -298,7 +302,7 @@ public class ClaimService {
         claim.unbind();
         Claim kept = claims.saveAndFlush(claim);
         LocalDate on = kept.getDate();
-        LocalDate dueBy = on.plusDays(termsFor(sheetId, person, on));
+        LocalDate dueBy = dueBy(sheetId, person, on);
         Claim split = Claim.splitOff(kept, part, dueBy, nextNumber(sheetId, dueBy), user);
         if (periods.softClosedOn(sheetId, dueBy)) {
             split.markLateEntry();
@@ -789,6 +793,12 @@ public class ClaimService {
 
     private static String noteOf(String note) {
         return note == null ? "" : note.trim();
+    }
+
+    /** The due-by of a claim of the person dated on a date, fixed as it is added: its date plus its
+     *  terms, moved past the holidays on the sheet now to the next day that is not one. */
+    private LocalDate dueBy(String sheetId, Person person, LocalDate on) {
+        return holidays.pastHolidays(sheetId, on.plusDays(termsFor(sheetId, person, on)));
     }
 
     /** The terms in days a claim of the person dated on a date takes: the person's own, else their
