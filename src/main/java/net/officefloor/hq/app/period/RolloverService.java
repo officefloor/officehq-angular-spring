@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
  * The year end rollover, by a steward only: generates the next fiscal year's twelve periods as the fiscal year
  * generator does, then adds each person's open figure at the end of the old year's last period to their opening
  * balance for the new year's first period (an OPENING_SET line each, none for a figure of 0.00), then writes
- * ROLLOVER. Rolling a year over again (while its last rollover stands) carries no opening balances a second
+ * ROLLOVER, then soft-closes (as a soft close would, in from-date order) every old-year period still open.
+ * Rolling a year over again (while its last rollover stands) carries no opening balances a second
  * time. The old year's periods are those whose from-date falls in it; refused when it has none.
  * The last rollover can be undone by the steward who made it on the sheet-today it was made, unless a claim (not
  * deleted) now belongs to a period it generated: its periods are removed and its opening balances taken back.
@@ -97,6 +98,8 @@ public class RolloverService {
         rollovers.saveAndFlush(record);
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + String.format("%04d", year)
                 + " periods=" + made.size());
+        // The old year's periods still open are soft-closed, after the ROLLOVER line.
+        periodService.softCloseOpen(sheetId, user, oldPeriods);
         return made;
     }
 

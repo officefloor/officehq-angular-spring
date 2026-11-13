@@ -176,6 +176,20 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new PeriodRefusedException("The period is already closed.");
         }
+        return softCloseNow(sheetId, user, period);
+    }
+
+    /** Soft-close, in order of their from-dates, every period that is still open (neither closed nor soft-closed)
+     *  among those given, each as a soft close would. The caller holds the sheet's lock. */
+    @Transactional
+    public void softCloseOpen(String sheetId, String user, List<Period> among) {
+        among.stream()
+                .filter(p -> !p.isClosed() && !p.isSoftClosed())
+                .sorted(Comparator.comparing(Period::getFromDate))
+                .forEach(p -> softCloseNow(sheetId, user, p));
+    }
+
+    private Period softCloseNow(String sheetId, String user, Period period) {
         period.softClose(rollup.dueBetweenByPerson(sheetId, period.getFromDate(), period.getToDate()),
                 rollup.carriedByPerson(sheetId, period, periods.findBySheetIdOrderByFromDateAsc(sheetId)),
                 cuts(sheetId));
