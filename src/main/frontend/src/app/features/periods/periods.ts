@@ -13,7 +13,9 @@ export interface Period {
   to: string;
   /** Whether the period is closed: no claim dated in it can change. */
   closed: boolean;
-  /** The due-total fixed when the period was closed (two decimals); null while it is open. */
+  /** Whether the period is soft-closed: its figures are fixed, but claims dated in it can change. */
+  softClosed: boolean;
+  /** The due-total fixed when the period was closed or soft-closed (two decimals); null while it is open. */
   closedTotal: string | null;
   /** Each person's due-total for the period fixed when it was closed (two decimals), by person id;
    *  empty while it is open. */
@@ -87,6 +89,21 @@ export class PeriodStore {
     const saved = await firstValueFrom(
       this.http.post<Period>(
         `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(name)}/close`,
+        null,
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+  }
+
+  /** Soft-close a period on the active sheet, fixing its figures while claims dated in it can still
+   *  change; the server refuses one already closed or soft-closed. */
+  async softClose(name: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<Period>(
+        `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(name)}/soft-close`,
         null,
       ),
     );
@@ -197,7 +214,7 @@ export class PeriodStore {
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button
                   type="button"
@@ -206,6 +223,14 @@ export class PeriodStore {
                   (click)="close(p)"
                 >
                   Close
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-soft-close"
+                  [attr.aria-label]="'Soft-close period ' + p.name"
+                  (click)="softClose(p)"
+                >
+                  Soft-close
                 </button>
                 <button
                   type="button"
@@ -262,7 +287,20 @@ export class Periods {
     }
   }
 
-  /** Reopen a closed period; one not closed, or a reopen by anyone but a steward, is refused on
+  /** Soft-close a period; one already closed or soft-closed is refused on its row. */
+  protected async softClose(period: Period): Promise<void> {
+    this.rowError.set(null);
+    try {
+      await this.store.softClose(period.name);
+    } catch {
+      this.rowError.set({
+        id: period.id,
+        message: `The period ${period.name} could not be soft-closed: it may be closed already, or your role may not close a period.`,
+      });
+    }
+  }
+
+  /** Reopen a closed or soft-closed period; one not closed, or a reopen by anyone but a steward, is refused on
    *  its row. */
   protected async reopen(period: Period): Promise<void> {
     this.rowError.set(null);

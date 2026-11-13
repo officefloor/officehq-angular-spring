@@ -40,7 +40,11 @@ public class Period {
     @Column(name = "closed", nullable = false)
     private boolean closed;
 
-    /** The due-total fixed when the period was closed; null while it is open. */
+    /** Whether the period is soft-closed: its figures are fixed but claims dated in it can change. */
+    @Column(name = "soft_closed", nullable = false)
+    private boolean softClosed;
+
+    /** The due-total fixed when the period was closed or soft-closed; null while it is open. */
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
 
@@ -86,6 +90,10 @@ public class Period {
         return closed;
     }
 
+    public boolean isSoftClosed() {
+        return softClosed;
+    }
+
     public BigDecimal getClosedTotal() {
         return closedTotal;
     }
@@ -97,6 +105,16 @@ public class Period {
     /** Close the period, fixing its due-total and each person's due-total for it. */
     public void close(BigDecimal total, Map<Long, BigDecimal> personTotals) {
         this.closed = true;
+        this.softClosed = false;
+        this.closedTotal = total;
+        this.personTotals.clear();
+        this.personTotals.putAll(personTotals);
+    }
+
+    /** Soft-close the period, fixing its due-total and each person's due-total for it while claims
+     *  dated in it can still change. */
+    public void softClose(BigDecimal total, Map<Long, BigDecimal> personTotals) {
+        this.softClosed = true;
         this.closedTotal = total;
         this.personTotals.clear();
         this.personTotals.putAll(personTotals);
@@ -105,6 +123,7 @@ public class Period {
     /** Reopen the period: its due-total is live again. */
     public void reopen() {
         this.closed = false;
+        this.softClosed = false;
         this.closedTotal = null;
         this.personTotals.clear();
     }

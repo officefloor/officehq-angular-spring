@@ -44,11 +44,12 @@ public class ClaimController {
      *  added; log is its status log, oldest first, one line per status it has had; deferredUntil is
      *  the date it was deferred until (null when it never was); proofs is how many proofs were added
      *  to it; splitFrom is the number of the claim it was split off (null when it was not); lockedBy is
-     *  the user whose open editor locks it (null when no one's does). */
+     *  the user whose open editor locks it (null when no one's does); lateEntry is whether it was
+     *  added while its period was soft-closed. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
-            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -56,7 +57,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry());
         }
     }
 

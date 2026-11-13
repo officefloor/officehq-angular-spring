@@ -110,7 +110,7 @@ public class PeriodService {
         return made;
     }
 
-    /** Close a period, fixing each person's due-total for it, for everyone on the sheet, and its own
+    /** Close a period (one soft-closed too, fixing its figures afresh), fixing each person's due-total for it, for everyone on the sheet, and its own
      *  due-total, their sum: the figures shown on the claims dated in it that counted at the end of its last day (by the
      *  status each had then, as its status log records it)
      *  (a claim with no figure adds nothing; an OPEN claim dated within its person's hold and not bound by a statement counts for nothing). A period already closed, or a close by a role the sheet's permission matrix does not allow, is refused. */
@@ -146,8 +146,47 @@ public class PeriodService {
                 .forEach(p -> closeFixing(sheetId, user, p, " auto=yes"));
     }
 
+    /** Soft-close a period, fixing each person's due-total for it and its own due-total as a close
+     *  would, while claims dated in it can still be added and changed. A period already closed or
+     *  soft-closed, or a soft close by a role the sheet's permission matrix does not allow to close,
+     *  is refused. */
+    @Transactional
+    public Period softClose(String sheetId, String user, String name) {
+        sheets.lock(sheetId);
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new NoSuchElementException("No period " + name + " on sheet " + sheetId));
+        if (!settings.allows(sheetId, user, Permission.CLOSE)) {
+            throw new PeriodRefusedException("Your role may not close the period " + name);
+        }
+        if (period.isClosed() || period.isSoftClosed()) {
+            throw new PeriodClosedException("The period " + name + " is already closed");
+        }
+        Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
+        BigDecimal total = sum(personTotals);
+        period.softClose(total, personTotals);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
+                + " total=" + total.toPlainString());
+        return saved;
+    }
+
     private Period closeFixing(String sheetId, String user, Period period, String suffix) {
         String name = period.getName();
+        Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
+        BigDecimal total = sum(personTotals);
+        period.close(total, personTotals);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
+                + " total=" + total.toPlainString() + suffix);
+        return saved;
+    }
+
+    private static BigDecimal sum(Map<Long, BigDecimal> personTotals) {
+        return personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /** Each person's due-total for the period now, by person id, everyone on the sheet. */
+    private Map<Long, BigDecimal> personTotals(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
@@ -167,15 +206,10 @@ public class PeriodService {
                 personTotals.merge(person.getId(), due, BigDecimal::add);
             }
         }
-        BigDecimal total = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        period.close(total, personTotals);
-        Period saved = periods.saveAndFlush(period);
-        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
-                + " total=" + total.toPlainString() + suffix);
-        return saved;
+        return personTotals;
     }
 
-    /** Reopen a closed period, making its due-total live again. Only a role the sheet's
+    /** Reopen a closed or soft-closed period, making its due-total live again. Only a role the sheet's
      *  permission matrix allows may (by the standing rule a steward); a period that is not closed is refused. */
     @Transactional
     public Period reopen(String sheetId, String user, String name) {
@@ -185,7 +219,7 @@ public class PeriodService {
         if (!settings.allows(sheetId, user, Permission.REOPEN)) {
             throw new PeriodRefusedException("Your role may not reopen the period " + name);
         }
-        if (!period.isClosed()) {
+        if (!period.isClosed() && !period.isSoftClosed()) {
             throw new PeriodRefusedException("The period " + name + " is not closed");
         }
         period.reopen();

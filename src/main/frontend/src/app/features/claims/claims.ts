@@ -53,6 +53,8 @@ export interface Claim {
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null when no one's does. */
   lockedBy: string | null;
+  /** Whether the claim was added while the period its date falls in was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -247,6 +249,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
           <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>

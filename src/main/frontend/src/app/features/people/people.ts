@@ -480,21 +480,21 @@ export class People {
   /** Each person's due-total for each period, in cents, by period id then person id: while the
    *  period is open, the dues shown now on their claims whose date falls in it and that counted by the
    *  status they had at the end of its last day, as their status logs record it, and the live rules
-   *  leave in (a claim with no figure adds nothing); once it is closed, the figures fixed then (a
+   *  leave in (a claim with no figure adds nothing); once it is closed or soft-closed, the figures fixed then (a
    *  person added later has none and counts 0.00). */
   protected readonly personPeriodCents = computed(() => {
     const periods = this.periods.periods();
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const totals = new Map<number, Map<number, number>>();
     for (const period of periods) {
-      const fixed = Object.entries(period.closed ? period.closedPersonTotals : {});
+      const fixed = Object.entries(period.closed || period.softClosed ? period.closedPersonTotals : {});
       totals.set(period.id, new Map(fixed.map(([id, total]) => [Number(id), cents(total)])));
     }
     const keep = this.liveRulesKeep();
     for (const c of this.claims()) {
       const period = periodOf(periods, c.date);
       const theirs = grades.get(c.personId);
-      if (period === null || period.closed || theirs === undefined) continue;
+      if (period === null || period.closed || period.softClosed || theirs === undefined) continue;
       const then = statusAsOf(c, period.to);
       if (then === null || !['OPEN', 'PENDING', 'SETTLED'].includes(then) || !keep(c)) continue;
       const rates = this.rates.ofGradeOn(theirs, c.date);

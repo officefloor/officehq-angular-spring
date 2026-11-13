@@ -31,12 +31,12 @@ public class PeriodController {
     /** A period as the screen shows it; closedPersonTotals is each person's due-total for it fixed
      *  when it was closed, by person id (empty while it is open). */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal, Map<Long, String> closedPersonTotals) {
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
-                    period.isClosed(),
+                    period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null,
                     personTotals);
         }
@@ -92,7 +92,14 @@ public class PeriodController {
         return PeriodView.of(service.close(sheetId.trim(), SignedInUser.decode(user), name));
     }
 
-    /** Reopen a closed period, making its due-total live again; only a steward may. */
+    /** Soft-close a period, fixing its figures while claims dated in it can still change. */
+    @PostMapping("/{name}/soft-close")
+    public PeriodView softClose(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable String name,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PeriodView.of(service.softClose(sheetId.trim(), SignedInUser.decode(user), name));
+    }
+
+    /** Reopen a closed or soft-closed period, making its due-total live again; only a steward may. */
     @PostMapping("/{name}/reopen")
     public PeriodView reopen(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable String name,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {

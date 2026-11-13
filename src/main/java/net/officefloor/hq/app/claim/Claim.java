@@ -95,6 +95,10 @@ public class Claim {
     @Column(name = "locked_by")
     private String lockedBy;
 
+    /** Whether the claim was added while the period its date falls in was soft-closed. */
+    @Column(name = "late_entry", nullable = false, updatable = false)
+    private boolean lateEntry;
+
     protected Claim() {
     }
 
@@ -244,6 +248,15 @@ public class Claim {
 
     public String getSplitFrom() {
         return splitFrom;
+    }
+
+    public boolean isLateEntry() {
+        return lateEntry;
+    }
+
+    /** Mark the claim, before it is first saved, as added while its period was soft-closed. */
+    public void markLateEntry() {
+        this.lateEntry = true;
     }
 
     public String getLockedBy() {

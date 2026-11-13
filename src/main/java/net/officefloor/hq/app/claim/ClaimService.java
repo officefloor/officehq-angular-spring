@@ -73,7 +73,8 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
-    /** Add a claim for a person; a missing date takes the sheet's today. Its due-by is fixed now: its
+    /** Add a claim for a person; a missing date takes the sheet's today. One added while the period
+     *  its date falls in is soft-closed is a late entry. Its due-by is fixed now: its
      *  date plus the person's own terms, else the terms in force on that date for the person's grade then. A negative amount is a
      *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
@@ -86,10 +87,17 @@ public class ClaimService {
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
         LocalDate dueBy = on.plusDays(termsFor(sheetId, person, on));
-        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, dueBy, noteOf(note),
-                corrects));
+        Claim claim = new Claim(sheetId, personId, scaled(amount), on, dueBy, noteOf(note), corrects);
+        boolean late = periods.softClosedOn(sheetId, on);
+        if (late) {
+            claim.markLateEntry();
+        }
+        Claim added = claims.saveAndFlush(claim);
         log(sheetId, user, person, added);
         record("CLAIM_ADDED", sheetId, user, person, added);
+        if (late) {
+            record("LATE_ENTRY", sheetId, user, person, added);
+        }
         return added;
     }
 
