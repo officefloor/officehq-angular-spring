@@ -15,6 +15,9 @@ export interface Period {
   closed: boolean;
   /** The due-total fixed when the period was closed (two decimals); null while it is open. */
   closedTotal: string | null;
+  /** Each person's due-total for the period fixed when it was closed (two decimals), by person id;
+   *  empty while it is open. */
+  closedPersonTotals: Record<string, string>;
 }
 
 /** The period whose dates contain a date; null when none does. Periods never overlap, so at most
@@ -95,8 +98,8 @@ export class PeriodStore {
   }
 }
 
-// The sheet's periods, each with the due-total of the claims that count dated in it (fixed once the
-// period is closed) and whether it is closed, and the form that adds one.
+// The sheet's periods, each with its due-total, the sum of the people's figures for it (fixed once
+// the period is closed) and whether it is closed, and the form that adds one.
 @Component({
   selector: 'app-periods',
   template: `
@@ -148,7 +151,7 @@ export class PeriodStore {
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ p.closedTotal ?? dueTotals().get(p.id) ?? '0.00' }}</td>
+              <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
               <td>
                 <button
@@ -182,7 +185,7 @@ export class PeriodStore {
 })
 export class Periods {
   protected readonly store = inject(PeriodStore);
-  /** Each period's due-total (two decimals), by period id. */
+  /** Each period's due-total (two decimals), by period id: the sum of the people's figures for it. */
   readonly dueTotals = input.required<Map<number, string>>();
 
   protected readonly name = signal('');

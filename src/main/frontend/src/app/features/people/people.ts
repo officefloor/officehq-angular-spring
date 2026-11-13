@@ -179,6 +179,9 @@ interface StatementTaken {
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
             <th scope="col">Excess</th>
+            @for (pd of periods.periods(); track pd.id) {
+              <th scope="col">Due in {{ pd.name }}</th>
+            }
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -208,6 +211,11 @@ interface StatementTaken {
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
+              @for (pd of periods.periods(); track pd.id) {
+                <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
+                  {{ money(personPeriodCents().get(pd.id)?.get(p.id) ?? 0) }}
+                </td>
+              }
               <td>
                 <app-person-claims
                   [personId]="p.id"
@@ -317,7 +325,8 @@ export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   protected readonly rates = inject(RateStore);
-  private readonly periods = inject(PeriodStore);
+  protected readonly periods = inject(PeriodStore);
+  protected readonly money = money;
   protected readonly settings = inject(SettingStore);
   /** The sheet's floor in cents. */
   protected readonly floor = computed(() => cents(this.settings.floor()));
@@ -399,20 +408,38 @@ export class People {
   protected readonly overdueTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + this.overdueCentsOf(p), 0)),
   );
-  /** Each period's due-total, by period id: the dues shown on the claims that count in live totals
-   *  whose date falls in the period (a claim with no figure adds nothing). */
-  protected readonly periodDueTotals = computed(() => {
+  /** Each person's due-total for each period, in cents, by period id then person id: while the
+   *  period is open, the dues shown on their claims that count in live totals whose date falls in it
+   *  (a claim with no figure adds nothing); once it is closed, the figures fixed then (a person added
+   *  later has none and counts 0.00). */
+  protected readonly personPeriodCents = computed(() => {
     const periods = this.periods.periods();
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
-    const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
+    const totals = new Map<number, Map<number, number>>();
+    for (const period of periods) {
+      const fixed = Object.entries(period.closed ? period.closedPersonTotals : {});
+      totals.set(period.id, new Map(fixed.map(([id, total]) => [Number(id), cents(total)])));
+    }
     for (const c of this.live()) {
       const period = periodOf(periods, c.date);
       const theirs = grades.get(c.personId);
-      if (period === null || theirs === undefined) continue;
+      if (period === null || period.closed || theirs === undefined) continue;
       const rates = this.rates.ofGradeOn(theirs, c.date);
-      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, rates, this.floor(), this.late()) ?? 0));
+      const byPerson = totals.get(period.id)!;
+      const due = claimDueCents(c, rates, this.floor(), this.late()) ?? 0;
+      byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0) + due);
     }
-    return new Map([...totals].map(([id, due]) => [id, money(due)]));
+    return totals;
+  });
+  /** Each period's due-total, by period id: the sum of the people's figures for it. */
+  protected readonly periodDueTotals = computed(() => {
+    const people = new Set(this.people().map((p) => p.id));
+    return new Map(
+      [...this.personPeriodCents()].map(([id, byPerson]) => [
+        id,
+        money([...byPerson].reduce((sum, [person, due]) => (people.has(person) ? sum + due : sum), 0)),
+      ]),
+    );
   });
   /** Per grade: the people not retired on it on the sheet's today, and their due-totals added up
    *  (skipping those with no figure), as their rows show them. */
@@ -424,12 +451,12 @@ export class People {
       return { grade, count: on.length, dueTotal: money(due) };
     });
   });
-  /** Per period: the due-total its row shows, fixed when closed and live while open. */
+  /** Per period: the due-total its row shows, the sum of the people's figures for it. */
   protected readonly periodSummary = computed(() => {
     const live = this.periodDueTotals();
     return this.periods.periods().map((p) => ({
       name: p.name,
-      dueTotal: p.closedTotal ?? live.get(p.id) ?? '0.00',
+      dueTotal: live.get(p.id) ?? '0.00',
     }));
   });
   /** Per status: how many of the sheet's claims have it. */

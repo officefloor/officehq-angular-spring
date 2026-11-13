@@ -5,7 +5,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.TreeMap;
 import net.officefloor.hq.app.SignedInUser;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -26,13 +28,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/periods")
 public class PeriodController {
 
-    /** A period as the screen shows it. */
+    /** A period as the screen shows it; closedPersonTotals is each person's due-total for it fixed
+     *  when it was closed, by person id (empty while it is open). */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed,
-            String closedTotal) {
+            String closedTotal, Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period period) {
+            Map<Long, String> personTotals = new TreeMap<>();
+            period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
                     period.isClosed(),
-                    period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null);
+                    period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null,
+                    personTotals);
         }
     }
 
