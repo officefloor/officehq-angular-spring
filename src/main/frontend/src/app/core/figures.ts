@@ -533,6 +533,18 @@ export class Figures {
     return totals;
   });
 
+  /** Each period's claim count, by period id: the claims whose due-by falls in it, VOID and DELETED ones
+   *  left out; a period with none is missing. */
+  readonly periodClaimCounts = computed(() => {
+    const counts = new Map<number, number>();
+    for (const c of this.claims.claims()) {
+      if (c.status === 'VOID' || c.status === 'DELETED') continue;
+      const period = this.periods.of(c.dueBy);
+      if (period) counts.set(period.id, (counts.get(period.id) ?? 0) + 1);
+    }
+    return counts;
+  });
+
   /** Each open period's classic due-total, by period id: like the live one, but each claim counts by
    *  its status now (OPEN, PENDING and SETTLED count) rather than the one it had at the period's end. */
   readonly classicPeriodDueTotals = computed(() => {

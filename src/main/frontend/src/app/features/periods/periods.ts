@@ -6,7 +6,7 @@ import { Period, Periods } from '../../core/periods';
 // and the list shows each with its dates, its cap on each person's open claims in it, the fiscal year its from-date falls in, and its
 // due-total, the due of the claims that count whose date falls in it (fixed once it is closed), and
 // whether it is closed or soft-closed, with buttons to close it, soft-close it and reopen it (by the roles the sheet allows), and whether it is locked, with buttons for a
-// steward to lock and unlock it.
+// steward to lock and unlock it, and how many claims belong to it (VOID and DELETED ones left out).
 // A paste box adds opening balances, lines of name,period,amount, to people's carried figures for periods.
 // A steward rolls a fiscal year over: the next one's periods are generated and each person's open figure at the old year's end
 // is carried into the new year's first period.
@@ -141,7 +141,7 @@ import { Period, Periods } from '../../core/periods';
       }
       <table data-testid="period-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Actions</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Fiscal year</th><th scope="col">Due total</th><th scope="col">Closed</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th><th scope="col">Actions</th></tr>
         </thead>
         <tbody>
           @for (p of periods.periods(); track p.id) {
@@ -154,6 +154,7 @@ import { Period, Periods } from '../../core/periods';
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.soft ? 'soft' : 'no' }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
+              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 }}</td>
               <td>
                 <button type="button" data-testid="period-close" [disabled]="acting() === p.id" (click)="close(p)">
                   Close<span class="visually-hidden"> period {{ p.name }}</span>
@@ -216,6 +217,8 @@ export class PeriodsPanel {
   /** Each open period's live due-total, by period id (a closed one shows the total fixed when it was
    *  closed). */
   protected readonly dueTotals = inject(Figures).periodDueTotals;
+  /** Each period's count of claims belonging to it, VOID and DELETED ones left out, by period id. */
+  protected readonly claimCounts = inject(Figures).periodClaimCounts;
 
   protected close(p: Period): Promise<void> {
     return this.act(p, () => this.periods.close(p.id));
