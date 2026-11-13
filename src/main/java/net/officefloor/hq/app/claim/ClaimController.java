@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.RollupService;
 import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -53,9 +54,11 @@ public class ClaimController {
     }
 
     private final ClaimService service;
+    private final RollupService rollups;
 
-    public ClaimController(ClaimService service) {
+    public ClaimController(ClaimService service, RollupService rollups) {
         this.service = service;
+        this.rollups = rollups;
     }
 
     /** The sheet's claims, newest first. */
@@ -69,8 +72,10 @@ public class ClaimController {
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimView add(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ClaimRequest request) {
-        return ClaimView.of(service.add(sheetId.trim(), SignedInUser.decode(user), personId, request.amount(),
-                request.date(), request.note()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return ClaimView.of(rollups.track(sheet, by, () -> service.add(sheet, by, personId, request.amount(),
+                request.date(), request.note())));
     }
 
     /** Change a claim's amount, date and note. */
@@ -78,8 +83,10 @@ public class ClaimController {
     public ClaimView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated ClaimRequest request) {
-        return ClaimView.of(service.update(sheetId.trim(), SignedInUser.decode(user), personId, id,
-                request.amount(), request.date(), request.note()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return ClaimView.of(rollups.track(sheet, by, () -> service.update(sheet, by, personId, id,
+                request.amount(), request.date(), request.note())));
     }
 
     /** Open a DRAFT claim. */
@@ -104,7 +111,9 @@ public class ClaimController {
     }
 
     private ClaimView changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), SignedInUser.decode(user), personId, id, to));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return ClaimView.of(rollups.track(sheet, by, () -> service.changeStatus(sheet, by, personId, id, to)));
     }
 
     /** A status change the claim's status does not allow is refused. */

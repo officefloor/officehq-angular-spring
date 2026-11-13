@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.statement.StatementSummary;
 import java.util.NoSuchElementException;
@@ -56,10 +57,12 @@ public class PersonController {
 
     private final PersonService service;
     private final StatementService statements;
+    private final RollupService rollups;
 
-    public PersonController(PersonService service, StatementService statements) {
+    public PersonController(PersonService service, StatementService statements, RollupService rollups) {
         this.service = service;
         this.statements = statements;
+        this.rollups = rollups;
     }
 
     /** The sheet's people in the order they were added. */
@@ -77,16 +80,20 @@ public class PersonController {
     @ResponseStatus(HttpStatus.CREATED)
     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonRequest request) {
-        return withStatements(service.add(sheetId.trim(), SignedInUser.decode(user), request.name(),
-                request.grade()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(),
+                request.grade())));
     }
 
     /** Change a person's name and grade; refused when the person was saved since the editor loaded them. */
     @PutMapping("/{id}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonUpdate request) {
-        return withStatements(service.update(sheetId.trim(), SignedInUser.decode(user), id, request.version(),
-                request.name(), request.grade()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
+                request.name(), request.grade())));
     }
 
     /** Someone else saved the person since the editor loaded them: the person as stored now. */

@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -44,9 +45,11 @@ public class RateController {
     }
 
     private final RateService service;
+    private final RollupService rollups;
 
-    public RateController(RateService service) {
+    public RateController(RateService service, RollupService rollups) {
         this.service = service;
+        this.rollups = rollups;
     }
 
     /** The sheet's rates by grade, each grade's from the earliest; a grade with no rate is not listed. */
@@ -60,8 +63,10 @@ public class RateController {
     public RateView set(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable @Pattern(regexp = "[ABC]") String grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated RateRequest request) {
-        return RateView.of(service.set(sheetId.trim(), SignedInUser.decode(user), grade, request.from(),
-                request.rate()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return RateView.of(rollups.track(sheet, by, () -> service.set(sheet, by, grade, request.from(),
+                request.rate())));
     }
 
     /** A rate that is not a number or a from-date that is not a real date is refused. */

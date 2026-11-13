@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.annotation.Validated;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,9 +34,11 @@ public class SheetController {
     }
 
     private final SheetService service;
+    private final RollupService rollups;
 
-    public SheetController(SheetService service) {
+    public SheetController(SheetService service, RollupService rollups) {
         this.service = service;
+        this.rollups = rollups;
     }
 
     /** Load a sheet by id, starting it empty if it was never loaded before. */
@@ -42,11 +47,13 @@ public class SheetController {
         return SheetView.of(service.load(id.trim()));
     }
 
-    /** Change the sheet's today. */
+    /** Change the sheet's today; the audit records only the figures it moved. */
     @PutMapping("/{id}/today")
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 200) String id,
-            @RequestBody @Validated TodayRequest request) {
-        return SheetView.of(service.setToday(id.trim(), request.today()));
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated TodayRequest request) {
+        String sheet = id.trim();
+        return SheetView.of(rollups.track(sheet, SignedInUser.decode(user),
+                () -> service.setToday(sheet, request.today())));
     }
 
     /** A date that is not a real yyyy-mm-dd date is refused. */

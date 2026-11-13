@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -28,8 +29,11 @@ public class StatementController {
 
     private final StatementService service;
 
-    public StatementController(StatementService service) {
+    private final RollupService rollups;
+
+    public StatementController(StatementService service, RollupService rollups) {
         this.service = service;
+        this.rollups = rollups;
     }
 
     /** Take a statement for the person. */
@@ -37,7 +41,8 @@ public class StatementController {
     public StatementTaken take(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         String sheet = sheetId.trim();
-        List<ClaimView> claims = service.take(sheet, SignedInUser.decode(user), personId).stream()
+        String by = SignedInUser.decode(user);
+        List<ClaimView> claims = rollups.track(sheet, by, () -> service.take(sheet, by, personId)).stream()
                 .map(ClaimView::of).toList();
         return new StatementTaken(service.summary(sheet, personId), claims);
     }
