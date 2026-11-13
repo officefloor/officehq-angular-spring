@@ -125,6 +125,23 @@ interface StatementTaken {
       @if (quickError(); as message) {
         <p role="alert" data-testid="quick-error">{{ message }}</p>
       }
+      <form (submit)="pasteClaims($event)" aria-label="Paste claims">
+        <label for="paste-claims">Paste claims, one per line as name,amount,date,note</label>
+        <textarea
+          id="paste-claims"
+          data-testid="paste-claims"
+          rows="4"
+          [value]="pasteText()"
+          (input)="pasteText.set(value($event)); pasteError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        @if (pasteAdded() !== null) {
+          Added <strong data-testid="paste-added">{{ pasteAdded() }}</strong>
+        }
+      </form>
+      @if (pasteError(); as message) {
+        <p role="alert" data-testid="paste-error">{{ message }}</p>
+      }
       <label>
         <input
           type="checkbox"
@@ -485,6 +502,12 @@ export class People {
   /** Whether a quick-add is waiting for its answer; a second one meanwhile is dropped. */
   private readonly quickBusy = signal(false);
   protected readonly quickError = signal<string | null>(null);
+  protected readonly pasteText = signal('');
+  /** How many claims the last paste added; null while it runs or before one. */
+  protected readonly pasteAdded = signal<number | null>(null);
+  /** Whether a paste is waiting for its answer; a second one meanwhile is dropped. */
+  private readonly pasteBusy = signal(false);
+  protected readonly pasteError = signal<string | null>(null);
   /** The error from the last action on a person's row refused, and the person it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string; testId?: string } | null>(null);
   /** The ids of the claims selected to open or settle together. */
@@ -523,6 +546,9 @@ export class People {
       this.quickName.set('');
       this.quickAmount.set('');
       this.quickError.set(null);
+      this.pasteText.set('');
+      this.pasteAdded.set(null);
+      this.pasteError.set(null);
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -940,6 +966,39 @@ export class People {
       );
     } finally {
       this.quickBusy.set(false);
+    }
+  }
+
+  /** Add a DRAFT claim per pasted line of name,amount,date,note, for people on the sheet; when any
+   *  line is refused nothing is added. The added claims then show, and how many were. */
+  protected async pasteClaims(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.pasteBusy()) return;
+    this.pasteError.set(null);
+    this.pasteAdded.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.pasteText();
+    if (!text.trim()) {
+      this.pasteError.set('Paste at least one line of name,amount,date,note.');
+      return;
+    }
+    this.pasteBusy.set(true);
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ added: Claim[] }>(`/api/sheets/${encodeURIComponent(sheet)}/claims/paste`, { text }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.added) this.claimSaved(c);
+      this.pasteAdded.set(result.added.length);
+      this.pasteText.set('');
+    } catch {
+      this.pasteError.set(
+        'The claims could not be added: every line needs a name on the sheet, an amount of 0.00 or more ' +
+          'with up to two decimals, and a date (or blank) outside a closed period and before the person retired.',
+      );
+    } finally {
+      this.pasteBusy.set(false);
     }
   }
 
