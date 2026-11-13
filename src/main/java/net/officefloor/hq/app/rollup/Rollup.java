@@ -30,7 +30,8 @@ import org.springframework.stereotype.Service;
  * shows them.
  * A change takes the figures before it, then records after its own audit lines a ROLLUP line for each
  * person whose figures moved (a person new to the sheet counting as moved), in the order they were
- * added, and a TOTALS line when the sheet's totals moved.
+ * added, and a TOTALS line when the sheet's totals moved, then an ALERT line for each person whose due-total
+ * went from at or below the sheet's alert threshold (or none) to above it, in the list order.
  */
 @Service
 public class Rollup {
@@ -214,6 +215,7 @@ public class Rollup {
         audit.recordOnCommit("TOTALS" + prefix + " claimed-total=" + now.claimedTotal().toPlainString()
                 + " due-total=" + now.dueTotal().toPlainString()
                 + " overdue-total=" + now.overdueTotal().toPlainString());
+        recordAlerts(sheetId, prefix, null, now);
     }
 
     /** Record, once the change commits, the lines for every figure that moved since {@code before}. */
@@ -237,6 +239,27 @@ public class Rollup {
                     + " due-total=" + after.dueTotal().toPlainString()
                     + " overdue-total=" + after.overdueTotal().toPlainString());
         }
+        recordAlerts(sheetId, prefix, before, after);
+    }
+
+    /** Record, once the change commits, an ALERT line for each person whose due-total went from at or below the
+     *  sheet's alert threshold (or none, or new to the sheet) to above it, in the list order; none when the
+     *  threshold is off. */
+    private void recordAlerts(String sheetId, String prefix, Snapshot before, Snapshot after) {
+        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+        if (threshold == null) {
+            return;
+        }
+        after.people().forEach((id, now) -> {
+            Figures was = before == null ? null : before.people().get(id);
+            if (above(now.dueTotal(), threshold) && (was == null || !above(was.dueTotal(), threshold))) {
+                audit.recordOnCommit("ALERT" + prefix + " name=" + now.name() + " due-total=" + show(now.dueTotal()));
+            }
+        });
+    }
+
+    private static boolean above(BigDecimal dueTotal, BigDecimal threshold) {
+        return dueTotal != null && dueTotal.compareTo(threshold) > 0;
     }
 
     /** Whether a claim counts in the live totals: its status counts, it is not left out by a hold, and it

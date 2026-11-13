@@ -278,6 +278,17 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's alert threshold (none: off). Not dated. */
+    @Transactional
+    public Sheet setAlertThreshold(String id, String user, BigDecimal threshold) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        BigDecimal t = threshold == null ? null : threshold.setScale(2);
+        sheet.setAlertThreshold(t);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=alert-threshold value="
+                + (t == null ? "" : t.toPlainString()));
+        return sheet;
+    }
+
     /** Change the sheet's parent (none: no parent), recording the figures it moves. Not dated. The sheet
      *  cannot be its own parent, nor name a sheet that has it as an ancestor, and the parent must exist. */
     @Transactional

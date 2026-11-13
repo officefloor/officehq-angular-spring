@@ -98,9 +98,9 @@ public class SheetCloneService {
     private void copySheet(Sheet sheet, String target, String user) {
         String id = sheet.getId();
         jdbc.update("INSERT INTO sheet (id, created_by, created_at, today, last_claim_number, last_settle_batch,"
-                + " policy_date, period_numbering_from, grace_days, archived, entry_date, pot, parent)"
+                + " policy_date, period_numbering_from, grace_days, archived, entry_date, pot, parent, alert_threshold)"
                 + " SELECT ?, ?, ?, today, 0, last_settle_batch, policy_date, period_numbering_from, grace_days, FALSE,"
-                + " entry_date, pot, parent FROM sheet WHERE id = ?", target, user, Timestamp.from(Instant.now()), id);
+                + " entry_date, pot, parent, alert_threshold FROM sheet WHERE id = ?", target, user, Timestamp.from(Instant.now()), id);
         jdbc.update("INSERT INTO sheet_setting (sheet_id, setting_key, from_date, setting_value)"
                 + " SELECT ?, setting_key, from_date, setting_value FROM sheet_setting WHERE sheet_id = ?", target, id);
         jdbc.update("INSERT INTO sheet_permission (sheet_id, action, roles)"

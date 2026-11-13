@@ -280,6 +280,18 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="potTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
+        <label for="setting-alert-threshold">Alert threshold (a person whose due-total goes above it is alerted; blank for off)</label>
+        <input
+          id="setting-alert-threshold"
+          data-testid="setting-alert-threshold"
+          inputmode="decimal"
+          [value]="alertThreshold()"
+          (input)="alertThreshold.set(value($event)); alertThresholdTouched.set(true); error.set(null)"
+          (focus)="focused.set('alert-threshold')"
+          (keydown.delete)="alertThresholdTouched.set(true); error.set(null)"
+          (keydown.backspace)="alertThresholdTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-alert-threshold-current">{{ session.alertThreshold() ?? '' }}</strong></p>
         <label for="setting-parent">Parent sheet (its rates apply to a grade with none in force here; blank for none)</label>
         <input
           id="setting-parent"
@@ -428,6 +440,8 @@ export class SettingsPanel {
   protected readonly fiscalStartMonthTouched = signal(false);
   protected readonly pot = signal('');
   protected readonly potTouched = signal(false);
+  protected readonly alertThreshold = signal('');
+  protected readonly alertThresholdTouched = signal(false);
   protected readonly parent = signal('');
   protected readonly parentTouched = signal(false);
   /** The setting that may be blank whose field was focused last: an untouched save (a blank typed into a
@@ -513,7 +527,7 @@ export class SettingsPanel {
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
         && !this.graceDaysTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
-        && !this.fiscalStartMonthTouched()
+        && !this.fiscalStartMonthTouched() && !this.alertThresholdTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
         && this.gradeProofThresholdTouched().size === 0
         && this.permsTouched().size === 0;
@@ -544,12 +558,14 @@ export class SettingsPanel {
         || (guess && this.entryDate().trim() !== (this.session.entryDate() ?? ''));
       const pot = this.potTouched() || pick === 'pot'
         || (guess && this.pot().trim() !== (this.session.pot() ?? ''));
+      const alertThreshold = this.alertThresholdTouched() || pick === 'alert-threshold'
+        || (guess && this.alertThreshold().trim() !== (this.session.alertThreshold() ?? ''));
       const parent = this.parentTouched() || pick === 'parent'
         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
       const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
         || (guess && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
-          && !entryDate && !pot && !parent && !fiscalStartMonth)
+          && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
         ?? (floor ? await this.session.setFloor(this.floor(), this.fromOf('floor')) : null)
@@ -572,6 +588,7 @@ export class SettingsPanel {
         ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null)
         ?? (fiscalStartMonth ? await this.session.setFiscalStartMonth(this.fiscalStartMonth()) : null)
         ?? (pot ? await this.savePot() : null)
+        ?? (alertThreshold ? await this.session.setAlertThreshold(this.alertThreshold()) : null)
         ?? (parent ? await this.saveParent() : null);
       if (err) this.error.set(err);
       else {
@@ -610,6 +627,8 @@ export class SettingsPanel {
         this.fiscalStartMonthTouched.set(false);
         this.pot.set('');
         this.potTouched.set(false);
+        this.alertThreshold.set('');
+        this.alertThresholdTouched.set(false);
         this.parent.set('');
         this.parentTouched.set(false);
         this.focused.set(null);

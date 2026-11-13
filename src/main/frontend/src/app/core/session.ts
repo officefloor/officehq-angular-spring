@@ -46,6 +46,8 @@ export interface SheetView {
   parent: string | null;
   /** The month (1 to 12) a fiscal year starts in. */
   fiscalStartMonth: number;
+  /** The alert threshold, two decimals; null when off. */
+  alertThreshold: string | null;
 }
 
 /** The figures of a sheet's descendants (its children, their children and so on), each sheet's as that
@@ -166,6 +168,9 @@ export class Session {
   /** The sheet's pot, two decimals; null for no pot. Shared out among the members of each balanced pool in no other pool by
    *  their shares. Not dated. */
   readonly pot = signal<string | null>(null);
+  /** The sheet's alert threshold, two decimals; null when off. A change records an ALERT for each person whose
+   *  due-total goes from at or below it to above it. Not dated. */
+  readonly alertThreshold = signal<string | null>(null);
   /** The parent sheet's id; null for none. A grade with no rate in force on a date on this sheet takes the
    *  parent's, then the parent's parent's, up to three levels up. Not dated. */
   readonly parent = signal<string | null>(null);
@@ -216,6 +221,7 @@ export class Session {
       this.graceDays.set(sheet.graceDays);
       this.entryDate.set(sheet.entryDate);
       this.pot.set(sheet.pot);
+      this.alertThreshold.set(sheet.alertThreshold);
       this.parent.set(sheet.parent);
       this.fiscalStartMonth.set(sheet.fiscalStartMonth);
       this.archived.set(sheet.archived);
@@ -650,6 +656,27 @@ export class Session {
           { pot: p || null }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.pot.set(sheet.pot);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's alert threshold (blank: off); an error message when refused. */
+  async setAlertThreshold(threshold: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const t = threshold.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (t && !/^\d{1,13}(\.\d{1,2})?$/.test(t)) {
+      return 'Enter the alert threshold as an amount in two decimals, or leave it blank.';
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/alert-threshold`,
+          { alertThreshold: t || null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.alertThreshold.set(sheet.alertThreshold);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

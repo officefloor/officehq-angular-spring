@@ -115,6 +115,11 @@ public class Sheet {
     @Column(name = "pot", precision = 15, scale = 2)
     private BigDecimal pot;
 
+    /** The alert threshold: a change records an ALERT for each person whose due-total goes from at or below it
+     *  (or none) to above it; none means off. Not dated. */
+    @Column(name = "alert_threshold", precision = 15, scale = 2)
+    private BigDecimal alertThreshold;
+
     /** The parent sheet's id: a grade with no rate in force on a date here takes the parent's, then its
      *  parent's, up to three levels up; none means no parent. Not dated. */
     @Column(name = "parent")
@@ -358,6 +363,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     public String getParent() {
