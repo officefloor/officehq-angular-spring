@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -83,13 +84,15 @@ public class RollupService {
 
     private Rollup rollup(String sheetId) {
         LocalDate today = sheets.today(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+        Set<Long> held = sheetPeople.stream().filter(Person::isHeld).map(Person::getId).collect(Collectors.toSet());
         Map<Long, List<Claim>> counted = claims.findBySheetIdOrderByIdDesc(sheetId).stream()
-                .filter(Claim::counts)
+                .filter(claim -> claim.countsLive(held.contains(claim.getPersonId())))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;
         BigDecimal dueTotal = NONE;
-        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person person : sheetPeople) {
             Figures f = figuresOf(sheetId, today, person, counted.getOrDefault(person.getId(), List.of()));
             figures.put(person.getId(), f);
             claimedTotal = claimedTotal.add(f.claimed());

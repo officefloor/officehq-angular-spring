@@ -164,4 +164,9 @@ public class Claim {
     public boolean counts() {
         return status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED;
     }
+
+    /** Whether the claim counts in live totals, its person held or not: while held, only SETTLED ones do. */
+    public boolean countsLive(boolean personHeld) {
+        return personHeld ? status == ClaimStatus.SETTLED : counts();
+    }
 }

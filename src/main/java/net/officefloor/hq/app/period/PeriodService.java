@@ -65,7 +65,7 @@ public class PeriodService {
     }
 
     /** Close a period, fixing its due-total: the figures shown on the claims that count dated in it
-     *  (a claim with no figure adds nothing). A period already closed is refused. */
+     *  (a claim with no figure adds nothing; a held person's OPEN claims count for nothing). A period already closed is refused. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
         sheets.lock(sheetId);
@@ -79,7 +79,7 @@ public class PeriodService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (!claim.counts() || person == null || !period.contains(claim.getDate())) {
+            if (person == null || !claim.countsLive(person.isHeld()) || !period.contains(claim.getDate())) {
                 continue;
             }
             BigDecimal figure = claimService.figureOf(sheetId, person, claim);

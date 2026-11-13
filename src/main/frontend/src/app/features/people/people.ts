@@ -22,6 +22,8 @@ interface Person {
   retired: boolean;
   /** The date the person is retired from; null when they are not retired. */
   retiredFrom: string | null;
+  /** Whether the person is on hold: while held, their OPEN claims count in no live total. */
+  held: boolean;
 }
 
 /** A statement taken: the person's statements as their row shows them, and their claims as it
@@ -116,6 +118,7 @@ interface StatementTaken {
             <th scope="col">Stated on</th>
             <th scope="col">Retired</th>
             <th scope="col">Retired from</th>
+            <th scope="col">On hold</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
@@ -132,6 +135,7 @@ interface StatementTaken {
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
               <td>
                 <app-person-claims
                   [personId]="p.id"
@@ -173,6 +177,14 @@ interface StatementTaken {
                 >
                   Retire
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-hold-toggle"
+                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
+                  (click)="toggleHold(p)"
+                >
+                  {{ p.held ? 'Release' : 'Hold' }}
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ e.message }}</p>
@@ -204,10 +216,16 @@ export class People {
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
+  /** The sheet's claims that count in live totals: OPEN and SETTLED ones, except a held person's
+   *  OPEN ones. */
+  private readonly live = computed(() => {
+    const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
+    return this.claims().filter((c) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId)));
+  });
   /** Each person's claims that count toward what is claimed and due, by person id. */
   private readonly countedByPerson = computed(() => {
     const map = new Map<number, Claim[]>();
-    for (const c of this.claims().filter(counts)) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
+    for (const c of this.live()) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
     return map;
   });
   /** Each person's claims, newest first, by person id. */
@@ -217,7 +235,7 @@ export class People {
     return map;
   });
   protected readonly claimedTotal = computed(() =>
-    money(this.claims().filter(counts).reduce((sum, c) => sum + cents(c.amount), 0)),
+    money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)),
   );
   /** Everyone's due-total added up, skipping those whose grade has no rate. */
   protected readonly dueTotal = computed(() =>
@@ -228,13 +246,13 @@ export class People {
       }, 0),
     ),
   );
-  /** Each period's due-total, by period id: the dues shown on the claims that count whose date
-   *  falls in the period (a claim with no figure adds nothing). */
+  /** Each period's due-total, by period id: the dues shown on the claims that count in live totals
+   *  whose date falls in the period (a claim with no figure adds nothing). */
   protected readonly periodDueTotals = computed(() => {
     const periods = this.periods.periods();
     const grades = new Map(this.people().map((p) => [p.id, p.grade]));
     const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
-    for (const c of this.claims().filter(counts)) {
+    for (const c of this.live()) {
       const period = periodOf(periods, c.date);
       const grade = grades.get(c.personId);
       if (period === null || grade === undefined) continue;
@@ -302,6 +320,24 @@ export class People {
       this.retireDates.update((dates) => ({ ...dates, [person.id]: '' }));
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be retired.` });
+    }
+  }
+
+  /** Put a person on hold, or take them off hold; their row and the totals then show it. */
+  protected async toggleHold(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/hold`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, null));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch {
+      this.rowError.set({
+        id: person.id,
+        message: `${person.name} could not be ${person.held ? 'taken off hold' : 'put on hold'}.`,
+      });
     }
   }
 

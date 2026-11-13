@@ -35,13 +35,13 @@ public class PersonController {
 
     /** A person as the screen shows them, with how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
-     *  when (null when not). */
+     *  when (null when not), and whether they are on hold. */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom) {
+            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held) {
         public static PersonView of(Person person, StatementSummary statements) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate(), person.isRetired(),
-                    person.getRetiredFrom());
+                    person.getRetiredFrom(), person.isHeld());
         }
     }
 
@@ -110,6 +110,15 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(service.retire(sheet, by, id, request.from()));
+    }
+
+    /** Put a person on hold, or take them off hold. */
+    @PostMapping("/{id}/hold")
+    public PersonView hold(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(rollups.track(sheet, by, () -> service.toggleHold(sheet, by, id)));
     }
 
     /** A date that is not a real yyyy-mm-dd date is refused. */

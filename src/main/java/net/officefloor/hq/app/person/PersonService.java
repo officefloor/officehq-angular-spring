@@ -68,6 +68,18 @@ public class PersonService {
         return saved;
     }
 
+    /** Put a person on hold, or take them off hold when they are held already. */
+    @Transactional
+    public Person toggleHold(String sheetId, String user, Long id) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        person.setHeld(!person.isHeld());
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
+                + " by=" + user + " name=" + saved.getName());
+        return saved;
+    }
+
     private void record(String event, String sheetId, String user, Person person) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.getGrade());
