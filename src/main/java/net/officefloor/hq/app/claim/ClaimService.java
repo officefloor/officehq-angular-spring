@@ -10,6 +10,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -51,6 +52,7 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, on);
+        refuseRetired(person, on);
         Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note)));
         record("CLAIM_ADDED", sheetId, user, person, added);
         return added;
@@ -70,6 +72,7 @@ public class ClaimService {
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
+        refuseRetired(person, on);
         claim.setAmount(scaled(amount));
         claim.setDate(on);
         claim.setNote(noteOf(note));
@@ -140,6 +143,13 @@ public class ClaimService {
     private void refuseClosed(String sheetId, LocalDate date) {
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException("A claim dated " + date + " falls in a closed period");
+        }
+    }
+
+    /** A claim dated after its person's retirement date cannot be added or moved there. */
+    private static void refuseRetired(Person person, LocalDate date) {
+        if (person.isRetired() && date.isAfter(person.getRetiredFrom())) {
+            throw new PersonRetiredException(person.getName(), person.getRetiredFrom(), date);
         }
     }
 

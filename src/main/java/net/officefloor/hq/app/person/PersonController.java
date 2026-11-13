@@ -14,6 +14,7 @@ import net.officefloor.hq.app.statement.StatementSummary;
 import java.util.NoSuchElementException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -33,12 +34,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** A person as the screen shows them, with how many statements were taken for them and the
-     *  last one's due-total and date (null when none was). */
+     *  last one's due-total and date (null when none was), and whether they are retired and from
+     *  when (null when not). */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate) {
+            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom) {
         public static PersonView of(Person person, StatementSummary statements) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    statements.count(), statements.lastDueTotal(), statements.lastDate());
+                    statements.count(), statements.lastDueTotal(), statements.lastDate(), person.isRetired(),
+                    person.getRetiredFrom());
         }
     }
 
@@ -53,6 +56,10 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @NotNull Long version) {
+    }
+
+    /** A retirement: the date the person is retired from (blank takes the sheet's today). */
+    public record RetireRequest(LocalDate from) {
     }
 
     private final PersonService service;
@@ -94,6 +101,21 @@ public class PersonController {
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
                 request.name(), request.grade())));
+    }
+
+    /** Retire a person from a date. */
+    @PostMapping("/{id}/retire")
+    public PersonView retire(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody RetireRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(service.retire(sheet, by, id, request.from()));
+    }
+
+    /** A date that is not a real yyyy-mm-dd date is refused. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public void unreadable() {
     }
 
     /** Someone else saved the person since the editor loaded them: the person as stored now. */

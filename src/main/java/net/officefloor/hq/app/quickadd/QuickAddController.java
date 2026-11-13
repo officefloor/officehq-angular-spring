@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.period.PeriodClosedException;
+import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.NameInUseException;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.statement.StatementService;
@@ -61,8 +62,9 @@ public class QuickAddController {
                 ClaimView.of(added.claim()));
     }
 
-    /** A claim dated in a closed period, or a name taken at the same moment, is refused. */
-    @ExceptionHandler({PeriodClosedException.class, NameInUseException.class, DataIntegrityViolationException.class})
+    /** A claim dated in a closed period or after its person retired, or a name taken at the same moment, is refused. */
+    @ExceptionHandler({PeriodClosedException.class, PersonRetiredException.class, NameInUseException.class,
+            DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

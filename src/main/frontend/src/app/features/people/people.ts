@@ -18,6 +18,10 @@ interface Person {
   statedTotal: string | null;
   /** The sheet's today when the last statement was taken; null when none was. */
   statementDate: string | null;
+  /** Whether the person is retired: any retirement date set counts, whatever the date. */
+  retired: boolean;
+  /** The date the person is retired from; null when they are not retired. */
+  retiredFrom: string | null;
 }
 
 /** A statement taken: the person's statements as their row shows them, and their claims as it
@@ -88,6 +92,15 @@ interface StatementTaken {
       @if (quickError(); as message) {
         <p role="alert" data-testid="quick-error">{{ message }}</p>
       }
+      <label>
+        <input
+          type="checkbox"
+          data-testid="show-retired"
+          [checked]="showRetired()"
+          (change)="showRetired.set(checked($event))"
+        />
+        Show retired
+      </label>
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
 
@@ -101,12 +114,14 @@ interface StatementTaken {
             <th scope="col">Statements</th>
             <th scope="col">Last stated</th>
             <th scope="col">Stated on</th>
+            <th scope="col">Retired</th>
+            <th scope="col">Retired from</th>
             <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -115,6 +130,8 @@ interface StatementTaken {
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
+              <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
               <td>
                 <app-person-claims
                   [personId]="p.id"
@@ -140,6 +157,22 @@ interface StatementTaken {
                 >
                   Statement
                 </button>
+                <label [for]="'person-retire-date-' + p.id">Retire from</label>
+                <input
+                  type="date"
+                  [id]="'person-retire-date-' + p.id"
+                  data-testid="person-retire-date"
+                  [value]="retireDates()[p.id] ?? ''"
+                  (input)="setRetireDate(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-retire"
+                  [attr.aria-label]="'Retire ' + p.name"
+                  (click)="retire(p)"
+                >
+                  Retire
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" data-testid="person-error">{{ e.message }}</p>
@@ -161,6 +194,14 @@ export class People {
 
   protected readonly grades = ['A', 'B', 'C'];
   protected readonly people = signal<Person[]>([]);
+  /** Whether retired people are listed; off when the screen opens and kept across sheet loads. */
+  protected readonly showRetired = signal(false);
+  /** The people listed: everyone, or only those not retired unless retired people are shown. */
+  protected readonly shownPeople = computed(() =>
+    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+  );
+  /** The retirement date typed on each person's row, by person id. */
+  protected readonly retireDates = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** Each person's claims that count toward what is claimed and due, by person id. */
@@ -224,6 +265,7 @@ export class People {
       this.people.set([]);
       this.claims.set([]);
       this.rowError.set(null);
+      this.retireDates.set({});
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -234,6 +276,33 @@ export class People {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  protected checked(event: Event): boolean {
+    return (event.target as HTMLInputElement).checked;
+  }
+
+  protected setRetireDate(personId: number, date: string): void {
+    this.retireDates.update((dates) => ({ ...dates, [personId]: date }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Retire a person from the typed date (blank takes the sheet's today); their row then shows it,
+   *  or leaves the list while retired people are not shown. */
+  protected async retire(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const from = (this.retireDates()[person.id] ?? '').trim() || null;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/retire`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { from }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.retireDates.update((dates) => ({ ...dates, [person.id]: '' }));
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be retired.` });
+    }
   }
 
   protected claimsOf(personId: number): Claim[] {
@@ -395,7 +464,7 @@ export class People {
     } catch (e) {
       this.quickError.set(
         e instanceof HttpErrorResponse && e.status === 409
-          ? `A claim for ${name} could not be added: its date falls in a closed period.`
+          ? `A claim for ${name} could not be added: its date falls in a closed period or after they retired.`
           : `A claim for ${name} could not be added.`,
       );
     } finally {

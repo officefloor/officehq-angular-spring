@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.Audit;
@@ -51,6 +52,19 @@ public class PersonService {
         person.setGrade(grade);
         Person saved = people.saveAndFlush(person);
         record("PERSON_EDITED", sheetId, user, saved);
+        return saved;
+    }
+
+    /** Retire a person from a date; a missing date takes the sheet's today. */
+    @Transactional
+    public Person retire(String sheetId, String user, Long id, LocalDate from) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        person.setRetiredFrom(on);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " from=" + on);
         return saved;
     }
 
