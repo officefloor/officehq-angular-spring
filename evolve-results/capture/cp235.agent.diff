@@ -1,0 +1,228 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 90430776a..cb1e5abf4 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -143,7 +143,7 @@ export class People {
+   readonly people = signal<Person[]>([]);
+   /** Whether the list shows retired people; belongs to the screen, so loading a sheet leaves it. */
+   readonly showRetired = signal(false);
+-  /** The ids of the people chosen for a bulk grade or retire. */
++  /** The ids of the people chosen for a bulk grade, retire or hold. */
+   readonly selected = signal<ReadonlySet<number>>(new Set());
+   /** The ids of the people the last load read; anyone else was added on this screen since. */
+   readonly loadedIds = signal<ReadonlySet<number>>(new Set());
+@@ -242,7 +242,7 @@ export class People {
+     }
+   }
+ 
+-  /** Choose a person for a bulk grade or retire, or leave them out. */
++  /** Choose a person for a bulk grade, retire or hold, or leave them out. */
+   select(id: number, on: boolean): void {
+     this.selected.update((s) => {
+       const next = new Set(s);
+@@ -316,6 +316,41 @@ export class People {
+     }
+   }
+ 
++  /** Put the chosen people on hold from a date (blank takes the sheet's today) to a date (blank: no end)
++   *  together, the server holding them in list order as each row's hold would; how many were held, or an
++   *  error message. */
++  async bulkHold(from: string, to: string): Promise<number | string> {
++    const sid = this.session.sheetId();
++    const user = this.session.user();
++    if (!user || !sid) return 'Load a sheet first.';
++    const personIds = [...this.selected()];
++    if (personIds.length === 0) return 'Select the people to hold.';
++    const f = from.trim();
++    const t = to.trim();
++    const date = /^\d{4}-\d{2}-\d{2}$/;
++    if ((f && !date.test(f)) || (t && !date.test(t))) return 'Enter a date as YYYY-MM-DD.';
++    try {
++      const done = await firstValueFrom(
++        this.http.post<{ held: number; people: Person[] }>(
++          `${this.url(sid)}/bulk-hold`,
++          { personIds, from: f || null, to: t || null },
++          { headers: { 'X-User': user } },
++        ),
++      );
++      if (this.session.sheetId() === sid) {
++        const byId = new Map(done.people.map((p) => [p.id, p]));
++        this.people.update((ps) => ps.map((p) => byId.get(p.id) ?? p));
++        this.selected.set(new Set());
++      }
++      return done.held;
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && (e.status === 409 || e.status === 422) && typeof e.error?.message === 'string') {
++        return e.error.message;
++      }
++      return e instanceof HttpErrorResponse ? `Could not hold people (${e.status}).` : 'Could not hold people.';
++    }
++  }
++
+   /** Retire the chosen people from a date (blank takes the sheet's today) together, the server retiring
+    *  them in list order as each row's retire would; how many were retired, or an error message. */
+   async bulkRetire(from: string): Promise<number | string> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7a991407d..ec64b01f4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -185,7 +185,7 @@ function compareKeys(a: string, b: string): number {
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
+-      <section aria-label="Grade or retire selected people">
++      <section aria-label="Grade, retire or hold selected people">
+         <label for="bulk-grade">Grade selected people</label>
+         <select
+           id="bulk-grade"
+@@ -225,6 +225,28 @@ function compareKeys(a: string, b: string): number {
+         @if (bulkRetired() !== null) {
+           <p>Retired <span data-testid="bulk-retired">{{ bulkRetired() }}</span></p>
+         }
++        <label for="bulk-hold-from">Hold selected people from</label>
++        <input
++          id="bulk-hold-from"
++          data-testid="bulk-hold-from"
++          placeholder="YYYY-MM-DD"
++          [value]="bulkHoldFrom()"
++          (input)="bulkHoldFrom.set(value($event)); bulkError.set(null)"
++        />
++        <label for="bulk-hold-to">to</label>
++        <input
++          id="bulk-hold-to"
++          data-testid="bulk-hold-to"
++          placeholder="YYYY-MM-DD"
++          [value]="bulkHoldTo()"
++          (input)="bulkHoldTo.set(value($event)); bulkError.set(null)"
++        />
++        <button type="button" data-testid="bulk-hold" [disabled]="bulkRunning()" (click)="applyBulkHold()">
++          Hold selected
++        </button>
++        @if (bulkHeld() !== null) {
++          <p>Held <span data-testid="bulk-held">{{ bulkHeld() }}</span></p>
++        }
+         @if (bulkError(); as err) {
+           <p role="alert" data-testid="person-error">{{ err }}</p>
+         }
+@@ -811,6 +833,28 @@ export class PeopleList {
+     }
+   }
+ 
++  /** The dates the bulk hold covers: blank from takes the sheet's today, blank to has no end. */
++  protected readonly bulkHoldFrom = signal('');
++  protected readonly bulkHoldTo = signal('');
++  /** How many the last bulk hold held; gone while the next runs. */
++  protected readonly bulkHeld = signal<number | null>(null);
++
++  protected async applyBulkHold(): Promise<void> {
++    if (this.bulkRunning()) return;
++    this.bulkHeld.set(null);
++    this.bulkError.set(null);
++    const err = this.actionError();
++    if (err && this.people.selected().has(err.id)) this.actionError.set(null);
++    this.bulkRunning.set(true);
++    try {
++      const done = await this.people.bulkHold(this.bulkHoldFrom(), this.bulkHoldTo());
++      if (typeof done === 'string') this.bulkError.set(done);
++      else this.bulkHeld.set(done);
++    } finally {
++      this.bulkRunning.set(false);
++    }
++  }
++
+   protected checked(e: Event): boolean {
+     return (e.target as HTMLInputElement).checked;
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index f2b15d2c8..62c58be25 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -179,6 +179,16 @@ public class PersonController {
+     public record BulkRetireView(int retired, List<PersonView> people) {
+     }
+ 
++    /** The people to put on hold together, from a date (none: the sheet's today) to a date (none: no end). */
++    public record BulkHoldRequest(
++            @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> personIds,
++            LocalDate from, LocalDate to) {
++    }
++
++    /** How many a bulk hold held, and the people it held. */
++    public record BulkHoldView(int held, List<PersonView> people) {
++    }
++
+     /** The person to name as a patron. */
+     public record PatronRequest(@NotNull Long patronId) {
+     }
+@@ -357,6 +367,21 @@ public class PersonController {
+         }
+     }
+ 
++    /** Put the chosen people on hold from a date to a date together, in list order. */
++    @PostMapping("/bulk-hold")
++    public BulkHoldView bulkHold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid BulkHoldRequest request) {
++        try {
++            List<Person> held = service.bulkHold(sheetId.trim(), user.trim(), request.personIds(),
++                    request.from(), request.to());
++            return new BulkHoldView(held.size(), held.stream().map(p -> view(p, user.trim())).toList());
++        } catch (ObjectOptimisticLockingFailureException e) {
++            // one of them was saved by someone else at the same moment
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone else changed one of them; try again.");
++        }
++    }
++
+     /** Retire a person from a date. */
+     @PostMapping("/{personId}/retire")
+     public PersonView retire(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9de17be01..80c09932e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -926,6 +926,24 @@ public class PersonService {
+         return picked.stream().map(p -> retire(sheetId, user, p.getId(), from)).toList();
+     }
+ 
++    /** Put each of the chosen people on hold from a date (the sheet's today when none is given) to a date
++     *  when one is given, in list order, exactly as their row's hold would; the people held, in list order.
++     *  A hold ending before it starts is refused for them all. A viewer's goes through with no one held. */
++    @Transactional
++    public List<Person> bulkHold(String sheetId, String user, List<Long> personIds, LocalDate from, LocalDate to) {
++        requireSheet(sheetId);
++        if (roles.isViewer(sheetId, user)) {
++            return List.of();
++        }
++        Set<Long> chosen = Set.copyOf(personIds);
++        List<Person> picked = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                .filter(p -> chosen.contains(p.getId())).toList();
++        if (picked.size() != chosen.size()) {
++            throw new PersonNotFoundException();
++        }
++        return picked.stream().map(p -> hold(sheetId, user, p.getId(), from, to)).toList();
++    }
++
+     /** Put a person on hold from a date (the sheet's today when none is given) to a date when one is
+      *  given; a hold ending before it starts is refused. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+index 34755045a..cfcf37b3b 100644
+--- a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+@@ -12,7 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ /**
+  * A viewer sees the sheet and changes nothing: every change to a sheet by a viewer is refused before it
+  * reaches its handler. Loading the sheet is not a change, and a bulk action goes through with nothing done
+- * (each claim refused, no one graded or retired, no plan claim or period made), so those are left to their handlers.
++ * (each claim refused, no one graded, retired or held, no plan claim or period made), so those are left to their handlers.
+  */
+ @Configuration
+ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+@@ -29,6 +29,7 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+                 .addPathPatterns("/api/sheets/*/**")
+                 .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
+                         "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire",
++                        "/api/sheets/*/people/bulk-hold",
+                         "/api/sheets/*/plans/generate", "/api/sheets/*/periods/generate");
+     }
+ 
