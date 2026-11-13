@@ -36,7 +36,7 @@ public class PersonController {
      *  last one's due-total and date (null when none was). */
     public record PersonView(Long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate) {
-        static PersonView of(Person person, StatementSummary statements) {
+        public static PersonView of(Person person, StatementSummary statements) {
             return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
                     statements.count(), statements.lastDueTotal(), statements.lastDate());
         }

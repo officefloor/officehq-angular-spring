@@ -59,7 +59,8 @@ export function money(total: number): string {
 
 const PAST: Record<ClaimAction, string> = { open: 'opened', settle: 'settled', void: 'voided' };
 
-const AMOUNT = /^\d+(\.\d{1,2})?$/;
+/** An amount of 0.00 or more with up to two decimals. */
+export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
 // A person's claims, newest first, and the one form that adds a claim or, once a claim's editor is
 // opened, saves its changes.

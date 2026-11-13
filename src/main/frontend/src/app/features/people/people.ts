@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, PersonClaims, cents, claimDueCents, counts, money } from '../claims/claims';
+import { AMOUNT, Claim, PersonClaims, cents, claimDueCents, counts, money } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, RateStore, Rates } from '../rates/rates';
 
@@ -66,6 +66,27 @@ interface StatementTaken {
       </form>
       @if (error(); as message) {
         <p role="alert" data-testid="person-form-error">{{ message }}</p>
+      }
+      <form (submit)="quickAdd($event)" aria-label="Quick add a claim">
+        <label for="quick-name">Quick add for</label>
+        <input
+          id="quick-name"
+          data-testid="quick-name"
+          [value]="quickName()"
+          (input)="quickName.set(value($event)); quickError.set(null)"
+        />
+        <label for="quick-amount">Amount</label>
+        <input
+          id="quick-amount"
+          data-testid="quick-amount"
+          inputmode="decimal"
+          [value]="quickAmount()"
+          (input)="quickAmount.set(value($event)); quickError.set(null)"
+        />
+        <button type="submit" data-testid="quick-submit">Quick add</button>
+      </form>
+      @if (quickError(); as message) {
+        <p role="alert" data-testid="quick-error">{{ message }}</p>
       }
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
@@ -188,6 +209,11 @@ export class People {
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly quickName = signal('');
+  protected readonly quickAmount = signal('');
+  /** Whether a quick-add is waiting for its answer; a second one meanwhile is dropped. */
+  private readonly quickBusy = signal(false);
+  protected readonly quickError = signal<string | null>(null);
   /** The error from the last action on a person's row refused, and the person it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
 
@@ -199,6 +225,9 @@ export class People {
       this.claims.set([]);
       this.rowError.set(null);
       this.reset();
+      this.quickName.set('');
+      this.quickAmount.set('');
+      this.quickError.set(null);
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -325,6 +354,52 @@ export class People {
       }
     } finally {
       this.busy.set(false);
+    }
+  }
+
+  /** Add a DRAFT claim for the named person, adding them (grade A) when the name is not on the
+   *  sheet; their row and the claim then show. */
+  protected async quickAdd(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.quickBusy()) return;
+    this.quickError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const name = this.quickName().trim();
+    const amount = this.quickAmount().trim();
+    if (!name) {
+      this.quickError.set('Type a name for the claim.');
+      return;
+    }
+    if (!AMOUNT.test(amount)) {
+      this.quickError.set('Type an amount of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    this.quickBusy.set(true);
+    try {
+      const added = await firstValueFrom(
+        this.http.post<{ person: Person; claim: Claim }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/quick-add`,
+          { name, amount },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) =>
+        list.some((p) => p.id === added.person.id)
+          ? list.map((p) => (p.id === added.person.id ? added.person : p))
+          : [...list, added.person],
+      );
+      this.claimSaved(added.claim);
+      this.quickName.set('');
+      this.quickAmount.set('');
+    } catch (e) {
+      this.quickError.set(
+        e instanceof HttpErrorResponse && e.status === 409
+          ? `A claim for ${name} could not be added: its date falls in a closed period.`
+          : `A claim for ${name} could not be added.`,
+      );
+    } finally {
+      this.quickBusy.set(false);
     }
   }
 
