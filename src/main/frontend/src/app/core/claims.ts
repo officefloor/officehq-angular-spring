@@ -251,7 +251,7 @@ export class Claims {
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, for each full 30 days
    *  past its due-by plus its grace (see lateFrom), the sheet's late percent in force on that boundary date
    *  (that date plus 30, 60, 90 ... days) of the figure plus the charges of the boundaries before it, rounded to cents as its date rounds, the charges added up; none otherwise, and none
-   *  on a correction or a waived claim. Never bound by a statement; frozen into the due when settled. */
+   *  on a correction or a waived claim. Frozen into the due when bound by a statement or settled. */
   lateCents(c: Claim, figureCents: bigint): bigint {
     const today = this.session.today();
     if (!this.overdue(c) || today === null || c.amount.startsWith('-') || c.waived) return 0n;
@@ -267,9 +267,9 @@ export class Claims {
 
   /** A claim's due from its figure (the rate figure, or the one its statement bound), in cents: the figure
    *  with its late charge on top, at least the sheet's floor in force on the claim's date (the floor applied
-   *  last); a correction takes neither charge nor floor. */
+   *  last); a correction takes neither charge nor floor, and a bound figure already holds both. */
   chargedCents(c: Claim, figureCents: bigint): bigint {
-    if (c.amount.startsWith('-')) return figureCents;
+    if (c.amount.startsWith('-') || bound(c)) return figureCents;
     const due = figureCents + this.lateCents(c, figureCents);
     const floor = hundredths(this.session.floorOn(c.date));
     return due < floor ? floor : due;

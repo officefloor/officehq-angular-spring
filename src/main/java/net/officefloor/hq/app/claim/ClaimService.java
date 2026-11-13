@@ -891,8 +891,8 @@ public class ClaimService {
     }
 
     /** Take a person's statement: record their due-total now (late charges included) and how many claims
-     *  count, and bind each claim that counts to its rate figure now, under its late charge and floor (the charge is
-     *  never bound: it keeps following the sheet's today, and the floor is applied on top); a claim that does not count, is OPEN or PENDING, bound by no statement and dated within one of its person's holds (or its person's
+     *  count, and bind each claim that counts to its due as shown now, late charge and floor included (while bound
+     *  its charge no longer follows the sheet's today; one already bound keeps its figure); a claim that does not count, is OPEN or PENDING, bound by no statement and dated within one of its person's holds (or its person's
      *  retirement date is reached), or is deferred past the sheet's today, is left unbound, as the live totals leave it out. */
     @Transactional
     public Stated statement(String sheetId, String user, long personId) {
@@ -908,9 +908,9 @@ public class ClaimService {
                 claim.setStated(false, null);
                 continue;
             }
-            BigDecimal due = due(claim, person);
+            BigDecimal due = shownDue(claim, person);
             if (due != null) {
-                total = total.add(charged(claim, person, due));
+                total = total.add(due);
                 figure = true;
             }
             claim.setStated(true, due);
@@ -930,7 +930,8 @@ public class ClaimService {
 
     /** Take a person's statement as of a date on or before the sheet's today: the claims of theirs that
      *  counted at the end of that date (as the changes made while the sheet's today was on or before it left
-     *  them; a later change does not count) are bound to their figures as they stood then, that date standing
+     *  them; a later change does not count) are bound to their dues as shown then, late charge and floor
+     *  included, that date standing
      *  in for the sheet's today in every figure (the grade and rate in force, the floor, late charges, holds,
      *  retirements and the cap); every other claim of theirs is left unbound. The statement is dated that
      *  date. Refused for a date after the sheet's today, and one before the person was on the sheet. */
@@ -969,7 +970,8 @@ public class ClaimService {
                     : Rollup.inForce(ratesThen, then.gradeOn(claim.getDate()), claim.getDate(), claim)
                             .map(rate -> Rollup.rated(onDate, claim, claimsThen, rate)).orElse(null);
             if (due != null) {
-                total = total.add(Rollup.charged(onDate, claim, then, due));
+                due = Rollup.charged(onDate, claim, then, due);
+                total = total.add(due);
                 figure = true;
             }
             figures.put(claim.getId(), due);
@@ -1197,8 +1199,8 @@ public class ClaimService {
         claim.logStatus(user, sheets.today(claim.getSheetId()), shownDue(claim, person));
     }
 
-    /** A claim's due as the screen shows it: fixed when settled, else its figure (bound or live) with its
-     *  late charge on top; none when that is n/a. */
+    /** A claim's due as the screen shows it: fixed when settled, else the due its statement bound, else its
+     *  live figure with its late charge on top; none when that is n/a. */
     private BigDecimal shownDue(Claim claim, Person person) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();

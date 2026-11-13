@@ -89,7 +89,8 @@ public class Claim {
     @Column(name = "stated", nullable = false)
     private boolean stated;
 
-    /** The figure it had when its person's last statement bound it; none when that was n/a, or unbound. */
+    /** Its due as shown when its person's last statement bound it, late charge and floor included; none when
+     *  that was n/a, or unbound. */
     @Column(name = "stated_due")
     private BigDecimal statedDue;
 
