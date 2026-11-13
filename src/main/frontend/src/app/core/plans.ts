@@ -4,14 +4,17 @@ import { firstValueFrom } from 'rxjs';
 import { Claim, Claims } from './claims';
 import { Session, isDate } from './session';
 
-/** A person's plan: a DRAFT claim of its amount on every plan date (the start, then every so many days) up to
- *  its end, and how many claims it has made so far. */
+/** A person's plan: a DRAFT claim of its amount on every plan date (the start, then every so many days; or
+ *  monthly on a day of the month) up to its end, and how many claims it has made so far. */
 export interface Plan {
   id: number;
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  /** Every so many days; null for a monthly plan. */
+  every: number | null;
+  /** The day of the month (1 to 31) of a monthly plan; null for one run every so many days. */
+  day: number | null;
   end: string;
   generated: number;
 }
@@ -21,6 +24,7 @@ export interface PlanFields {
   amount: string;
   start: string;
   every: string;
+  day: string;
   end: string;
 }
 
@@ -51,8 +55,8 @@ export class Plans {
     }
   }
 
-  /** Add a plan to a person; an error message when refused (a bad amount or interval, or an end before the
-   *  start). */
+  /** Add a plan to a person, run every so many days or, with a day of the month typed, monthly on that day;
+   *  an error message when refused (a bad amount, interval or day, or an end before the start). */
   async add(personId: number, f: PlanFields): Promise<string | null> {
     const user = this.session.user();
     const sid = this.session.sheetId();
@@ -60,17 +64,21 @@ export class Plans {
     const amount = f.amount.trim();
     const start = f.start.trim() || (this.session.today() ?? '');
     const every = f.every.trim();
+    const day = f.day.trim();
     const end = f.end.trim();
     if (!/^\d+(\.\d{1,2})?$/.test(amount)) return 'Enter an amount of 0.00 or more with up to two decimals.';
     if (!isDate(start)) return 'Enter a start date as YYYY-MM-DD.';
-    if (!/^\d+$/.test(every) || Number(every) < 1) return 'Enter every how many days, 1 or more.';
+    if (day) {
+      if (every) return 'Enter either every how many days or a day of the month, not both.';
+      if (!/^\d+$/.test(day) || Number(day) < 1 || Number(day) > 31) return 'Enter a day of the month from 1 to 31.';
+    } else if (!/^\d+$/.test(every) || Number(every) < 1) return 'Enter every how many days, 1 or more.';
     if (!isDate(end)) return 'Enter an end date as YYYY-MM-DD.';
     if (end < start) return 'The end cannot be before the start.';
     try {
       const plan = await firstValueFrom(
         this.http.post<Plan>(
           `/api/sheets/${encodeURIComponent(sid)}/people/${personId}/plans`,
-          { amount, start, every: Number(every), end },
+          day ? { amount, start, day: Number(day), end } : { amount, start, every: Number(every), end },
           { headers: { 'X-User': user } },
         ),
       );

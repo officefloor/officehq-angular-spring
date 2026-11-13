@@ -28,21 +28,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}")
 public class PlanController {
 
-    /** A plan as the screen shows it: the amount with two decimals, dates YYYY-MM-DD, and how many claims it
-     *  has made so far. */
-    public record PlanView(long id, long personId, String amount, String start, int every, String end,
-            int generated) {
+    /** A plan as the screen shows it: the amount with two decimals, dates YYYY-MM-DD, every so many days or
+     *  the day of the month (the other null), and how many claims it has made so far. */
+    public record PlanView(long id, long personId, String amount, String start, Integer every, Integer day,
+            String end, int generated) {
 
         static PlanView of(Plan p) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart().toString(),
-                    p.getEvery(), p.getEnd().toString(), p.getGeneratedCount());
+                    p.getEvery(), p.getDay(), p.getEnd().toString(), p.getGeneratedCount());
         }
     }
 
     public record PlanRequest(
             @NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount,
             @NotNull LocalDate start,
-            @NotNull Integer every,
+            Integer every,
+            Integer day,
             @NotNull LocalDate end) {
     }
 
@@ -69,7 +70,7 @@ public class PlanController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid PlanRequest request) {
         return PlanView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.start(),
-                request.every(), request.end()));
+                request.every(), request.day(), request.end()));
     }
 
     /** Make the plans' claims due by the sheet's today. */

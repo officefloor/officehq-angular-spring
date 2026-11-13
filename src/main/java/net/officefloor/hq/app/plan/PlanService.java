@@ -40,26 +40,35 @@ public class PlanService {
         return plans.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a plan to a person; an amount a claim would refuse (below 0.00), an interval below 1 day, or an end
-     *  before the start is refused. */
+    /** Add a plan to a person, run every so many days or monthly on a day of the month (exactly one of them);
+     *  an amount a claim would refuse (below 0.00), an interval below 1 day, a day of the month outside 1 to 31,
+     *  or an end before the start is refused. */
     @Transactional
-    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
-            LocalDate end) {
+    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start,
+            Integer every, Integer day, LocalDate end) {
         sheets.today(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         if (amount.signum() < 0) {
             throw new PlanRefusedException("Enter an amount of 0.00 or more.");
         }
-        if (every < 1) {
+        if (day != null) {
+            if (every != null) {
+                throw new PlanRefusedException("Enter either every how many days or a day of the month, not both.");
+            }
+            if (day < 1 || day > 31) {
+                throw new PlanRefusedException("Enter a day of the month from 1 to 31.");
+            }
+        } else if (every == null || every < 1) {
             throw new PlanRefusedException("Enter every how many days, 1 or more.");
         }
         if (end.isBefore(start)) {
             throw new PlanRefusedException("The end cannot be before the start.");
         }
         BigDecimal a = amount.setScale(2);
-        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, a, start, every, end));
+        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, a, start, every, day, end));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " amount=" + a.toPlainString() + " start=" + start + " every=" + every + " end=" + end);
+                + " amount=" + a.toPlainString() + " start=" + start
+                + (day != null ? " day=" + day : " every=" + every) + " end=" + end);
         return plan;
     }
 

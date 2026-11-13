@@ -1,8 +1,9 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Plans } from '../../core/plans';
 
-// A person's plans, each with how many claims it has made so far, and a form adding one (a bad amount or
-// interval, or an end before the start, is refused with an error on the row).
+// A person's plans, each with how many claims it has made so far, and a form adding one, run every so many days
+// or monthly on a day of the month (a bad amount, interval or day, or an end before the start, is refused with
+// an error on the row).
 @Component({
   selector: 'app-person-plans',
   template: `
@@ -11,7 +12,11 @@ import { Plans } from '../../core/plans';
         <li [attr.data-testid]="'plan-row-' + pl.id">
           <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
           from <span data-testid="plan-start">{{ pl.start }}</span>
-          every <span data-testid="plan-every">{{ pl.every }}</span> days
+          @if (pl.day !== null) {
+            monthly on day <span data-testid="plan-day">{{ pl.day }}</span>
+          } @else {
+            every <span data-testid="plan-every">{{ pl.every }}</span> days
+          }
           to <span data-testid="plan-end">{{ pl.end }}</span>,
           made <span data-testid="plan-generated">{{ pl.generated }}</span>
         </li>
@@ -42,6 +47,14 @@ import { Plans } from '../../core/plans';
         [value]="every()"
         (input)="every.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-form-day-' + personId()">Or monthly on day (1 to 31)</label>
+      <input
+        [id]="'plan-form-day-' + personId()"
+        data-testid="plan-form-day"
+        inputmode="numeric"
+        [value]="day()"
+        (input)="day.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input
         [id]="'plan-form-end-' + personId()"
@@ -67,6 +80,7 @@ export class PersonPlans {
   protected readonly amount = signal('');
   protected readonly start = signal('');
   protected readonly every = signal('');
+  protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
@@ -85,6 +99,7 @@ export class PersonPlans {
         amount: this.amount(),
         start: this.start(),
         every: this.every(),
+        day: this.day(),
         end: this.end(),
       });
       if (err) this.error.set(err);
@@ -92,6 +107,7 @@ export class PersonPlans {
         this.amount.set('');
         this.start.set('');
         this.every.set('');
+        this.day.set('');
         this.end.set('');
       }
     } finally {
