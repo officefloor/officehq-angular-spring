@@ -134,8 +134,9 @@ public class PoolController {
         /** Each member's cut of the pot: the pot times their share divided by the shares of the members with a
          *  cut added up, rounded half to even to two decimals (0.00 for a retired one or one on hold, whose share is
          *  spread over the others in proportion to theirs); the
-         *  remainder, the pot minus the cuts added up, goes to the member with a cut with the largest share, the
-         *  earliest added on a tie, so the cuts total exactly the pot. When no member has a cut, each is 0.00.
+         *  remainder, the pot minus the cuts added up, goes to the member with the smallest non-zero cut, the
+         *  latest added on a tie (when no cut is non-zero, to the last member with a cut and a share), so the cuts
+         *  total exactly the pot. When no member has a cut, each is 0.00.
          *  A member not active on the sheet's today has none at all. */
         private static BigDecimal[] cuts(List<PoolMember> members, boolean[] retired, boolean[] held,
                 boolean[] active, BigDecimal pot) {
@@ -147,7 +148,8 @@ public class PoolController {
                 }
             }
             BigDecimal sum = BigDecimal.ZERO.setScale(2);
-            int largest = -1;
+            int smallest = -1;
+        int last = -1;
             for (int i = 0; i < members.size(); i++) {
                 if (!active[i]) {
                     continue;
@@ -157,12 +159,17 @@ public class PoolController {
                 cuts[i] = cut ? pot.multiply(share).divide(shares, 2, RoundingMode.HALF_EVEN)
                         : BigDecimal.ZERO.setScale(2);
                 sum = sum.add(cuts[i]);
-                if (cut && (largest < 0 || share.compareTo(members.get(largest).getShare()) > 0)) {
-                    largest = i;
+                if (cut && share.signum() > 0) {
+                    last = i;
+                }
+                if (cut && cuts[i].signum() != 0
+                        && (smallest < 0 || cuts[i].compareTo(cuts[smallest]) <= 0)) {
+                    smallest = i;
                 }
             }
-            if (largest >= 0) {
-                cuts[largest] = cuts[largest].add(pot.setScale(2).subtract(sum));
+            int to = smallest >= 0 ? smallest : last;
+            if (to >= 0) {
+                cuts[to] = cuts[to].add(pot.setScale(2).subtract(sum));
             }
             return cuts;
         }
