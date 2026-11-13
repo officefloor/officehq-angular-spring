@@ -1,5 +1,5 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
+import { Claim, Claims, bound, countsAt, isOpen, partCents, statusAt } from './claims';
 import { CrewView, Crews } from './crews';
 import { GRADES, People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
@@ -51,7 +51,8 @@ export class Figures {
     return cap === null ? null : hundredths(cap);
   }
 
-  /** The sum of the figures of a person's claims that count live (not left out by a hold): a settled claim's frozen due, else the
+  /** The sum of the figures of a person's claims that count live (not left out by a hold), less the parts others
+   *  hold of them, and the parts they hold of other people's: a settled claim's frozen due, else the
    *  figure their last statement bound it to, else its live due at the rate in force on its date (a
    *  claim with no figure adds nothing). Null when the grade in force on the sheet's today has no rate
    *  there and no claim has a figure. */
@@ -62,19 +63,53 @@ export class Figures {
       if (c.settledDue !== null || (bound(c) && c.statedDue !== null)) keptFigure = true;
       // a claim priced at the grade in force on its date keeps a figure too
       else if (!bound(c) && this.rates.inForceFor(gradeOn(p.grades, c.date), c.date, c.id) !== undefined) keptFigure = true;
-      sum += this.figureCents(c, p);
+      sum += this.ownCents(c, p);
+    }
+    for (const { c, part } of this.heldParts(p)) {
+      // a part of a claim with a figure keeps a figure too
+      if (this.hasFigure(c)) keptFigure = true;
+      sum += part;
     }
     const today = this.session.today();
     const rated = today ? this.rates.inForce(gradeOn(p.grades, today), today) !== undefined : false;
     return rated || keptFigure ? sum : null;
   }
 
-  /** The due of a person's SETTLED claims that count live, at their frozen figures, corrections included. */
+  /** A claim's figure less the parts its holders hold of it: what its own person counts of it. */
+  ownCents(c: Claim, p: Person): bigint {
+    const due = this.figureCents(c, p);
+    return (c.shares ?? []).reduce((rest, s) => rest - partCents(due, s.share), due);
+  }
+
+  /** The parts a person holds of other people's claims that count live, each with its claim: the claim's
+   *  figure times their share divided by 100, rounded half to even. */
+  heldParts(p: Person): { c: Claim; part: bigint }[] {
+    const parts: { c: Claim; part: bigint }[] = [];
+    for (const c of this.claims.live()) {
+      const held = (c.shares ?? []).find((s) => s.personId === p.id);
+      const owner = held && this.people.people().find((o) => o.id === c.personId);
+      if (!held || !owner) continue;
+      parts.push({ c, part: partCents(this.figureCents(c, owner), held.share) });
+    }
+    return parts;
+  }
+
+  /** Whether a claim has a figure: settled, bound to one, or priced at the grade in force on its date. */
+  private hasFigure(c: Claim): boolean {
+    if (c.settledDue !== null) return true;
+    if (bound(c)) return c.statedDue !== null;
+    const owner = this.people.people().find((o) => o.id === c.personId);
+    return owner !== undefined && this.rates.inForceFor(gradeOn(owner.grades, c.date), c.date, c.id) !== undefined;
+  }
+
+  /** The due of a person's SETTLED claims that count live, at their frozen figures, corrections included, less
+   *  the parts others hold of them, and the parts they hold of other people's. */
   settledCents(p: Person): bigint {
-    return this.claims
+    const own = this.claims
       .live()
       .filter((c) => c.personId === p.id && c.status === 'SETTLED')
-      .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+      .reduce((sum, c) => sum + this.ownCents(c, p), 0n);
+    return this.heldParts(p).filter(({ c }) => c.status === 'SETTLED').reduce((sum, { part }) => sum + part, own);
   }
 
   /** The due of a person's SETTLED claims that count live and correct nothing, at their frozen figures. */
@@ -85,12 +120,14 @@ export class Figures {
       .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
   }
 
-  /** The due of a person's OPEN and PENDING claims that count live (not deferred or retired-and-excluded). */
+  /** The due of a person's OPEN and PENDING claims that count live (not deferred or retired-and-excluded), less
+   *  the parts others hold of them, and the parts they hold of other people's. */
   openCents(p: Person): bigint {
-    return this.claims
+    const own = this.claims
       .live()
       .filter((c) => c.personId === p.id && isOpen(c))
-      .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+      .reduce((sum, c) => sum + this.ownCents(c, p), 0n);
+    return this.heldParts(p).filter(({ c }) => isOpen(c)).reduce((sum, { part }) => sum + part, own);
   }
 
   /** Everyone's settled-total added up (not trimmed). */

@@ -49,13 +49,14 @@ public class ClaimController {
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count and how many of them are receipts and photos,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
-     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held. */
+     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held, and its shares, in the order shared. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, int proofReceipts, int proofPhotos, String splitFrom, String lockedBy, boolean lateEntry,
             String remindedOn, String ref, List<String> tags, String voidReason,
-            List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived, boolean held) {
+            List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived, boolean held,
+            List<ShareView> shares) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -72,7 +73,8 @@ public class ClaimController {
                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch(),
-                    claim.getLines().stream().map(LineView::of).toList(), claim.isWaived(), claim.isHeld());
+                    claim.getLines().stream().map(LineView::of).toList(), claim.isWaived(), claim.isHeld(),
+                    claim.getShares().stream().map(ShareView::of).toList());
         }
     }
 
@@ -99,6 +101,14 @@ public class ClaimController {
 
         static LineView of(ClaimLine line) {
             return new LineView(line.getLabel(), line.getQty(), line.getUnit().toPlainString());
+        }
+    }
+
+    /** A share of a claim: the person holding it and their percent, two decimals. */
+    public record ShareView(long personId, String share) {
+
+        static ShareView of(ClaimShare share) {
+            return new ShareView(share.getPersonId(), share.getShare().toPlainString());
         }
     }
 
@@ -467,6 +477,29 @@ public class ClaimController {
         }
         return ClaimView.of(service.addLine(sheetId.trim(), user.trim(), claimId,
                 request.label() == null ? "" : request.label().trim(), request.qty(), request.unit()));
+    }
+
+    /** The person to share a claim with and their percent. */
+    public record ShareRequest(Long personId, @Digits(integer = 3, fraction = 10) BigDecimal share) {
+    }
+
+    /** Share a percent of a claim's due with another person on the sheet. */
+    @PostMapping("/claims/{claimId}/shares")
+    public ClaimView share(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ShareRequest request) {
+        if (request.personId() == null || request.share() == null) {
+            throw new ClaimShareException("Choose a person and enter their share.");
+        }
+        return ClaimView.of(service.share(sheetId.trim(), user.trim(), claimId, request.personId(), request.share()));
+    }
+
+    /** A share that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimShareException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> shareRefused(ClaimShareException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** Re-settle a SETTLED claim at its figure today: a steward freezes it again. */

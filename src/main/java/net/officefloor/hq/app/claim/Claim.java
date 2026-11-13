@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.history.History;
 
 /** A claim by a person on a sheet: an amount (two decimals), a date, a note, a status and, once opened,
@@ -168,6 +169,12 @@ public class Claim {
     @CollectionTable(name = "claim_line", joinColumns = @JoinColumn(name = "claim_id"))
     @OrderColumn(name = "seq")
     private List<ClaimLine> lines = new ArrayList<>();
+
+    /** Its shares, in the order shared: the other people holding a part of its due. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_share", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "seq")
+    private List<ClaimShare> shares = new ArrayList<>();
 
     protected Claim() {
     }
@@ -504,5 +511,24 @@ public class Claim {
     public void addLine(String label, int qty, BigDecimal unit) {
         lines.add(new ClaimLine(label, qty, unit));
         amount = lines.stream().map(ClaimLine::total).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
+    }
+
+    public List<ClaimShare> getShares() {
+        return shares == null ? List.of() : List.copyOf(shares);
+    }
+
+    /** Share a percent of its due with another person, after the shares it has. */
+    public void addShare(Long personId, BigDecimal share) {
+        shares.add(new ClaimShare(personId, share));
+    }
+
+    /** The parts of a due its holders hold, added up. */
+    public BigDecimal sharedPart(BigDecimal due) {
+        return getShares().stream().map(s -> s.part(due)).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    }
+
+    /** The share a person holds of it; none when they hold none. */
+    public Optional<ClaimShare> shareOf(Long personId) {
+        return getShares().stream().filter(s -> s.getPersonId().equals(personId)).findFirst();
     }
 }

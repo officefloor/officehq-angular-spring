@@ -567,6 +567,44 @@ public class ClaimService {
         return updated;
     }
 
+    /** Share a percent (two decimals, above 0.00) of a claim's due with another person on the sheet, who holds
+     *  that part of it from then on; write CLAIM_SHARED. Refused for the claim's own person, a person already
+     *  holding a share of it, shares that would add up to more than 100.00, and a SETTLED, VOID or DELETED claim. */
+    @Transactional
+    public Claim share(String sheetId, String user, long claimId, long withPersonId, BigDecimal share) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        ClaimStatus status = claim.getStatus();
+        if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
+            throw new ClaimShareException("A " + status + " claim cannot be shared.");
+        }
+        if (share.signum() <= 0 || share.stripTrailingZeros().scale() > 2) {
+            throw new ClaimShareException("A share is a percent above 0.00, with two decimals.");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        Person with = people.findByIdAndSheetId(withPersonId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (with.getId().equals(person.getId())) {
+            throw new ClaimShareException("The claim is already " + person.getName() + "'s.");
+        }
+        if (claim.shareOf(with.getId()).isPresent()) {
+            throw new ClaimShareException(with.getName() + " already holds a share of the claim.");
+        }
+        BigDecimal total = claim.getShares().stream().map(ClaimShare::getShare).reduce(share, BigDecimal::add);
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ClaimShareException("The claim's shares would add up to more than 100.00.");
+        }
+        Rollup.Snapshot before = rollup.take(sheetId);
+        BigDecimal shown = share.setScale(2);
+        claim.addShare(with.getId(), shown);
+        Claim updated = claims.saveAndFlush(claim);
+        // A change to its shares alone may not reach the entity listener: keep its state for the as-of view.
+        history.saved(updated);
+        audit("CLAIM_SHARED", updated, person, user, updated.getNumber(),
+                " with=" + with.getName() + " share=" + shown.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
     /** Comment on a claim: keep the text with the user and the sheet's today, and write COMMENT_ADDED.
      *  Refused for an empty comment. */
     @Transactional

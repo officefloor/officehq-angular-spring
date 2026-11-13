@@ -101,6 +101,7 @@ import { VoidReasons } from '../../core/void-reasons';
           <span>Period <span data-testid="claim-period">{{ periods.of(c.dueBy)?.name ?? '' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
+          <span>Shared with <span data-testid="claim-shares">{{ sharesShown(c) }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
@@ -239,6 +240,28 @@ import { VoidReasons } from '../../core/void-reasons';
           <button type="button" data-testid="claim-hold" [disabled]="acting() === c.id" (click)="toggleHold(c)">
             {{ c.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
           </button>
+          <label [for]="'claim-share-select-' + c.id">Share with</label>
+          <select
+            [id]="'claim-share-select-' + c.id"
+            data-testid="claim-share-select"
+            (change)="setShareField(c.id, 'personId', value($event))"
+          >
+            <option value="" [selected]="!shareFields()[c.id]?.personId">Choose a person</option>
+            @for (p of everyone(); track p.id) {
+              <option [value]="p.id" [selected]="shareFields()[c.id]?.personId === '' + p.id">{{ p.name }}</option>
+            }
+          </select>
+          <label [for]="'claim-share-pct-' + c.id">Share percent</label>
+          <input
+            [id]="'claim-share-pct-' + c.id"
+            data-testid="claim-share-pct"
+            inputmode="decimal"
+            [value]="shareFields()[c.id]?.share ?? ''"
+            (input)="setShareField(c.id, 'share', value($event))"
+          />
+          <button type="button" data-testid="claim-share-add" [disabled]="acting() === c.id" (click)="share(c)">
+            Share<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
             [id]="'claim-defer-date-' + c.id"
@@ -347,6 +370,10 @@ export class PersonClaims {
   protected readonly list = computed(() => this.claims.of(this.personId()));
   /** The other people on the sheet, whom a steward can move a claim to. */
   protected readonly others = computed(() => this.people.people().filter((p) => p.id !== this.personId()));
+  /** Everyone on the sheet, whom a claim can be shared with (the server refuses the claim's own person). */
+  protected readonly everyone = computed(() => this.people.people());
+  /** The person chosen and the percent typed to share each claim with, by claim id. */
+  protected readonly shareFields = signal<Record<number, { personId?: string; share?: string }>>({});
   /** The person chosen to move each claim to, by claim id. */
   protected readonly reassignTo = signal<Record<number, number>>({});
   protected readonly amount = signal('');
@@ -580,6 +607,30 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.toggleHold(c.id);
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  /** A claim's holders as its row shows them: <name> <share>, comma and space separated, in the order shared. */
+  protected sharesShown(c: Claim): string {
+    const names = new Map(this.people.people().map((p) => [p.id, p.name]));
+    return (c.shares ?? []).map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
+  }
+
+  protected setShareField(id: number, key: 'personId' | 'share', text: string): void {
+    this.clearActionError(id);
+    this.shareFields.update((f) => ({ ...f, [id]: { ...f[id], [key]: text } }));
+  }
+
+  /** Share the claim with the person chosen at the percent typed. */
+  protected async share(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const f = this.shareFields()[c.id] ?? {};
+      const err = await this.claims.share(c.id, f.personId ? Number(f.personId) : null, f.share ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

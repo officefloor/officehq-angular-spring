@@ -15,6 +15,7 @@ import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.StatusChange;
 import net.officefloor.hq.app.history.AsOf;
@@ -40,7 +41,8 @@ public class Rollup {
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
-    /** A person's figures; a null due-total is n/a. Their score is the due of their settled claims that count
+    /** A person's figures; a null due-total is n/a. Their due-total counts their own claims less the parts
+     *  others hold of them, and the parts they hold of other people's claims. Their score is the due of their settled claims that count
      *  and correct nothing divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score) {
     }
@@ -104,6 +106,8 @@ public class Rollup {
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
+        Map<Long, Person> byId = new LinkedHashMap<>();
+        sheetPeople.forEach(p -> byId.put(p.getId(), p));
         for (Person person : sheetPeople) {
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
@@ -136,7 +140,8 @@ public class Rollup {
                     }
                 }
                 if (figure != null) {
-                    due = due.add(figure);
+                    // the parts its holders hold are theirs, not its person's
+                    due = due.add(figure.subtract(claim.sharedPart(figure)));
                     if (overdue(sheet, claim, person, today)) {
                         overdue = overdue.add(figure);
                     }
@@ -147,6 +152,18 @@ public class Rollup {
                 }
                 if (overdue(sheet, claim, person, today)) {
                     overdueCount++;
+                }
+            }
+            for (Claim claim : sheetClaims) {
+                Optional<ClaimShare> held = claim.shareOf(person.getId());
+                Person owner = byId.get(claim.getPersonId());
+                if (held.isEmpty() || owner == null || !countsClaimed(claim, owner, today)) {
+                    continue;
+                }
+                BigDecimal figure = figure(sheet, claim, owner, sheetClaims, sheetRates);
+                if (figure != null) {
+                    keptFigure = true;
+                    due = due.add(held.get().part(figure));
                 }
             }
             BigDecimal score = settled.subtract(BigDecimal.valueOf(500L * overdueCount))
@@ -161,6 +178,23 @@ public class Rollup {
             }
         }
         return new Snapshot(figures, claimedTotal, trimmed(dues), trimmed(overdues));
+    }
+
+    /** A claim's figure as its person's due-total counts it: its settled due, else the figure its statement
+     *  bound, else its live due, charged; none when it has none. */
+    private static BigDecimal figure(Optional<Sheet> sheet, Claim claim, Person person, List<Claim> sheetClaims,
+            List<Rate> sheetRates) {
+        BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
+                : claim.isBound() ? claim.getStatedDue() : null;
+        if (kept != null) {
+            return charged(sheet, claim, person, kept);
+        }
+        if (claim.isBound()) {
+            return null;
+        }
+        return inForce(sheetRates, person.gradeOn(claim.getDate()), claim.getDate(), claim)
+                .map(rate -> charged(sheet, claim, person, rated(sheet, claim, sheetClaims, rate)))
+                .orElse(null);
     }
 
     /** The figures of every descendant of a sheet (its children, their children and so on; the sheet itself

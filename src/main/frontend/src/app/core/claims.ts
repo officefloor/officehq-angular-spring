@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { People, Person, gradeOn, retiredBy } from './people';
-import { hundredths, rounded } from './rates';
+import { halfEven, hundredths, rounded } from './rates';
 import { Session, addDays, daysBetween, isDate } from './session';
 
 /** The kinds a proof can be; one added with none chosen is a receipt. */
@@ -72,6 +72,19 @@ export interface Claim {
   waived: boolean;
   /** Whether it is on hold: while OPEN or PENDING and bound by no statement, it counts in claimed but in no due figure. */
   held: boolean;
+  /** Its shares, in the order shared: the other people holding a part of its due. */
+  shares: ClaimShare[];
+}
+
+/** A share of a claim: the person holding it and their percent, two decimals. */
+export interface ClaimShare {
+  personId: number;
+  share: string;
+}
+
+/** A holder's part of a claim's due, in cents: the due times their share divided by 100, rounded half to even. */
+export function partCents(dueCents: bigint, share: string): bigint {
+  return halfEven(dueCents * hundredths(share), 10000n);
 }
 
 /** A line of a claim: its label, a whole quantity of at least 1 and a unit amount, two decimals. */
@@ -600,6 +613,32 @@ export class Claims {
       return null;
     } catch (e) {
       return failed('hold', e);
+    }
+  }
+
+  /** Share a percent of a claim's due with another person on the sheet; an error message when refused (no
+   *  person chosen, a share not above 0.00 or of more than two decimals, the claim's own person, a person
+   *  already holding a share, shares adding up to more than 100.00, or a SETTLED, VOID or DELETED claim). */
+  async share(id: number, personId: number | null, share: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (personId === null) return 'Choose a person to share the claim with.';
+    if (!/^\d+(\.\d{1,2})?$/.test(share.trim()) || hundredths(share.trim()) <= 0n) {
+      return 'Enter a share above 0.00 with up to two decimals.';
+    }
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(
+          `${this.url(sid)}/claims/${id}/shares`,
+          { personId, share: share.trim() },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('share', e);
     }
   }
 
