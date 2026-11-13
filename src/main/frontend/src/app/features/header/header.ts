@@ -40,7 +40,7 @@ function overTree(members: TreeMember[]) {
 // person on the sheet has their name or an alias equal to it; blank otherwise. And the user's crew total: the due-totals of
 // the crews that person leads, added up; blank when they lead none. And the user's watched total: the due-totals of the people they
 // watch, added up (0.00 when they watch no one). And the REVIEW claims assigned to the user, counted. And, for a steward, a dashboard: the
-// sheet's PENDING and REVIEW claims and its overdue claims that count, counted; blank for anyone else.
+// PENDING and REVIEW claims and the overdue claims that count of the sheet and all its descendants, counted; blank for anyone else.
 @Component({
   selector: 'app-header',
   template: `

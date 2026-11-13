@@ -211,15 +211,16 @@ export class Figures {
     return ids;
   });
 
-  /** A steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count,
-   *  counted; null when the signed-in user is not a steward. */
+  /** A steward's dashboard: the PENDING and REVIEW claims and the overdue claims that count of the sheet
+   *  and all its descendants, counted; null when the signed-in user is not a steward. */
   readonly dashboard = computed(() => {
     if (!this.steward()) return null;
     const claims = this.claims.claims();
+    const d = this.session.descendants();
     return {
-      pending: claims.filter((c) => c.status === 'PENDING').length,
-      review: claims.filter((c) => c.status === 'REVIEW').length,
-      overdue: this.claims.live().filter((c) => this.claims.overdue(c)).length,
+      pending: claims.filter((c) => c.status === 'PENDING').length + (d.statusCounts['PENDING'] ?? 0),
+      review: claims.filter((c) => c.status === 'REVIEW').length + (d.statusCounts['REVIEW'] ?? 0),
+      overdue: this.claims.live().filter((c) => this.claims.overdue(c)).length + d.overdueCount,
     };
   });
 

@@ -102,6 +102,8 @@ export interface DescendantFigures {
   people: TreeMember[];
   /** The sheet's own, likewise. */
   ownPeople: TreeMember[];
+  /** The descendants' overdue claims that count, counted. */
+  overdueCount: number;
 }
 
 /** A person on a sheet of a tree: their name then aliases, their due-total (two decimals; null for n/a) and
@@ -125,6 +127,7 @@ const NO_DESCENDANTS: DescendantFigures = {
   ownStatusCounts: {},
   people: [],
   ownPeople: [],
+  overdueCount: 0,
 };
 
 /** The actions the permission matrix covers. Blank keeps the standing rule: open, settle, void and close by

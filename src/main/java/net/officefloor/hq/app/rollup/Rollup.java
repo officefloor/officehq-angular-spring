@@ -47,15 +47,16 @@ public class Rollup {
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score) {
     }
 
-    /** Everyone's figures by person id, in list order, and the sheet's totals. */
+    /** Everyone's figures by person id, in list order, and the sheet's totals; and the number of its overdue claims that count. */
     public record Snapshot(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
-            BigDecimal overdueTotal) {
+            BigDecimal overdueTotal, int overdueCount) {
     }
 
     /** Figures added up over sheets: the number of people, and each sheet's due- and overdue-total; and by grade
-     *  the due-totals of the people on it (retired people left out), and by status the number of claims in it. */
+     *  the due-totals of the people on it (retired people left out), and by status the number of claims in it; and the number of overdue claims that count. */
     public record Consolidated(int peopleCount, BigDecimal dueTotal, BigDecimal overdueTotal,
-            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts, List<Member> people) {
+            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts, List<Member> people,
+            int overdueCount) {
     }
 
     /** One person's row on a sheet of a tree: their name and aliases, and their due-total (null for n/a) and
@@ -106,6 +107,7 @@ public class Rollup {
         BigDecimal claimedTotal = ZERO;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
+        int sheetOverdueCount = 0;
         Map<Long, Person> byId = new LinkedHashMap<>();
         sheetPeople.forEach(p -> byId.put(p.getId(), p));
         for (Person person : sheetPeople) {
@@ -166,6 +168,7 @@ public class Rollup {
                     due = due.add(held.get().part(figure));
                 }
             }
+            sheetOverdueCount += overdueCount;
             BigDecimal score = settled.subtract(BigDecimal.valueOf(500L * overdueCount))
                     .movePointLeft(2).setScale(0, RoundingMode.HALF_EVEN);
             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
@@ -177,7 +180,7 @@ public class Rollup {
                 dues.add(personDue);
             }
         }
-        return new Snapshot(figures, claimedTotal, trimmed(dues), trimmed(overdues));
+        return new Snapshot(figures, claimedTotal, trimmed(dues), trimmed(overdues), sheetOverdueCount);
     }
 
     /** A claim's figure as its person's due-total counts it: its settled due, else the figure its statement
@@ -211,6 +214,7 @@ public class Rollup {
         int peopleCount = 0;
         BigDecimal due = ZERO;
         BigDecimal overdue = ZERO;
+        int overdueCount = 0;
         Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
         Map<ClaimStatus, Integer> statusCounts = new LinkedHashMap<>();
         List<Member> members = new ArrayList<>();
@@ -224,13 +228,14 @@ public class Rollup {
                 peopleCount += snapshot.people().size();
                 due = due.add(snapshot.dueTotal());
                 overdue = overdue.add(snapshot.overdueTotal());
+                overdueCount += snapshot.overdueCount();
                 Breakdown breakdown = breakdown(child.getId(), date, snapshot);
                 breakdown.gradeDueTotals().forEach((g, d) -> gradeDues.merge(g, d, BigDecimal::add));
                 breakdown.statusCounts().forEach((st, n) -> statusCounts.merge(st, n, Integer::sum));
                 members.addAll(members(child.getId(), date, snapshot));
             }
         }
-        return new Consolidated(peopleCount, due, overdue, gradeDues, statusCounts, members);
+        return new Consolidated(peopleCount, due, overdue, gradeDues, statusCounts, members, overdueCount);
     }
 
     /** Each person on a sheet, now or as it stood at the end of a date, in list order, with their figures in

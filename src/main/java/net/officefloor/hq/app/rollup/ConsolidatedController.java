@@ -31,11 +31,11 @@ public class ConsolidatedController {
      *  due-totals of the people on it (retired people left out), and by status the number of claims in it, the
      *  descendants' added up, then the sheet's own; a grade or status with none left out. Then each descendant's
      *  people, and the sheet's own, with their names and aliases and their figures, for the screen to trim and
-     *  count over the whole tree. */
+     *  count over the whole tree. Then the descendants' overdue claims that count, counted, for a steward's dashboard. */
     public record ConsolidatedView(int peopleCount, String dueTotal, String overdueTotal, int ownPeopleCount,
             String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
             Map<String, Integer> statusCounts, Map<String, String> ownGradeDueTotals, Map<String, Integer> ownStatusCounts,
-            List<MemberView> people, List<MemberView> ownPeople) {
+            List<MemberView> people, List<MemberView> ownPeople, int overdueCount) {
     }
 
     /** A person's names (their name, then their aliases) and their due-total (two decimals; null for n/a) and
@@ -62,7 +62,7 @@ public class ConsolidatedController {
                 own.people().size(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString(),
                 shown(c.gradeDueTotals()), counted(c.statusCounts()),
                 shown(ownBreakdown.gradeDueTotals()), counted(ownBreakdown.statusCounts()),
-                viewed(c.people()), viewed(rollup.members(sid, asOf, own)));
+                viewed(c.people()), viewed(rollup.members(sid, asOf, own)), c.overdueCount());
     }
 
     private static List<MemberView> viewed(List<Rollup.Member> members) {
