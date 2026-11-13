@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,11 +18,13 @@ public class RateService {
 
     private final RateRepository rates;
     private final SheetService sheets;
+    private final History history;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, History history, Audit audit) {
         this.rates = rates;
         this.sheets = sheets;
+        this.history = history;
         this.audit = audit;
     }
 
@@ -34,7 +37,17 @@ public class RateService {
      *  (a rate with no from-date applies from the beginning of time); empty when none applies, or
      *  when that one's to-date is before the date. */
     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date) {
-        return rates.findBySheetIdAndGradeOrderByFromAsc(sheetId, grade).stream()
+        return inForce(rates.findBySheetIdAndGradeOrderByFromAsc(sheetId, grade), date);
+    }
+
+    /** The grade's rate in force on a date as the rates stood at the end of a day (null: as they
+     *  stand now). */
+    public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
+        return asOf == null ? rateOn(sheetId, grade, date) : inForce(history.rates(sheetId, grade, asOf), date);
+    }
+
+    private static Optional<Rate> inForce(List<Rate> theirs, LocalDate date) {
+        return theirs.stream()
                 .filter(rate -> rate.appliesOn(date))
                 .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .filter(rate -> !rate.endedBy(date));

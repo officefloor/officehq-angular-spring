@@ -2,18 +2,21 @@ package net.officefloor.hq.app.setting;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A value recorded for one of a sheet's dated settings (floor, late-pct, terms, terms-&lt;grade&gt;,
  *  clerk-limit, cap, proof-threshold): in force from its from-date until the next one recorded for the
  *  key. Null only for the clerk limit, the cap or the proof threshold, where it means none. */
 @Entity
 @Table(name = "sheet_setting_value")
+@EntityListeners(HistoryListener.class)
 public class SettingValue {
 
     @Id
@@ -40,6 +43,10 @@ public class SettingValue {
         this.key = key;
         this.from = from;
         this.value = value;
+    }
+
+    public Long getId() {
+        return id;
     }
 
     public String getKey() {

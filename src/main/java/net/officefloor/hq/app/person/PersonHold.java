@@ -30,14 +30,19 @@ public class PersonHold {
     @Column(name = "to_date")
     private LocalDate to;
 
+    /** The sheet's today when the hold was put on; null for one put on before it was kept. */
+    @Column(name = "made_on", updatable = false)
+    private LocalDate madeOn;
+
     protected PersonHold() {
     }
 
-    public PersonHold(String sheetId, Long personId, LocalDate from, LocalDate to) {
+    public PersonHold(String sheetId, Long personId, LocalDate from, LocalDate to, LocalDate madeOn) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.from = from;
         this.to = to;
+        this.madeOn = madeOn;
     }
 
     public Long getId() {
@@ -58,6 +63,12 @@ public class PersonHold {
 
     public LocalDate getTo() {
         return to;
+    }
+
+    /** Whether the hold stood at the end of a day: it was put on while the sheet's today was on or
+     *  before it (one put on before that was kept always stood). */
+    public boolean madeAsOf(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 
     /** Whether a date is within the hold: on or after its from-date and on or before its to-date. */

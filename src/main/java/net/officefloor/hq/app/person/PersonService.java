@@ -55,10 +55,10 @@ public class PersonService {
      *  applies from the beginning of time. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms) {
-        sheets.load(sheetId);
+        LocalDate today = sheets.today(sheetId);
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, null);
-        Person person = new Person(sheetId, trimmed);
+        Person person = new Person(sheetId, trimmed, today);
         person.setTerms(terms);
         Person added = people.saveAndFlush(person);
         grades.give(added, grade, null);
@@ -117,7 +117,7 @@ public class PersonService {
         if (to != null && to.isBefore(on)) {
             throw new HoldRefusedException("The hold's to-date " + to + " is before its from-date " + on);
         }
-        holds.saveAndFlush(new PersonHold(sheetId, id, on, to));
+        holds.saveAndFlush(new PersonHold(sheetId, id, on, to, sheets.today(sheetId)));
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " from=" + on);
         return person;
@@ -133,6 +133,12 @@ public class PersonService {
     /** A person's holds, in the order they were put on. */
     public List<PersonHold> holds(Long personId) {
         return holds.findByPersonIdOrderByIdAsc(personId);
+    }
+
+    /** A person's holds as they stood at the end of a day: those put on while the sheet's today was
+     *  on or before it, in the order they were put on. */
+    public List<PersonHold> holdsAsOf(Long personId, LocalDate day) {
+        return holds(personId).stream().filter(hold -> hold.madeAsOf(day)).toList();
     }
 
     /** Each person's patron ids on the sheet, in the order they were named, by person id; a person

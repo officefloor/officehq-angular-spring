@@ -2,16 +2,19 @@ package net.officefloor.hq.app.person;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A grade (A, B or C) a person was given, in force from its from-date (null: from the beginning of
  *  time, as the first grade a person was given is). */
 @Entity
 @Table(name = "person_grade")
+@EntityListeners(HistoryListener.class)
 public class PersonGrade {
 
     @Id

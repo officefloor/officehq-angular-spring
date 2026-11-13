@@ -2,6 +2,7 @@ package net.officefloor.hq.app.claim;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
@@ -11,6 +12,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.HistoryListener;
 import net.officefloor.hq.app.person.PersonHold;
 
 /** A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
@@ -18,6 +20,7 @@ import net.officefloor.hq.app.person.PersonHold;
  *  claim of the same person it corrects. */
 @Entity
 @Table(name = "claim")
+@EntityListeners(HistoryListener.class)
 public class Claim {
 
     @Id
@@ -122,6 +125,20 @@ public class Claim {
         split.openedBy = openedBy;
         split.splitFrom = from.number;
         return split;
+    }
+
+    /** The claim as it was once saved, read back from its history: a copy that is never saved. */
+    public static Claim asItWas(Long id, String sheetId, Long personId, BigDecimal amount, LocalDate date,
+            LocalDate dueBy, ClaimStatus status, BigDecimal settledDue, boolean stated, BigDecimal statedDue,
+            String corrects, LocalDate deferredUntil) {
+        Claim was = new Claim(sheetId, personId, amount, date, dueBy, "", corrects);
+        was.id = id;
+        was.status = status;
+        was.settledDue = settledDue;
+        was.stated = stated;
+        was.statedDue = statedDue;
+        was.deferredUntil = deferredUntil;
+        return was;
     }
 
     public Long getId() {

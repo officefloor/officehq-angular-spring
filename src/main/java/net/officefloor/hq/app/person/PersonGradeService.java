@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.history.History;
 import org.springframework.stereotype.Service;
 
 /** The grades given to the people on a sheet, each in force from its from-date. */
@@ -17,9 +18,11 @@ public class PersonGradeService {
             Comparator.comparing(PersonGrade::getFrom, Comparator.nullsFirst(Comparator.naturalOrder()));
 
     private final PersonGradeRepository grades;
+    private final History history;
 
-    public PersonGradeService(PersonGradeRepository grades) {
+    public PersonGradeService(PersonGradeRepository grades, History history) {
         this.grades = grades;
+        this.history = history;
     }
 
     /** A person's grades, from the earliest. */
@@ -37,6 +40,12 @@ public class PersonGradeService {
      *  (the first grade applies from the beginning of time). */
     public String gradeOn(Long personId, LocalDate date) {
         return gradeOn(of(personId), date);
+    }
+
+    /** The person's grade in force on a date as their grades stood at the end of a day (null: as
+     *  they stand now). */
+    public String gradeOn(Long personId, LocalDate date, LocalDate asOf) {
+        return gradeOn(asOf == null ? of(personId) : history.grades(personId, asOf), date);
     }
 
     /** The grade in force on a date among a person's grades; null when they have none. */

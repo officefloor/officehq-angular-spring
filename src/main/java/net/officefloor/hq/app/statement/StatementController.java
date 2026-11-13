@@ -2,6 +2,7 @@ package net.officefloor.hq.app.statement;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.SignedInUser;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -29,6 +31,10 @@ public class StatementController {
     public record StatementTaken(StatementSummary statements, List<ClaimView> claims) {
     }
 
+    /** A statement to take: as of a day (blank: now). */
+    public record StatementRequest(LocalDate asOf) {
+    }
+
     private final StatementService service;
 
     private final RollupService rollups;
@@ -41,13 +47,15 @@ public class StatementController {
         this.claimService = claimService;
     }
 
-    /** Take a statement for the person. */
+    /** Take a statement for the person, now or as of a day. */
     @PostMapping
     public StatementTaken take(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody(required = false) StatementRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        List<ClaimView> claims = rollups.track(sheet, by, () -> service.take(sheet, by, personId)).stream()
+        LocalDate asOf = request != null ? request.asOf() : null;
+        List<ClaimView> claims = rollups.track(sheet, by, () -> service.take(sheet, by, personId, asOf)).stream()
                 .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim),
                         claimService.logOf(claim.getId()))).toList();
         return new StatementTaken(service.summary(sheet, personId), claims);
@@ -64,6 +72,11 @@ public class StatementController {
                 .map(claim -> ClaimView.of(claim, claimService.roundsBy(sheet, claim),
                         claimService.logOf(claim.getId()))).toList();
         return new StatementTaken(service.summary(sheet, personId), claims);
+    }
+
+    @ExceptionHandler(StatementRefusedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public void refusedAsOf() {
     }
 
     @ExceptionHandler(StatementCancelRefusedException.class)

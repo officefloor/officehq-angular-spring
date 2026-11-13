@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -34,11 +35,13 @@ public class SettingService {
     private final SettingValueRepository values;
     private final SheetPermissionRepository permissions;
     private final DelegationRepository delegations;
+    private final History history;
     private final Audit audit;
 
     public SettingService(SheetService sheets, SheetRepository sheetRepository, SheetRoleRepository roles,
             SettingValueRepository values, SheetPermissionRepository permissions, DelegationRepository delegations,
-            Audit audit) {
+            History history, Audit audit) {
+        this.history = history;
         this.sheets = sheets;
         this.sheetRepository = sheetRepository;
         this.roles = roles;
@@ -178,6 +181,12 @@ public class SettingService {
         return values.findFirstBySheetIdAndKeyAndFromLessThanEqualOrderByFromDesc(sheetId, key, on);
     }
 
+    /** A dated setting's value in force on a date as the values stood at the end of a day (null: as
+     *  they stand now). */
+    private Optional<SettingValue> inForce(String sheetId, String key, LocalDate on, LocalDate asOf) {
+        return asOf == null ? inForce(sheetId, key, on) : history.setting(sheetId, key, on, asOf);
+    }
+
     /** The sheet's clerk limit in force on its today; null when there is none. */
     public BigDecimal clerkLimit(String sheetId) {
         return inForce(sheetId, "clerk-limit", sheets.today(sheetId)).map(SettingValue::getValue).orElse(null);
@@ -185,7 +194,12 @@ public class SettingService {
 
     /** The sheet's floor in force on a date: the least the live due of a claim of that date can be. */
     public BigDecimal floor(String sheetId, LocalDate on) {
-        return inForce(sheetId, "floor", on).map(SettingValue::getValue).orElse(START_FLOOR);
+        return floor(sheetId, on, null);
+    }
+
+    /** The sheet's floor in force on a date as it stood at the end of a day (null: as it stands now). */
+    public BigDecimal floor(String sheetId, LocalDate on, LocalDate asOf) {
+        return inForce(sheetId, "floor", on, asOf).map(SettingValue::getValue).orElse(START_FLOOR);
     }
 
     /** The sheet's cap in force on its today: the most a person's due-total can be; null when there is none. */
@@ -201,7 +215,14 @@ public class SettingService {
 
     /** A person's due-total held to the sheet's cap; a due-total of none (n/a) is not capped. */
     public BigDecimal capped(String sheetId, BigDecimal dueTotal) {
-        BigDecimal cap = cap(sheetId);
+        return capped(sheetId, dueTotal, null);
+    }
+
+    /** A person's due-total held to the cap in force at the end of a day, as it stood then, the day
+     *  standing in for the sheet's today (null: the cap in force on the sheet's today now). */
+    public BigDecimal capped(String sheetId, BigDecimal dueTotal, LocalDate asOf) {
+        BigDecimal cap = asOf == null ? cap(sheetId)
+                : inForce(sheetId, "cap", asOf, asOf).map(SettingValue::getValue).orElse(null);
         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
@@ -236,7 +257,13 @@ public class SettingService {
     /** The sheet's late percent in force on a date: an overdue claim of that date's due gains it of its
      *  figure for every full 30 days it is overdue. */
     public BigDecimal latePct(String sheetId, LocalDate on) {
-        return inForce(sheetId, "late-pct", on).map(SettingValue::getValue).orElse(START_LATE_PCT);
+        return latePct(sheetId, on, null);
+    }
+
+    /** The sheet's late percent in force on a date as it stood at the end of a day (null: as it
+     *  stands now). */
+    public BigDecimal latePct(String sheetId, LocalDate on, LocalDate asOf) {
+        return inForce(sheetId, "late-pct", on, asOf).map(SettingValue::getValue).orElse(START_LATE_PCT);
     }
 
     /** The sheet's policy date as set; null when it is blank (the sheet's today applies). */
@@ -263,7 +290,17 @@ public class SettingService {
     /** How a claim dated on the given date rounds: half up before the policy date, half to even on or
      *  after it. */
     public RoundingMode roundingOn(String sheetId, LocalDate date) {
-        return date.isBefore(policyDate(sheetId)) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
+        return roundingOn(sheetId, date, null);
+    }
+
+    /** How a claim dated on the given date rounds by the policy date as it stood set at the end of a
+     *  day, the day standing in for the sheet's today (null: as it stands now). */
+    public RoundingMode roundingOn(String sheetId, LocalDate date, LocalDate asOf) {
+        LocalDate policy = asOf == null ? policyDate(sheetId) : history.policyDate(sheetId, asOf);
+        if (policy == null) {
+            policy = asOf;
+        }
+        return date.isBefore(policy) ? RoundingMode.HALF_UP : RoundingMode.HALF_EVEN;
     }
 
     /** Assign a user name a role on the sheet. */
@@ -350,6 +387,7 @@ public class SettingService {
         Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
         sheet.setPolicyDate(policyDate);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.policyDateSet(sheetId);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=policy-date value="
                 + (policyDate != null ? policyDate.toString() : ""));
         return saved;

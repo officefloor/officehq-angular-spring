@@ -276,6 +276,14 @@ interface StatementTaken {
                 >
                   Edit
                 </button>
+                <label [for]="'person-statement-asof-' + p.id">Statement as of</label>
+                <input
+                  type="date"
+                  [id]="'person-statement-asof-' + p.id"
+                  data-testid="person-statement-asof"
+                  [value]="statementDates()[p.id] ?? ''"
+                  (input)="setStatementDate(p.id, value($event))"
+                />
                 <button
                   type="button"
                   data-testid="person-statement"
@@ -594,6 +602,8 @@ export class People {
   protected readonly bulkSettleError = signal<string | null>(null);
   /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
   private readonly bulkSettleBusy = signal(false);
+  /** The date typed to take each person's statement as of (blank: now), by person id. */
+  protected readonly statementDates = signal<Record<number, string>>({});
   /** The patron chosen on each person's row (a person id, or blank), by person id. */
   protected readonly patronChoices = signal<Record<number, string>>({});
 
@@ -929,15 +939,23 @@ export class People {
     }
   }
 
-  /** Take a statement for a person: their row and claims then show what it recorded and bound. */
+  protected setStatementDate(personId: number, date: string): void {
+    this.statementDates.update((dates) => ({ ...dates, [personId]: date }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Take a statement for a person, as of the typed date (blank: now): their row and claims then
+   *  show what it recorded and bound. */
   protected async takeStatement(person: Person): Promise<void> {
     this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const asOf = (this.statementDates()[person.id] ?? '').trim() || null;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/statement`;
     try {
-      const taken = await firstValueFrom(this.http.post<StatementTaken>(url, null));
+      const taken = await firstValueFrom(this.http.post<StatementTaken>(url, { asOf }));
       if (this.session.sheetId() !== sheet) return;
+      this.statementDates.update((dates) => ({ ...dates, [person.id]: '' }));
       const bound = new Map(taken.claims.map((c) => [c.id, c]));
       this.claims.update((list) => [
         ...taken.claims.filter((c) => !list.some((had) => had.id === c.id)),

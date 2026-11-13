@@ -37,12 +37,17 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The sheet's today when the person was added; null for one added before it was kept. */
+    @Column(name = "added_on", updatable = false)
+    private LocalDate addedOn;
+
     protected Person() {
     }
 
-    public Person(String sheetId, String name) {
+    public Person(String sheetId, String name, LocalDate addedOn) {
         this.sheetId = sheetId;
         this.name = name;
+        this.addedOn = addedOn;
     }
 
     public Long getId() {
@@ -63,6 +68,16 @@ public class Person {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public LocalDate getAddedOn() {
+        return addedOn;
+    }
+
+    /** Whether the person was on the sheet at the end of a day: added while the sheet's today was on
+     *  or before it (one added before that was kept always was). */
+    public boolean onSheetAsOf(LocalDate day) {
+        return addedOn == null || !addedOn.isAfter(day);
     }
 
     public LocalDate getRetiredFrom() {
