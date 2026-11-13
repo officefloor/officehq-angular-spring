@@ -458,8 +458,9 @@ public class PersonService {
 
     /** Merge a grade into another, by a steward only, and refused for the same grade twice: every person
      *  whose grade in force on the sheet's today is the merged grade is given the other from the sheet's
-     *  today, in list order, exactly as the person form would, then the figures the whole merge moved are
-     *  recorded; the people changed, in list order. */
+     *  today, in list order, exactly as the person form would, then every grade record of theirs on the merged
+     *  grade becomes the other (so all their claims, whatever their date, use the other's rates, terms and
+     *  thresholds), then the figures the whole merge moved are recorded; the people changed, in list order. */
     @Transactional
     public List<Person> mergeGrade(String sheetId, String user, String from, String into) {
         requireSheet(sheetId);
@@ -480,6 +481,10 @@ public class PersonService {
                 .filter(p -> from.equals(p.gradeOn(today)))
                 .map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), into, today,
                         p.getTerms(), null, p.getContact(), null, false))
+                .map(p -> {
+                    p.regrade(from, into);
+                    return saved(p);
+                })
                 .toList();
         // then the figures the whole merge moved
         rollup.recordChanges(sheetId, user, before);

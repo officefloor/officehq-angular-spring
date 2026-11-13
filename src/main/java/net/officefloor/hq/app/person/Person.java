@@ -152,6 +152,11 @@ public class Person {
         return found;
     }
 
+    /** Make every grade they were given as one grade the other instead, whatever its from-date. */
+    public void regrade(String from, String into) {
+        grades.stream().filter(g -> from.equals(g.getGrade())).forEach(g -> g.setGrade(into));
+    }
+
     /** Give them a grade from a date, replacing the one they had from that same date. */
     public void setGrade(String grade, LocalDate from) {
         for (PersonGrade g : grades) {

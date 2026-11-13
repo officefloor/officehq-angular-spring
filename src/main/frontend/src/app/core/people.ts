@@ -286,8 +286,8 @@ export class People {
   }
 
   /** Merge a grade into another: the server gives each person whose grade in force today is the merged
-   *  one the other from the sheet's today, in list order, as the person form would; how many were changed,
-   *  or an error message. */
+   *  one the other from the sheet's today, in list order, as the person form would, and turns every grade
+   *  record of theirs on the merged one into the other; how many were changed, or an error message. */
   async mergeGrade(from: string, into: string): Promise<number | string> {
     const sid = this.session.sheetId();
     const user = this.session.user();
