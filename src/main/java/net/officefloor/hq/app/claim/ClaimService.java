@@ -332,6 +332,27 @@ public class ClaimService {
         return saved;
     }
 
+    /** Remind an OPEN or PENDING claim: REMIND is written and the claim's reminded date is the sheet's
+     *  today. A claim in any other status, or one already reminded on the sheet's today, is refused. */
+    @Transactional
+    public Claim remind(String sheetId, String user, Long personId, Long id) {
+        Person person = person(sheetId, personId);
+        // Lock the sheet first, so two presses on the same day write one reminder.
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, personId, id);
+        LocalDate today = sheets.today(sheetId);
+        if (!claim.getStatus().isOpen()) {
+            throw new RemindRefusedException("A " + claim.getStatus() + " claim cannot be reminded");
+        }
+        if (today.equals(claim.getRemindedOn())) {
+            throw new RemindRefusedException("The claim was already reminded on " + today);
+        }
+        claim.setRemindedOn(today);
+        Claim saved = claims.saveAndFlush(claim);
+        record("REMIND", sheetId, user, person, saved);
+        return saved;
+    }
+
     /** Add a proof to a claim: its proofs count rises by one. A SETTLED or VOID claim, or one dated in
      *  a closed period, is refused. */
     @Transactional

@@ -47,6 +47,8 @@ export interface Claim {
   log: string[];
   /** The date the claim was deferred until (yyyy-mm-dd); null when it never was. */
   deferredUntil: string | null;
+  /** The last day a reminder was written for the claim (yyyy-mm-dd); null when none was. */
+  remindedOn: string | null;
   /** How many proofs were added to the claim. */
   proofs: number;
   /** The number of the claim this claim was split off; null when it was not. */
@@ -251,6 +253,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
+          <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
           <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim ' + c.id">
@@ -276,6 +279,9 @@ const NUMBER = /^\S+$/;
           />
           <button type="button" data-testid="claim-reject" [attr.aria-label]="'Reject claim ' + c.id" (click)="act(c, 'reject')">
             Reject
+          </button>
+          <button type="button" data-testid="claim-remind" [attr.aria-label]="'Remind claim ' + c.id" (click)="remind(c)">
+            Remind
           </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -587,6 +593,25 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message: 'The claim could not be deferred: only an open claim outside a closed period can be, to a date after today.',
+      });
+    }
+  }
+
+  /** Remind an OPEN or PENDING claim; a claim in any other status, or one already reminded on the
+   *  sheet's today, is refused on the row. */
+  protected async remind(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/remind`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, {}));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch {
+      this.rowError.set({
+        id: claim.id,
+        message: 'The claim could not be reminded: only an open or pending claim can be, once a day.',
       });
     }
   }

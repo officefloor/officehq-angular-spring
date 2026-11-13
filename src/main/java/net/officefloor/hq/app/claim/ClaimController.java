@@ -47,11 +47,13 @@ public class ClaimController {
      *  the date it was deferred until (null when it never was); proofs is how many proofs were added
      *  to it; splitFrom is the number of the claim it was split off (null when it was not); lockedBy is
      *  the user whose open editor locks it (null when no one's does); lateEntry is whether it was
-     *  added while its period was soft-closed. */
+     *  added while its period was soft-closed; remindedOn is the last day a reminder was written for it
+     *  (null when none was). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
-            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
+            LocalDate remindedOn) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -59,7 +61,8 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
+                    claim.getRemindedOn());
         }
     }
 
@@ -266,6 +269,14 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.defer(sheet, by, personId, id, request.until())));
     }
 
+    /** Remind an OPEN or PENDING claim, once per sheet's today. */
+    @PostMapping("/people/{personId}/claims/{id}/remind")
+    public ClaimView remind(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.remind(sheet, SignedInUser.decode(user), personId, id));
+    }
+
     /** Re-date an OPEN or PENDING claim: a steward only. */
     @PostMapping("/people/{personId}/claims/{id}/redate")
     public ClaimView redate(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -323,11 +334,13 @@ public class ClaimController {
      *  threshold with an empty note, or a split the claim or amount does
      *  not allow, or a void of a SETTLED claim by anyone but a steward or after its void window, or a
      *  re-date of a claim that is not OPEN or PENDING, or opening or saving the editor of a claim
-     *  another user's editor locks, is refused. */
+     *  another user's editor locks, or a reminder of a claim that is not OPEN or PENDING or was already
+     *  reminded on the sheet's today, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
-            SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class})
+            SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class,
+            RemindRefusedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

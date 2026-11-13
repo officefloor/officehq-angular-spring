@@ -86,6 +86,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** The last day (the sheet's today then) a reminder was written for the claim; null when none was. */
+    @Column(name = "reminded_on")
+    private LocalDate remindedOn;
+
     /** How many proofs have been added to the claim. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -271,6 +275,14 @@ public class Claim {
 
     public void setDeferredUntil(LocalDate deferredUntil) {
         this.deferredUntil = deferredUntil;
+    }
+
+    public LocalDate getRemindedOn() {
+        return remindedOn;
+    }
+
+    public void setRemindedOn(LocalDate remindedOn) {
+        this.remindedOn = remindedOn;
     }
 
     public int getProofs() {
