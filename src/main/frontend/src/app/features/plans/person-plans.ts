@@ -1,0 +1,101 @@
+import { Component, computed, inject, input, signal } from '@angular/core';
+import { Plans } from '../../core/plans';
+
+// A person's plans, each with how many claims it has made so far, and a form adding one (a bad amount or
+// interval, or an end before the start, is refused with an error on the row).
+@Component({
+  selector: 'app-person-plans',
+  template: `
+    <ul aria-label="Plans">
+      @for (pl of mine(); track pl.id) {
+        <li [attr.data-testid]="'plan-row-' + pl.id">
+          <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
+          from <span data-testid="plan-start">{{ pl.start }}</span>
+          every <span data-testid="plan-every">{{ pl.every }}</span> days
+          to <span data-testid="plan-end">{{ pl.end }}</span>,
+          made <span data-testid="plan-generated">{{ pl.generated }}</span>
+        </li>
+      }
+    </ul>
+    <form (submit)="add($event)" [attr.aria-label]="'Add a plan for ' + personName()">
+      <label [for]="'plan-form-amount-' + personId()">Plan amount</label>
+      <input
+        [id]="'plan-form-amount-' + personId()"
+        data-testid="plan-form-amount"
+        inputmode="decimal"
+        [value]="amount()"
+        (input)="amount.set(value($event)); error.set(null)"
+      />
+      <label [for]="'plan-form-start-' + personId()">Start</label>
+      <input
+        [id]="'plan-form-start-' + personId()"
+        data-testid="plan-form-start"
+        placeholder="YYYY-MM-DD"
+        [value]="start()"
+        (input)="start.set(value($event)); error.set(null)"
+      />
+      <label [for]="'plan-form-every-' + personId()">Every (days)</label>
+      <input
+        [id]="'plan-form-every-' + personId()"
+        data-testid="plan-form-every"
+        inputmode="numeric"
+        [value]="every()"
+        (input)="every.set(value($event)); error.set(null)"
+      />
+      <label [for]="'plan-form-end-' + personId()">End</label>
+      <input
+        [id]="'plan-form-end-' + personId()"
+        data-testid="plan-form-end"
+        placeholder="YYYY-MM-DD"
+        [value]="end()"
+        (input)="end.set(value($event)); error.set(null)"
+      />
+      <button type="submit" data-testid="plan-form-submit" [disabled]="saving()">
+        Add plan<span class="visually-hidden"> for {{ personName() }}</span>
+      </button>
+      @if (error(); as err) {
+        <p role="alert" data-testid="plan-error">{{ err }}</p>
+      }
+    </form>
+  `,
+})
+export class PersonPlans {
+  protected readonly plans = inject(Plans);
+  readonly personId = input.required<number>();
+  readonly personName = input.required<string>();
+  protected readonly mine = computed(() => this.plans.plans().filter((p) => p.personId === this.personId()));
+  protected readonly amount = signal('');
+  protected readonly start = signal('');
+  protected readonly every = signal('');
+  protected readonly end = signal('');
+  protected readonly error = signal<string | null>(null);
+  protected readonly saving = signal(false);
+
+  protected value(e: Event): string {
+    return (e.target as HTMLInputElement).value;
+  }
+
+  protected async add(e: Event): Promise<void> {
+    e.preventDefault();
+    if (this.saving()) return; // a second submit before the first has answered
+    this.error.set(null);
+    this.saving.set(true);
+    try {
+      const err = await this.plans.add(this.personId(), {
+        amount: this.amount(),
+        start: this.start(),
+        every: this.every(),
+        end: this.end(),
+      });
+      if (err) this.error.set(err);
+      else {
+        this.amount.set('');
+        this.start.set('');
+        this.every.set('');
+        this.end.set('');
+      }
+    } finally {
+      this.saving.set(false);
+    }
+  }
+}

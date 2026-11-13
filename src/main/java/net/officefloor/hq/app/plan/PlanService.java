@@ -1,0 +1,93 @@
+package net.officefloor.hq.app.plan;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonNotFoundException;
+import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** Keeps each sheet's plans, and makes their claims. */
+@Service
+public class PlanService {
+
+    private final PlanRepository plans;
+    private final PersonRepository people;
+    private final ClaimService claims;
+    private final SheetService sheets;
+    private final Audit audit;
+
+    public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
+            Audit audit) {
+        this.plans = plans;
+        this.people = people;
+        this.claims = claims;
+        this.sheets = sheets;
+        this.audit = audit;
+    }
+
+    /** The sheet's plans, in the order they were added. */
+    @Transactional(readOnly = true)
+    public List<Plan> list(String sheetId) {
+        sheets.today(sheetId);
+        return plans.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** Add a plan to a person; an amount a claim would refuse (below 0.00), an interval below 1 day, or an end
+     *  before the start is refused. */
+    @Transactional
+    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every,
+            LocalDate end) {
+        sheets.today(sheetId);
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        if (amount.signum() < 0) {
+            throw new PlanRefusedException("Enter an amount of 0.00 or more.");
+        }
+        if (every < 1) {
+            throw new PlanRefusedException("Enter every how many days, 1 or more.");
+        }
+        if (end.isBefore(start)) {
+            throw new PlanRefusedException("The end cannot be before the start.");
+        }
+        BigDecimal a = amount.setScale(2);
+        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, a, start, every, end));
+        audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " amount=" + a.toPlainString() + " start=" + start + " every=" + every + " end=" + end);
+        return plan;
+    }
+
+    /** What a generate did: the claims it made, in the order made, and the sheet's plans. */
+    public record Generated(List<Claim> claims, List<Plan> plans) {
+    }
+
+    /** For every plan on the sheet in the order they were added, make a DRAFT claim of its amount with an
+     *  empty note on each plan date up to its end and the sheet's today it has made none for yet; a date the
+     *  claim form refuses is skipped, and tried again next time. */
+    @Transactional
+    public Generated generate(String sheetId, String user) {
+        LocalDate today = sheets.today(sheetId);
+        List<Plan> all = plans.findBySheetIdOrderByIdAsc(sheetId);
+        List<Claim> made = new ArrayList<>();
+        for (Plan plan : all) {
+            if (people.findByIdAndSheetId(plan.getPersonId(), sheetId).isEmpty()) {
+                continue; // the person is no longer on the sheet
+            }
+            for (LocalDate date : plan.datesDue(today)) {
+                claims.addIfAccepted(sheetId, user, plan.getPersonId(), plan.getAmount(), date, "")
+                        .ifPresent(claim -> {
+                            made.add(claim);
+                            plan.generated(date);
+                        });
+            }
+            plans.saveAndFlush(plan);
+        }
+        return new Generated(made, all);
+    }
+}

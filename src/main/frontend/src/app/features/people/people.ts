@@ -6,12 +6,13 @@ import { Periods } from '../../core/periods';
 import { Pools } from '../../core/pools';
 import { NO_RATE, halfEven, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
+import { PersonPlans } from '../plans/person-plans';
 
 // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
 // list shows everyone in the order they were added, each with their claims.
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims],
+  imports: [PersonClaims, PersonPlans],
   template: `
     <section aria-label="People" data-testid="people">
       <h2>People</h2>
@@ -186,7 +187,7 @@ import { PersonClaims } from '../claims/claims';
       </section>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shown(); track p.id) {
@@ -304,6 +305,7 @@ import { PersonClaims } from '../claims/claims';
                   Watch<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
               </td>
+              <td><app-person-plans [personId]="p.id" [personName]="p.name" /></td>
               <td><app-person-claims [personId]="p.id" [grades]="p.grades" /></td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)">

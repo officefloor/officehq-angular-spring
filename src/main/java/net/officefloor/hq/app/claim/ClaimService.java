@@ -123,6 +123,18 @@ public class ClaimService {
         return claim;
     }
 
+    /** Add a DRAFT claim of 0.00 or more by the claim form's rules, as {@link #add} would; none when the form
+     *  would refuse it (its period is closed, or its person retired by its date), then nothing is written. */
+    @Transactional
+    public Optional<Claim> addIfAccepted(String sheetId, String user, long personId, BigDecimal amount,
+            LocalDate date, String note) {
+        try {
+            return Optional.of(add(sheetId, user, personId, amount, date, note, null, null, List.of()));
+        } catch (PeriodClosedException | PersonRetiredException e) {
+            return Optional.empty();
+        }
+    }
+
     /** Change a DRAFT claim; a claim in any other status is refused, and a correction or a reference as when
      *  added. */
     @Transactional

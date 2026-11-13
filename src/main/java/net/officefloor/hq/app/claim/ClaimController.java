@@ -56,7 +56,7 @@ public class ClaimController {
             String remindedOn, String ref, List<String> tags, String voidReason,
             List<CommentLine> comments, Integer settleBatch) {
 
-        static ClaimView of(Claim claim) {
+        public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate().toString(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() == null ? null : claim.getSettledDue().toPlainString(),

@@ -4,6 +4,7 @@ import { Claims } from '../../core/claims';
 import { Holidays } from '../../core/holidays';
 import { People } from '../../core/people';
 import { Periods } from '../../core/periods';
+import { Plans } from '../../core/plans';
 import { Pools } from '../../core/pools';
 import { Rates } from '../../core/rates';
 import { Roles } from '../../core/roles';
@@ -20,6 +21,7 @@ import { HolidaysPanel } from '../holidays/holidays';
 import { ImportPeople } from '../people/import-people';
 import { PeopleList } from '../people/people';
 import { PeriodsPanel } from '../periods/periods';
+import { GeneratePlans } from '../plans/generate-plans';
 import { PoolsPanel } from '../pools/pools';
 import { ImportRates } from '../rates/import-rates';
 import { RatesPanel } from '../rates/rates';
@@ -30,7 +32,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
 @Component({
   selector: 'app-home',
-  imports: [AuditPanel, BulkOpen, BulkReassign, BulkSettle, ClaimTemplatesPanel, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [AuditPanel, BulkOpen, BulkReassign, BulkSettle, ClaimTemplatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -112,6 +114,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-import-people />
         <app-pools />
         <app-paste-claims />
+        <app-generate-plans />
         <app-bulk-open />
         <app-bulk-settle />
         <app-bulk-reassign />
@@ -146,6 +149,7 @@ export class Home {
   private readonly voidReasons = inject(VoidReasons);
   private readonly claimTemplates = inject(ClaimTemplates);
   private readonly pools = inject(Pools);
+  private readonly plans = inject(Plans);
   protected readonly nameInput = signal('');
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetInput = signal('');
@@ -187,7 +191,7 @@ export class Home {
   private async loadSheet(id: string): Promise<string | null> {
     return (
       (await this.session.loadSheet(id)) ??
-      (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load()])).find((err) => err !== null) ??
+      (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
       null
     );
   }
