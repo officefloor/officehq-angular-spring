@@ -1,0 +1,293 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e921d5bb4..42f2cbe74 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -48,6 +48,14 @@ export interface Claim {
+   deferredUntil: string | null;
+   /** How many proofs were added to the claim. */
+   proofs: number;
++  /** The number of the claim this claim was split off; null when it was not. */
++  splitFrom: string | null;
++}
++
++/** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
++interface Split {
++  kept: Claim;
++  added: Claim;
+ }
+ 
+ /** Whether a claim is deferred on the sheet's today: it is OPEN and today is before the date it was
+@@ -238,6 +246,7 @@ const NUMBER = /^\S+$/;
+           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
+           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
+           <span data-testid="claim-proofs">{{ c.proofs }}</span>
++          <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
+           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim ' + c.id">
+             @for (line of c.log; track $index) {
+               <li data-testid="claim-log-line">{{ line }}</li>
+@@ -273,6 +282,17 @@ const NUMBER = /^\S+$/;
+           <button type="button" data-testid="claim-defer" [attr.aria-label]="'Defer claim ' + c.id" (click)="defer(c)">
+             Defer
+           </button>
++          <label [for]="'claim-split-amount-' + c.id">Split off</label>
++          <input
++            [id]="'claim-split-amount-' + c.id"
++            data-testid="claim-split-amount"
++            inputmode="decimal"
++            [value]="splitAmounts()[c.id] ?? ''"
++            (input)="setSplitAmount(c.id, value($event))"
++          />
++          <button type="button" data-testid="claim-split" [attr.aria-label]="'Split claim ' + c.id" (click)="split(c)">
++            Split
++          </button>
+           <button type="button" data-testid="claim-proof" [attr.aria-label]="'Add a proof to claim ' + c.id" (click)="addProof(c)">
+             Add proof
+           </button>
+@@ -359,6 +379,9 @@ export class PersonClaims {
+   /** The defer-until date typed on each claim's row, by claim id. */
+   protected readonly deferDates = signal<Record<number, string>>({});
+ 
++  /** The amount typed on each claim's row to split off it, by claim id. */
++  protected readonly splitAmounts = signal<Record<number, string>>({});
++
+   /** The person chosen on each claim's row to move it to, by claim id (a person id, or blank). */
+   protected readonly reassignTo = signal<Record<number, string>>({});
+   /** The people a claim of this person can move to: everyone else on the sheet. */
+@@ -455,6 +478,42 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected setSplitAmount(id: number, amount: string): void {
++    this.splitAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
++    if (this.rowError()?.id === id) this.rowError.set(null);
++  }
++
++  /** Split the amount typed on its row off an OPEN claim: the claim keeps the rest, and the new OPEN
++   *  claim is listed first. A claim that is not OPEN or is deferred, one in a closed period, an
++   *  amount not above 0.00 and below the claim's, or a role that may not open a claim, is refused on
++   *  the row. */
++  protected async split(claim: Claim): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const amount = (this.splitAmounts()[claim.id] ?? '').trim();
++    if (!AMOUNT.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(claim.amount)) {
++      this.rowError.set({ id: claim.id, message: "Type an amount above 0.00 and below the claim's to split off." });
++      return;
++    }
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/split`;
++    try {
++      const result = await firstValueFrom(this.http.post<Split>(url, { amount }));
++      if (this.session.sheetId() !== sheet) return;
++      this.setSplitAmount(claim.id, '');
++      this.saved.emit(result.kept);
++      this.saved.emit(result.added);
++    } catch (e) {
++      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
++      this.rowError.set({
++        id: claim.id,
++        message: forbidden
++          ? 'The claim could not be split: your role may not open a claim on this sheet.'
++          : 'The claim could not be split: only an open claim outside a closed period, not deferred, can be.',
++      });
++    }
++  }
++
+   /** Add a proof to a claim, raising its proofs count by one; a SETTLED or VOID claim, or one dated
+    *  in a closed period, is refused on the row. */
+   protected async addProof(claim: Claim): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 6df438011..b7949ea9d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -87,6 +87,10 @@ public class Claim {
+     @Column(name = "proofs", nullable = false)
+     private int proofs;
+ 
++    /** The number of the claim this claim was split off; null for a claim not split off another. */
++    @Column(name = "split_from", updatable = false)
++    private String splitFrom;
++
+     protected Claim() {
+     }
+ 
+@@ -101,6 +105,17 @@ public class Claim {
+         this.note = note;
+     }
+ 
++    /** An OPEN claim split off another: the split-off amount, with the same date and note, its own
++     *  due-by, number and opener, naming the claim it was split from. */
++    public static Claim splitOff(Claim from, BigDecimal amount, LocalDate dueBy, String number, String openedBy) {
++        Claim split = new Claim(from.sheetId, from.personId, amount, from.date, dueBy, from.note, null);
++        split.status = ClaimStatus.OPEN;
++        split.number = number;
++        split.openedBy = openedBy;
++        split.splitFrom = from.number;
++        return split;
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -223,6 +238,10 @@ public class Claim {
+         return proofs;
+     }
+ 
++    public String getSplitFrom() {
++        return splitFrom;
++    }
++
+     /** Count one more proof added to the claim. */
+     public void addProof() {
+         this.proofs++;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index e575e8e80..f01a60eda 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -42,11 +42,11 @@ public class ClaimController {
+      *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was
+      *  added; log is its status log, oldest first, one line per status it has had; deferredUntil is
+      *  the date it was deferred until (null when it never was); proofs is how many proofs were added
+-     *  to it. */
++     *  to it; splitFrom is the number of the claim it was split off (null when it was not). */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
+-            LocalDate deferredUntil, int proofs) {
++            LocalDate deferredUntil, int proofs, String splitFrom) {
+         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
+@@ -54,7 +54,7 @@ public class ClaimController {
+                     claim.getOpenedBy(), claim.isStated(),
+                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
+                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
+-                    claim.getProofs());
++                    claim.getProofs(), claim.getSplitFrom());
+         }
+     }
+ 
+@@ -76,6 +76,14 @@ public class ClaimController {
+     public record RejectRequest(@NotBlank @Size(max = 500) String reason) {
+     }
+ 
++    /** The amount split off an OPEN claim. */
++    public record SplitRequest(@NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount) {
++    }
++
++    /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
++    public record SplitView(ClaimView kept, ClaimView added) {
++    }
++
+     /** The person on the sheet a claim moves to. */
+     public record ReassignRequest(@NotNull Long toPersonId) {
+     }
+@@ -227,6 +235,19 @@ public class ClaimController {
+         return view(sheet, rollups.track(sheet, by, () -> service.defer(sheet, by, personId, id, request.until())));
+     }
+ 
++    /** Split an amount off an OPEN claim into a new OPEN claim. */
++    @PostMapping("/people/{personId}/claims/{id}/split")
++    @ResponseStatus(HttpStatus.CREATED)
++    public SplitView split(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
++            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated SplitRequest request) {
++        String sheet = sheetId.trim();
++        String by = SignedInUser.decode(user);
++        ClaimService.Split split = rollups.track(sheet, by,
++                () -> service.split(sheet, by, personId, id, request.amount()));
++        return new SplitView(view(sheet, split.kept()), view(sheet, split.added()));
++    }
++
+     /** Add a proof to a claim that is not SETTLED or VOID. */
+     @PostMapping("/people/{personId}/claims/{id}/proof")
+     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+@@ -257,10 +278,12 @@ public class ClaimController {
+      *  any change to a claim dated in a closed period, a claim dated after its person retired, or a
+      *  correction that does not name a SETTLED claim of its person, a move the claim does not allow,
+      *  a deferral the claim does not allow, a proof added to a SETTLED or VOID claim, or settling or
+-     *  approving a claim above the proof threshold with no proofs, is refused. */
++     *  approving a claim above the proof threshold with no proofs, or a split the claim or amount does
++     *  not allow, is refused. */
+     @ExceptionHandler({StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
+             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
+-            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class})
++            DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class,
++            SplitRefusedException.class})
+     @ResponseStatus(HttpStatus.CONFLICT)
+     public void refused() {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 43a2dadd0..4cd7ba406 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -193,6 +193,44 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /** A split: the claim that kept the rest of its amount, and the claim split off it. */
++    public record Split(Claim kept, Claim added) {
++    }
++
++    /** Split an amount off an OPEN claim: it keeps the rest of its amount and loses any figure a
++     *  statement bound it to, and a new OPEN claim of the split-off amount, with the same date and
++     *  note, the next number, opened by the user and due by its date plus the terms in force on it,
++     *  is listed under the person naming the claim it was split from. A claim that is not OPEN, one
++     *  deferred, one dated in a closed period, an amount not above 0.00 and below the claim's, or a
++     *  user whose role may not open a claim, is refused. */
++    @Transactional
++    public Split split(String sheetId, String user, Long personId, Long id, BigDecimal amount) {
++        Person person = person(sheetId, personId);
++        // Lock the sheet first, as opening does: the new claim takes the next number.
++        sheets.lock(sheetId);
++        Claim claim = claim(sheetId, personId, id);
++        settings.refuseUnless(sheetId, user, Permission.OPEN);
++        refuseClosed(sheetId, claim.getDate());
++        if (claim.getStatus() != ClaimStatus.OPEN || claim.deferredOn(sheets.today(sheetId))) {
++            throw new SplitRefusedException("A " + claim.getStatus() + " claim cannot be split");
++        }
++        BigDecimal part = scaled(amount);
++        if (part.signum() <= 0 || part.compareTo(claim.getAmount()) >= 0) {
++            throw new SplitRefusedException("A claim is split by an amount above 0.00 and below its own");
++        }
++        claim.setAmount(claim.getAmount().subtract(part));
++        claim.unbind();
++        Claim kept = claims.saveAndFlush(claim);
++        LocalDate on = kept.getDate();
++        LocalDate dueBy = on.plusDays(settings.termsFor(sheetId, grades.gradeOn(personId, on), on));
++        Claim added = claims.saveAndFlush(Claim.splitOff(kept, part, dueBy, nextNumber(sheetId, on), user));
++        log(sheetId, user, person, added);
++        audit.recordOnCommit(line("CLAIM_SPLIT", sheetId, user, person, kept, kept.getNumber())
++                + " into=" + added.getNumber());
++        record("CLAIM_OPENED", sheetId, user, person, added);
++        return new Split(kept, added);
++    }
++
+     /** A steward approves a PENDING claim: it is SETTLED, its due frozen at this moment. Anyone else,
+      *  the user who opened it, or a claim that is not PENDING, is refused. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/claim/SplitRefusedException.java b/src/main/java/net/officefloor/hq/app/claim/SplitRefusedException.java
+new file mode 100644
+index 000000000..7e5c8ea0f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/SplitRefusedException.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.claim;
++
++/** A claim that cannot be split: it is not OPEN or is deferred, or the amount is not above 0.00 and
++ *  below the claim's. */
++public class SplitRefusedException extends RuntimeException {
++
++    public SplitRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/resources/db/migration/V41__claim_split_from.sql b/src/main/resources/db/migration/V41__claim_split_from.sql
+new file mode 100644
+index 000000000..2eca176ba
+--- /dev/null
++++ b/src/main/resources/db/migration/V41__claim_split_from.sql
+@@ -0,0 +1,3 @@
++-- An OPEN claim can be split: the new claim it splits off names, by number, the claim it was split
++-- from; null for any claim that was not split off another.
++ALTER TABLE claim ADD COLUMN split_from VARCHAR(255);

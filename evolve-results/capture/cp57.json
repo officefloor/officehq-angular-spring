@@ -1,0 +1,64 @@
+{
+  "checkpoint": 57,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp57_split-claim",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN claim can be split: an amount on the claim (more than 0.00 and less than the claim's\namount) and a button. The claim keeps the rest of its amount and loses any figure a statement\nbound it to; a new OPEN claim with the split-off amount, the same date and note, the next number,\nopened by the signed-in user and with a due-by fixed now from the terms in force on the date, is\nlisted under the person. Both show the original's number as split-from (the new claim; the\noriginal shows nothing). A PENDING, deferred or settled claim, or one in a closed period, cannot\nbe split, and a user whose role may not open a claim cannot split one (the new claim is theirs to\nopen). CLAIM_SPLIT is written naming the original with its remaining amount and ending\ninto=<new number>, then CLAIM_OPENED for the new claim, then the rollup lines.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can be split: an amount on the claim (more than 0.00 and less than the claim's\namount) and a button. The claim keeps the rest of its amount and loses any figure a statement\nbound it to; a new OPEN claim with the split-off amount, the same date and note, the next number,\nopened by the signed-in user and with a due-by fixed now from the terms in force on the date, is\nlisted under the person. Both show the original's number as split-from (the new claim; the\noriginal shows nothing). A PENDING, deferred or settled claim, or one in a closed period, cannot\nbe split, and a user whose role may not open a claim cannot split one (the new claim is theirs to\nopen). CLAIM_SPLIT is written naming the original with its remaining amount and ending\ninto=<new number>, then CLAIM_OPENED for the new claim, then the rollup lines.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "fad97b2e5f5818c55e77ef8f81c09e544716a7ba",
+  "reset_sha": "",
+  "preagent_sha": "08a0c9391d234c5cf39804076e700e598621d810",
+  "prev_sha": "08a0c9391d234c5cf39804076e700e598621d810",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0251556,
+    "input_tokens": 40,
+    "output_tokens": 9755,
+    "cache_read_tokens": 1081518,
+    "cache_creation_tokens": 76699,
+    "num_turns": 22,
+    "duration_ms": 251388,
+    "duration_api_ms": 97008,
+    "model": "claude-opus-5-5",
+    "session_id": "2c2ba525-ce70-4e08-969a-5ff824ae8f6b",
+    "stop_reason": "success",
+    "result_text": "I've added claim splitting, and all 4 Playwright tests in `bin/e2e` pass: the split test and the three other scenarios in the spec.\n\n**How it works:** each claim row has a \"Split off\" amount field and a Split button. When a split goes through:\n- **Original claim:** its amount drops by the split-off amount, and it loses any figure a statement bound it to. Its \"split-from\" shows nothing.\n- **New claim:** it is OPEN with the split-off amount and the same date and note. It gets the next number, is opened by you, and its due-by is worked out now from the terms in force on its date. It appears first under the person and shows the original's number as split-from.\n- **Audit file:** `CLAIM_SPLIT \u2026 number=<original> into=<new number>` with the original's remaining amount, then `CLAIM_OPENED` for the new claim, then the usual ROLLUP/TOTALS lines.\n\n**When it's refused:** the row shows `claim-error` and nothing is saved or written to the audit file if:\n- the claim is not OPEN (draft, pending, settled or void),\n- it is deferred,\n- it is dated in a closed period,\n- the amount isn't above 0.00 and below the claim's amount, or\n- your role isn't allowed to open a claim.\n\nThe screen checks the amount before sending it, and the server checks it again.\n\n**Files changed:**\n- New migration `V41__claim_split_from.sql`, which adds a `split_from` column to `claim`.\n- `Claim.java`: the new field and a `splitOff` factory.\n- `ClaimService.split`: it locks the sheet first, the same way opening a claim does, so the number it takes is the next one.\n- New `SplitRefusedException`.\n- `ClaimController`: new `POST \u2026/claims/{id}/split` endpoint. Claims sent to the screen now include `splitFrom`.\n- `claims.ts`: the split field, the button and the `claim-split-from` cell.\n\n**Two things I decided myself:**\n- **Deferred claims:** I treat a claim as deferred only until its deferred-until date. After that date it can be split like any other OPEN claim, which matches how the app treats deferral elsewhere. The test doesn't cover deferred claims.\n- **Retired people:** splitting a claim of someone who has retired is not blocked, because the request didn't mention it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0251556,
+        "num_turns": 22,
+        "duration_ms": 251388,
+        "duration_api_ms": 97008,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp57.agent.jsonl",
+  "agent_diff_file": "cp57.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
