@@ -261,6 +261,7 @@ interface StatementTaken {
                   [policyDate]="settings.policyDate()"
                   [selectedIds]="selectedClaims()"
                   [people]="people()"
+                  [viewer]="viewer()"
                   (saved)="claimSaved($event)"
                   (moved)="claimMoved($event)"
                   (selectedChange)="selectClaim($event.id, $event.selected)"
@@ -372,6 +373,10 @@ export class People {
   protected readonly periods = inject(PeriodStore);
   protected readonly money = money;
   protected readonly settings = inject(SettingStore);
+  /** Whether the signed-in user is a viewer on the sheet. */
+  protected readonly viewer = computed(() =>
+    this.settings.roles().some((r) => r.user === this.session.user() && r.role === 'viewer'),
+  );
   /** The sheet's floor in cents in force on a date. */
   protected readonly floor = computed(() => {
     const floorOn = this.settings.floorOn();

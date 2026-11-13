@@ -18,6 +18,7 @@ import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,11 +43,12 @@ public class ClaimController {
      *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was
      *  added; log is its status log, oldest first, one line per status it has had; deferredUntil is
      *  the date it was deferred until (null when it never was); proofs is how many proofs were added
-     *  to it; splitFrom is the number of the claim it was split off (null when it was not). */
+     *  to it; splitFrom is the number of the claim it was split off (null when it was not); lockedBy is
+     *  the user whose open editor locks it (null when no one's does). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
-            LocalDate deferredUntil, int proofs, String splitFrom) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -54,7 +56,7 @@ public class ClaimController {
                     claim.getOpenedBy(), claim.isStated(),
                     claim.getStatedDue() != null ? claim.getStatedDue().toPlainString() : null,
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
-                    claim.getProofs(), claim.getSplitFrom());
+                    claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy());
         }
     }
 
@@ -153,6 +155,22 @@ public class ClaimController {
         String by = SignedInUser.decode(user);
         return view(sheet, rollups.track(sheet, by, () -> service.update(sheet, by, personId, id,
                 request.amount(), request.date(), request.note(), request.corrects())));
+    }
+
+    /** Open a claim's editor: lock the DRAFT claim to the user until they save or cancel it. */
+    @PostMapping("/people/{personId}/claims/{id}/lock")
+    public ClaimView lock(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.lock(sheet, SignedInUser.decode(user), personId, id));
+    }
+
+    /** Cancel a claim's editor: release the user's lock on it. */
+    @DeleteMapping("/people/{personId}/claims/{id}/lock")
+    public ClaimView unlock(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.unlock(sheet, SignedInUser.decode(user), personId, id));
     }
 
     /** Open a DRAFT claim. */
@@ -294,11 +312,12 @@ public class ClaimController {
      *  a deferral the claim does not allow, a proof added to a SETTLED or VOID claim, or settling or
      *  approving a claim above the proof threshold with no proofs, or a split the claim or amount does
      *  not allow, or a void of a SETTLED claim by anyone but a steward or after its void window, or a
-     *  re-date of a claim that is not OPEN or PENDING, is refused. */
+     *  re-date of a claim that is not OPEN or PENDING, or opening or saving the editor of a claim
+     *  another user's editor locks, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class,
-            SplitRefusedException.class, RedateRefusedException.class})
+            SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

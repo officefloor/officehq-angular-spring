@@ -105,6 +105,9 @@ public class ClaimService {
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ClaimNotEditableException(claim.getStatus());
         }
+        if (claim.lockedAgainst(user)) {
+            throw new ClaimLockedException(claim.getLockedBy());
+        }
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseClosed(sheetId, claim.getDate());
         refuseClosed(sheetId, on);
@@ -114,9 +117,51 @@ public class ClaimService {
         claim.setCorrects(corrects);
         claim.setDate(on);
         claim.setNote(noteOf(note));
+        claim.setLockedBy(null);
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_EDITED", sheetId, user, person, saved);
         return saved;
+    }
+
+    /** Open a claim's editor: lock the claim to the user until they save or cancel it, or the
+     *  sheet's today changes. A claim that is not a DRAFT, is dated in a closed period, or is locked
+     *  by another user's editor is refused and takes no lock. */
+    @Transactional
+    public Claim lock(String sheetId, String user, Long personId, Long id) {
+        person(sheetId, personId);
+        // Lock the sheet first, so two users opening the editor at the same moment take turns.
+        sheets.lock(sheetId);
+        Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
+                .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotEditableException(claim.getStatus());
+        }
+        refuseClosed(sheetId, claim.getDate());
+        if (claim.lockedAgainst(user)) {
+            throw new ClaimLockedException(claim.getLockedBy());
+        }
+        claim.setLockedBy(user);
+        return claims.saveAndFlush(claim);
+    }
+
+    /** Cancel a claim's editor: release the user's lock on it; a lock another user holds is kept. */
+    @Transactional
+    public Claim unlock(String sheetId, String user, Long personId, Long id) {
+        person(sheetId, personId);
+        sheets.lock(sheetId);
+        Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
+                .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
+        if (user.equals(claim.getLockedBy())) {
+            claim.setLockedBy(null);
+            claim = claims.saveAndFlush(claim);
+        }
+        return claim;
+    }
+
+    /** Release every editor's lock on the sheet's claims: the sheet's today changed. */
+    @Transactional
+    public void releaseLocks(String sheetId) {
+        claims.releaseLocks(sheetId);
     }
 
     /** Move a claim to a new status; a change its status does not allow, or one the sheet's

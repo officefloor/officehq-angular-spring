@@ -37,5 +37,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query(value = "UPDATE claim SET listed = NEXT VALUE FOR claim_listed_seq WHERE id = :id", nativeQuery = true)
     void relist(@Param("id") Long id);
 
+    /** Release every editor's lock on the sheet's claims. */
+    @Modifying(flushAutomatically = true)
+    @Query("update Claim c set c.lockedBy = null where c.sheetId = :sheetId and c.lockedBy is not null")
+    int releaseLocks(@Param("sheetId") String sheetId);
+
     Optional<Claim> findByIdAndSheetIdAndPersonId(Long id, String sheetId, Long personId);
 }
