@@ -1,0 +1,248 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9ce84d678..56cd365f5 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -184,6 +184,34 @@ interface StatementTaken {
+       @if (bulkSettleError(); as message) {
+         <p role="alert" data-testid="bulk-settle-error">{{ message }}</p>
+       }
++      <form (submit)="gradeSelected($event)" aria-label="Grade the selected people">
++        <label for="bulk-grade">Grade the selected people</label>
++        <select
++          id="bulk-grade"
++          data-testid="bulk-grade"
++          [value]="bulkGrade()"
++          (change)="bulkGrade.set(value($event)); bulkGradeError.set(null)"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="g === bulkGrade()">{{ g }}</option>
++          }
++        </select>
++        <label for="bulk-grade-from">From</label>
++        <input
++          type="date"
++          id="bulk-grade-from"
++          data-testid="bulk-grade-from"
++          [value]="bulkGradeFrom()"
++          (input)="bulkGradeFrom.set(value($event)); bulkGradeError.set(null)"
++        />
++        <button type="submit" data-testid="bulk-grade-apply">Grade selected people</button>
++        @if (bulkGraded() !== null) {
++          Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong>
++        }
++      </form>
++      @if (bulkGradeError(); as message) {
++        <p role="alert" data-testid="person-error">{{ message }}</p>
++      }
+       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
+       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+@@ -192,6 +220,7 @@ interface StatementTaken {
+       <table>
+         <thead>
+           <tr>
++            <th scope="col"><span class="visually-hidden">Select</span></th>
+             <th scope="col">Name</th>
+             <th scope="col">Grade</th>
+             <th scope="col">Terms</th>
+@@ -221,6 +250,15 @@ interface StatementTaken {
+         <tbody>
+           @for (p of shownPeople(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
++              <td>
++                <input
++                  type="checkbox"
++                  data-testid="person-select"
++                  [attr.aria-label]="'Select ' + p.name"
++                  [checked]="selectedPeople().has(p.id)"
++                  (change)="selectPerson(p.id, checked($event))"
++                />
++              </td>
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+@@ -602,6 +640,18 @@ export class People {
+   protected readonly bulkSettleError = signal<string | null>(null);
+   /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
+   private readonly bulkSettleBusy = signal(false);
++  /** The ids of the people selected to be given a grade together. */
++  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
++  /** The grade to give the selected people. */
++  protected readonly bulkGrade = signal('A');
++  /** The date the grade given to the selected people applies from; blank takes the sheet's today. */
++  protected readonly bulkGradeFrom = signal('');
++  /** How many people the last bulk grade changed; null while it runs or before one. */
++  protected readonly bulkGraded = signal<number | null>(null);
++  /** Why the last bulk grade could not be done; null when it was. */
++  protected readonly bulkGradeError = signal<string | null>(null);
++  /** Whether a bulk grade is waiting for its answer; a second press meanwhile is dropped. */
++  private readonly bulkGradeBusy = signal(false);
+   /** The date typed to take each person's statement as of (blank: now), by person id. */
+   protected readonly statementDates = signal<Record<number, string>>({});
+   /** The patron chosen on each person's row (a person id, or blank), by person id. */
+@@ -622,6 +672,11 @@ export class People {
+       this.bulkOpenError.set(null);
+       this.bulkSettleResult.set(null);
+       this.bulkSettleError.set(null);
++      this.selectedPeople.set(new Set());
++      this.bulkGrade.set('A');
++      this.bulkGradeFrom.set('');
++      this.bulkGraded.set(null);
++      this.bulkGradeError.set(null);
+       this.reset();
+       this.quickName.set('');
+       this.quickAmount.set('');
+@@ -939,6 +994,53 @@ export class People {
+     }
+   }
+ 
++  protected selectPerson(id: number, selected: boolean): void {
++    this.selectedPeople.update((ids) => {
++      const next = new Set(ids);
++      if (selected) next.add(id);
++      else next.delete(id);
++      return next;
++    });
++    this.bulkGradeError.set(null);
++  }
++
++  /** Give the selected people the chosen grade from the typed date (blank takes the sheet's today),
++   *  in list order, each as saving them from the editor would; the screen shows how many were changed. */
++  protected async gradeSelected(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.bulkGradeBusy()) return;
++    this.bulkGraded.set(null);
++    this.bulkGradeError.set(null);
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const personIds = [...this.selectedPeople()];
++    if (personIds.length === 0) {
++      this.bulkGradeError.set('Select the people to grade.');
++      return;
++    }
++    this.bulkGradeBusy.set(true);
++    try {
++      const graded = await firstValueFrom(
++        this.http.post<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people/grade`, {
++          personIds,
++          grade: this.bulkGrade(),
++          from: this.bulkGradeFrom().trim() || null,
++        }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      const saved = new Map(graded.map((p) => [p.id, p]));
++      this.people.update((list) => list.map((p) => saved.get(p.id) ?? p));
++      this.selectedPeople.set(new Set());
++      this.bulkGradeFrom.set('');
++      this.bulkGraded.set(graded.length);
++    } catch {
++      this.bulkGradeError.set('The selected people could not be given the grade.');
++    } finally {
++      this.bulkGradeBusy.set(false);
++    }
++  }
++
+   protected setStatementDate(personId: number, date: string): void {
+     this.statementDates.update((dates) => ({ ...dates, [personId]: date }));
+     if (this.rowError()?.id === personId) this.rowError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/person/BulkGradeService.java b/src/main/java/net/officefloor/hq/app/person/BulkGradeService.java
+new file mode 100644
+index 000000000..96b2cc612
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/BulkGradeService.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.person;
++
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.NoSuchElementException;
++import java.util.Set;
++import net.officefloor.hq.app.rollup.RollupService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Gives a selection of people a grade together. */
++@Service
++public class BulkGradeService {
++
++    private final PersonRepository people;
++    private final PersonService service;
++    private final RollupService rollups;
++
++    public BulkGradeService(PersonRepository people, PersonService service, RollupService rollups) {
++        this.people = people;
++        this.service = service;
++        this.rollups = rollups;
++    }
++
++    /** Give each selected person, in list order (the order they were added), the grade from a date
++     *  (null takes the sheet's today) exactly as saving them from the editor with their name and terms
++     *  unchanged would, each followed by the figures it moved. Refused as a whole, writing nothing,
++     *  when any selected person is not on the sheet. */
++    @Transactional
++    public List<Person> give(String sheetId, String user, Set<Long> ids, String grade, LocalDate from) {
++        List<Person> selected = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(person -> ids.contains(person.getId())).toList();
++        if (selected.size() != ids.size()) {
++            throw new NoSuchElementException("Not every selected person is on sheet " + sheetId);
++        }
++        List<Person> graded = new ArrayList<>();
++        for (Person person : selected) {
++            graded.add(rollups.track(sheetId, user, () -> service.update(sheetId, user, person.getId(),
++                    person.getVersion(), person.getName(), grade, from, person.getTerms())));
++        }
++        return graded;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 4fc5598ac..e907af690 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -88,6 +88,14 @@ public class PersonController {
+             @NotNull Long version) {
+     }
+ 
++    /** People selected to be given a grade together: a grade of A, B or C and the date it applies from
++     *  (blank takes the sheet's today). */
++    public record BulkGradeRequest(
++            @NotNull @Size(max = 10000) Set<@NotNull Long> personIds,
++            @NotNull @Pattern(regexp = "[ABC]") String grade,
++            LocalDate from) {
++    }
++
+     /** A retirement: the date the person is retired from (blank takes the sheet's today). */
+     public record RetireRequest(LocalDate from) {
+     }
+@@ -109,9 +117,11 @@ public class PersonController {
+     private final RollupService rollups;
+     private final PersonGradeService grades;
+     private final SheetService sheets;
++    private final BulkGradeService bulkGrade;
+ 
+     public PersonController(PersonService service, StatementService statements, RollupService rollups,
+-            PersonGradeService grades, SheetService sheets) {
++            PersonGradeService grades, SheetService sheets, BulkGradeService bulkGrade) {
++        this.bulkGrade = bulkGrade;
+         this.service = service;
+         this.statements = statements;
+         this.rollups = rollups;
+@@ -162,6 +172,17 @@ public class PersonController {
+                 request.name(), request.grade(), request.gradeFrom(), request.terms())), by);
+     }
+ 
++    /** Give the selected people a grade from a date, in list order, each as its editor would; the
++     *  people given it, in that order. */
++    @PostMapping("/grade")
++    public List<PersonView> grade(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkGradeRequest request) {
++        String sheet = sheetId.trim();
++        String by = SignedInUser.decode(user);
++        return bulkGrade.give(sheet, by, request.personIds(), request.grade(), request.from()).stream()
++                .map(person -> withStatements(person, by)).toList();
++    }
++
+     /** Retire a person from a date. */
+     @PostMapping("/{id}/retire")
+     public PersonView retire(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
