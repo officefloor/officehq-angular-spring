@@ -52,7 +52,7 @@ public class SettingController {
      *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
-            Map<String, List<DatedView>> dated, Map<String, String> permissions) {
+            Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -64,6 +64,18 @@ public class SettingController {
                     : v.getValue().toPlainString();
             return new DatedView(v.getFrom().toString(), value);
         }
+    }
+
+    /** A delegation of the steward role as the screen shows it: dates yyyy-mm-dd. */
+    public record DelegationView(String user, String from, String to, String by) {
+        static DelegationView of(Delegation d) {
+            return new DelegationView(d.getUser(), d.getFrom().toString(), d.getTo().toString(), d.getBy());
+        }
+    }
+
+    /** A delegation of the steward role to a user; a null from-date is the sheet's today, a null
+     *  to-date the from-date. */
+    public record DelegationRequest(@NotBlank @Size(max = 200) String user, LocalDate from, LocalDate to) {
     }
 
     /** A role for a user name: clerk or steward. */
@@ -135,6 +147,17 @@ public class SettingController {
         Role role = Role.of(request.role().trim())
                 .orElseThrow(() -> new IllegalArgumentException("No role " + request.role()));
         return RoleView.of(service.setRole(sheetId.trim(), SignedInUser.decode(user), request.user().trim(), role));
+    }
+
+    /** Delegate the steward role to a user; anyone but a steward, or a to-date before the from-date, is
+     *  refused. */
+    @PutMapping("/delegations")
+    public SettingsView delegate(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated DelegationRequest request) {
+        String sheet = sheetId.trim();
+        service.delegate(sheet, SignedInUser.decode(user), request.user().trim(), request.from(), request.to());
+        return view(sheet);
     }
 
     /** Change the sheet's clerk limit. */
@@ -274,11 +297,12 @@ public class SettingController {
                 cap != null ? cap.toPlainString() : null, service.terms(sheet, today),
                 service.latePct(sheet, today).toPlainString(), policyDate != null ? policyDate.toString() : "",
                 numberingFrom != null ? numberingFrom.toString() : "", service.graceDays(sheet), service.gradeTerms(sheet, today), dated,
-                service.permissions(sheet));
+                service.permissions(sheet), service.delegations(sheet).stream().map(DelegationView::of).toList());
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
-    @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class})
+    @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class,
+            DelegationRefusedException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
     }

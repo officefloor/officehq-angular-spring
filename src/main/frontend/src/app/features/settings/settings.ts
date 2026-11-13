@@ -11,6 +11,15 @@ export interface RoleView {
   role: string;
 }
 
+/** A steward's delegation of the steward role to a user, from-date to to-date inclusive (yyyy-mm-dd). */
+export interface DelegationView {
+  user: string;
+  from: string;
+  to: string;
+  /** The steward who delegated. */
+  by: string;
+}
+
 /** A value recorded for a dated setting, in force from its from-date (yyyy-mm-dd) until the next
  *  one's: two decimals, whole days for terms, null for no clerk limit, cap or proof threshold. */
 export interface DatedValue {
@@ -20,6 +29,8 @@ export interface DatedValue {
 
 interface SettingsView {
   roles: RoleView[];
+  /** The delegations of the steward role, in the order made. */
+  delegations: DelegationView[];
   /** The clerk limit (two decimals); null when there is none. */
   clerkLimit: string | null;
   /** The floor (two decimals): the least a claim's live due can be. */
@@ -98,6 +109,7 @@ export class SettingStore {
   private readonly session = inject(Session);
 
   readonly roles = signal<RoleView[]>([]);
+  readonly delegations = signal<DelegationView[]>([]);
   /** Every value recorded for the dated settings, by key. */
   readonly dated = signal<Record<string, DatedValue[]>>({});
   /** The clerk limit in force on the sheet's today; null when there is none. */
@@ -148,6 +160,7 @@ export class SettingStore {
       const sheet = this.session.sheetId();
       const load = this.session.loads();
       this.roles.set([]);
+      this.delegations.set([]);
       this.dated.set({});
       this.policyDate.set('');
       this.periodNumberingFrom.set('');
@@ -168,6 +181,19 @@ export class SettingStore {
     this.roles.update((list) =>
       [...list.filter((r) => r.user !== saved.user), saved].sort((a, b) => a.user.localeCompare(b.user)),
     );
+  }
+
+  /** Delegate the steward role to a user on the active sheet; blank dates take their defaults (the
+   *  sheet's today, the from-date). The server refuses anyone but a steward, and a to-date before the
+   *  from-date. */
+  async delegate(user: string, from: string | null, to: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/delegations`, { user, from, to }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
   }
 
   /** Record the active sheet's clerk limit from a date (null for the sheet's today); null records none. */
@@ -312,6 +338,7 @@ export class SettingStore {
 
   private show(settings: SettingsView): void {
     this.roles.set(settings.roles);
+    this.delegations.set(settings.delegations);
     this.dated.set(settings.dated);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
@@ -321,7 +348,8 @@ export class SettingStore {
 }
 
 // The sheet's settings: the role given each user name (clerk, the default, steward, or viewer, who
-// sees everything and can change nothing) and the
+// sees everything and can change nothing), the delegations of the steward role (a steward's, to a user
+// who acts as a steward while the sheet's today is from its from-date to its to-date) and the
 // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
 // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
 // in force on its date) cannot be settled or approved until the claim has a proof,
@@ -383,6 +411,42 @@ export class SettingStore {
           }
         </tbody>
       </table>
+
+      <h3 id="delegate-heading">Delegate the steward role</h3>
+      <form aria-labelledby="delegate-heading" (submit)="saveDelegation($event)">
+        <label for="delegate-user">User</label>
+        <input
+          id="delegate-user"
+          data-testid="delegate-user"
+          [value]="delegateUser()"
+          (input)="delegateUser.set(value($event)); delegateError.set(null)"
+        />
+        <label for="delegate-from">From</label>
+        <input
+          id="delegate-from"
+          data-testid="delegate-from"
+          placeholder="yyyy-mm-dd"
+          [value]="delegateFrom()"
+          (input)="delegateFrom.set(value($event)); delegateError.set(null)"
+        />
+        <label for="delegate-to">To</label>
+        <input
+          id="delegate-to"
+          data-testid="delegate-to"
+          placeholder="yyyy-mm-dd"
+          [value]="delegateTo()"
+          (input)="delegateTo.set(value($event)); delegateError.set(null)"
+        />
+        <button type="submit" data-testid="delegate-submit">Delegate</button>
+      </form>
+      @if (delegateError(); as message) {
+        <p role="alert" data-testid="delegate-error">{{ message }}</p>
+      }
+      <ul aria-labelledby="delegate-heading">
+        @for (d of store.delegations(); track $index) {
+          <li data-testid="delegate-line">{{ d.user }} acts as steward for {{ d.by }} from {{ d.from }} to {{ d.to }}</li>
+        }
+      </ul>
 
       <form (submit)="saveSettings($event)">
         <label for="setting-clerk-limit">Clerk limit</label>
@@ -631,6 +695,10 @@ export class Settings {
   protected readonly user = signal('');
   protected readonly role = signal('');
   protected readonly roleError = signal<string | null>(null);
+  protected readonly delegateUser = signal('');
+  protected readonly delegateFrom = signal('');
+  protected readonly delegateTo = signal('');
+  protected readonly delegateError = signal<string | null>(null);
   protected readonly clerkLimit = signal('');
   protected readonly clerkLimitTyped = signal(false);
   protected readonly clerkLimitFrom = signal('');
@@ -706,6 +774,35 @@ export class Settings {
       await this.store.setRole(user, role);
     } catch {
       this.roleError.set(`The role of ${user} could not be set.`);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** Delegate the steward role as typed; a blank from-date is the sheet's today, a blank to-date the
+   *  from-date. */
+  protected async saveDelegation(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy()) return;
+    this.delegateError.set(null);
+    const user = this.delegateUser().trim();
+    const from = this.delegateFrom().trim();
+    const to = this.delegateTo().trim();
+    if (!user) {
+      this.delegateError.set('Type the user name to delegate the steward role to.');
+      return;
+    }
+    if ((from && !DATE.test(from)) || (to && !DATE.test(to))) {
+      this.delegateError.set('Type the dates as yyyy-mm-dd.');
+      return;
+    }
+    this.busy.set(true);
+    try {
+      await this.store.delegate(user, from || null, to || null);
+    } catch {
+      this.delegateError.set(
+        `The steward role could not be delegated to ${user}: only a steward can delegate it, and the to-date cannot be before the from-date.`,
+      );
     } finally {
       this.busy.set(false);
     }
