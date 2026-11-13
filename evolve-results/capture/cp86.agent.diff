@@ -1,0 +1,98 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 6c48cccff..e15d5dc6a 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -353,6 +353,22 @@ const NUMBER = /^\S+$/;
+           <button type="button" data-testid="claim-edit" [attr.aria-label]="'Edit claim ' + c.id" (click)="edit(c)">
+             Edit
+           </button>
++          <label [for]="'claim-inline-amount-' + c.id">New amount</label>
++          <input
++            [id]="'claim-inline-amount-' + c.id"
++            data-testid="claim-inline-amount"
++            inputmode="decimal"
++            [value]="inlineAmounts()[c.id] ?? ''"
++            (input)="setInlineAmount(c.id, value($event))"
++          />
++          <button
++            type="button"
++            data-testid="claim-inline-save"
++            [attr.aria-label]="'Save the amount of claim ' + c.id"
++            (click)="saveInline(c)"
++          >
++            Save amount
++          </button>
+           @if (editingId() === c.id) {
+             <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
+           }
+@@ -418,6 +434,9 @@ export class PersonClaims {
+   /** The amount typed on each claim's row to split off it, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
+ 
++  /** The new amount typed on each claim's row to save in place, by claim id. */
++  protected readonly inlineAmounts = signal<Record<number, string>>({});
++
+   /** The person chosen on each claim's row to move it to, by claim id (a person id, or blank). */
+   protected readonly reassignTo = signal<Record<number, string>>({});
+   /** The people a claim of this person can move to: everyone else on the sheet. */
+@@ -663,6 +682,60 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected setInlineAmount(id: number, amount: string): void {
++    this.inlineAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
++    if (this.rowError()?.id === id) this.rowError.set(null);
++  }
++
++  /** Save the amount typed on a DRAFT claim's row, keeping its date, note and correction, by the
++   *  claim form's rules: an amount not in its form, a claim that cannot be edited, one another
++   *  user's editor locks, one due by a day in a closed period, or any claim by a viewer, is refused
++   *  on the row. */
++  protected async saveInline(claim: Claim): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const amount = (this.inlineAmounts()[claim.id] ?? '').trim();
++    if (!CLAIM_AMOUNT.test(amount)) {
++      this.rowError.set({ id: claim.id, message: 'Type an amount with up to two decimals.' });
++      return;
++    }
++    const negative = amount.startsWith('-') && Number(amount) !== 0;
++    if (negative !== (claim.corrects !== null)) {
++      this.rowError.set({
++        id: claim.id,
++        message: negative
++          ? 'A negative amount is a correction: only a correction takes one.'
++          : 'A correction keeps a negative amount.',
++      });
++      return;
++    }
++    const refused = this.editRefusal(claim);
++    if (refused !== null) {
++      this.rowError.set({ id: claim.id, message: refused });
++      return;
++    }
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}`;
++    try {
++      const saved = await firstValueFrom(
++        this.http.put<Claim>(url, { amount, date: claim.date, note: claim.note, corrects: claim.corrects }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      this.setInlineAmount(claim.id, '');
++      // The save released the user's own lock, so an editor left open on the claim closes.
++      if (this.editingId() === claim.id) this.reset();
++      this.saved.emit(saved);
++    } catch (e) {
++      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
++      this.rowError.set({
++        id: claim.id,
++        message: forbidden
++          ? 'The amount could not be saved: your role may not change this sheet.'
++          : 'The amount could not be saved: only a draft outside a closed period can be edited, and not while another user is editing it.',
++      });
++    }
++  }
++
+   protected setSplitAmount(id: number, amount: string): void {
+     this.splitAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
+     if (this.rowError()?.id === id) this.rowError.set(null);
