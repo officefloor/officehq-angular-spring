@@ -89,6 +89,15 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListOrderDesc(sheetId);
     }
 
+    /** The terms in force for a claim of the person created on the day: the person's own, else those of the
+     *  grade they had that day, else the sheet's, each as they stood that day. */
+    private int termsOn(String sheetId, Person person, LocalDate day) {
+        Integer own = person.termsOn(day);
+        return own != null ? own
+                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
+                        .termsFor(person.gradeOn(day), day);
+    }
+
     /** Add a claim; a negative amount (a correction) must name a SETTLED claim of the person by number,
      *  and a claim of 0.00 or more must name none. A reference (none: not given) already used on the sheet
      *  is refused. */
@@ -97,9 +106,7 @@ public class ClaimService {
             String corrects, String ref, List<String> tags) {
         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
-        Integer own = person.termsOn(on);
-        int terms = own != null ? own
-                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
+        int terms = termsOn(sheetId, person, sheets.today(sheetId));
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
@@ -727,10 +734,7 @@ public class ClaimService {
         claim.setAmount(claim.getAmount().subtract(part));
         claim.setStated(false, null);
         Claim kept = claims.saveAndFlush(claim);
-        Integer own = person.termsOn(claim.getDate());
-        int terms = own != null ? own
-                : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
-                        .termsFor(person.gradeOn(claim.getDate()), claim.getDate());
+        int terms = termsOn(sheetId, person, today);
         Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(),
                 holidays.businessDaysAfter(sheetId, claim.getDate(), terms),
                 claim.getNote(), null);
