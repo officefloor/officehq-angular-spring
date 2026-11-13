@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its cap, its proof threshold, its terms
- *  (and any grade's own terms) and its late percent, its policy date and its period numbering from. The
+ *  (and any grade's own terms) and its late percent, its policy date, its period numbering from and its grace days. The
  *  settings that carry a figure are dated: each value recorded is in force from its from-date. A claim's
  *  floor, late percent, terms and proof threshold are those in force on its date; the clerk limit and the cap those in
  *  force on the sheet's today. */
@@ -210,6 +210,11 @@ public class SettingService {
         return sheets.load(sheetId).getPeriodNumberingFrom();
     }
 
+    /** The sheet's grace days; null when they are blank (off). */
+    public Integer graceDays(String sheetId) {
+        return sheets.load(sheetId).getGraceDays();
+    }
+
     /** How a claim dated on the given date rounds: half up before the policy date, half to even on or
      *  after it. */
     public RoundingMode roundingOn(String sheetId, LocalDate date) {
@@ -314,6 +319,18 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=period-numbering-from value="
                 + (from != null ? from.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's grace days; null leaves them blank (off). */
+    @Transactional
+    public Sheet setGraceDays(String sheetId, String by, Integer days) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setGraceDays(days);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=grace-days value="
+                + (days != null ? days.toString() : ""));
         return saved;
     }
 }

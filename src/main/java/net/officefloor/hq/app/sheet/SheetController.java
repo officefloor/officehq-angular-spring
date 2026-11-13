@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -35,10 +36,12 @@ public class SheetController {
 
     private final SheetService service;
     private final RollupService rollups;
+    private final PeriodService periods;
 
-    public SheetController(SheetService service, RollupService rollups) {
+    public SheetController(SheetService service, RollupService rollups, PeriodService periods) {
         this.service = service;
         this.rollups = rollups;
+        this.periods = periods;
     }
 
     /** Load a sheet by id, starting it empty if it was never loaded before. */
@@ -47,13 +50,19 @@ public class SheetController {
         return SheetView.of(service.load(id.trim()));
     }
 
-    /** Change the sheet's today; the audit records only the figures it moved. */
+    /** Change the sheet's today, closing the periods past their grace days; the audit records only the
+     *  figures it moved. */
     @PutMapping("/{id}/today")
     public SheetView setToday(@PathVariable @NotBlank @Size(max = 200) String id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated TodayRequest request) {
         String sheet = id.trim();
-        return SheetView.of(rollups.track(sheet, SignedInUser.decode(user),
-                () -> service.setToday(sheet, request.today())));
+        String by = SignedInUser.decode(user);
+        return SheetView.of(rollups.track(sheet, by,
+                () -> {
+                    Sheet changed = service.setToday(sheet, request.today());
+                    periods.autoClose(sheet, by);
+                    return changed;
+                }));
     }
 
     /** A date that is not a real yyyy-mm-dd date is refused. */

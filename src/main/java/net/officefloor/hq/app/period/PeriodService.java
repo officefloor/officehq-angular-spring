@@ -2,6 +2,7 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,6 +91,29 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new PeriodClosedException("The period " + name + " is already closed");
         }
+        return closeFixing(sheetId, user, period, "");
+    }
+
+    /** Close, as a close by hand would, every open period whose to-date plus the sheet's grace days is
+     *  before the sheet's today, in order of their to-dates, each recorded with auto=yes; nothing when
+     *  the grace days are blank (off) or the user's role may not close. Made when the sheet's today is
+     *  changed, after it is set. */
+    @Transactional
+    public void autoClose(String sheetId, String user) {
+        sheets.lock(sheetId);
+        Integer grace = settings.graceDays(sheetId);
+        if (grace == null || !settings.allows(sheetId, user, Permission.CLOSE)) {
+            return;
+        }
+        LocalDate today = sheets.today(sheetId);
+        periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> !p.isClosed() && p.getTo().plusDays(grace).isBefore(today))
+                .sorted(Comparator.comparing(Period::getTo))
+                .forEach(p -> closeFixing(sheetId, user, p, " auto=yes"));
+    }
+
+    private Period closeFixing(String sheetId, String user, Period period, String suffix) {
+        String name = period.getName();
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
         Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
@@ -113,7 +137,7 @@ public class PeriodService {
         period.close(total, personTotals);
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
-                + " total=" + total.toPlainString());
+                + " total=" + total.toPlainString() + suffix);
         return saved;
     }
 

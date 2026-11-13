@@ -45,12 +45,13 @@ public class SettingController {
 
     /** The sheet's settings: the roles assigned, and as in force on the sheet's today the clerk limit (two decimals; null for none) and
      *  the floor (two decimals), the cap (two decimals; null for none), the terms (whole days), the late percent (two decimals) and the policy
-     *  date (blank for the sheet's today) and the period numbering from (blank for off), and the grades'
+     *  date (blank for the sheet's today) and the period numbering from (blank for off) and the grace days
+     *  (null for off), and the grades'
      *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
      *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold); and
      *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
-            String policyDate, String periodNumberingFrom, Map<String, Integer> gradeTerms,
+            String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated, Map<String, String> permissions) {
     }
 
@@ -104,6 +105,10 @@ public class SettingController {
 
     /** A period numbering from date; null leaves it blank (off). */
     public record PeriodNumberingFromRequest(LocalDate value) {
+    }
+
+    /** Grace days of 0 or more whole days; null leaves them blank (off). */
+    public record GraceDaysRequest(@Min(0) @Max(36500) Integer value) {
     }
 
     private final SettingService service;
@@ -246,6 +251,16 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's grace days; they close periods only when the sheet's today is changed. */
+    @PutMapping("/grace-days")
+    public SettingsView setGraceDays(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated GraceDaysRequest request) {
+        String sheet = sheetId.trim();
+        service.setGraceDays(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     private SettingsView view(String sheet) {
         LocalDate today = sheets.today(sheet);
         BigDecimal limit = service.clerkLimit(sheet);
@@ -258,7 +273,7 @@ public class SettingController {
                 limit != null ? limit.toPlainString() : null, service.floor(sheet, today).toPlainString(),
                 cap != null ? cap.toPlainString() : null, service.terms(sheet, today),
                 service.latePct(sheet, today).toPlainString(), policyDate != null ? policyDate.toString() : "",
-                numberingFrom != null ? numberingFrom.toString() : "", service.gradeTerms(sheet, today), dated,
+                numberingFrom != null ? numberingFrom.toString() : "", service.graceDays(sheet), service.gradeTerms(sheet, today), dated,
                 service.permissions(sheet));
     }
 
