@@ -1,0 +1,92 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index b31b8df8b..e921d5bb4 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -87,7 +87,7 @@ export function cents(amount: string): number {
+   return Math.round(Number(amount) * 100);
+ }
+ 
+-/** What a late charge works from: the sheet's late percent (two decimals) in force on a claim's date and its today; and what a claim's figures round by: the sheet's policy date (blank for its today). */
++/** What a late charge works from: the sheet's late percent (two decimals) in force on a date and its today; and what a claim's figures round by: the sheet's policy date (blank for its today). */
+ export interface Late {
+   pct: (date: string) => string;
+   today: string | null;
+@@ -113,8 +113,9 @@ function figureCents(claim: Claim, rates: Rate[], floor: (date: string) => numbe
+   return isCorrection(claim) ? due : Math.max(due, floor(claim.date));
+ }
+ 
+-/** A claim's due in cents: its figure plus its late charge, the late percent in force on its date of the figure for
+- *  every full 30 days an OPEN or PENDING claim is overdue, rounded like a due (a statement never binds the
++/** A claim's due in cents: its figure plus its late charge: for every full 30 days an OPEN or PENDING claim is
++ *  overdue, the late percent in force on that boundary (its due-by plus 30, 60, 90 ... days) of the figure,
++ *  rounded like a due, the charges added up (a statement never binds the
+  *  charge; settling freezes it into the settled due; a correction has none); null when it has no
+  *  figure. */
+ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string) => number, late: Late): number | null {
+@@ -122,7 +123,17 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
+   const figure = figureCents(claim, rates, floor, halfUp);
+   if (figure === null) return null;
+   const periods = isCorrection(claim) ? 0 : Math.floor(daysOverdue(claim, late) / 30);
+-  return periods > 0 ? figure + dueCents(figure * periods, late.pct(claim.date), halfUp) : figure;
++  let charge = 0;
++  for (let boundary = 1; boundary <= periods; boundary++) {
++    const pct = late.pct(plusDays(claim.dueBy, 30 * boundary));
++    if (cents(pct) !== 0) charge += dueCents(figure, pct, halfUp);
++  }
++  return figure + charge;
++}
++
++/** A date (yyyy-mm-dd) some days on. */
++function plusDays(date: string, days: number): string {
++  return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
+ }
+ 
+ /** How many days an OPEN or PENDING claim is past its due-by on the sheet's today; 0 when it is not overdue. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 22130cd1d..22378e8f4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -355,7 +355,7 @@ export class People {
+     const cap = this.settings.cap();
+     return cap === null ? null : cents(cap);
+   });
+-  /** What late charges work from: the sheet's late percent in force on a claim's date and today; and the policy date
++  /** What late charges work from: the sheet's late percent in force on a date and today; and the policy date
+    *  figures round by. */
+   private readonly late = computed<Late>(() => ({
+     pct: this.settings.latePctOn(),
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 840413921..43a2dadd0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -398,8 +398,10 @@ public class ClaimService {
+     }
+ 
+     /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by is
+-     *  before the sheet's today) or a correction, else the late percent of the figure for every full 30 days
+-     *  it is overdue (the late percent in force on the claim's date), rounded to two decimals as the claim's date decides (see roundingOf). Never bound by a statement: it follows the
++     *  before the sheet's today) or a correction, else the late percent of the figure for every 30-day
++     *  boundary it is overdue past (its due-by plus 30, 60, 90 ... days), the late percent in force on that
++     *  boundary date of the figure, rounded to two decimals as the claim's date decides (see roundingOf), the
++     *  charges added up. Never bound by a statement: it follows the
+      *  sheet's today. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
+      *  claim as if it were still OPEN. */
+     private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure, boolean open) {
+@@ -411,8 +413,15 @@ public class ClaimService {
+         if (days < 30) {
+             return none;
+         }
+-        return figure.multiply(settings.latePct(sheetId, claim.getDate())).multiply(BigDecimal.valueOf(days / 30))
+-                .movePointLeft(2).setScale(2, roundingOf(sheetId, claim));
++        RoundingMode rounding = roundingOf(sheetId, claim);
++        BigDecimal charge = none;
++        for (long boundary = 1; boundary <= days / 30; boundary++) {
++            BigDecimal pct = settings.latePct(sheetId, claim.getDueBy().plusDays(30 * boundary));
++            if (pct.signum() != 0) {
++                charge = charge.add(figure.multiply(pct).movePointLeft(2).setScale(2, rounding));
++            }
++        }
++        return charge;
+     }
+ 
+     /** The due on a claim at the rate in force on the claim's date for the person's grade in force
