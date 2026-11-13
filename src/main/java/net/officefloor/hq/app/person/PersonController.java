@@ -88,6 +88,14 @@ public class PersonController {
             @NotNull Long version) {
     }
 
+    /** People selected to be given a grade together: a grade of A, B or C and the date it applies from
+     *  (blank takes the sheet's today). */
+    public record BulkGradeRequest(
+            @NotNull @Size(max = 10000) Set<@NotNull Long> personIds,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {
+    }
+
     /** A retirement: the date the person is retired from (blank takes the sheet's today). */
     public record RetireRequest(LocalDate from) {
     }
@@ -109,9 +117,11 @@ public class PersonController {
     private final RollupService rollups;
     private final PersonGradeService grades;
     private final SheetService sheets;
+    private final BulkGradeService bulkGrade;
 
     public PersonController(PersonService service, StatementService statements, RollupService rollups,
-            PersonGradeService grades, SheetService sheets) {
+            PersonGradeService grades, SheetService sheets, BulkGradeService bulkGrade) {
+        this.bulkGrade = bulkGrade;
         this.service = service;
         this.statements = statements;
         this.rollups = rollups;
@@ -160,6 +170,17 @@ public class PersonController {
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
                 request.name(), request.grade(), request.gradeFrom(), request.terms())), by);
+    }
+
+    /** Give the selected people a grade from a date, in list order, each as its editor would; the
+     *  people given it, in that order. */
+    @PostMapping("/grade")
+    public List<PersonView> grade(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkGradeRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return bulkGrade.give(sheet, by, request.personIds(), request.grade(), request.from()).stream()
+                .map(person -> withStatements(person, by)).toList();
     }
 
     /** Retire a person from a date. */
