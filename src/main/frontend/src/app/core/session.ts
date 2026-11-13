@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 interface SheetView {
   id: string;
   today: string;
+  archived: boolean;
 }
 
 // Who is signed in (a typed name, no password) and which sheet is active. Everything else in the
@@ -18,6 +19,8 @@ export class Session {
   /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default date uses
    *  it, never the real clock. */
   readonly today = signal<string | null>(null);
+  /** Whether the active sheet is archived: everything stays visible and every change is refused. */
+  readonly archived = signal(false);
   /** Counts sheet loads, so features re-read their data even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -47,8 +50,19 @@ export class Session {
     if (this.sheetId() === sheet.id) this.show(sheet);
   }
 
+  /** Archive the active sheet (a steward only). */
+  async archive(): Promise<void> {
+    const id = this.sheetId();
+    if (!id) throw new Error('No sheet loaded.');
+    const sheet = await firstValueFrom(
+      this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null),
+    );
+    if (this.sheetId() === sheet.id) this.show(sheet);
+  }
+
   private show(sheet: SheetView): void {
     this.sheetId.set(sheet.id);
     this.today.set(sheet.today);
+    this.archived.set(sheet.archived);
   }
 }

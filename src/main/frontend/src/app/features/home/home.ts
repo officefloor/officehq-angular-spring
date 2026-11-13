@@ -38,6 +38,10 @@ import { People } from '../people/people';
           />
           <button type="submit" data-testid="sheet-today-save">Set today</button>
         </form>
+        <p>
+          Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
+          <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+        </p>
         @if (todayError(); as error) {
           <p role="alert" data-testid="sheet-error">{{ error }}</p>
         }
@@ -93,6 +97,15 @@ export class Home {
       await this.session.loadSheet(id);
     } catch {
       this.sheetError.set('The sheet could not be loaded.');
+    }
+  }
+
+  protected async archive(): Promise<void> {
+    this.todayError.set(null);
+    try {
+      await this.session.archive();
+    } catch {
+      this.todayError.set('The sheet could not be archived.');
     }
   }
 

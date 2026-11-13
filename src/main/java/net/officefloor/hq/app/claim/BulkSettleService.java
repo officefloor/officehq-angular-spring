@@ -8,6 +8,7 @@ import net.officefloor.hq.app.setting.SettingService;
 import java.util.Set;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 
 /** Settles a selection of claims together. */
@@ -23,12 +24,15 @@ public class BulkSettleService {
     private final ClaimService service;
     private final RollupService rollups;
     private final SettingService settings;
+    private final SheetService sheets;
 
-    public BulkSettleService(ClaimListOrder order, ClaimService service, RollupService rollups, SettingService settings) {
+    public BulkSettleService(ClaimListOrder order, ClaimService service, RollupService rollups, SettingService settings,
+            SheetService sheets) {
         this.order = order;
         this.service = service;
         this.rollups = rollups;
         this.settings = settings;
+        this.sheets = sheets;
     }
 
     /** Settle each selected claim that can be settled, in list order (people in the order they were
@@ -38,8 +42,8 @@ public class BulkSettleService {
      *  one writes nothing. */
     public Result settle(String sheetId, String user, Set<Long> ids) {
         List<Claim> settled = new ArrayList<>();
-        if (settings.isViewer(sheetId, user)) {
-            // A viewer changes nothing: every selected claim is refused.
+        if (settings.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+            // A viewer, or anyone on an archived sheet, changes nothing: every selected claim is refused.
             return new Result(settled, ids.size());
         }
         for (Claim claim : order.selected(sheetId, ids)) {

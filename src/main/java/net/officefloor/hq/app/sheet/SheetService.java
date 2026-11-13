@@ -2,6 +2,7 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import net.officefloor.hq.app.Audit;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,10 +13,12 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final Clock clock;
+    private final Audit audit;
 
-    public SheetService(SheetRepository sheets, Clock clock) {
+    public SheetService(SheetRepository sheets, Clock clock, Audit audit) {
         this.sheets = sheets;
         this.clock = clock;
+        this.audit = audit;
     }
 
     /** The sheet with this id, created empty when it was never loaded before. */
@@ -59,5 +62,24 @@ public class SheetService {
         Sheet sheet = load(id);
         sheet.setToday(today);
         return sheets.save(sheet);
+    }
+
+    /** Whether the sheet is archived: every change to it is then refused. */
+    public boolean isArchived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+    }
+
+    /** Archive the sheet; refused when it is archived already. */
+    @Transactional
+    public Sheet archive(String id, String by) {
+        load(id);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        if (sheet.isArchived()) {
+            throw new ArchiveRefusedException("the sheet is archived already");
+        }
+        sheet.archive();
+        Sheet saved = sheets.saveAndFlush(sheet);
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + id + " by=" + by);
+        return saved;
     }
 }
