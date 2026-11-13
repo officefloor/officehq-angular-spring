@@ -1,5 +1,6 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { Claim, Claims, bound, countsAt, isOpen, statusAt } from './claims';
+import { CrewView, Crews } from './crews';
 import { People, Person, gradeOn } from './people';
 import { Period, Periods } from './periods';
 import { NO_RATE, Rates, hundredths, money, rounded } from './rates';
@@ -23,6 +24,7 @@ function trimmed(figures: bigint[]): bigint {
 @Injectable({ providedIn: 'root' })
 export class Figures {
   private readonly claims = inject(Claims);
+  private readonly crews = inject(Crews);
   private readonly people = inject(People);
   private readonly periods = inject(Periods);
   private readonly rates = inject(Rates);
@@ -101,18 +103,46 @@ export class Figures {
     money(trimmed(this.people.people().map((p) => this.overdueCents(p)))),
   );
 
-  /** The signed-in user's own figures: the due-total (n/a when it has none) and overdue-total of the
-   *  person whose name or an alias is the user's name, compared as names are (trimmed, ignoring case);
-   *  null when no one on the sheet has it. */
-  readonly mine = computed(() => {
+  /** The person whose name or an alias is the signed-in user's name, compared as names are (trimmed,
+   *  ignoring case); undefined when no one on the sheet has it. */
+  private readonly me = computed(() => {
     const user = this.session.user()?.trim().toLowerCase();
-    if (!user) return null;
-    const p = this.people
+    if (!user) return undefined;
+    return this.people
       .people()
       .find((p) => p.name.trim().toLowerCase() === user || p.aliases.some((a) => a.trim().toLowerCase() === user));
+  });
+
+  /** The signed-in user's own figures: the due-total (n/a when it has none) and overdue-total of the
+   *  person with the user's name; null when no one on the sheet has it. */
+  readonly mine = computed(() => {
+    const p = this.me();
     if (!p) return null;
     const due = this.dueCents(p);
     return { dueTotal: due === null ? NO_RATE : money(due), overdueTotal: money(this.overdueCents(p)) };
+  });
+
+  /** A crew's due-total: the lead's and the members' due-totals as the people list shows them, added up,
+   *  n/a skipped. */
+  crewDueCents(c: CrewView): bigint {
+    const ids = new Set([c.lead.personId, ...c.members.map((m) => m.personId)]);
+    let sum = 0n;
+    for (const p of this.people.people()) {
+      if (!ids.has(p.id)) continue;
+      const d = this.dueCents(p);
+      if (d !== null) sum += d;
+    }
+    return sum;
+  }
+
+  /** The signed-in user's crew total: the due-totals of the crews the person with the user's name leads,
+   *  added up; null when there is no such person or they lead no crew. */
+  readonly myCrewDueTotal = computed(() => {
+    const p = this.me();
+    if (!p) return null;
+    const led = this.crews.crews().filter((c) => c.lead.personId === p.id);
+    if (led.length === 0) return null;
+    return money(led.reduce((sum, c) => sum + this.crewDueCents(c), 0n));
   });
 
   /** Each tag ever used on the sheet (on a claim or a person), sorted, with the due of the claims that

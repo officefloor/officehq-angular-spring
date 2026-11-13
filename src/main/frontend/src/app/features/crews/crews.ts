@@ -51,17 +51,7 @@ export class CrewRow {
   protected readonly saving = signal(false);
 
   /** The lead's and the members' due-totals added up, skipping those that are n/a. */
-  protected readonly dueTotal = computed(() => {
-    const c = this.crew();
-    const ids = new Set([c.lead.personId, ...c.members.map((m) => m.personId)]);
-    let sum = 0n;
-    for (const p of this.people.people()) {
-      if (!ids.has(p.id)) continue;
-      const d = this.figures.dueCents(p);
-      if (d !== null) sum += d;
-    }
-    return money(sum);
-  });
+  protected readonly dueTotal = computed(() => money(this.figures.crewDueCents(this.crew())));
 
   /** A person's name as the people list has it now; as the crew was read when they are not on it. */
   protected name(m: { personId: number; name: string }): string {
