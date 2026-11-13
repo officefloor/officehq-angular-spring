@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -235,6 +236,16 @@ public class PersonController {
                                 : snapshots.getOrDefault(p.getId(), List.of()).stream()
                                         .filter(s -> s.takenBy(asOf)).toList()))
                 .toList();
+    }
+
+    /** Compare two snapshot dates: one line per person in list order, `<name> <then> <now>` (no to-date
+     *  compares with now). */
+    @GetMapping("/snapshot-compare")
+    public List<String> compareSnapshots(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return service.compareSnapshots(sheetId.trim(), from, to);
     }
 
     /** Add a person to the sheet. */

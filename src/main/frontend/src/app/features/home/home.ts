@@ -37,6 +37,7 @@ import { CrewsPanel } from '../crews/crews';
 import { ImportRates } from '../rates/import-rates';
 import { RatesPanel } from '../rates/rates';
 import { SearchPanel } from '../search/search';
+import { SnapshotComparePanel } from '../snapshots/snapshot-compare';
 import { SettingsPanel } from '../settings/settings';
 import { SummaryPanel } from '../summary/summary';
 import { ClassicSummaryPanel } from '../summary/classic-summary';
@@ -46,7 +47,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   hostDirectives: [LocaleFigures],
-  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, DuplicatesPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SnapshotComparePanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -158,6 +159,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-classic-summary />
         <app-duplicates />
         <app-search />
+        <app-snapshot-compare />
         <app-audit />
         <app-activity />
       }

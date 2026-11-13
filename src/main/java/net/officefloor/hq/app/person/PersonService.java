@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -109,6 +110,38 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<PersonSnapshot> snapshotsOf(long personId) {
         return snapshots.findByPersonIdOrderByIdAsc(personId);
+    }
+
+    /** Compare two snapshot dates: one line per person in list order, `<name> <then> <now>`, then their
+     *  due-total in the snapshot written when the sheet's today moved on from the from-date and now that of
+     *  the to-date (their due-total now when there is no to-date); a figure is empty when there is no such
+     *  snapshot (n/a when the due-total was), and each line is trimmed. */
+    @Transactional(readOnly = true)
+    public List<String> compareSnapshots(String sheetId, LocalDate from, LocalDate to) {
+        Map<Long, List<PersonSnapshot>> bySheet = snapshots(sheetId);
+        List<String> lines = new ArrayList<>();
+        rollup.take(sheetId).people().forEach((personId, figures) -> {
+            List<PersonSnapshot> own = bySheet.getOrDefault(personId, List.of());
+            String then = snapshotFigure(own, from);
+            String now = to == null ? figure(figures.dueTotal()) : snapshotFigure(own, to);
+            lines.add((figures.name() + " " + then + " " + now).trim());
+        });
+        return lines;
+    }
+
+    /** The due-total of the latest snapshot of a day being left, empty when there is none. */
+    private static String snapshotFigure(List<PersonSnapshot> own, LocalDate day) {
+        PersonSnapshot found = null;
+        for (PersonSnapshot s : own) {
+            if (day != null && s.getDay().equals(day)) {
+                found = s;
+            }
+        }
+        return found == null ? "" : figure(found.getDueTotal());
+    }
+
+    private static String figure(BigDecimal value) {
+        return value == null ? "n/a" : value.toPlainString();
     }
 
     /** The sheet's patrons: each person's patrons' ids, by person id. */
