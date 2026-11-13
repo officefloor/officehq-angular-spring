@@ -40,8 +40,9 @@ public class Rollup {
 
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
-    /** A person's figures; a null due-total is n/a. */
-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /** A person's figures; a null due-total is n/a. Their score is the due of their settled claims that count
+     *  divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score) {
     }
 
     /** Everyone's figures by person id, in list order, and the sheet's totals. */
@@ -107,6 +108,8 @@ public class Rollup {
             BigDecimal claimed = ZERO;
             BigDecimal due = ZERO;
             BigDecimal overdue = ZERO;
+            BigDecimal settled = ZERO;
+            int overdueCount = 0;
             boolean keptFigure = false;
             for (Claim claim : sheetClaims) {
                 if (!claim.getPersonId().equals(person.getId()) || !countsClaimed(claim, person, today)) {
@@ -137,11 +140,19 @@ public class Rollup {
                     if (overdue(sheet, claim, person, today)) {
                         overdue = overdue.add(figure);
                     }
+                    if (claim.getStatus() == ClaimStatus.SETTLED) {
+                        settled = settled.add(figure);
+                    }
+                }
+                if (overdue(sheet, claim, person, today)) {
+                    overdueCount++;
                 }
             }
+            BigDecimal score = settled.subtract(BigDecimal.valueOf(500L * overdueCount))
+                    .movePointLeft(2).setScale(0, RoundingMode.HALF_EVEN);
             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
             BigDecimal personDue = rated || keptFigure ? capped(sheet, due) : null;
-            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue));
+            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, score));
             claimedTotal = claimedTotal.add(claimed);
             overdues.add(overdue);
             if (personDue != null) {
@@ -372,6 +383,13 @@ public class Rollup {
         String prefix = " sheet=" + sheetId + " by=" + user;
         snapshot.people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT" + prefix
                 + " name=" + figures.name() + " due-total=" + show(figures.dueTotal())));
+    }
+
+    /** Record, once the change commits, a SCORE line of each person's score in a snapshot, in the list order. */
+    public void recordScores(String sheetId, String user, Snapshot snapshot) {
+        String prefix = " sheet=" + sheetId + " by=" + user;
+        snapshot.people().values().forEach(figures -> audit.recordOnCommit("SCORE" + prefix
+                + " name=" + figures.name() + " score=" + figures.score().toPlainString()));
     }
 
     /** Record, once the change commits, a ROLLUP line of every person's figures in the list order, then the

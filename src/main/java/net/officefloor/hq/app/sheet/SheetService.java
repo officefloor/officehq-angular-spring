@@ -117,13 +117,17 @@ public class SheetService {
 
     /** Change the sheet's today, closing the periods past their grace days and recording the figures it
      *  moves; a new today first records a SNAPSHOT line of each person's due-total on the day being left, in
-     *  list order, keeps it as each person's snapshot line, and releases every claim's lock (their editors
+     *  list order (while the score log is on, a SCORE line of each person's score on that day before them),
+     *  keeps it as each person's snapshot line, and releases every claim's lock (their editors
      *  close). */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
         Rollup.Snapshot before = rollup.take(id);
         if (!today.equals(sheet.getToday())) {
+            if (sheet.isScoreLog()) {
+                rollup.recordScores(id, user, before);
+            }
             rollup.recordSnapshot(id, user, before);
             LocalDate left = sheet.getToday();
             before.people().forEach((personId, figures) -> snapshots.save(
@@ -310,6 +314,15 @@ public class SheetService {
         }
         audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=" + key + " value="
                 + (value == null ? "" : value.toString()));
+        return sheet;
+    }
+
+    /** Switch the sheet's score log on or off. Not dated. */
+    @Transactional
+    public Sheet setScoreLog(String id, String user, boolean on) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setScoreLog(on);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=score-log value=" + (on ? "on" : ""));
         return sheet;
     }
 

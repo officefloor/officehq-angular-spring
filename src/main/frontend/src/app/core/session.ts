@@ -47,6 +47,7 @@ export interface SheetView {
   /** The high score threshold: with the mid one set, a person scoring at or above it is HIGH; null for no
    *  bands. */
   scoreHigh: number | null;
+  scoreLog: boolean;
   /** The review SLA: a REVIEW claim whose review day plus these many days is before the sheet's today is
    *  late for review; null when none. */
   reviewSla: number | null;
@@ -235,6 +236,7 @@ export class Session {
   readonly scoreMid = signal<number | null>(null);
   /** The sheet's high score threshold; null for no bands. Not dated. */
   readonly scoreHigh = signal<number | null>(null);
+  readonly scoreLog = signal(false);
   /** The sheet's review SLA in days; null when none. */
   readonly reviewSla = signal<number | null>(null);
   /** The sheet's proof kinds, comma separated; null when none. */
@@ -320,6 +322,7 @@ export class Session {
       this.escalateAfter.set(sheet.escalateAfter);
       this.scoreMid.set(sheet.scoreMid);
       this.scoreHigh.set(sheet.scoreHigh);
+      this.scoreLog.set(sheet.scoreLog);
       this.reviewSla.set(sheet.reviewSla);
       this.proofKinds.set(sheet.proofKinds);
       this.defaultGrade.set(sheet.defaultGrade);
@@ -843,6 +846,25 @@ export class Session {
         this.scoreMid.set(sheet.scoreMid);
         this.scoreHigh.set(sheet.scoreHigh);
       }
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Switch the sheet's score log on ("on") or off (blank); an error message when refused. */
+  async setScoreLog(value: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const v = value.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (v !== '' && v !== 'on') return 'Enter on to switch the score log on, or leave it blank for off.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/score-log`,
+          { value: v }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.scoreLog.set(sheet.scoreLog);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

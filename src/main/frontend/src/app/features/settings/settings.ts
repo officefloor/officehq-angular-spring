@@ -356,6 +356,17 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="scoreHighTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' }}</strong></p>
+        <label for="setting-score-log">Score log (on: changing the sheet's today logs each person's score; blank for off)</label>
+        <input
+          id="setting-score-log"
+          data-testid="setting-score-log"
+          [value]="scoreLog()"
+          (input)="scoreLog.set(value($event)); scoreLogTouched.set(true); error.set(null)"
+          (focus)="focused.set('score-log')"
+          (keydown.delete)="scoreLogTouched.set(true); error.set(null)"
+          (keydown.backspace)="scoreLogTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-score-log-current">{{ session.scoreLog() ? 'on' : '' }}</strong></p>
         <label for="setting-review-sla">Review SLA (a REVIEW claim not reviewed within this many days of going to REVIEW is late; blank for none)</label>
         <input
           id="setting-review-sla"
@@ -578,6 +589,8 @@ export class SettingsPanel {
   protected readonly scoreMidTouched = signal(false);
   protected readonly scoreHigh = signal('');
   protected readonly scoreHighTouched = signal(false);
+  protected readonly scoreLog = signal('');
+  protected readonly scoreLogTouched = signal(false);
   protected readonly reviewSla = signal('');
   protected readonly reviewSlaTouched = signal(false);
   protected readonly proofKinds = signal('');
@@ -686,7 +699,7 @@ export class SettingsPanel {
         && !this.noteThresholdTouched() && !this.reviewThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
-        && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.scoreMidTouched() && !this.scoreHighTouched() && !this.reviewSlaTouched() && !this.proofKindsTouched() && !this.defaultGradeTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
+        && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.scoreMidTouched() && !this.scoreHighTouched() && !this.scoreLogTouched() && !this.reviewSlaTouched() && !this.proofKindsTouched() && !this.defaultGradeTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
         && !this.fiscalStartMonthTouched() && !this.alertThresholdTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
         && this.gradeProofThresholdTouched().size === 0 && this.gradeClerkLimitTouched().size === 0
@@ -725,6 +738,8 @@ export class SettingsPanel {
         || (guess && this.scoreMid().trim() !== (this.session.scoreMid()?.toString() ?? ''));
       const scoreHigh = this.scoreHighTouched() || pick === 'score-high'
         || (guess && this.scoreHigh().trim() !== (this.session.scoreHigh()?.toString() ?? ''));
+      const scoreLog = this.scoreLogTouched() || pick === 'score-log'
+        || (guess && this.scoreLog().trim() !== (this.session.scoreLog() ? 'on' : ''));
       const reviewSla = this.reviewSlaTouched() || pick === 'review-sla'
         || (guess && this.reviewSla().trim() !== (this.session.reviewSla()?.toString() ?? ''));
       const proofKinds = this.proofKindsTouched() || pick === 'proof-kinds'
@@ -741,7 +756,7 @@ export class SettingsPanel {
         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
       const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
-        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter && !scoreMid && !scoreHigh && !reviewSla && !proofKinds && !defaultGrade
+        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter && !scoreMid && !scoreHigh && !scoreLog && !reviewSla && !proofKinds && !defaultGrade
           && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth && !limitGrade)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
@@ -770,6 +785,7 @@ export class SettingsPanel {
         ?? (escalateAfter ? await this.session.setEscalateAfter(this.escalateAfter()) : null)
         ?? (scoreMid ? await this.session.setScoreThreshold('score-mid', this.scoreMid()) : null)
         ?? (scoreHigh ? await this.session.setScoreThreshold('score-high', this.scoreHigh()) : null)
+        ?? (scoreLog ? await this.session.setScoreLog(this.scoreLog()) : null)
         ?? (reviewSla ? await this.session.setReviewSla(this.reviewSla()) : null)
         ?? (proofKinds ? await this.session.setProofKinds(this.proofKinds()) : null)
         ?? (defaultGrade ? await this.session.setDefaultGrade(this.defaultGrade()) : null)
@@ -821,6 +837,8 @@ export class SettingsPanel {
         this.scoreMidTouched.set(false);
         this.scoreHigh.set('');
         this.scoreHighTouched.set(false);
+        this.scoreLog.set('');
+        this.scoreLogTouched.set(false);
         this.reviewSla.set('');
         this.reviewSlaTouched.set(false);
         this.proofKinds.set('');

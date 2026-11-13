@@ -121,6 +121,11 @@ public class Sheet {
     @Column(name = "score_high")
     private Integer scoreHigh;
 
+    /** The score log switch: while on, changing the sheet's today records each person's score on the day
+     *  being left. Not dated. */
+    @Column(name = "score_log")
+    private boolean scoreLog;
+
     /** The review SLA: a REVIEW claim whose review day (the sheet's today when it went to REVIEW) plus these
      *  many days is before the sheet's today is late for review; none means none. Not dated. */
     @Column(name = "review_sla")
@@ -478,6 +483,14 @@ public class Sheet {
 
     public void setScoreHigh(Integer scoreHigh) {
         this.scoreHigh = scoreHigh;
+    }
+
+    public boolean isScoreLog() {
+        return scoreLog;
+    }
+
+    public void setScoreLog(boolean scoreLog) {
+        this.scoreLog = scoreLog;
     }
 
     public Integer getReviewSla() {
