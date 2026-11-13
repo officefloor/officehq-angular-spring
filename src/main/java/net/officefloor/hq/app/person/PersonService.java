@@ -472,7 +472,11 @@ public class PersonService {
      *  are not carried. They leave this sheet entirely: their patron links, pool memberships, watches,
      *  statements, holds and fixed period figures are dropped. Refused for anyone but a steward, a retired
      *  person, this sheet's own id, an archived sheet, and when their name, an alias or their contact is already
-     *  on the other sheet or their name or an alias on another sheet of its tree; a sheet never loaded is started. Answers the person as they arrived. */
+     *  on the other sheet or their name or an alias on another sheet of its tree; a sheet never loaded is started.
+     *  When their name or an alias is, ignoring case, that of one person on the other sheet, they are instead
+     *  merged into that person there exactly as a merge would (claims listed after theirs, names joining their
+     *  aliases, contact dropped); refused when it is that of more than one, or that person is retired. Answers
+     *  the person as they arrived, or whom they were merged into. */
     @Transactional
     public Person transfer(String sheetId, String user, long personId, String toSheetId) {
         Person from = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
@@ -497,20 +501,35 @@ public class PersonService {
         List<String> names = new ArrayList<>();
         names.add(from.getName());
         names.addAll(from.getAliases());
+        // someone there with one of their names or aliases is whom they merge into
+        Map<Long, Person> matched = new LinkedHashMap<>();
         for (String name : names) {
-            if (people.nameTaken(to, name, null)
+            people.findByNameOrAlias(to, name).ifPresent(p -> matched.putIfAbsent(p.getId(), p));
+        }
+        if (matched.size() > 1) {
+            throw new TransferRefusedException("The names of " + from.getName() + " belong to more than one person"
+                    + " on sheet " + to + ".");
+        }
+        Person into = matched.values().stream().findFirst().orElse(null);
+        if (into != null && into.isRetired()) {
+            throw new TransferRefusedException(into.getName() + " on sheet " + to + " is retired, so "
+                    + from.getName() + " cannot be merged into them.");
+        }
+        for (String name : names) {
+            if ((into == null && people.nameTaken(to, name, null))
                     || namesInTree(to, from.getId()).contains(name.toLowerCase(Locale.ROOT))) {
                 throw new TransferRefusedException("The name " + name + " is already in use on sheet " + to + ".");
             }
         }
-        if (from.getContact() != null && people.contactTaken(to, from.getContact(), null)) {
+        // a merged person's contact is dropped, as a merge drops it
+        if (into == null && from.getContact() != null && people.contactTaken(to, from.getContact(), null)) {
             throw new TransferRefusedException("The contact " + from.getContact() + " is already in use on sheet "
                     + to + ".");
         }
 
         Rollup.Snapshot beforeHere = rollup.take(sheetId);
         Rollup.Snapshot beforeThere = rollup.take(to);
-        Person arrived = saved(from.copyTo(to));
+        Person arrived = into != null ? into : saved(from.copyTo(to));
         List<Claim> leaving = new ArrayList<>(
                 claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, from.getId()));
         List<Claim> listed = new ArrayList<>(leaving);
@@ -558,12 +577,20 @@ public class PersonService {
         people.flush();
         people.delete(from);
         people.flush();
+        if (into != null) {
+            names.forEach(into::addAlias);
+            arrived = people.saveAndFlush(into);
+        }
 
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + from.getName()
                 + " to=" + to);
         rollup.recordChanges(sheetId, user, beforeHere);
-        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + to + " by=" + user + " name=" + arrived.getName()
+        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + to + " by=" + user + " name=" + from.getName()
                 + " from=" + sheetId);
+        if (into != null) {
+            audit.recordOnCommit("PERSON_MERGED sheet=" + to + " by=" + user + " from=" + from.getName()
+                    + " into=" + arrived.getName());
+        }
         rollup.recordChanges(to, user, beforeThere);
         return arrived;
     }

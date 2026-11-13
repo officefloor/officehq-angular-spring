@@ -23,12 +23,21 @@ public class PersonAlias {
     @Column(name = "alias", nullable = false)
     private String alias;
 
+    /** Which of the person's aliases that compare equal this is: 0 for the first. */
+    @Column(name = "alias_copy", nullable = false)
+    private int aliasCopy;
+
     protected PersonAlias() {
     }
 
     PersonAlias(String sheetId, String alias) {
+        this(sheetId, alias, 0);
+    }
+
+    PersonAlias(String sheetId, String alias, int aliasCopy) {
         this.sheetId = sheetId;
         this.alias = alias;
+        this.aliasCopy = aliasCopy;
     }
 
     public Long getId() {
@@ -41,5 +50,9 @@ public class PersonAlias {
 
     public String getAlias() {
         return alias;
+    }
+
+    public int getAliasCopy() {
+        return aliasCopy;
     }
 }

@@ -227,7 +227,10 @@ public class Person {
 
     /** Give them another name they go by, stored trimmed. */
     public void addAlias(String alias) {
-        aliases.add(new PersonAlias(sheetId, alias.trim()));
+        String trimmed = alias.trim();
+        String key = trimmed.toLowerCase(Locale.ROOT);
+        int copy = (int) aliases.stream().filter(a -> a.getAlias().toLowerCase(Locale.ROOT).equals(key)).count();
+        aliases.add(new PersonAlias(sheetId, trimmed, copy));
     }
 
     /** A copy of them for another sheet: every grade they were given (with its from-date), their terms,
@@ -240,7 +243,7 @@ public class Person {
         copy.terms = terms;
         copy.contact = contact;
         copy.originSheet = sheetId;
-        aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias())));
+        aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias(), a.getAliasCopy())));
         return copy;
     }
 
