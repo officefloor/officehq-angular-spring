@@ -76,6 +76,10 @@ public class ClaimController {
     public record RejectRequest(@NotBlank @Size(max = 500) String reason) {
     }
 
+    /** The new date of an OPEN or PENDING claim. */
+    public record RedateRequest(@NotNull LocalDate date) {
+    }
+
     /** The amount split off an OPEN claim. */
     public record SplitRequest(@NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount) {
     }
@@ -235,6 +239,16 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.defer(sheet, by, personId, id, request.until())));
     }
 
+    /** Re-date an OPEN or PENDING claim: a steward only. */
+    @PostMapping("/people/{personId}/claims/{id}/redate")
+    public ClaimView redate(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated RedateRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.redate(sheet, by, personId, id, request.date())));
+    }
+
     /** Split an amount off an OPEN claim into a new OPEN claim. */
     @PostMapping("/people/{personId}/claims/{id}/split")
     @ResponseStatus(HttpStatus.CREATED)
@@ -279,20 +293,21 @@ public class ClaimController {
      *  correction that does not name a SETTLED claim of its person, a move the claim does not allow,
      *  a deferral the claim does not allow, a proof added to a SETTLED or VOID claim, or settling or
      *  approving a claim above the proof threshold with no proofs, or a split the claim or amount does
-     *  not allow, or a void of a SETTLED claim by anyone but a steward or after its void window, is refused. */
+     *  not allow, or a void of a SETTLED claim by anyone but a steward or after its void window, or a
+     *  re-date of a claim that is not OPEN or PENDING, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class,
-            SplitRefusedException.class})
+            SplitRefusedException.class, RedateRefusedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }
 
     /** The user who opened a claim cannot settle or approve it, only a steward approves or rejects a
-     *  PENDING claim or re-settles a SETTLED one, and only a role the sheet's permission matrix allows
+     *  PENDING claim, re-settles a SETTLED one or re-dates a claim, and only a role the sheet's permission matrix allows
      *  opens, settles, voids or moves a claim to another person. */
     @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class,
-            ResettleRefusedException.class, PermissionRefusedException.class})
+            ResettleRefusedException.class, PermissionRefusedException.class, RedateForbiddenException.class})
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public void ownClaim() {
     }

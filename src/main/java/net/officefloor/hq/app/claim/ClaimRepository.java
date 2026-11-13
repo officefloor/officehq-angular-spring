@@ -22,6 +22,16 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("select c.number from Claim c where c.sheetId = :sheetId and c.number is not null")
     List<String> numbers(@Param("sheetId") String sheetId);
 
+    /** The numbers given up on the sheet by re-dated claims: never given again. */
+    @Query(value = "SELECT claim_number FROM retired_claim_number WHERE sheet_id = :sheetId", nativeQuery = true)
+    List<String> retiredNumbers(@Param("sheetId") String sheetId);
+
+    /** Give up a claim number on the sheet for good. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = "MERGE INTO retired_claim_number (sheet_id, claim_number) KEY (sheet_id, claim_number) VALUES (:sheetId, :number)",
+            nativeQuery = true)
+    void retireNumber(@Param("sheetId") String sheetId, @Param("number") String number);
+
     /** List a claim anew: it becomes the newest under its person. */
     @Modifying(flushAutomatically = true)
     @Query(value = "UPDATE claim SET listed = NEXT VALUE FOR claim_listed_seq WHERE id = :id", nativeQuery = true)

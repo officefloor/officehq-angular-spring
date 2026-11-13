@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.NoSuchElementException;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
@@ -362,6 +363,41 @@ public class ClaimService {
         return saved;
     }
 
+    /** A steward re-dates an OPEN or PENDING claim. Its due-by stays as it was fixed and any figure a
+     *  statement bound it to stays bound; its period follows the new date, and under period numbering
+     *  a claim whose period changes takes the next number of its new period, its old number never
+     *  given again. Anyone but a steward, a claim that is not OPEN or PENDING, a claim dated in a
+     *  closed period or a new date inside one, or a new date after its person's retirement, is refused. */
+    @Transactional
+    public Claim redate(String sheetId, String user, Long personId, Long id, LocalDate date) {
+        Person person = person(sheetId, personId);
+        // Lock the sheet first, as opening does: the claim may take the next number.
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, personId, id);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new RedateForbiddenException(user);
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new RedateRefusedException("A " + claim.getStatus() + " claim cannot be re-dated");
+        }
+        refuseClosed(sheetId, claim.getDate());
+        refuseClosed(sheetId, date);
+        refuseRetired(person, date);
+        LocalDate old = claim.getDate();
+        if (periodNumbering(sheetId) && !periodPrefixOf(sheetId, old).equals(periodPrefixOf(sheetId, date))) {
+            String was = claim.getNumber();
+            claim.setNumber(nextNumber(sheetId, date));
+            if (was != null) {
+                claims.retireNumber(sheetId, was);
+            }
+        }
+        claim.setDate(date);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(line("CLAIM_REDATED", sheetId, user, person, saved, saved.getNumber())
+                + " old=" + old + " new=" + date);
+        return saved;
+    }
+
     /** A claim's status log, oldest first: one line per status it has had. */
     public List<String> logOf(Long claimId) {
         return logs.findByClaimIdOrderByIdAsc(claimId).stream().map(ClaimLogEntry::text).toList();
@@ -437,20 +473,30 @@ public class ClaimService {
      *  after it) the next within the period its date falls in, <period>-<n>, or X-<n> when it falls
      *  in none; otherwise the sheet's next sheet-wide number. Taken with the sheet locked. */
     private String nextNumber(String sheetId, LocalDate date) {
-        LocalDate from = settings.periodNumberingFrom(sheetId);
-        if (from == null || sheets.today(sheetId).isBefore(from)) {
+        if (!periodNumbering(sheetId)) {
             return String.valueOf(sheets.nextClaimNumber(sheetId));
         }
-        String prefix = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
-                .filter(period -> period.contains(date))
-                .findFirst().map(Period::getName).orElse(NO_PERIOD) + "-";
-        long last = claims.numbers(sheetId).stream()
+        String prefix = periodPrefixOf(sheetId, date);
+        long last = Stream.concat(claims.numbers(sheetId).stream(), claims.retiredNumbers(sheetId).stream())
                 .filter(number -> number.startsWith(prefix))
                 .map(number -> number.substring(prefix.length()))
                 .filter(n -> n.matches("\\d{1,18}"))
                 .mapToLong(Long::parseLong)
                 .max().orElse(0);
         return prefix + (last + 1);
+    }
+
+    /** Whether period numbering is on: set, and the sheet's today on or after it. */
+    private boolean periodNumbering(String sheetId) {
+        LocalDate from = settings.periodNumberingFrom(sheetId);
+        return from != null && !sheets.today(sheetId).isBefore(from);
+    }
+
+    /** The prefix a period number of a claim dated on a date takes: <period>- or X-. */
+    private String periodPrefixOf(String sheetId, LocalDate date) {
+        return periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(period -> period.contains(date))
+                .findFirst().map(Period::getName).orElse(NO_PERIOD) + "-";
     }
 
     /** The figure a claim shows: the due fixed when it was settled, else (unless it is PENDING, which
