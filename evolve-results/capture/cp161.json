@@ -1,0 +1,64 @@
+{
+  "checkpoint": 161,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp161_as-of-exports",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people, claims and pools exports taken while an as-of date is set use the as-of figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people, claims and pools exports taken while an as-of date is set use the as-of figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8bed9e1bc77b8f8b26267a8755a586df4b07021c",
+  "reset_sha": "",
+  "preagent_sha": "fdd0a90679187497205ef094fc23e55451d75ab4",
+  "prev_sha": "fdd0a90679187497205ef094fc23e55451d75ab4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2296106,
+    "input_tokens": 56,
+    "output_tokens": 12497,
+    "cache_read_tokens": 1585913,
+    "cache_creation_tokens": 82783,
+    "num_turns": 29,
+    "duration_ms": 921868,
+    "duration_api_ms": 132717,
+    "model": "claude-opus-5-5",
+    "session_id": "1a313557-8d4d-4688-9d7e-03ad5bf3e9b1",
+    "stop_reason": "success",
+    "result_text": "The people, claims and pools exports now use the as-of figures while an as-of date is set. `bin/e2e` passes all 4 tests; the first run, before any change, failed 2 of them.\n\n**What was wrong:**\n\n1. **The exports could run on stale data.** Setting or clearing the as-of date shows the new date straight away, but the sheet is re-read from the server afterwards. An export pressed in that gap still used the old figures. The test hit this and got Ben as retired and Ada's due as 2.00 instead of 1.00.\n   - The session now keeps track of the sheet re-read that is running (`trackLoad` / `loaded()` in `core/session.ts`), and `home.ts` registers each re-read with it.\n   - The three exports in `features/people/people.ts` and `features/pools/pools.ts` wait for that re-read to finish before building the CSV.\n2. **The as-of pools view used today's pot.** It now uses the pot as it stood on the as-of date (`PoolController.list`). Pool memberships themselves have no stored history, so they are still today's.\n\n**One change outside the request.** Scenario 3 also failed before I touched anything, on a statement of a retired person. Ada's claims had already been bound by an earlier statement, so the on-screen totals kept counting them. But a new statement dropped them, recording `due-total=0.00 claims=0` where the test expects `3.13 claims=3`.\n\nI changed `ClaimService.statement` to use the same rule as the on-screen totals (`Rollup.heldOut`): open claims are only left out for a hold or retirement if no earlier statement has bound them. This also applies to holds, not just retirement \u2014 a bound claim dated within a hold now stays bound when a new statement is taken. That's a behaviour change beyond the exports, so check it's what you want.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2296106,
+        "num_turns": 29,
+        "duration_ms": 921868,
+        "duration_api_ms": 132717,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp161.agent.jsonl",
+  "agent_diff_file": "cp161.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

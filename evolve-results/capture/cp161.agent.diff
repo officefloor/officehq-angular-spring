@@ -1,0 +1,169 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 6ce0e0837..f25e7fc06 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -199,6 +199,25 @@ export class Session {
+    *  the screen shows the sheet as it is. Kept for this screen only, across sheet loads. */
+   readonly asOf = signal<string | null>(null);
+ 
++  /** The sheet load running now (resolved when none): what reads the loaded rows at once, an export, waits
++   *  for it, so a load started by setting or clearing the as-of date is not read half done. */
++  private loading: Promise<unknown> = Promise.resolve();
++
++  /** Keep this load as the one running now, and hand it back. */
++  trackLoad<T>(load: Promise<T>): Promise<T> {
++    this.loading = load.catch(() => null);
++    return load;
++  }
++
++  /** Once the sheet load running now, if any, is done. */
++  async loaded(): Promise<void> {
++    let was: Promise<unknown>;
++    do {
++      was = this.loading;
++      await was;
++    } while (was !== this.loading);
++  }
++
+   signIn(name: string): boolean {
+     const n = name.trim();
+     if (!n) return false;
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index f6d25cacd..ac1fed961 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -240,11 +240,12 @@ export class Home {
+   }
+ 
+   /** Load a sheet and everything on it, as of the screen's as-of date while one is set. */
+-  private async loadSheet(id: string): Promise<string | null> {
+-    return (
+-      (await this.session.loadSheet(id)) ??
+-      (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
+-      null
++  private loadSheet(id: string): Promise<string | null> {
++    return this.session.trackLoad(
++      (async () =>
++        (await this.session.loadSheet(id)) ??
++        (await Promise.all([this.userLocale.load(), this.userColumns.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
++        null)(),
+     );
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e64960650..f89c889d6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -5,6 +5,7 @@ import { Figures } from '../../core/figures';
+ import { GRADES, People, Person } from '../../core/people';
+ import { Periods } from '../../core/periods';
+ import { Pools } from '../../core/pools';
++import { Session } from '../../core/session';
+ import { COLUMNS, ColumnKey, UserColumns } from '../../core/user-columns';
+ import { NO_RATE, halfEven, money } from '../../core/rates';
+ import { PersonClaims } from '../claims/claims';
+@@ -554,6 +555,7 @@ export class PeopleList {
+   protected readonly money = money;
+   protected readonly periods = inject(Periods);
+   private readonly pools = inject(Pools);
++  private readonly session = inject(Session);
+   protected readonly userColumns = inject(UserColumns);
+   protected readonly columnKeys = COLUMNS;
+   /** The last refused switch of a column, until the next switch. */
+@@ -839,7 +841,8 @@ export class PeopleList {
+ 
+   /** Download everyone, retired included, in list order as CSV: name, grade in force today,
+    *  retired-from date or nothing, and the due-total as the list shows it. */
+-  protected exportCsv(): void {
++  protected async exportCsv(): Promise<void> {
++    await this.session.loaded();
+     const lines = [['name', 'grade', 'retired-from', 'due-total']];
+     for (const p of this.people.people()) lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', this.due(p)]);
+     download(lines, 'people.csv');
+@@ -847,7 +850,8 @@ export class PeopleList {
+ 
+   /** Download every claim as CSV: people in list order, retired included, each person's claims
+    *  oldest first, with number, due and period as their rows show them. */
+-  protected exportClaims(): void {
++  protected async exportClaims(): Promise<void> {
++    await this.session.loaded();
+     const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
+     for (const p of this.people.people()) {
+       for (const c of [...this.claims.of(p.id)].reverse()) {
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 4d2a6fb09..69f2ca237 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -2,6 +2,7 @@ import { Component, inject, input, signal } from '@angular/core';
+ import { download } from '../../core/csv';
+ import { People } from '../../core/people';
+ import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
++import { Session } from '../../core/session';
+ 
+ // One pool's row: its members with their shares, its total share and whether it is balanced (exactly
+ // 100.00; a retired member counts 0.00), each member's cut of the pool's pot while balanced (the sheet's pot, or
+@@ -161,6 +162,7 @@ export class PoolRow {
+ })
+ export class PoolsPanel {
+   protected readonly pools = inject(Pools);
++  private readonly session = inject(Session);
+   protected readonly name = signal('');
+   protected readonly error = signal<string | null>(null);
+   protected readonly saving = signal(false);
+@@ -172,6 +174,7 @@ export class PoolsPanel {
+   /** Download the pools as CSV, re-read first: pools and their members in the order added, a pool member
+    *  as pool:<name>, the cut as shown (empty when none). */
+   protected async exportCsv(): Promise<void> {
++    await this.session.loaded();
+     await this.pools.reread();
+     const lines = [['pool', 'member', 'share', 'cut']];
+     for (const p of this.pools.pools()) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a3a10e728..0b1ec6bd5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -853,8 +853,8 @@ public class ClaimService {
+     /** Take a person's statement: record their due-total now (late charges included) and how many claims
+      *  count, and bind each claim that counts to its rate figure now, under its late charge and floor (the charge is
+      *  never bound: it keeps following the sheet's today, and the floor is applied on top; a PENDING claim is bound only once it is back to
+-     *  OPEN); a claim that does not count, is OPEN or PENDING and dated within one of its person's holds (or its person's retirement date is reached), or is
+-     *  deferred past the sheet's today, is left unbound. */
++     *  OPEN); a claim that does not count, is OPEN or PENDING, bound by no statement and dated within one of its person's holds (or its person's
++     *  retirement date is reached), or is deferred past the sheet's today, is left unbound, as the live totals leave it out. */
+     @Transactional
+     public Stated statement(String sheetId, String user, long personId) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+@@ -865,8 +865,7 @@ public class ClaimService {
+         boolean figure = false;
+         int counted = 0;
+         for (Claim claim : theirs) {
+-            if (!claim.getStatus().counts() || (claim.getStatus().isOpen() && (person.heldOn(claim.getDate()) || person.retiredBy(today)))
+-                    || claim.deferredOn(today)) {
++            if (!claim.getStatus().counts() || Rollup.heldOut(claim, person, today) || claim.deferredOn(today)) {
+                 claim.setStated(false, null);
+                 continue;
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 5510b5403..f13eb3791 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -193,8 +193,8 @@ public class PoolController {
+         this.asOf = asOf;
+     }
+ 
+-    /** The sheet's pools, in the order they were added; reckoned on the date, with its people as they stood then,
+-     *  when the screen views the sheet as of one. */
++    /** The sheet's pools, in the order they were added; reckoned on the date, with its people and its pot as they
++     *  stood then, when the screen views the sheet as of one. */
+     @GetMapping
+     @Transactional(readOnly = true)
+     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+@@ -206,7 +206,7 @@ public class PoolController {
+         }
+         Map<Long, Person> then = this.asOf.people(sid, asOf).stream()
+                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+-        return PoolView.of(service.list(sid), then, sheets.pot(sid), asOf);
++        return PoolView.of(service.list(sid), then, this.asOf.sheet(sid, asOf).getPot(), asOf);
+     }
+ 
+     /** Add a pool to the sheet. */
