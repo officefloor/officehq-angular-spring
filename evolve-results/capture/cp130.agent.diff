@@ -1,0 +1,55 @@
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 0dd6ed369..f15abb915 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -9,7 +9,7 @@ import { VoidReasons } from '../../core/void-reasons';
+ // The sheet at a glance, from the same figures the lists show: per grade, the people on it today
+ // (retired people left out), their due-totals added up (one that is n/a adds nothing) and how many
+ // of them are active; per period,
+-// its due-total; per status, the claims in it; per void reason on the list, the VOID claims voided with it.
++// its due-total and its change from the period before it by from-date (none for the earliest); per status, the claims in it; per void reason on the list, the VOID claims voided with it.
+ @Component({
+   selector: 'app-summary',
+   template: `
+@@ -34,13 +34,14 @@ import { VoidReasons } from '../../core/void-reasons';
+       <table data-testid="summary-periods">
+         <caption>By period</caption>
+         <thead>
+-          <tr><th scope="col">Period</th><th scope="col">Due total</th></tr>
++          <tr><th scope="col">Period</th><th scope="col">Due total</th><th scope="col">Change</th></tr>
+         </thead>
+         <tbody>
+           @for (p of byPeriod(); track p.name) {
+             <tr>
+               <th scope="row">{{ p.name }}</th>
+               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -98,7 +99,12 @@ export class SummaryPanel {
+ 
+   protected readonly byPeriod = computed(() => {
+     const live = this.figures.periodDueTotals();
+-    return this.periods.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? live.get(p.id) ?? '0.00' }));
++    // The periods are held by from-date, so each one's previous is the one before it in the list.
++    const totals = this.periods.periods().map((p) => ({ name: p.name, dueTotal: p.closedTotal ?? live.get(p.id) ?? '0.00' }));
++    return totals.map((p, i) => ({
++      ...p,
++      change: i === 0 ? '' : money(cents(p.dueTotal) - cents(totals[i - 1].dueTotal)),
++    }));
+   });
+ 
+   protected readonly byStatus = this.figures.statusCounts;
+@@ -111,3 +117,11 @@ export class SummaryPanel {
+     }));
+   });
+ }
++
++/** Two-decimal money text as cents. */
++function cents(amount: string): bigint {
++  const negative = amount.startsWith('-');
++  const [whole, frac = ''] = amount.replace('-', '').split('.');
++  const h = BigInt(whole || '0') * 100n + BigInt((frac + '00').slice(0, 2));
++  return negative ? -h : h;
++}
