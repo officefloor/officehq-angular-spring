@@ -8,8 +8,20 @@ import { NO_RATE, halfEven, money } from '../../core/rates';
 import { PersonClaims } from '../claims/claims';
 import { PersonPlans } from '../plans/person-plans';
 
+const SORT_KEYS = ['added', 'name', 'grade', 'due-total'] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+
+/** A name as names are compared: trimmed, ignoring case. */
+function nameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function compareKeys(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 // The people on the sheet: one form adds a person, or edits the one whose editor is open, and the
-// list shows everyone in the order they were added, each with their claims.
+// list shows everyone in the order they were added (or sorted on this screen), each with their claims.
 @Component({
   selector: 'app-people',
   imports: [PersonClaims, PersonPlans],
@@ -146,6 +158,12 @@ import { PersonPlans } from '../plans/person-plans';
         />
         Show retired
       </label>
+      <label for="sort-by">Sort by</label>
+      <select id="sort-by" data-testid="sort-by" [value]="sortBy()" (change)="setSortBy(value($event))">
+        @for (k of sortKeys; track k) {
+          <option [value]="k" [selected]="k === sortBy()">{{ k }}</option>
+        }
+      </select>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <section aria-label="Grade or retire selected people">
@@ -197,7 +215,7 @@ import { PersonPlans } from '../plans/person-plans';
           <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
-          @for (p of shown(); track p.id) {
+          @for (p of sorted(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td>
                 <input
@@ -465,6 +483,31 @@ export class PeopleList {
   protected readonly shown = computed(() =>
     this.people.showRetired() ? this.people.people() : this.people.people().filter((p) => !p.retired),
   );
+  /** The sort keys the list can be shown in. */
+  protected readonly sortKeys = SORT_KEYS;
+  /** How this user's screen orders the list; only what is shown, never the stored positions. */
+  protected readonly sortBy = signal<SortKey>('added');
+  /** The people shown, in the chosen order; equal keys keep list order (the sort is stable). */
+  protected readonly sorted = computed(() => {
+    const list = this.shown();
+    switch (this.sortBy()) {
+      case 'name':
+        return [...list].sort((a, b) => compareKeys(nameKey(a.name), nameKey(b.name)));
+      case 'grade':
+        return [...list].sort((a, b) => compareKeys(this.gradeToday(a), this.gradeToday(b)));
+      case 'due-total': {
+        const due = new Map(list.map((p) => [p.id, this.dueCents(p)]));
+        return [...list].sort((a, b) => {
+          const x = due.get(a.id) ?? null;
+          const y = due.get(b.id) ?? null;
+          if (x === null || y === null) return (x === null ? 1 : 0) - (y === null ? 1 : 0);
+          return x < y ? -1 : x > y ? 1 : 0;
+        });
+      }
+      default:
+        return list;
+    }
+  });
   /** The retire-from date typed on each person's row. */
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The date typed on each person's row to take their statement as of; blank takes it now. */
@@ -602,6 +645,10 @@ export class PeopleList {
   }
 
   /** The grade in force on the sheet's today, the one the list shows. */
+  protected setSortBy(key: string): void {
+    this.sortBy.set((SORT_KEYS as readonly string[]).includes(key) ? (key as SortKey) : 'added');
+  }
+
   protected gradeToday(p: Person): string {
     return this.figures.gradeToday(p);
   }
