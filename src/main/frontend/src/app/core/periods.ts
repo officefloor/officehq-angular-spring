@@ -174,6 +174,24 @@ export class Periods {
     }
   }
 
+  /** Undo the last rollover, by the steward who made it on the sheet-today it was made: its periods are removed
+   *  and the opening balances it set taken back. Null once done, or an error message when refused. The periods
+   *  are re-read after it. */
+  async undoRollover(): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      await firstValueFrom(this.http.post<void>(`${this.url(sid)}/rollover/undo`, {}, { headers: { 'X-User': user } }));
+      if (this.session.sheetId() === sid) await this.load();
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may undo the rollover.';
+      if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string') return e.error.message;
+      return e instanceof HttpErrorResponse ? `Could not undo the rollover (${e.status}).` : 'Could not undo the rollover.';
+    }
+  }
+
   /** Generate the four calendar quarters of a year, named <yyyy>-Q1 to <yyyy>-Q4, leaving out any quarter
    *  whose name is taken or that overlaps a period: how many were made, or an error message when refused. */
   async generateQuarters(year: string): Promise<number | string> {

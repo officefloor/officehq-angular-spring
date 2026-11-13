@@ -112,6 +112,9 @@ import { Period, Periods } from '../../core/periods';
           (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
         />
         <button type="submit" data-testid="rollover" [disabled]="rolling()">Roll year over</button>
+        <button type="button" data-testid="rollover-undo" [disabled]="rolling()" (click)="undoRollover()">
+          Undo last rollover
+        </button>
       </form>
       @if (rolloverMade() !== null) {
         <p>Rolled over: made <span data-testid="rollover-made">{{ rolloverMade() }}</span> period(s)</p>
@@ -271,6 +274,18 @@ export class PeriodsPanel {
       const made = await this.periods.rollover(this.rolloverYear());
       if (typeof made === 'string') this.rolloverError.set(made);
       else this.rolloverMade.set(made);
+    } finally {
+      this.rolling.set(false);
+    }
+  }
+
+  protected async undoRollover(): Promise<void> {
+    if (this.rolling()) return;
+    this.rolloverMade.set(null);
+    this.rolloverError.set(null);
+    this.rolling.set(true);
+    try {
+      this.rolloverError.set(await this.periods.undoRollover());
     } finally {
       this.rolling.set(false);
     }

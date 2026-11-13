@@ -87,7 +87,8 @@ public class PeriodService {
     /** Generate one period per calendar month from the from-date's month to the to-date's month, each from
      *  the first to the last day of its month and named yyyy-mm; a month whose name is taken or whose days
      *  overlap a period on the sheet is left out. A blank from-date takes the sheet's today. Refused when
-     *  the to-date is before the from-date. The periods made, in order. */
+     *  the to-date is before the from-date. Like a bulk action, a viewer's generate goes through with nothing
+     *  made. The periods made, in order. */
     @Transactional
     public List<Period> generate(String sheetId, String user, LocalDate from, LocalDate to) {
         // Locking the sheet makes two users' periods go one after the other, so neither misses an overlap.
@@ -95,6 +96,9 @@ public class PeriodService {
         LocalDate start = from == null ? sheet.getToday() : from;
         if (to.isBefore(start)) {
             throw new PeriodRefusedException("The to-date must be on or after the from-date.");
+        }
+        if (roles.isViewer(sheetId, user)) {
+            return List.of();
         }
         List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromDateAsc(sheetId));
         List<Period> made = new ArrayList<>();

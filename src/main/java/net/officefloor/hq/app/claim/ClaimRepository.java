@@ -42,6 +42,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     long countBySheetIdAndPersonIdAndStatusInAndDueByBetween(String sheetId, Long personId,
             Collection<ClaimStatus> statuses, LocalDate from, LocalDate to);
 
+    /** Whether a claim on the sheet, not in the status, is due by a day from one date to another, both inclusive. */
+    boolean existsBySheetIdAndStatusNotAndDueByBetween(String sheetId, ClaimStatus status, LocalDate from,
+            LocalDate to);
+
     boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number,
             ClaimStatus status);
 

@@ -142,6 +142,16 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
+    /** Undo the last rollover: remove the periods it generated and take back the opening balances it set; by the
+     *  steward who made it on the sheet-today it was made only, and refused when a claim belongs to one of its
+     *  periods. */
+    @PostMapping("/rollover/undo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void undoRollover(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        rollovers.undo(sheetId.trim(), user.trim());
+    }
+
     /** Generate the four calendar quarters of a year, named yyyy-Q1 to yyyy-Q4, leaving out any quarter whose
      *  name is taken or that overlaps a period. The periods made. */
     @PostMapping("/generate-quarters")

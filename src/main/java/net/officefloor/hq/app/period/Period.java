@@ -184,6 +184,14 @@ public class Period {
         openings.merge(personId, amount, BigDecimal::add);
     }
 
+    /** Take an amount back from a person's opening balance for the period; one left at 0.00 is dropped. */
+    public void takeBackOpening(long personId, BigDecimal amount) {
+        BigDecimal left = openings.merge(personId, amount.negate(), BigDecimal::add);
+        if (left != null && left.signum() == 0) {
+            openings.remove(personId);
+        }
+    }
+
     /** Close the period, fixing each person's due-total and carried figure for it, and its own as the sum of
      *  their due-totals. */
     public void close(Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried,
