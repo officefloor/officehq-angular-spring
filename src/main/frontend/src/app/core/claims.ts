@@ -513,14 +513,19 @@ export class Claims {
   }
 
   /** Open, settle, void, approve, reject, re-settle, delete or restore a claim (a rejection with its reason typed, a void with
-   *  its reason chosen from the sheet's list); an error message when refused. */
+   *  its reason chosen from the sheet's list, a settle as of the date typed, none: today); an error message when refused. */
   async act(id: number, action: ClaimAction, reason = ''): Promise<string | null> {
     const sid = this.session.sheetId();
     const user = this.session.user();
     if (!user || !sid) return 'Load a sheet first.';
     if (action === 'reject' && !reason.trim()) return 'Give a reason to reject the claim.';
     try {
-      const body = action === 'reject' || action === 'void' ? { reason: reason.trim() } : null;
+      const body =
+        action === 'reject' || action === 'void'
+          ? { reason: reason.trim() }
+          : action === 'settle' && reason.trim()
+            ? { on: reason.trim() }
+            : null;
       const claim = await firstValueFrom(
         this.http.post<Claim>(`${this.url(sid)}/claims/${id}/${action}`, body, { headers: { 'X-User': user } }),
       );

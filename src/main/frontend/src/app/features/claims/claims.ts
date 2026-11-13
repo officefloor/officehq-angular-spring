@@ -198,6 +198,14 @@ import { VoidReasons } from '../../core/void-reasons';
               }
             </select>
           }
+          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+          <input
+            [id]="'claim-settle-date-' + c.id"
+            data-testid="claim-settle-date"
+            placeholder="YYYY-MM-DD"
+            [value]="settleDates()[c.id] ?? ''"
+            (input)="setSettleDate(c.id, value($event))"
+          />
           @for (a of actions; track a.action) {
             <button
               type="button"
@@ -381,6 +389,8 @@ export class PersonClaims {
   ];
   /** The date typed to defer each claim to, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The date typed to settle each claim as of, by claim id; blank: today. */
+  protected readonly settleDates = signal<Record<number, string>>({});
   /** The new date typed to re-date each claim to, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed to split off each claim, by claim id. */
@@ -500,7 +510,12 @@ export class PersonClaims {
     this.clearActionError(c.id);
     this.acting.set(c.id);
     try {
-      const reason = action === 'void' ? this.voidReasonsChosen()[c.id] : this.rejectReasons()[c.id];
+      const reason =
+        action === 'void'
+          ? this.voidReasonsChosen()[c.id]
+          : action === 'settle'
+            ? this.settleDates()[c.id]
+            : this.rejectReasons()[c.id];
       const err = await this.claims.act(c.id, action, reason ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
@@ -718,6 +733,11 @@ export class PersonClaims {
     } finally {
       this.acting.set(null);
     }
+  }
+
+  protected setSettleDate(id: number, date: string): void {
+    this.clearActionError(id);
+    this.settleDates.update((d) => ({ ...d, [id]: date }));
   }
 
   protected setRejectReason(id: number, reason: string): void {

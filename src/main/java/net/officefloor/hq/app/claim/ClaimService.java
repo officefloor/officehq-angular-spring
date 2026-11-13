@@ -226,14 +226,28 @@ public class ClaimService {
         return changeStatus(sheetId, user, claimId, ClaimStatus.VOID, reason);
     }
 
+    /** Settle a claim (see changeStatus) as of a date on or before the sheet's today: its due is frozen as
+     *  the claim stood at the end of that date, that date standing in for the sheet's today, as the as-of
+     *  view works it out. Refused for a date after the sheet's today, and for a claim not on the sheet then.
+     *  With no date, a settle as of today. */
+    @Transactional
+    public Claim settle(String sheetId, String user, long claimId, LocalDate on) {
+        return changeStatus(sheetId, user, claimId, ClaimStatus.SETTLED, "", false, on);
+    }
+
     private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String voidReason) {
         return changeStatus(sheetId, user, claimId, to, voidReason, false);
     }
 
-    /** Change a claim's status; a settle whose four-eyes and proof rules were already judged on another claim
-     *  (a part-settle's original) skips them. */
     private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String voidReason,
             boolean judged) {
+        return changeStatus(sheetId, user, claimId, to, voidReason, judged, null);
+    }
+
+    /** Change a claim's status; a settle whose four-eyes and proof rules were already judged on another claim
+     *  (a part-settle's original) skips them; a settle as of a date freezes the due as of it. */
+    private Claim changeStatus(String sheetId, String user, long claimId, ClaimStatus to, String voidReason,
+            boolean judged, LocalDate on) {
         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
         refuseClosed(sheetId, claim.getDueBy());
         roles.require(sheetId, user, switch (to) {
@@ -245,6 +259,7 @@ public class ClaimService {
         if (!claim.getStatus().canBecome(to)) {
             throw new ClaimStatusException(claim.getStatus(), to);
         }
+        BigDecimal dueThen = to == ClaimStatus.SETTLED && on != null ? dueAsOf(sheetId, claim, on) : null;
         if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
             refuseVoidSettled(claim, sheetId, user);
         }
@@ -280,7 +295,7 @@ public class ClaimService {
         }
         if (to == ClaimStatus.SETTLED) {
             BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
-            BigDecimal due = figure == null ? null : charged(claim, person, figure);
+            BigDecimal due = on != null ? dueThen : figure == null ? null : charged(claim, person, figure);
             if (!judged) {
                 refuseUnproved(claim, person, due);
             }
@@ -305,12 +320,44 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT, DELETED -> throw new IllegalStateException();
         };
-        audit(event, updated, person, user, number, to == ClaimStatus.SETTLED ? dueField(updated) : reversed);
+        audit(event, updated, person, user, number, to == ClaimStatus.SETTLED
+                ? dueField(updated) + (on != null ? " on=" + on : "") : reversed);
         if (to == ClaimStatus.SETTLED) {
             notifyWatchers(updated, person, user);
         }
         rollup.recordChanges(sheetId, user, before);
         return updated;
+    }
+
+    /** A claim's due as it stood at the end of a date, that date standing in for the sheet's today, as the as-of
+     *  view works it out: its settled due then, else the figure its statement bound then, else its amount at the
+     *  rate in force on its date of its person's grade then, late charge and floor on top (none when no rate
+     *  applies). Refused for a date after the sheet's today, and a claim not on the sheet then. */
+    private BigDecimal dueAsOf(String sheetId, Claim claim, LocalDate on) {
+        LocalDate today = sheets.today(sheetId);
+        if (on.isAfter(today)) {
+            throw new ClaimSettleDateException("A claim cannot be settled as of a date after the sheet's today ("
+                    + today + ").");
+        }
+        Claim then = history.findAsOf(Claim.class, sheetId, claim.getId(), on)
+                .orElseThrow(() -> new ClaimSettleDateException("The claim was not on the sheet on " + on + "."));
+        Person personThen = history.findAsOf(Person.class, sheetId, then.getPersonId(), on)
+                .orElseThrow(() -> new ClaimSettleDateException("The claim was not on the sheet on " + on + "."));
+        Sheet sheetOn = history.findAsOf(Sheet.class, sheetId, sheetId, on).orElseGet(() -> {
+            // no change to the sheet counts by then: it stands as it was started
+            Sheet now = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
+            return new Sheet(sheetId, now.getCreatedBy(), now.getCreatedAt(), on);
+        });
+        sheetOn.setToday(on);
+        Optional<Sheet> sheetThen = Optional.of(sheetOn);
+        List<Rate> ratesThen = new ArrayList<>(history.listAsOf(Rate.class, sheetId, on));
+        sheetRows.ancestors(sheetId).forEach(a -> ratesThen.addAll(history.listAsOf(Rate.class, a, on)));
+        List<Claim> claimsThen = history.listAsOf(Claim.class, sheetId, on);
+        BigDecimal figure = then.getSettledDue() != null ? then.getSettledDue()
+                : then.isBound() ? then.getStatedDue()
+                : Rollup.inForce(ratesThen, personThen.gradeOn(then.getDate()), then.getDate(), then)
+                        .map(rate -> Rollup.rated(sheetThen, then, claimsThen, rate)).orElse(null);
+        return figure == null ? null : Rollup.charged(sheetThen, then, personThen, figure);
     }
 
     /** Delete a DRAFT claim: it becomes DELETED, counting nowhere, and cannot be edited, opened or voided

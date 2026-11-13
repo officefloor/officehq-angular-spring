@@ -375,12 +375,19 @@ public class ClaimController {
                 done.claims().stream().map(ClaimView::of).toList());
     }
 
-    /** Settle an OPEN claim; a clerk settling a due above the clerk limit puts it PENDING instead. */
+    /** The date a claim is settled as of (YYYY-MM-DD); none: today. */
+    public record SettleRequest(LocalDate on) {
+    }
+
+    /** Settle an OPEN claim, as of a date when one is given; a clerk settling a due above the clerk limit puts
+     *  it PENDING instead. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @PathVariable long claimId,
-            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
-        return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody(required = false) SettleRequest request) {
+        return ClaimView.of(service.settle(sheetId.trim(), user.trim(), claimId,
+                request == null ? null : request.on()));
     }
 
     /** Review a REVIEW claim: a steward opens it. */
@@ -698,6 +705,14 @@ public class ClaimController {
     @ExceptionHandler(ClaimDeferException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> deferRefused(ClaimDeferException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A settle as of a date after the sheet's today, or of a claim not on the sheet then, is refused with the
+     *  reason, for the screen to show. */
+    @ExceptionHandler(ClaimSettleDateException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> settleDateRefused(ClaimSettleDateException e) {
         return Map.of("message", e.getMessage());
     }
 
