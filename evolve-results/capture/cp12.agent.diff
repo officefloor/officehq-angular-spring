@@ -1,0 +1,115 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 99e24178a..d14f01ef8 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -35,6 +35,14 @@ export function cents(amount: string): number {
+   return Math.round(Number(amount) * 100);
+ }
+ 
++/** A claim's due in cents: the due fixed when it was settled; otherwise its amount times the rate
++ *  in force on its date among its grade's rates; null when it has no figure. */
++export function claimDueCents(claim: Claim, rates: Rate[]): number | null {
++  if (claim.settledDue !== null) return cents(claim.settledDue);
++  const rate = rateOn(rates, claim.date);
++  return rate === null ? null : dueCents(cents(claim.amount), rate);
++}
++
+ /** Cents shown with two decimals. */
+ export function money(total: number): string {
+   return (total / 100).toFixed(2);
+@@ -136,12 +144,10 @@ export class PersonClaims {
+     return (event.target as HTMLInputElement).value;
+   }
+ 
+-  /** The due fixed when the claim was settled; otherwise the claim's amount times the rate in force
+-   *  on the claim's date, or n/a when no rate applies. */
++  /** The claim's due (see claimDueCents), or n/a when it has no figure. */
+   protected dueOf(claim: Claim): string {
+-    if (claim.settledDue !== null) return claim.settledDue;
+-    const rate = rateOn(this.rates(), claim.date);
+-    return rate === null ? NO_RATE : money(dueCents(cents(claim.amount), rate));
++    const due = claimDueCents(claim, this.rates());
++    return due === null ? NO_RATE : money(due);
+   }
+ 
+   protected edit(claim: Claim): void {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 72c11ac26..bf81b8a20 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,8 +2,8 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { Claim, PersonClaims, cents, counts, money } from '../claims/claims';
+-import { NO_RATE, RateStore, Rates, dueCents } from '../rates/rates';
++import { Claim, PersonClaims, cents, claimDueCents, counts, money } from '../claims/claims';
++import { NO_RATE, RateStore, Rates } from '../rates/rates';
+ 
+ interface Person {
+   id: number;
+@@ -162,17 +162,19 @@ export class People {
+     return money(this.countedOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+   }
+ 
+-  /** What a person has claimed times their grade's rate in force on the sheet's today, or n/a when
+-   *  none is. */
++  /** The sum of the dues shown on a person's claims that count, or n/a when their grade has no rate
++   *  in force on the sheet's today and no settled claim of theirs keeps a figure. */
+   protected dueBy(person: Person): string {
+     const due = this.dueCentsBy(person);
+     return due === null ? NO_RATE : money(due);
+   }
+ 
+   private dueCentsBy(person: Person): number | null {
+-    const rate = this.rates.current().get(person.grade);
+-    if (rate === undefined) return null;
+-    return dueCents(this.countedOf(person.id).reduce((sum, c) => sum + cents(c.amount), 0), rate);
++    const counted = this.countedOf(person.id);
++    const hasRate = this.rates.current().has(person.grade);
++    if (!hasRate && !counted.some((c) => c.settledDue !== null)) return null;
++    const rates = this.rates.of(person.grade);
++    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates) ?? 0), 0);
+   }
+ 
+   /** A claim added (listed first) or saved in place. */
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 524a57921..5a9e3f2cd 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -17,10 +17,14 @@ export const GRADES = ['A', 'B', 'C'];
+ export const NO_RATE = 'n/a';
+ 
+ /** The due on an amount in cents at a percent rate (two decimals), in cents: amount times rate
+- *  divided by 100, rounded half up. Worked in whole numbers so nothing is lost to floating point. */
++ *  divided by 100, rounded half to even. Worked in whole numbers so nothing is lost to floating
++ *  point. */
+ export function dueCents(amountCents: number, rate: string): number {
+   const hundredths = BigInt(Math.round(Number(rate) * 100));
+-  return Number((BigInt(amountCents) * hundredths + 5000n) / 10000n);
++  const product = BigInt(amountCents) * hundredths;
++  const whole = product / 10000n;
++  const rest = product % 10000n;
++  return Number(rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole);
+ }
+ 
+ /** The rate in force on a date among a grade's rates: the one whose from-date is the latest on or
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index d9848bdc6..65de63d18 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -103,12 +103,12 @@ public class ClaimService {
+     }
+ 
+     /** The due on a claim at the person's grade rate in force on the claim's date: amount times rate
+-     *  divided by 100, rounded half up to two decimals; null when no rate applies. */
++     *  divided by 100, rounded half to even to two decimals; null when no rate applies. */
+     private BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+         BigDecimal amount = claim.getAmount();
+         return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
+                 .map(Rate::getRate)
+-                .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_UP))
++                .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
+                 .orElse(null);
+     }
+ 
