@@ -1,0 +1,195 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index db9237bea..4e26c72e8 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -18,6 +18,8 @@ export interface Claim {
+   date: string;
+   note: string;
+   status: ClaimStatus;
++  /** The claim's number on the sheet, given when it is opened; null for a draft or a void claim. */
++  number: number | null;
+ }
+ 
+ /** Whether a claim counts toward what is claimed and due: only OPEN and SETTLED ones do. */
+@@ -83,6 +85,7 @@ const AMOUNT = /^\d+(\.\d{1,2})?$/;
+           <span data-testid="claim-note">{{ c.note }}</span>
+           <span data-testid="claim-due">{{ dueOf(c) }}</span>
+           <span data-testid="claim-status">{{ c.status }}</span>
++          <span data-testid="claim-number">{{ c.number ?? '' }}</span>
+           <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
+             Open
+           </button>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index c8ceb98fa..86679dddb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -40,6 +40,10 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
++    /** The claim's number on its sheet, given when it is opened; null for a draft or a void claim. */
++    @Column(name = "claim_number")
++    private Long number;
++
+     protected Claim() {
+     }
+ 
+@@ -94,4 +98,12 @@ public class Claim {
+     public void setStatus(ClaimStatus status) {
+         this.status = status;
+     }
++
++    public Long getNumber() {
++        return number;
++    }
++
++    public void setNumber(Long number) {
++        this.number = number;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 39fb3fc57..a91b55033 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -31,10 +31,10 @@ public class ClaimController {
+ 
+     /** A claim as the screen shows it; the amount is a string with two decimals. */
+     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
+-            ClaimStatus status) {
++            ClaimStatus status, Long number) {
+         static ClaimView of(Claim claim) {
+             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
+-                    claim.getDate(), claim.getNote(), claim.getStatus());
++                    claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 64ac322d5..3ac3237bf 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -62,12 +62,21 @@ public class ClaimService {
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
+         Person person = person(sheetId, personId);
++        // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
++        // read below is its latest state.
++        Long number = to == ClaimStatus.OPEN ? sheets.nextClaimNumber(sheetId) : null;
+         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
+                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
+         if (!claim.getStatus().canMoveTo(to)) {
+             throw new StatusChangeRefusedException(claim.getStatus(), to);
+         }
++        Long had = claim.getNumber();
+         claim.setStatus(to);
++        if (to == ClaimStatus.OPEN) {
++            claim.setNumber(number);
++        } else if (to == ClaimStatus.VOID) {
++            claim.setNumber(null);
++        }
+         Claim saved = claims.saveAndFlush(claim);
+         String event = switch (to) {
+             case OPEN -> "CLAIM_OPENED";
+@@ -75,7 +84,7 @@ public class ClaimService {
+             case VOID -> "CLAIM_VOIDED";
+             case DRAFT -> throw new IllegalStateException("A claim never returns to DRAFT");
+         };
+-        record(event, sheetId, user, person, saved);
++        record(event, sheetId, user, person, saved, had != null ? had : saved.getNumber());
+         return saved;
+     }
+ 
+@@ -85,8 +94,14 @@ public class ClaimService {
+     }
+ 
+     private void record(String event, String sheetId, String user, Person person, Claim claim) {
++        record(event, sheetId, user, person, claim, claim.getNumber());
++    }
++
++    /** One audit line about a claim; a claim with a number carries it at the end. */
++    private void record(String event, String sheetId, String user, Person person, Claim claim, Long number) {
+         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
+-                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate());
++                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate()
++                + (number != null ? " number=" + number : ""));
+     }
+ 
+     private static BigDecimal scaled(BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index ee85b536a..21a9fac73 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -18,6 +18,10 @@ public class Sheet {
+     @Column(name = "today", nullable = false)
+     private LocalDate today;
+ 
++    /** The last claim number given on the sheet; the next claim opened takes the one after. */
++    @Column(name = "last_claim_number", nullable = false)
++    private long lastClaimNumber;
++
+     protected Sheet() {
+     }
+ 
+@@ -37,4 +41,9 @@ public class Sheet {
+     public void setToday(LocalDate today) {
+         this.today = today;
+     }
++
++    /** Take the sheet's next claim number. */
++    public long nextClaimNumber() {
++        return ++lastClaimNumber;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index f18517862..9aaa92731 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,6 +1,15 @@
+ package net.officefloor.hq.app.sheet;
+ 
++import jakarta.persistence.LockModeType;
++import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface SheetRepository extends JpaRepository<Sheet, String> {
++
++    /** The sheet, locked for update until the transaction ends. */
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select s from Sheet s where s.id = :id")
++    Optional<Sheet> findLockedById(String id);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index ba067d1dc..a1320a43f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -34,6 +34,17 @@ public class SheetService {
+         return load(id).getToday();
+     }
+ 
++    /** Take the sheet's next claim number, holding the sheet locked until the transaction ends so
++     *  claims opened at the same moment get different numbers. */
++    @Transactional
++    public long nextClaimNumber(String id) {
++        load(id);
++        Sheet sheet = sheets.findLockedById(id).orElseThrow();
++        long number = sheet.nextClaimNumber();
++        sheets.saveAndFlush(sheet);
++        return number;
++    }
++
+     /** Change the sheet's today. */
+     @Transactional
+     public Sheet setToday(String id, LocalDate today) {
+diff --git a/src/main/resources/db/migration/V8__claim_number.sql b/src/main/resources/db/migration/V8__claim_number.sql
+new file mode 100644
+index 000000000..f1eeaa594
+--- /dev/null
++++ b/src/main/resources/db/migration/V8__claim_number.sql
+@@ -0,0 +1,5 @@
++-- A claim's number: given when the claim is opened, the next on its sheet (1, 2, ...), never
++-- reused; a draft has none and voiding clears it. The sheet keeps the last number it gave.
++ALTER TABLE sheet ADD COLUMN last_claim_number BIGINT DEFAULT 0 NOT NULL;
++ALTER TABLE claim ADD COLUMN claim_number BIGINT;
++ALTER TABLE claim ADD CONSTRAINT claim_number_unique UNIQUE (sheet_id, claim_number);
