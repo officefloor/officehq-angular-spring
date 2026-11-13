@@ -1,0 +1,64 @@
+{
+  "checkpoint": 6,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp06_audit",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Record every change to the sheet in the audit file, one line per change, appended in the order\nthe changes happen:\nPERSON_ADDED name=<name> grade=<grade>, PERSON_EDITED name=<name> grade=<grade>,\nCLAIM_ADDED person=<name> amount=<amount> date=<date>, and CLAIM_EDITED with the same fields.\nEvery line starts with the event, then sheet=<sheet id> and by=<signed-in user>, then the fields\nin the order given, separated by single spaces. Amounts are written exactly as the screen shows\nthem (two decimals) and dates as yyyy-mm-dd. A change that is refused, by any rule now or later,\nwrites no line and changes nothing.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nRecord every change to the sheet in the audit file, one line per change, appended in the order\nthe changes happen:\nPERSON_ADDED name=<name> grade=<grade>, PERSON_EDITED name=<name> grade=<grade>,\nCLAIM_ADDED person=<name> amount=<amount> date=<date>, and CLAIM_EDITED with the same fields.\nEvery line starts with the event, then sheet=<sheet id> and by=<signed-in user>, then the fields\nin the order given, separated by single spaces. Amounts are written exactly as the screen shows\nthem (two decimals) and dates as yyyy-mm-dd. A change that is refused, by any rule now or later,\nwrites no line and changes nothing.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0dfaa8c071ef60d0c6cbf2bc279360f2b4ad7c0e",
+  "reset_sha": "",
+  "preagent_sha": "faf0f6940facedc575434543bcf54427d702b8b9",
+  "prev_sha": "faf0f6940facedc575434543bcf54427d702b8b9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7536369999999998,
+    "input_tokens": 26,
+    "output_tokens": 8296,
+    "cache_read_tokens": 622625,
+    "cache_creation_tokens": 57886,
+    "num_turns": 14,
+    "duration_ms": 410376,
+    "duration_api_ms": 74935,
+    "model": "claude-opus-5-5",
+    "session_id": "25da3228-59df-4b1c-aac5-9dde04648b86",
+    "stop_reason": "success",
+    "result_text": "Every change to a sheet is now written to the audit file, and all 4 tests in `bin/e2e` pass. Each line has the event, then `sheet=` and `by=`, then the fields in the order the request gave.\n\n**Server**\n- **Who made the change:** the people and claim controllers now need an `X-User` request header carrying the signed-in name. A new small helper, `SignedInUser.java`, reads the name from that header.\n- **Writing the lines:** `PersonService` writes `PERSON_ADDED` / `PERSON_EDITED` lines with `name` and `grade`. `ClaimService` writes `CLAIM_ADDED` / `CLAIM_EDITED` lines with `person`, `amount` (two decimals) and `date` (yyyy-mm-dd).\n- **Refused changes write nothing:** I added `Audit.recordOnCommit`, which writes the line only after the database change has been saved for good. So a change that is refused by any rule, now or later, never reaches the file. That covers a duplicate name or a person who doesn't exist, as well as a save that fails at the last step.\n\n**Front end**\n- A new interceptor, `core/user-header.ts`, adds the signed-in user's name to every request, and `app.config.ts` registers it. The name is encoded so names with non-ASCII characters can be sent in a header, and the server decodes it.\n\n**Behaviour to know about**\n- **Unchanged saves are still logged.** A save that changes nothing (say, grade B saved as B) still writes an `_EDITED` line, because the test expects that.\n- **Spaces aren't escaped.** If a user or person name contains a space, the space-separated line can't be read back unambiguously. None of the test data has spaces in names.\n- **The header is required.** Adding or editing without the `X-User` header now gets a 400 response. The app always sends it, but any other caller of these endpoints must send it too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7536369999999998,
+        "num_turns": 14,
+        "duration_ms": 410376,
+        "duration_api_ms": 74935,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp06.agent.jsonl",
+  "agent_diff_file": "cp06.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,326 @@
+diff --git a/src/main/frontend/src/app/app.config.ts b/src/main/frontend/src/app/app.config.ts
+index f904378d2..795e9bc8f 100644
+--- a/src/main/frontend/src/app/app.config.ts
++++ b/src/main/frontend/src/app/app.config.ts
+@@ -1,9 +1,14 @@
+ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
+-import { provideHttpClient } from '@angular/common/http';
++import { provideHttpClient, withInterceptors } from '@angular/common/http';
+ import { provideRouter } from '@angular/router';
+ import { routes } from './app.routes';
++import { userHeader } from './core/user-header';
+ 
+-// The app's wiring: the router and the HTTP client.
++// The app's wiring: the router and the HTTP client, which sends the signed-in user with each request.
+ export const appConfig: ApplicationConfig = {
+-  providers: [provideBrowserGlobalErrorListeners(), provideRouter(routes), provideHttpClient()],
++  providers: [
++    provideBrowserGlobalErrorListeners(),
++    provideRouter(routes),
++    provideHttpClient(withInterceptors([userHeader])),
++  ],
+ };
+diff --git a/src/main/frontend/src/app/core/user-header.ts b/src/main/frontend/src/app/core/user-header.ts
+new file mode 100644
+index 000000000..c69a119ed
+--- /dev/null
++++ b/src/main/frontend/src/app/core/user-header.ts
+@@ -0,0 +1,13 @@
++import { HttpInterceptorFn } from '@angular/common/http';
++import { inject } from '@angular/core';
++import { Session } from './session';
++
++/** The header that tells the server who is signed in, so it can record who made each change. */
++export const USER_HEADER = 'X-User';
++
++// Sends the signed-in user's name with every API request. The name is URI-encoded, since a header
++// carries only plain ASCII; the server decodes it.
++export const userHeader: HttpInterceptorFn = (req, next) => {
++  const user = inject(Session).user();
++  return next(user ? req.clone({ setHeaders: { [USER_HEADER]: encodeURIComponent(user) } }) : req);
++};
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index f6fe43c41..e6368ec96 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -8,6 +8,8 @@ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.support.TransactionSynchronization;
++import org.springframework.transaction.support.TransactionSynchronizationManager;
+ 
+ /**
+  * Audit sink: appends one record per line to a KNOWN FILE (app.audit.file, default .run/audit.log)
+@@ -41,6 +43,23 @@ public class Audit {
+         }
+     }
+ 
++    /**
++     * Append one audit record once the current transaction commits, so a change that is refused or
++     * rolled back writes nothing; outside a transaction it is appended at once.
++     */
++    public void recordOnCommit(String entry) {
++        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
++            record(entry);
++            return;
++        }
++        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
++            @Override
++            public void afterCommit() {
++                record(entry);
++            }
++        });
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/SignedInUser.java b/src/main/java/net/officefloor/hq/app/SignedInUser.java
+new file mode 100644
+index 000000000..2bc7c5272
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/SignedInUser.java
+@@ -0,0 +1,22 @@
++package net.officefloor.hq.app;
++
++import java.net.URLDecoder;
++import java.nio.charset.StandardCharsets;
++
++/**
++ * Who is signed in: the screen sends the typed name with every request in the {@link #HEADER}
++ * header, URI-encoded (a header carries only plain ASCII). The audit records it as the change's
++ * author.
++ */
++public final class SignedInUser {
++
++    public static final String HEADER = "X-User";
++
++    private SignedInUser() {
++    }
++
++    /** The signed-in user's name from the header's value. */
++    public static String decode(String header) {
++        return URLDecoder.decode(header, StandardCharsets.UTF_8).trim();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 0ec5fa75f..372581e74 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
++import net.officefloor.hq.app.SignedInUser;
+ import java.util.NoSuchElementException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.converter.HttpMessageNotReadableException;
+@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+@@ -59,16 +61,18 @@ public class ClaimController {
+     @PostMapping("/people/{personId}/claims")
+     @ResponseStatus(HttpStatus.CREATED)
+     public ClaimView add(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+-            @RequestBody @Validated ClaimRequest request) {
+-        return ClaimView.of(service.add(sheetId.trim(), personId, request.amount(), request.date(), request.note()));
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ClaimRequest request) {
++        return ClaimView.of(service.add(sheetId.trim(), SignedInUser.decode(user), personId, request.amount(),
++                request.date(), request.note()));
+     }
+ 
+     /** Change a claim's amount, date and note. */
+     @PutMapping("/people/{personId}/claims/{id}")
+     public ClaimView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+-            @PathVariable Long id, @RequestBody @Validated ClaimRequest request) {
+-        return ClaimView.of(service.update(sheetId.trim(), personId, id, request.amount(), request.date(),
+-                request.note()));
++            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated ClaimRequest request) {
++        return ClaimView.of(service.update(sheetId.trim(), SignedInUser.decode(user), personId, id,
++                request.amount(), request.date(), request.note()));
+     }
+ 
+     @ExceptionHandler(NoSuchElementException.class)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 24a53e46c..fcf5220b0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -5,6 +5,8 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.NoSuchElementException;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -17,11 +19,13 @@ public class ClaimService {
+     private final ClaimRepository claims;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final Audit audit;
+ 
+-    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets) {
++    public ClaimService(ClaimRepository claims, PersonRepository people, SheetService sheets, Audit audit) {
+         this.claims = claims;
+         this.people = people;
+         this.sheets = sheets;
++        this.audit = audit;
+     }
+ 
+     /** The sheet's claims, newest first. */
+@@ -31,22 +35,37 @@ public class ClaimService {
+ 
+     /** Add a claim for a person; a missing date takes the sheet's today. */
+     @Transactional
+-    public Claim add(String sheetId, Long personId, BigDecimal amount, LocalDate date, String note) {
+-        people.findByIdAndSheetId(personId, sheetId)
+-                .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
++    public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note) {
++        Person person = person(sheetId, personId);
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+-        return claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note)));
++        Claim added = claims.saveAndFlush(new Claim(sheetId, personId, scaled(amount), on, noteOf(note)));
++        record("CLAIM_ADDED", sheetId, user, person, added);
++        return added;
+     }
+ 
+     /** Change a claim's amount, date and note; a missing date takes the sheet's today. */
+     @Transactional
+-    public Claim update(String sheetId, Long personId, Long id, BigDecimal amount, LocalDate date, String note) {
++    public Claim update(String sheetId, String user, Long personId, Long id, BigDecimal amount, LocalDate date,
++            String note) {
++        Person person = person(sheetId, personId);
+         Claim claim = claims.findByIdAndSheetIdAndPersonId(id, sheetId, personId)
+                 .orElseThrow(() -> new NoSuchElementException("No claim " + id + " for person " + personId));
+         claim.setAmount(scaled(amount));
+         claim.setDate(date != null ? date : sheets.today(sheetId));
+         claim.setNote(noteOf(note));
+-        return claims.saveAndFlush(claim);
++        Claim saved = claims.saveAndFlush(claim);
++        record("CLAIM_EDITED", sheetId, user, person, saved);
++        return saved;
++    }
++
++    private Person person(String sheetId, Long personId) {
++        return people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
++    }
++
++    private void record(String event, String sheetId, String user, Person person, Claim claim) {
++        audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user + " person=" + person.getName()
++                + " amount=" + claim.getAmount().toPlainString() + " date=" + claim.getDate());
+     }
+ 
+     private static BigDecimal scaled(BigDecimal amount) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 9c072ceaa..d2cf25e47 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.util.List;
++import net.officefloor.hq.app.SignedInUser;
+ import java.util.NoSuchElementException;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+@@ -52,15 +54,16 @@ public class PersonController {
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public PersonView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+-            @RequestBody @Validated PersonRequest request) {
+-        return PersonView.of(service.add(sheetId.trim(), request.name(), request.grade()));
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonRequest request) {
++        return PersonView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name(), request.grade()));
+     }
+ 
+     /** Change a person's name and grade. */
+     @PutMapping("/{id}")
+     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+-            @RequestBody @Validated PersonRequest request) {
+-        return PersonView.of(service.update(sheetId.trim(), id, request.name(), request.grade()));
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonRequest request) {
++        return PersonView.of(
++                service.update(sheetId.trim(), SignedInUser.decode(user), id, request.name(), request.grade()));
+     }
+ 
+     @ExceptionHandler(NoSuchElementException.class)
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index f197e463e..9d7194cf0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
+ 
+ import java.util.List;
+ import java.util.NoSuchElementException;
++import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -12,10 +13,12 @@ public class PersonService {
+ 
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final Audit audit;
+ 
+-    public PersonService(PersonRepository people, SheetService sheets) {
++    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+         this.people = people;
+         this.sheets = sheets;
++        this.audit = audit;
+     }
+ 
+     /** The sheet's people in the order they were added. */
+@@ -25,23 +28,32 @@ public class PersonService {
+ 
+     /** Add a person to the sheet. */
+     @Transactional
+-    public Person add(String sheetId, String name, String grade) {
++    public Person add(String sheetId, String user, String name, String grade) {
+         sheets.load(sheetId);
+         String trimmed = name.trim();
+         requireFreeName(sheetId, trimmed, null);
+-        return people.saveAndFlush(new Person(sheetId, trimmed, grade));
++        Person added = people.saveAndFlush(new Person(sheetId, trimmed, grade));
++        record("PERSON_ADDED", sheetId, user, added);
++        return added;
+     }
+ 
+     /** Change a person's name and grade. */
+     @Transactional
+-    public Person update(String sheetId, Long id, String name, String grade) {
++    public Person update(String sheetId, String user, Long id, String name, String grade) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+         String trimmed = name.trim();
+         requireFreeName(sheetId, trimmed, id);
+         person.setName(trimmed);
+         person.setGrade(grade);
+-        return people.saveAndFlush(person);
++        Person saved = people.saveAndFlush(person);
++        record("PERSON_EDITED", sheetId, user, saved);
++        return saved;
++    }
++
++    private void record(String event, String sheetId, String user, Person person) {
++        audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
++                + " name=" + person.getName() + " grade=" + person.getGrade());
+     }
+ 
+     private void requireFreeName(String sheetId, String name, Long exceptId) {
