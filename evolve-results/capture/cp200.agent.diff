@@ -1,0 +1,93 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index b2d099fbe..c5c8659f3 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -1,7 +1,7 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+-import { People, Person, gradeOn, heldOn, retiredBy } from './people';
++import { People, Person, gradeOn, retiredBy } from './people';
+ import { hundredths, rounded } from './rates';
+ import { Session, addDays, daysBetween, isDate } from './session';
+ 
+@@ -187,16 +187,15 @@ export class Claims {
+     return this.claims().filter((c) => !leftOut(c) && !this.deferred(c));
+   });
+ 
+-  /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound
+-   *  by no statement, and held itself, or dated within one of its person's holds, or its person's
+-   *  retirement date is reached on the sheet's today. */
++  /** Whether a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by no
++   *  statement, and its person's retirement date is reached on the sheet's today. A hold no longer does. */
+   private readonly leftOut = computed(() => {
+     const today = this.session.today();
+     const byId = new Map(this.people.people().map((p) => [p.id, p]));
+     return (c: Claim): boolean => {
+       const p = byId.get(c.personId);
+       return isOpen(c) && !bound(c) && p !== undefined
+-        && (c.held || heldOn(p.holds, c.date) || retiredBy(p, today));
++        && retiredBy(p, today);
+     };
+   });
+ 
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 137c07925..75b16b107 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -77,7 +77,7 @@ export class Figures {
+       .reduce((sum, c) => sum + this.figureCents(c, p), 0n);
+   }
+ 
+-  /** The due of a person's OPEN and PENDING claims that count live (not held, deferred or retired-and-excluded). */
++  /** The due of a person's OPEN and PENDING claims that count live (not deferred or retired-and-excluded). */
+   openCents(p: Person): bigint {
+     return this.claims
+       .live()
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8720bf75e..73296ca52 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -545,8 +545,8 @@ public class ClaimService {
+         return updated;
+     }
+ 
+-    /** Hold an OPEN or PENDING claim, or release it when held: while held it leaves the live totals as a
+-     *  held person's claims do; write CLAIM_HELD or CLAIM_RELEASED. Refused for a claim in any other status. */
++    /** Hold an OPEN or PENDING claim, or release it when held: a hold no longer leaves the live totals;
++     *  write CLAIM_HELD or CLAIM_RELEASED. Refused for a claim in any other status. */
+     @Transactional
+     public Claim toggleHold(String sheetId, String user, long claimId) {
+         Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 774c8102f..282ab40fb 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -104,10 +104,6 @@ public class Rollup {
+                     // a claim that corrects another is left out of claimed
+                     claimed = claimed.add(claim.getAmount());
+                 }
+-                if (heldOut(claim, person, today)) {
+-                    // a hold leaves a claim in claimed, but out of the due figures
+-                    continue;
+-                }
+                 BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
+                         : claim.isBound() ? claim.getStatedDue() : null;
+                 BigDecimal figure = null;
+@@ -387,12 +383,11 @@ public class Rollup {
+         return person != null && claim.getStatus().isOpen() && !claim.isBound() && person.retiredBy(today);
+     }
+ 
+-    /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by
+-     *  no statement, and held itself, or dated within one of its person's holds, or its person's retirement
+-     *  date is reached on the sheet's today. */
++    /** Whether a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by no
++     *  statement, and its person's retirement date is reached on the sheet's today. A hold no longer does:
++     *  it only takes a person's cut out of the pools. */
+     public static boolean heldOut(Claim claim, Person person, LocalDate today) {
+-        return person != null && claim.getStatus().isOpen() && !claim.isBound()
+-                && (claim.isHeld() || person.heldOn(claim.getDate()) || person.retiredBy(today));
++        return retiredOut(claim, person, today);
+     }
+ 
+     /** A claim's amount at a rate, divided by 100, rounded to cents as the claim's rounding date rounds on
