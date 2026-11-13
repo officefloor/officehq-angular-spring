@@ -1,0 +1,273 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index 7bc2937e5..574bc6d1d 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -151,16 +151,22 @@ export class Figures {
+     return this.heldParts(p).filter(({ c }) => isOpen(c)).reduce((sum, { part }) => sum + part, own);
+   }
+ 
+-  /** Everyone's settled-total added up (not trimmed). */
++  /** Everyone's settled-total added up, trimmed. */
+   readonly settledTotal = computed(() =>
+-    money(this.people.people().reduce((sum, p) => sum + this.settledCents(p), 0n)),
++    money(trimmed(this.people.people().map((p) => this.settledCents(p)))),
+   );
+ 
+-  /** Everyone's open-total added up (not trimmed). */
++  /** Everyone's open-total added up, trimmed. */
+   readonly openTotal = computed(() =>
+-    money(this.people.people().reduce((sum, p) => sum + this.openCents(p), 0n)),
++    money(trimmed(this.people.people().map((p) => this.openCents(p)))),
+   );
+ 
++  /** Everyone's cut total added up, trimmed. */
++  readonly cutTotal = computed(() => {
++    const cuts = this.pools.cutCents();
++    return money(trimmed(this.people.people().map((p) => cuts.get(p.id) ?? 0n)));
++  });
++
+   /** Everyone's (capped) due-total added up, skipping those whose grade has no rate, trimmed. */
+   readonly dueTotal = computed(() =>
+     money(trimmed(this.people.people().map((p) => this.dueCents(p)).filter((d): d is bigint => d !== null))),
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 438db8799..2f35da213 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -112,12 +112,15 @@ export interface DescendantFigures {
+   overdueCount: number;
+ }
+ 
+-/** A person on a sheet of a tree: their name then aliases, their due-total (two decimals; null for n/a) and
+- *  overdue-total (two decimals). */
++/** A person on a sheet of a tree: their name then aliases, their due-total (two decimals; null for n/a),
++ *  overdue-total, settled-total, open-total and cut total (two decimals). */
+ export interface TreeMember {
+   names: string[];
+   dueTotal: string | null;
+   overdueTotal: string;
++  settledTotal: string;
++  openTotal: string;
++  cutTotal: string;
+ }
+ 
+ const NO_DESCENDANTS: DescendantFigures = {
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index c0d5a4d5a..9a3927b4b 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -2,6 +2,7 @@ import { Component, computed, inject } from '@angular/core';
+ import { Figures, STATUSES, trimmed } from '../../core/figures';
+ import { People } from '../../core/people';
+ import { hundredths, money } from '../../core/rates';
++import { Pools } from '../../core/pools';
+ import { Session, TreeMember } from '../../core/session';
+ 
+ /** How many people there are among rows whose names or aliases match, as names are compared (trimmed, without
+@@ -21,19 +22,23 @@ function distinctPeople(rows: string[][]): number {
+   return rows.filter((_, i) => root(i) === i).length;
+ }
+ 
+-/** People count, due-total and overdue-total over every person of a tree, the totals trimmed once over them all. */
++/** People count, due-, overdue-, settled-, open- and cut total over every person of a tree, the totals trimmed once
++ *  over them all. */
+ function overTree(members: TreeMember[]) {
+   return {
+     peopleCount: distinctPeople(members.map((m) => m.names)),
+     dueTotal: money(trimmed(members.filter((m) => m.dueTotal !== null).map((m) => hundredths(m.dueTotal!)))),
+     overdueTotal: money(trimmed(members.map((m) => hundredths(m.overdueTotal)))),
++    settledTotal: money(trimmed(members.map((m) => hundredths(m.settledTotal)))),
++    openTotal: money(trimmed(members.map((m) => hundredths(m.openTotal)))),
++    cutTotal: money(trimmed(members.map((m) => hundredths(m.cutTotal)))),
+   };
+ }
+ 
+ // The sheet's counters, always in view: everyone on it (retired people included), the claims in
+ // each status, and the sheet's due- and overdue-totals — the same figures the summary and the
+ // people list show. Then the same figures consolidated over the sheet and all its descendants (the tree): the
+-// due- and overdue-totals of every person of the tree added up, trimmed once over them all; the people counted
++// due-, overdue-, settled-, open- and cut totals of every person of the tree added up, trimmed once over them all; the people counted
+ // once each, people whose names or aliases match (as names are compared) being one; while the screen shows the
+ // sheet as of a date, every sheet of the tree as it stood at the end of that date. Likewise per grade the due-totals of
+ // the people on it (retired people left out), and per status the number of claims in it. And the signed-in user's own due- and overdue-totals, when a
+@@ -67,6 +72,9 @@ function overTree(members: TreeMember[]) {
+         <div><dt>Consolidated people</dt><dd data-testid="consolidated-people-count">{{ consolidated().peopleCount }}</dd></div>
+         <div><dt>Consolidated due total</dt><dd data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</dd></div>
+         <div><dt>Consolidated overdue total</dt><dd data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</dd></div>
++        <div><dt>Consolidated settled total</dt><dd data-testid="consolidated-settled-total">{{ consolidated().settledTotal }}</dd></div>
++        <div><dt>Consolidated open total</dt><dd data-testid="consolidated-open-total">{{ consolidated().openTotal }}</dd></div>
++        <div><dt>Consolidated cut total</dt><dd data-testid="consolidated-cut-total">{{ consolidated().cutTotal }}</dd></div>
+         @for (g of consolidated().grades; track g.grade) {
+           <div><dt>Consolidated grade {{ g.grade }} due total</dt><dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</dd></div>
+         }
+@@ -88,6 +96,7 @@ export class HeaderCounters {
+   protected readonly people = inject(People);
+   protected readonly figures = inject(Figures);
+   private readonly session = inject(Session);
++  private readonly pools = inject(Pools);
+ 
+   protected readonly consolidated = computed(() => {
+     const d = this.session.descendants();
+@@ -104,9 +113,17 @@ export class HeaderCounters {
+     }
+     const current = this.people.people().filter((p) => !p.retired);
+     const counts = this.figures.statusCounts();
++    const cuts = this.pools.cutCents();
+     const own: TreeMember[] = this.people.people().map((p) => {
+       const due = this.figures.dueCents(p);
+-      return { names: [p.name, ...p.aliases], dueTotal: due === null ? null : money(due), overdueTotal: money(this.figures.overdueCents(p)) };
++      return {
++        names: [p.name, ...p.aliases],
++        dueTotal: due === null ? null : money(due),
++        overdueTotal: money(this.figures.overdueCents(p)),
++        settledTotal: money(this.figures.settledCents(p)),
++        openTotal: money(this.figures.openCents(p)),
++        cutTotal: money(cuts.get(p.id) ?? 0n),
++      };
+     });
+     return {
+       ...overTree([...own, ...d.people]),
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d7f143898..1b272514b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -780,11 +780,8 @@ export class PeopleList {
+   protected cut(p: Person): string {
+     return money(this.pools.cutCents().get(p.id) ?? 0n);
+   }
+-  /** Everyone's cut total added up. */
+-  protected readonly cutTotal = computed(() => {
+-    const cuts = this.pools.cutCents();
+-    return money(this.people.people().reduce((sum, p) => sum + (cuts.get(p.id) ?? 0n), 0n));
+-  });
++  /** Everyone's cut total added up, trimmed. */
++  protected readonly cutTotal = this.figures.cutTotal;
+   protected readonly name = signal('');
+   protected readonly grade = signal<string>('A');
+   /** The date the editor's grade applies from; blank takes the sheet's today. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+index acc7383a2..79c65ddd9 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/ConsolidatedController.java
+@@ -39,9 +39,10 @@ public class ConsolidatedController {
+             List<MemberView> people, List<MemberView> ownPeople, int overdueCount) {
+     }
+ 
+-    /** A person's names (their name, then their aliases) and their due-total (two decimals; null for n/a) and
+-     *  overdue-total (two decimals). */
+-    public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
++    /** A person's names (their name, then their aliases) and their due-total (two decimals; null for n/a),
++     *  overdue-total, settled-total, open-total and cut total (two decimals). */
++    public record MemberView(List<String> names, String dueTotal, String overdueTotal, String settledTotal,
++            String openTotal, String cutTotal) {
+     }
+ 
+     private final Rollup rollup;
+@@ -72,7 +73,8 @@ public class ConsolidatedController {
+ 
+     private static List<MemberView> viewed(List<Rollup.Member> members) {
+         return members.stream().map(m -> new MemberView(m.names(),
+-                m.dueTotal() == null ? null : m.dueTotal().toPlainString(), m.overdueTotal().toPlainString())).toList();
++                m.dueTotal() == null ? null : m.dueTotal().toPlainString(), m.overdueTotal().toPlainString(),
++                m.settledTotal().toPlainString(), m.openTotal().toPlainString(), m.cutTotal().toPlainString())).toList();
+     }
+ 
+     private static Map<String, String> shown(Map<String, BigDecimal> totals) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+index 31e964a9c..898d6a6a6 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/Rollup.java
+@@ -49,8 +49,12 @@ public class Rollup {
+ 
+     /** A person's figures; a null due-total is n/a. Their due-total counts their own claims less the parts
+      *  others hold of them, and the parts they hold of other people's claims. Their score is the due of their settled claims that count
+-     *  and correct nothing divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number. */
+-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score) {
++     *  and correct nothing divided by 100, less 5 for each of their overdue claims that count, rounded half to even to a whole number.
++     *  Their settled- and open-total are the due of their SETTLED, and their OPEN and PENDING, claims that count (corrections
++     *  included), less the parts others hold of them, and the parts they hold of other people's; their cut total their cuts
++     *  across every pool they are a member of. */
++    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal score,
++            BigDecimal settledTotal, BigDecimal openTotal, BigDecimal cutTotal) {
+     }
+ 
+     /** Everyone's figures by person id, in list order, and the sheet's totals; and the number of its overdue claims that count. */
+@@ -66,8 +70,9 @@ public class Rollup {
+     }
+ 
+     /** One person's row on a sheet of a tree: their name and aliases, and their due-total (null for n/a) and
+-     *  overdue-total, for figures worked out over the whole tree. */
+-    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
++     *  overdue-total, settled-, open- and cut total, for figures worked out over the whole tree. */
++    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settledTotal,
++            BigDecimal openTotal, BigDecimal cutTotal) {
+     }
+ 
+     /** A sheet's due-totals by grade (each person not retired on the grade in force on the sheet's today, a due-total
+@@ -169,6 +174,8 @@ public class Rollup {
+             BigDecimal due = ZERO;
+             BigDecimal overdue = ZERO;
+             BigDecimal settled = ZERO;
++            BigDecimal settledTotal = ZERO;
++            BigDecimal openTotal = ZERO;
+             int overdueCount = 0;
+             boolean keptFigure = false;
+             for (Claim claim : sheetClaims) {
+@@ -197,7 +204,13 @@ public class Rollup {
+                 }
+                 if (figure != null) {
+                     // the parts its holders hold are theirs, not its person's
+-                    due = due.add(figure.subtract(sharedPart(sheet, claim, figure, byId, sheetClaims, sheetRates)));
++                    BigDecimal own = figure.subtract(sharedPart(sheet, claim, figure, byId, sheetClaims, sheetRates));
++                    due = due.add(own);
++                    if (claim.getStatus() == ClaimStatus.SETTLED) {
++                        settledTotal = settledTotal.add(own);
++                    } else if (isOpen(claim)) {
++                        openTotal = openTotal.add(own);
++                    }
+                     if (overdue(sheet, claim, person, today)) {
+                         overdue = overdue.add(figure);
+                     }
+@@ -222,6 +235,11 @@ public class Rollup {
+                 if (part != null) {
+                     keptFigure = true;
+                     due = due.add(part);
++                    if (claim.getStatus() == ClaimStatus.SETTLED) {
++                        settledTotal = settledTotal.add(part);
++                    } else if (isOpen(claim)) {
++                        openTotal = openTotal.add(part);
++                    }
+                 }
+             }
+             sheetOverdueCount += overdueCount;
+@@ -229,7 +247,9 @@ public class Rollup {
+                     .movePointLeft(2).setScale(0, RoundingMode.HALF_EVEN);
+             boolean rated = today != null && inForce(sheetRates, person.gradeOn(today), today).isPresent();
+             BigDecimal personDue = rated || keptFigure ? capped(sheet, due, cuts.get(person.getId())) : null;
+-            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, score));
++            BigDecimal cut = cuts.getOrDefault(person.getId(), ZERO);
++            figures.put(person.getId(), new Figures(person.getName(), claimed, personDue, overdue, score,
++                    settledTotal, openTotal, cut == null ? ZERO : cut.setScale(2, RoundingMode.HALF_EVEN)));
+             claimedTotal = claimedTotal.add(claimed);
+             overdues.add(overdue);
+             if (personDue != null) {
+@@ -368,7 +388,8 @@ public class Rollup {
+             }
+             List<String> names = new ArrayList<>(List.of(person.getName()));
+             names.addAll(person.getAliases());
+-            members.add(new Member(names, figures.dueTotal(), figures.overdueTotal()));
++            members.add(new Member(names, figures.dueTotal(), figures.overdueTotal(), figures.settledTotal(),
++                    figures.openTotal(), figures.cutTotal()));
+         }
+         return members;
+     }
+@@ -616,6 +637,10 @@ public class Rollup {
+         return dueTotal != null && dueTotal.compareTo(threshold) > 0;
+     }
+ 
++    private static boolean isOpen(Claim claim) {
++        return claim.getStatus() == ClaimStatus.OPEN || claim.getStatus() == ClaimStatus.PENDING;
++    }
++
+     /** Whether a claim counts toward claimed: its status counts, it is not left out by its person's
+      *  retirement (a hold leaves it in), and it is not deferred past the sheet's today. */
+     private static boolean countsClaimed(Claim claim, Person person, LocalDate today) {
