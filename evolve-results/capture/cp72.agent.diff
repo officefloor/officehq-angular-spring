@@ -1,0 +1,124 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ff1975bfc..0edfd1ce9 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -418,18 +418,24 @@ export class People {
+   /** The sheet's claims, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
+   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
+-   *  on the sheet's today, and an OPEN one dated within one of its person's holds and not bound by a statement. */
++   *  on the sheet's today, and, unless bound by a statement, an OPEN one dated within one of its person's
++   *  holds or an OPEN or PENDING one whose person is retired by the sheet's today. */
+   private readonly live = computed(() => this.claims().filter((c) => counts(c) && this.liveRulesKeep()(c)));
+-  /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and not an OPEN
+-   *  one dated within one of its person's holds and not bound by a statement. */
++  /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and, unless bound
++   *  by a statement, not an OPEN one dated within one of its person's holds, nor an OPEN or PENDING one
++   *  whose person's retirement date is on or before the sheet's today. */
+   private readonly liveRulesKeep = computed(() => {
+     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
++    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
++    const today = this.session.today();
+     const held = (c: Claim) =>
+       c.status === 'OPEN' &&
+-      !c.stated &&
+       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
+-    const today = this.session.today();
+-    return (c: Claim) => !deferred(c, today) && !held(c);
++    const retired = (c: Claim) => {
++      const from = retiredFrom.get(c.personId) ?? null;
++      return isOpen(c) && from !== null && today !== null && from <= today;
++    };
++    return (c: Claim) => !deferred(c, today) && (c.stated || !(held(c) || retired(c)));
+   });
+   /** Each person's claims that count toward what is claimed and due, by person id. */
+   private readonly countedByPerson = computed(() => {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index a852cc960..e17e312e5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -294,17 +294,24 @@ public class Claim {
+         return status == ClaimStatus.OPEN && holds.stream().anyMatch(hold -> hold.contains(date));
+     }
+ 
+-    /** Whether the claim counts in live totals on the sheet's today given its person's holds: one that
+-     *  counts and is not deferred, unless it is held and not bound by a statement (a bound claim stays
+-     *  in whatever its date). */
+-    public boolean countsLive(List<PersonHold> holds, LocalDate today) {
+-        return counts() && !deferredOn(today) && (stated || !heldBy(holds));
++    /** Whether the claim is left out for its person's retirement: it is OPEN or PENDING and the
++     *  sheet's today is on or after the date they are retired from (null: not retired). */
++    public boolean retiredOn(LocalDate retiredFrom, LocalDate today) {
++        return status.isOpen() && retiredFrom != null && !today.isBefore(retiredFrom);
++    }
++
++    /** Whether the claim counts in live totals on the sheet's today given its person's holds and
++     *  retirement date: one that counts and is not deferred, unless it is held, or OPEN or PENDING once
++     *  its person is retired, and not bound by a statement (a bound claim stays in whatever its date). */
++    public boolean countsLive(List<PersonHold> holds, LocalDate retiredFrom, LocalDate today) {
++        return counts() && !deferredOn(today) && (stated || !(heldBy(holds) || retiredOn(retiredFrom, today)));
+     }
+ 
+     /** Whether the claim counts in a period's live figures, given the status it had at the end of the
+      *  period's last day (null when it was added after): that status counts, and the live rules leave
+-     *  it in (not deferred on the sheet's today, and not held unless bound by a statement). */
+-    public boolean countsAsOf(ClaimStatus then, List<PersonHold> holds, LocalDate today) {
+-        return then != null && then.counts() && !deferredOn(today) && (stated || !heldBy(holds));
++     *  it in (not deferred on the sheet's today, and not held or retired out unless bound by a statement). */
++    public boolean countsAsOf(ClaimStatus then, List<PersonHold> holds, LocalDate retiredFrom, LocalDate today) {
++        return then != null && then.counts() && !deferredOn(today)
++                && (stated || !(heldBy(holds) || retiredOn(retiredFrom, today)));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 3f1ca089c..4eed0a5df 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -197,7 +197,8 @@ public class PeriodService {
+         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+             Person person = byId.get(claim.getPersonId());
+             if (person == null
+-                    || !claim.countsAsOf(atEnd.get(claim.getId()), holds.getOrDefault(person.getId(), List.of()), today)
++                    || !claim.countsAsOf(atEnd.get(claim.getId()), holds.getOrDefault(person.getId(), List.of()),
++                            person.getRetiredFrom(), today)
+                     || !period.contains(claim.getDate())) {
+                 continue;
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index e5fa95c26..9affa86ad 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -164,7 +164,7 @@ public class PersonController {
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody RetireRequest request) {
+         String sheet = sheetId.trim();
+         String by = SignedInUser.decode(user);
+-        return withStatements(service.retire(sheet, by, id, request.from()), by);
++        return withStatements(rollups.track(sheet, by, () -> service.retire(sheet, by, id, request.from())), by);
+     }
+ 
+     /** Put a hold on a person from a date to an optional to-date. */
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index d44fc4d32..7ab73781e 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collections;
++import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+@@ -103,8 +104,11 @@ public class RollupService {
+         LocalDate today = sheets.today(sheetId);
+         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+         Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
++        Map<Long, LocalDate> retiredFrom = new HashMap<>();
++        sheetPeople.forEach(person -> retiredFrom.put(person.getId(), person.getRetiredFrom()));
+         Map<Long, List<Claim>> counted = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
+-                .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of()), today))
++                .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of()),
++                        retiredFrom.get(claim.getPersonId()), today))
+                 .collect(Collectors.groupingBy(Claim::getPersonId));
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = NONE;
