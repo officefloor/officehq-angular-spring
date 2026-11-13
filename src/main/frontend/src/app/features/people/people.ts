@@ -7,6 +7,7 @@ import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
 import { Summary } from '../summary/summary';
+import { Counters } from '../counters/counters';
 
 /** A hold put on a person: from its from-date to its to-date, both included (null: it does not end). */
 interface Hold {
@@ -52,8 +53,14 @@ interface StatementTaken {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [PersonClaims, Periods, Rates, Settings, Summary],
+  imports: [Counters, PersonClaims, Periods, Rates, Settings, Summary],
   template: `
+    <app-counters
+      [peopleCount]="people().length"
+      [statuses]="statusSummary()"
+      [dueTotal]="dueTotal()"
+      [overdueTotal]="overdueTotal()"
+    />
     <app-settings />
     <app-rates />
     <app-periods [dueTotals]="periodDueTotals()" />
