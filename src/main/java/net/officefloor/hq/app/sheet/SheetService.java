@@ -13,6 +13,8 @@ import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.period.PeriodService;
+import net.officefloor.hq.app.person.PersonSnapshot;
+import net.officefloor.hq.app.person.PersonSnapshotRepository;
 import net.officefloor.hq.app.role.ActionNotAllowedException;
 import net.officefloor.hq.app.role.RoleService;
 import net.officefloor.hq.app.rollup.Rollup;
@@ -34,11 +36,13 @@ public class SheetService {
     private final Audit audit;
     private final ClaimRepository claims;
     private final History history;
+    private final PersonSnapshotRepository snapshots;
 
     public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences,
             FiscalClaimSequenceRepository fiscalSequences, PeriodRepository periods,
             PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims,
-            History history) {
+            History history, PersonSnapshotRepository snapshots) {
+        this.snapshots = snapshots;
         this.fiscalSequences = fiscalSequences;
         this.history = history;
         this.claims = claims;
@@ -113,13 +117,17 @@ public class SheetService {
 
     /** Change the sheet's today, closing the periods past their grace days and recording the figures it
      *  moves; a new today first records a SNAPSHOT line of each person's due-total on the day being left, in
-     *  list order, and releases every claim's lock (their editors close). */
+     *  list order, keeps it as each person's snapshot line, and releases every claim's lock (their editors
+     *  close). */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
         Rollup.Snapshot before = rollup.take(id);
         if (!today.equals(sheet.getToday())) {
             rollup.recordSnapshot(id, user, before);
+            LocalDate left = sheet.getToday();
+            before.people().forEach((personId, figures) -> snapshots.save(
+                    new PersonSnapshot(id, personId, left, figures.dueTotal())));
             claims.unlockAll(id);
         }
         sheet.setToday(today);

@@ -88,6 +88,9 @@ export interface Person {
   origin: string | null;
   /** Their tags: trimmed, lower-cased, without repeats, sorted; empty when they carry none. */
   tags: string[];
+  /** Their snapshot lines, oldest first: one per day the sheet's today moved on from, as
+   *  `<the day being left> <due-total>` (n/a when it was). */
+  snapshots: string[];
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */

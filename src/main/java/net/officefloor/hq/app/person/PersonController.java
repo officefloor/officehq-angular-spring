@@ -48,10 +48,10 @@ public class PersonController {
             String statedTotal, String statementDate, boolean retired, String retiredFrom,
             List<RetirementView> retirements,
             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String origin, List<String> tags) {
+            List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
-                boolean watched, boolean clashing) {
+                boolean watched, boolean clashing, List<PersonSnapshot> snapshots) {
             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
@@ -62,7 +62,7 @@ public class PersonController {
                     person.getRetirements().stream().map(RetirementView::of).toList(),
                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
-                    person.getOriginSheet(), person.getTags());
+                    person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList());
         }
     }
 
@@ -196,10 +196,13 @@ public class PersonController {
                 : this.asOf.watches(id, asOf).stream().filter(w -> w.getUser().equals(user.trim()))
                         .map(Watch::getPersonId).collect(Collectors.toSet());
         Set<String> treeNames = service.treeNames(id);
+        Map<Long, List<PersonSnapshot>> snapshots = service.snapshots(id);
         return people.stream()
                 .map(p -> PersonView.of(p, today, statements.getOrDefault(p.getId(), List.of()),
                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
-                        PersonService.clashing(p, treeNames)))
+                        PersonService.clashing(p, treeNames), asOf == null ? snapshots.getOrDefault(p.getId(), List.of())
+                                : snapshots.getOrDefault(p.getId(), List.of()).stream()
+                                        .filter(s -> s.getDay().isBefore(asOf)).toList()))
                 .toList();
     }
 
@@ -211,7 +214,7 @@ public class PersonController {
         Person added = service.add(sheetId.trim(), user.trim(), request.name(), request.grade(), request.terms(),
                 request.contact(), request.tagList());
         return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of(), false,
-                service.clashing(added));
+                service.clashing(added), List.of());
     }
 
     /** The import box's lines of name,grade,terms,contact. */
@@ -231,7 +234,7 @@ public class PersonController {
         PersonService.ImportResult done = service.importPeople(sheetId.trim(), user.trim(), request.text());
         LocalDate today = service.today(sheetId.trim());
         return new ImportView(done.added().size(), done.added().stream()
-                .map(p -> PersonView.of(p, today, List.of(), List.of(), false, service.clashing(p))).toList(),
+                .map(p -> PersonView.of(p, today, List.of(), List.of(), false, service.clashing(p), List.of())).toList(),
                 done.updated().size(), done.updated().stream().map(p -> view(p, user.trim())).toList());
     }
 
@@ -451,7 +454,8 @@ public class PersonController {
 
     private PersonView view(Person person, String user) {
         return PersonView.of(person, service.today(person.getSheetId()), service.statementsOf(person.getId()),
-                service.patronsOf(person.getId()), service.watching(person.getId(), user), service.clashing(person));
+                service.patronsOf(person.getId()), service.watching(person.getId(), user), service.clashing(person),
+                service.snapshotsOf(person.getId()));
     }
 
     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */

@@ -43,6 +43,7 @@ public class PersonService {
     private final PersonRepository people;
     private final SheetRepository sheets;
     private final StatementRepository statements;
+    private final PersonSnapshotRepository snapshots;
     private final PatronRepository patrons;
     private final WatchRepository watches;
     private final RoleService roles;
@@ -57,7 +58,8 @@ public class PersonService {
     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
             PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles,
             ClaimRepository claims, PoolRepository pools, PeriodRepository periods, SheetService sheetService,
-            SheetTagRepository sheetTags) {
+            SheetTagRepository sheetTags, PersonSnapshotRepository snapshots) {
+        this.snapshots = snapshots;
         this.sheetTags = sheetTags;
         this.sheetService = sheetService;
         this.claims = claims;
@@ -90,6 +92,19 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Statement> statementsOf(long personId) {
         return statements.findByPersonIdOrderByIdAsc(personId);
+    }
+
+    /** The sheet's snapshots by person id, each person's oldest first. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<PersonSnapshot>> snapshots(String sheetId) {
+        return snapshots.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(PersonSnapshot::getPersonId));
+    }
+
+    /** The person's snapshots, oldest first. */
+    @Transactional(readOnly = true)
+    public List<PersonSnapshot> snapshotsOf(long personId) {
+        return snapshots.findByPersonIdOrderByIdAsc(personId);
     }
 
     /** The sheet's patrons: each person's patrons' ids, by person id. */
@@ -473,6 +488,7 @@ public class PersonService {
         }
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         carryStatements(from, into);
+        carrySnapshots(from, into);
         // everything naming them goes before they do
         people.flush();
 
@@ -598,6 +614,7 @@ public class PersonService {
         }
         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
         carryStatements(from, arrived);
+        carrySnapshots(from, arrived);
         claims.deleteAll(leaving);
         // everything naming them goes before they do
         people.flush();
@@ -635,6 +652,24 @@ public class PersonService {
         theirs.forEach(s -> statements.save(s.copyTo(into.getSheetId(), into.getId())));
         own.forEach(s -> statements.save(s.copyTo(into.getSheetId(), into.getId())));
         statements.flush();
+    }
+
+    /** Carry a person's snapshots to whom they merge into or arrive as (on that person's sheet), the two
+     *  people's kept oldest first by the day each was written for. */
+    private void carrySnapshots(Person from, Person into) {
+        List<PersonSnapshot> theirs = snapshots.findByPersonIdOrderByIdAsc(from.getId());
+        if (theirs.isEmpty()) {
+            return;
+        }
+        List<PersonSnapshot> own = snapshots.findByPersonIdOrderByIdAsc(into.getId());
+        List<PersonSnapshot> all = new ArrayList<>(theirs);
+        all.addAll(own);
+        all.sort(Comparator.comparing(PersonSnapshot::getDay));
+        snapshots.deleteAll(theirs);
+        snapshots.deleteAll(own);
+        snapshots.flush();
+        all.forEach(s -> snapshots.save(s.copyTo(into.getSheetId(), into.getId())));
+        snapshots.flush();
     }
 
     /** Swap a person with the one above them in the list (up) or below them (down); the top cannot move up
