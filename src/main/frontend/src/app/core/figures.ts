@@ -210,8 +210,7 @@ export class Figures {
     return aged;
   }
 
-  /** A claim's figure: its settled due, else the figure its person's last statement bound it to (not
-   *  while PENDING), else its live due at the rate in force on its date, an overdue claim's late charge on top, at
+  /** A claim's figure: its settled due, else the figure its person's last statement bound it to, else its live due at the rate in force on its date, an overdue claim's late charge on top, at
    *  least the floor;
    *  nothing when it has no figure. */
   figureCents(c: Claim, p: Person): bigint {

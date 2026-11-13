@@ -373,7 +373,8 @@ public class ClaimService {
         return updated;
     }
 
-    /** Approve a PENDING claim: it becomes SETTLED, its due fixed at its live figure now, its late charge on
+    /** Approve a PENDING claim: it becomes SETTLED, its due fixed at the figure its person's last statement bound
+     *  it to, else its live figure now, its late charge on
      *  the sheet's today frozen in on top (with no figure then, its due stays live). Refused unless the
      *  claim is PENDING and the user is a steward other than the one who opened it or last edited it. */
     @Transactional
@@ -395,7 +396,7 @@ public class ClaimService {
         Rollup.Snapshot before = rollup.take(sheetId);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(PersonNotFoundException::new);
-        BigDecimal figure = liveDue(claim, person);
+        BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
         BigDecimal due = figure == null ? null : charged(claim, person, figure);
         refuseUnproved(claim, person, due);
         claim.setSettledDue(due);
@@ -547,7 +548,7 @@ public class ClaimService {
         return updated;
     }
 
-    /** Reject a PENDING claim with a reason: it goes back to OPEN, no longer in a settle batch, bound again by its person's last
+    /** Reject a PENDING claim with a reason: it goes back to OPEN, no longer in a settle batch, still bound by its person's last
      *  statement if that statement included it. Refused unless the claim is PENDING, the user is a
      *  steward and a reason is given. */
     @Transactional
@@ -866,8 +867,7 @@ public class ClaimService {
 
     /** Take a person's statement: record their due-total now (late charges included) and how many claims
      *  count, and bind each claim that counts to its rate figure now, under its late charge and floor (the charge is
-     *  never bound: it keeps following the sheet's today, and the floor is applied on top; a PENDING claim is bound only once it is back to
-     *  OPEN); a claim that does not count, is OPEN or PENDING, bound by no statement and dated within one of its person's holds (or its person's
+     *  never bound: it keeps following the sheet's today, and the floor is applied on top); a claim that does not count, is OPEN or PENDING, bound by no statement and dated within one of its person's holds (or its person's
      *  retirement date is reached), or is deferred past the sheet's today, is left unbound, as the live totals leave it out. */
     @Transactional
     public Stated statement(String sheetId, String user, long personId) {
@@ -1158,8 +1158,7 @@ public class ClaimService {
         }
     }
 
-    /** A claim's figure: the due fixed when settled, else the one its last statement bound (not while
-     *  PENDING), else its live due; none when that is n/a. */
+    /** A claim's figure: the due fixed when settled, else the one its last statement bound, else its live due; none when that is n/a. */
     private BigDecimal due(Claim claim, Person person) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();

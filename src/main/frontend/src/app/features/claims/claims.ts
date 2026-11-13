@@ -385,8 +385,7 @@ export class PersonClaims {
     });
   }
 
-  /** The claim's due: fixed when settled, else as its person's last statement bound it (not while
-   *  PENDING), else live; an
+  /** The claim's due: fixed when settled, else as its person's last statement bound it, else live; an
    *  overdue claim's late charge on top of the bound or live figure. */
   protected figure(c: Claim): string {
     if (c.settledDue !== null) return c.settledDue;

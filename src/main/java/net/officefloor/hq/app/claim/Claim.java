@@ -350,10 +350,10 @@ public class Claim {
         return stated;
     }
 
-    /** Bound by its person's last statement now: stated, and not PENDING (a PENDING claim shows and totals
-     *  its live figure; rejected back to OPEN, it is bound again). */
+    /** Bound by its person's last statement now: stated (a PENDING claim too: it shows and totals the bound
+     *  figure, as any other claim that counts). */
     public boolean isBound() {
-        return stated && status != ClaimStatus.PENDING;
+        return stated;
     }
 
     public BigDecimal getStatedDue() {

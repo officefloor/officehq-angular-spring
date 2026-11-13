@@ -21,8 +21,7 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened it; null while a draft. That user cannot settle it. */
   openedBy: string | null;
-  /** Bound by its person's last statement, which counted it: it shows and totals `statedDue` (not while
-   *  PENDING, see `bound`). */
+  /** Bound by its person's last statement, which counted it: it shows and totals `statedDue` (see `bound`). */
   stated: boolean;
   /** The figure the last statement bound, two decimals; null while unbound, or when that was n/a. */
   statedDue: string | null;
@@ -121,10 +120,10 @@ export function isOpen(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING';
 }
 
-/** Whether a claim is bound by its person's last statement now: a PENDING claim shows and totals its
- *  live figure until rejected back to OPEN. */
+/** Whether a claim is bound by its person's last statement now: a PENDING claim too shows and totals
+ *  the bound figure. */
 export function bound(c: Claim): boolean {
-  return c.stated && c.status !== 'PENDING';
+  return c.stated;
 }
 
 export interface ClaimFields {
