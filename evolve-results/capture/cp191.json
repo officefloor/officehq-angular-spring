@@ -1,0 +1,64 @@
+{
+  "checkpoint": 191,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp191_clerk-limit-per-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The clerk limit can be set per grade (settings, SETTING_CHANGED key=clerk-limit-<grade>\nvalue=<amount>, dated like the floor; blank means none): for a claim, the limit in force is its\nperson's grade's limit on the sheet's today when one is set, else the sheet's.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe clerk limit can be set per grade (settings, SETTING_CHANGED key=clerk-limit-<grade>\nvalue=<amount>, dated like the floor; blank means none): for a claim, the limit in force is its\nperson's grade's limit on the sheet's today when one is set, else the sheet's.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d907030aec0ef3646cab2a651e9f22dd6d6c4e17",
+  "reset_sha": "",
+  "preagent_sha": "23cce6fa798b3adca89a39b8e04c70e9213dc55d",
+  "prev_sha": "23cce6fa798b3adca89a39b8e04c70e9213dc55d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8540508000000001,
+    "input_tokens": 44,
+    "output_tokens": 9939,
+    "cache_read_tokens": 961154,
+    "cache_creation_tokens": 57858,
+    "num_turns": 23,
+    "duration_ms": 361035,
+    "duration_api_ms": 97756,
+    "model": "claude-opus-5-5",
+    "session_id": "b1520f0d-ce78-4af0-a461-4f6914c8248a",
+    "stop_reason": "success",
+    "result_text": "The clerk limit can now be set per grade, and `bin/e2e` passes all 4 tests in the spec.\n\n**How the limit is chosen:** when a clerk settles a claim, the app looks up the person's grade on the sheet's today. If that grade has its own limit in force on today, that limit applies; otherwise the sheet's limit does, and no limit at all means none. Over the limit still sends the claim to PENDING, and stewards are unaffected, as before.\n\n**One choice to check:** the request didn't say on which date to read the person's grade, so I used the sheet's today, not the claim's date. This only makes a difference for someone whose grade changed in between. The tests pass either way. Switching to the claim's date is a one-line change in `overLimit` in `ClaimService.java` if you'd prefer it.\n\n**Stored data:** grade limits go into the existing dated settings under the key `clerk-limit-<grade>`, so no database migration was needed. They are dated the same way as the floor, and copying a sheet already carries them over.\n\n**Server:**\n- `Sheet.clerkLimitFor(grade)` makes the choice above.\n- There's a new endpoint, `PUT /api/sheets/{id}/settings/clerk-limit/{grade}`, accepting grades A, B or C; a blank amount means the grade uses the sheet's limit.\n- Saving writes `SETTING_CHANGED \u2026 key=clerk-limit-<grade> value=<amount>`, with `from=<date>` added when a date is given.\n\n**Front end:** the settings panel has a clerk limit row for each grade, built the same way as the existing per-grade proof threshold. Each row has the amount field `setting-clerk-limit-<grade>`, a from-date field `setting-clerk-limit-<grade>-from` and the value in force `setting-clerk-limit-<grade>-current`. Saving a blank clears that grade's limit.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8540508000000001,
+        "num_turns": 23,
+        "duration_ms": 361035,
+        "duration_api_ms": 97756,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp191.agent.jsonl",
+  "agent_diff_file": "cp191.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
