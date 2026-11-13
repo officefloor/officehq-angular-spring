@@ -257,12 +257,16 @@ export class Figures {
    *  that are not left out now by a hold or a deferral — each its due as shown now: a settled claim's
    *  frozen due, else as its person's last statement bound it, else its live due, an overdue claim's
    *  late charge on top (a claim with no figure adds nothing). */
-  private readonly livePersonPeriodCents = computed(() => {
+  private readonly livePersonPeriodCents = computed(() => this.personPeriodCents((c, period) => countsAt(statusAt(c, period.to))));
+
+  /** Each period's due-total for each person, in cents, by period id then person id, counting the claims
+   *  whose due-by falls in it that pass `counts`, each its due as shown now. */
+  private personPeriodCents(counts: (c: Claim, period: Period) => boolean): Map<number, Map<number, bigint>> {
     const grades = new Map(this.people.people().map((p) => [p.id, p.grades]));
     const sums = new Map<number, Map<number, bigint>>();
     for (const c of this.claims.periodCandidates()) {
       const period = this.periods.of(c.dueBy);
-      if (!period || !countsAt(statusAt(c, period.to))) continue;
+      if (!period || !counts(c, period)) continue;
       let due: bigint | null;
       if (c.settledDue !== null) due = hundredths(c.settledDue);
       else if (bound(c)) due = c.statedDue === null ? null : hundredths(c.statedDue);
@@ -276,7 +280,7 @@ export class Figures {
       sums.set(period.id, byPerson);
     }
     return sums;
-  });
+  }
 
   /** A person's due-total for a period: fixed when it was closed or soft-closed (0.00 for a person added since), else
    *  live. */
@@ -293,4 +297,19 @@ export class Figures {
     }
     return totals;
   });
+
+  /** Each open period's classic due-total, by period id: like the live one, but each claim counts by
+   *  its status now (OPEN, PENDING and SETTLED count) rather than the one it had at the period's end. */
+  readonly classicPeriodDueTotals = computed(() => {
+    const totals = new Map<number, string>();
+    for (const [id, byPerson] of this.personPeriodCents((c) => countsAt(c.status))) {
+      totals.set(id, money([...byPerson.values()].reduce((sum, d) => sum + d, 0n)));
+    }
+    return totals;
+  });
+
+  /** Everyone's (capped) due-total added up, skipping those that are n/a, not trimmed. */
+  readonly classicDueTotal = computed(() =>
+    money(this.people.people().reduce((sum, p) => sum + (this.dueCents(p) ?? 0n), 0n)),
+  );
 }
