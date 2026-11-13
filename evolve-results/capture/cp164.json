@@ -1,0 +1,76 @@
+{
+  "checkpoint": 164,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp164_correction-limit",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    30,
+    34,
+    35,
+    51,
+    144
+  ],
+  "replaced_tests": [
+    "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+    "cp30_corrections.spec.ts::corrections",
+    "cp34_bulk-open.spec.ts::bulk open scenario 1",
+    "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+    "cp51_proofs.spec.ts::proofs scenario 1"
+  ],
+  "request": {
+    "spec": "A correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA correction may not exceed what remains of the claim it corrects: the target's amount less the\namounts of the corrections already made against it (VOID or DELETED ones left out). A larger\ncorrection is refused with an error on the form.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "edd1945ea3c0a6266bc4daa1b9ec0e33a9886609",
+  "reset_sha": "",
+  "preagent_sha": "38c2a70f9368893fee31505bee2035bb7de55cd3",
+  "prev_sha": "38c2a70f9368893fee31505bee2035bb7de55cd3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5090332000000001,
+    "input_tokens": 34,
+    "output_tokens": 5276,
+    "cache_read_tokens": 574246,
+    "cache_creation_tokens": 36066,
+    "num_turns": 17,
+    "duration_ms": 822852,
+    "duration_api_ms": 59971,
+    "model": "claude-opus-5-5",
+    "session_id": "76650fdc-7fb6-4030-8785-b678dcfefc2e",
+    "stop_reason": "success",
+    "result_text": "The correction limit is in place, and all 4 acceptance tests pass with `bin/e2e`.\n\n**What changed** (server only; the claim form already shows correction errors):\n- **`ClaimService.refuseCorrection`** now works out what remains of the claim being corrected: its amount, less every correction already made against it, leaving out VOID and DELETED ones. Drafts still count. A correction larger than what remains is refused with \"A correction may not exceed what remains of the claim it corrects (x.xx).\" A refused correction writes nothing to the store or the audit file.\n- **When a draft correction is edited**, its own previous amount is left out of that sum, so changing a draft's amount isn't blocked by the draft itself.\n- **`ClaimRepository.correctionsOf`** is a new query that finds a person's corrections naming a given claim number.\n\n**Flaky test:** the first full run failed one step in scenario 2: adding Ben to pool P1, which comes before any claim is added. My change doesn't touch pools, and that scenario then passed twice on its own and again in a second full run, so it looks like a UI timing issue in that step.\n\n**Decision for you:** restoring a DELETED correction to DRAFT is not checked against the limit. So a correction can be deleted, another made in its place, and then the first one restored, taking the total over the claim's amount. The request covers making a correction on the form, so I left restore alone. Adding the same check to restore is a small change; the catch is that a restore that goes over would then be refused. Say if you want it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5090332000000001,
+        "num_turns": 17,
+        "duration_ms": 822852,
+        "duration_api_ms": 59971,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp164.agent.jsonl",
+  "agent_diff_file": "cp164.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
