@@ -1,0 +1,100 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index f17be8f5c..d752d811b 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -23,7 +23,7 @@ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** The figures a sheet rolls up to: each person's claimed and due-total, and the sheet's totals. A
++/** The figures a sheet rolls up to: each person's claimed, due-total and overdue-total, and the sheet's totals. A
+  *  change made through {@link #track} is followed in the audit by a line for each person whose
+  *  figures it moved, then one for the sheet's totals when they moved. */
+ @Service
+@@ -35,14 +35,16 @@ public class RollupService {
+     private static final BigDecimal NONE = BigDecimal.ZERO.setScale(2);
+ 
+     /** A person's figures; due is null when it has no rate to work from. */
+-    private record Figures(String name, BigDecimal claimed, BigDecimal due) {
++    private record Figures(String name, BigDecimal claimed, BigDecimal due, BigDecimal overdue) {
+         boolean sameAs(Figures other) {
+-            return other != null && claimed.compareTo(other.claimed) == 0 && Objects.equals(due, other.due);
++            return other != null && claimed.compareTo(other.claimed) == 0 && Objects.equals(due, other.due)
++                    && overdue.compareTo(other.overdue) == 0;
+         }
+     }
+ 
+     /** The sheet's figures: each person's, by id in the order they were added, and the totals. */
+-    private record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal) {
++    private record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
++            BigDecimal overdueTotal) {
+     }
+ 
+     private final PersonRepository people;
+@@ -80,14 +82,17 @@ public class RollupService {
+         after.people().forEach((id, figures) -> {
+             if (!figures.sameAs(before.people().get(id))) {
+                 audit.recordOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + figures.name()
+-                        + " claimed=" + figures.claimed().toPlainString() + " due-total=" + text(figures.due()));
++                        + " claimed=" + figures.claimed().toPlainString() + " due-total=" + text(figures.due())
++                        + " overdue-total=" + figures.overdue().toPlainString());
+             }
+         });
+         if (after.claimedTotal().compareTo(before.claimedTotal()) != 0
+-                || after.dueTotal().compareTo(before.dueTotal()) != 0) {
++                || after.dueTotal().compareTo(before.dueTotal()) != 0
++                || after.overdueTotal().compareTo(before.overdueTotal()) != 0) {
+             audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user
+                     + " claimed-total=" + after.claimedTotal().toPlainString()
+-                    + " due-total=" + after.dueTotal().toPlainString());
++                    + " due-total=" + after.dueTotal().toPlainString()
++                    + " overdue-total=" + after.overdueTotal().toPlainString());
+         }
+         return result;
+     }
+@@ -102,6 +107,7 @@ public class RollupService {
+         Map<Long, Figures> figures = new LinkedHashMap<>();
+         BigDecimal claimedTotal = NONE;
+         BigDecimal dueTotal = NONE;
++        BigDecimal overdueTotal = NONE;
+         for (Person person : sheetPeople) {
+             Figures f = figuresOf(sheetId, today, person, counted.getOrDefault(person.getId(), List.of()));
+             figures.put(person.getId(), f);
+@@ -109,27 +115,34 @@ public class RollupService {
+             if (f.due() != null) {
+                 dueTotal = dueTotal.add(f.due());
+             }
++            overdueTotal = overdueTotal.add(f.overdue());
+         }
+-        return new Rollup(figures, claimedTotal, dueTotal);
++        return new Rollup(figures, claimedTotal, dueTotal, overdueTotal);
+     }
+ 
+     /** A person's figures from their claims that count: the sum of their amounts, and the sum of the
+      *  figures they show, or none when the grade in force on the sheet's today has no rate in force
+-     *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. */
++     *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
++     *  sums the dues of those that are OPEN or PENDING with a due-by before the sheet's today. */
+     private Figures figuresOf(String sheetId, LocalDate today, Person person, List<Claim> counted) {
+         BigDecimal claimed = NONE;
+         BigDecimal due = NONE;
++        BigDecimal overdue = NONE;
+         boolean anyFigure = false;
+         for (Claim claim : counted) {
+             claimed = claimed.add(claim.getAmount());
+             BigDecimal figure = claimService.dueOf(sheetId, person, claim);
+             if (figure != null) {
+                 due = due.add(figure);
++                if (claim.getStatus().isOpen() && claim.getDueBy().isBefore(today)) {
++                    overdue = overdue.add(figure);
++                }
+             }
+             anyFigure |= figure != null;
+         }
+         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today), today).isPresent();
+-        return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due) : null);
++        return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due) : null,
++                overdue);
+     }
+ 
+     private static String text(BigDecimal due) {
