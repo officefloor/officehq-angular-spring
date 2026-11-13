@@ -1,0 +1,55 @@
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index a0d417345..7e4a4ba6d 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -27,7 +27,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
+ public class Audit {
+ 
+     /** The events that only report figures: they never name a delegating steward. */
+-    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT");
++    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
+ 
+     private final Path file;
+     private final ObjectProvider<SettingService> settings;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 7ab73781e..4c285b5be 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -100,6 +100,13 @@ public class RollupService {
+         return result;
+     }
+ 
++    /** Record in the audit each person's due-total as it stands now, in list order: the figures of
++     *  the day the sheet's today is about to leave. */
++    public void snapshot(String sheetId, String user) {
++        rollup(sheetId).people().values().forEach(figures -> audit.recordOnCommit("SNAPSHOT sheet=" + sheetId
++                + " by=" + user + " name=" + figures.name() + " due-total=" + text(figures.due())));
++    }
++
+     private Rollup rollup(String sheetId) {
+         LocalDate today = sheets.today(sheetId);
+         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 0a6332008..031a6d88c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -59,7 +59,8 @@ public class SheetController {
+     }
+ 
+     /** Change the sheet's today, closing the periods past their grace days and releasing every claim
+-     *  editor's lock when the date moved; the audit records only the figures it moved. */
++     *  editor's lock when the date moved; the audit records each person's due-total on the day being
++     *  left when the date moved, then only the figures it moved. */
+     @PutMapping("/{id}/today")
+     public SheetView setToday(@PathVariable @NotBlank @Size(max = 200) String id,
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated TodayRequest request) {
+@@ -68,6 +69,9 @@ public class SheetController {
+         return SheetView.of(rollups.track(sheet, by,
+                 () -> {
+                     LocalDate was = service.today(sheet);
++                    if (!was.equals(request.today())) {
++                        rollups.snapshot(sheet, by);
++                    }
+                     Sheet changed = service.setToday(sheet, request.today());
+                     if (!was.equals(changed.getToday())) {
+                         claims.releaseLocks(sheet);
