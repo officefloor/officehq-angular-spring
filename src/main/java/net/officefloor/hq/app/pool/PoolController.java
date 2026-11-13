@@ -83,13 +83,18 @@ public class PoolController {
             return out;
         }
 
-        /** A crew as a pool: its lead and then its members, 100.00 split equally between them, each rounded half
-         *  to even to two decimals, the remainder on the lead. */
+        /** A crew as a pool: its lead (when it has one) and then its members, 100.00 split equally between them,
+         *  each rounded half to even to two decimals, the remainder on the first; none when it has no one. */
         private static Pool crewPool(Crew crew) {
             Pool pool = new Pool(crew.getSheetId(), crew.getName());
             List<Long> ids = new ArrayList<>();
-            ids.add(crew.getLeadId());
+            if (crew.getLeadId() != null) {
+                ids.add(crew.getLeadId());
+            }
             crew.getMembers().forEach(m -> ids.add(m.getPersonId()));
+            if (ids.isEmpty()) {
+                return pool;
+            }
             BigDecimal each = HUNDRED.divide(BigDecimal.valueOf(ids.size()), 2, RoundingMode.HALF_EVEN);
             BigDecimal lead = HUNDRED.subtract(each.multiply(BigDecimal.valueOf(ids.size() - 1)));
             for (int i = 0; i < ids.size(); i++) {

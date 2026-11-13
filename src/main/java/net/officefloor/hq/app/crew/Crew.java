@@ -30,7 +30,7 @@ public class Crew {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "lead_person_id", nullable = false)
+    @Column(name = "lead_person_id")
     private Long leadId;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
@@ -58,8 +58,14 @@ public class Crew {
         return name;
     }
 
+    /** Its lead's id; null once its lead has left the sheet. */
     public Long getLeadId() {
         return leadId;
+    }
+
+    /** Leave it with no lead (its lead has left the sheet); its members stay. */
+    public void dropLead() {
+        leadId = null;
     }
 
     /** Its members, in the order they were added. */

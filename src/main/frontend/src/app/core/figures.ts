@@ -125,7 +125,7 @@ export class Figures {
   /** A crew's due-total: the lead's and the members' due-totals as the people list shows them, added up,
    *  n/a skipped. */
   crewDueCents(c: CrewView): bigint {
-    const ids = new Set([c.lead.personId, ...c.members.map((m) => m.personId)]);
+    const ids = new Set([...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)]);
     let sum = 0n;
     for (const p of this.people.people()) {
       if (!ids.has(p.id)) continue;
@@ -140,7 +140,7 @@ export class Figures {
   readonly myCrewDueTotal = computed(() => {
     const p = this.me();
     if (!p) return null;
-    const led = this.crews.crews().filter((c) => c.lead.personId === p.id);
+    const led = this.crews.crews().filter((c) => c.lead?.personId === p.id);
     if (led.length === 0) return null;
     return money(led.reduce((sum, c) => sum + this.crewDueCents(c), 0n));
   });

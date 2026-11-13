@@ -10,11 +10,11 @@ export interface CrewPersonView {
   name: string;
 }
 
-/** A crew: its lead and its members, in the order they were added. */
+/** A crew: its lead (null once its lead has left the sheet) and its members, in the order they were added. */
 export interface CrewView {
   id: number;
   name: string;
-  lead: CrewPersonView;
+  lead: CrewPersonView | null;
   members: CrewPersonView[];
 }
 

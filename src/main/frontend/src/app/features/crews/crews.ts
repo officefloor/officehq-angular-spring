@@ -13,7 +13,7 @@ import { money } from '../../core/rates';
     @let c = crew();
     <h3 data-testid="crew-name">{{ c.name }}</h3>
     <p>
-      Lead: <strong data-testid="crew-lead">{{ name(c.lead) }}</strong>
+      Lead: <strong data-testid="crew-lead">{{ c.lead ? name(c.lead) : '' }}</strong>
       Due total: <strong data-testid="crew-due-total">{{ dueTotal() }}</strong>
     </p>
     <ul [attr.aria-label]="'Members of ' + c.name">

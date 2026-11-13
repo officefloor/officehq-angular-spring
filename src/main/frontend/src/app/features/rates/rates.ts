@@ -1,11 +1,13 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { Figures } from '../../core/figures';
 import { GRADES } from '../../core/people';
 import { Rates, money } from '../../core/rates';
+import { Session } from '../../core/session';
 
 // The sheet's rates for each grade: one form sets a grade's rate from a date (or from the beginning
 // of time) through a to-date (or for good), one table shows each grade's rate in force on the sheet's today, or n/a when none
-// applies, and another lists every rate with its from- and to-date. A preview shows how many open and
+// applies, a calendar shows each grade's rate in force on the first day of each month of the sheet's
+// today's calendar year, and another lists every rate with its from- and to-date. A preview shows how many open and
 // pending claims of a grade a candidate rate would change, and by how much; it saves nothing.
 @Component({
   selector: 'app-rates',
@@ -96,6 +98,29 @@ import { Rates, money } from '../../core/rates';
           }
         </tbody>
       </table>
+      @if (months().length) {
+        <table data-testid="rate-calendar">
+          <caption>On the first of each month</caption>
+          <thead>
+            <tr>
+              <th scope="col">Grade</th>
+              @for (m of months(); track m) {
+                <th scope="col">{{ m }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (g of grades; track g) {
+              <tr>
+                <th scope="row">{{ g }}</th>
+                @for (m of months(); track m) {
+                  <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ rates.onDate(g, m + '-01') }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       <table data-testid="rate-list">
         <caption>All rates</caption>
         <thead>
@@ -119,6 +144,7 @@ import { Rates, money } from '../../core/rates';
 export class RatesPanel {
   protected readonly rates = inject(Rates);
   private readonly figures = inject(Figures);
+  private readonly session = inject(Session);
   protected readonly grades = GRADES;
   protected readonly grade = signal<string>('A');
   protected readonly pct = signal('');
@@ -126,6 +152,11 @@ export class RatesPanel {
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
+  /** The months (YYYY-MM) of the sheet's today's calendar year; none before a today is known. */
+  protected readonly months = computed(() => {
+    const year = this.session.today()?.slice(0, 4);
+    return year ? Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`) : [];
+  });
 
   protected readonly previewGrade = signal<string>('A');
   protected readonly previewPct = signal('');

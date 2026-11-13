@@ -74,6 +74,11 @@ export class Rates {
     return (today ? this.inForce(grade, today)?.rate : undefined) ?? NO_RATE;
   }
 
+  /** A grade's rate in force on a date (YYYY-MM-DD), with two decimals, or n/a when it has none. */
+  onDate(grade: string, date: string): string {
+    return this.inForce(grade, date)?.rate ?? NO_RATE;
+  }
+
   /** An amount in cents times the grade's rate in force on a date, divided by 100, rounded to cents as
    *  a claim dated `roundOn` rounds (half up before the policy date, else half to even): the rate figure,
    *  before any late charge or floor; null when no rate of the grade applies then. Given a claim's id, each

@@ -33,11 +33,11 @@ public class CrewController {
     public record CrewPersonView(long personId, String name) {
     }
 
-    /** A crew: its lead and its members in the order added. */
+    /** A crew: its lead (null when it has none) and its members in the order added. */
     public record CrewView(long id, String name, CrewPersonView lead, List<CrewPersonView> members) {
 
         static CrewView of(Crew crew, Map<Long, Person> people) {
-            return new CrewView(crew.getId(), crew.getName(), person(crew.getLeadId(), people),
+            return new CrewView(crew.getId(), crew.getName(), crew.getLeadId() == null ? null : person(crew.getLeadId(), people),
                     crew.getMembers().stream().map(m -> person(m.getPersonId(), people)).toList());
         }
 

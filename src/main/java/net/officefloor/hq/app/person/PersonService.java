@@ -524,7 +524,7 @@ public class PersonService {
      *  were added). Figures a statement bound are kept, as are their statements (counting as those of whom they
      *  are merged into too, whose last statement stays their last unless they have none), and references
      *  are not carried. They leave this sheet entirely: their patron links, pool memberships, crew memberships (a crew they lead
-     *  goes with them), watches,
+     *  stays, with no lead), watches,
      *  holds and fixed period figures are dropped. Refused for anyone but a steward, a retired
      *  person, this sheet's own id, an archived sheet, and when their name, an alias or their contact is already
      *  on the other sheet or their name or an alias on another sheet of its tree; a sheet never loaded is started.
@@ -623,8 +623,8 @@ public class PersonService {
             pool.removeMember(from.getId());
         }
         for (Crew crew : crews.findBySheetIdOrderByIdAsc(sheetId)) {
-            if (crew.getLeadId().equals(from.getId())) {
-                crews.delete(crew);
+            if (from.getId().equals(crew.getLeadId())) {
+                crew.dropLead();
             } else {
                 crew.removeMember(from.getId());
             }
