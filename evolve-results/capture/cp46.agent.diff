@@ -1,0 +1,163 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 56c71dee5..9621e8fb1 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -11,7 +11,7 @@ import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, rateOn } from '../rate
+ export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ 
+ /** A status change a claim's buttons ask for. */
+-type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void';
++type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle';
+ 
+ export interface Claim {
+   id: number;
+@@ -126,6 +126,7 @@ const PAST: Record<ClaimAction, string> = {
+   approve: 'approved',
+   reject: 'rejected',
+   void: 'voided',
++  resettle: 're-settled',
+ };
+ 
+ /** An amount of 0.00 or more with up to two decimals. */
+@@ -229,6 +230,14 @@ const NUMBER = /^\S+$/;
+           <button type="button" data-testid="claim-void" [attr.aria-label]="'Void claim ' + c.id" (click)="act(c, 'void')">
+             Void
+           </button>
++          <button
++            type="button"
++            data-testid="claim-resettle"
++            [attr.aria-label]="'Re-settle claim ' + c.id"
++            (click)="act(c, 'resettle')"
++          >
++            Re-settle
++          </button>
+           <label [for]="'claim-reassign-to-' + c.id">Move to</label>
+           <select
+             [id]="'claim-reassign-to-' + c.id"
+@@ -398,7 +407,7 @@ export class PersonClaims {
+     this.error.set(null);
+   }
+ 
+-  /** Open, settle, approve, reject (with the reason typed on its row) or void a claim; a clerk
++  /** Open, settle, approve, reject (with the reason typed on its row), void or re-settle a claim; a clerk
+    *  settling a due above the clerk limit leaves it PENDING. A change its status does not allow, the
+    *  user who opened it settling or approving it, anyone but a steward approving or rejecting it, or
+    *  a reject with no reason, is refused on the row. */
+@@ -425,8 +434,10 @@ export class PersonClaims {
+         message:
+           forbidden && action === 'settle'
+             ? 'The claim could not be settled: whoever opened it cannot settle it.'
+-            : forbidden
+-              ? `The claim could not be ${PAST[action]}: only a steward who did not open it can.`
++            : forbidden && action === 'resettle'
++              ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
++              : forbidden
++                ? `The claim could not be ${PAST[action]}: only a steward who did not open it can.`
+               : `The claim could not be ${PAST[action]}.`,
+       });
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index c8b7ed16f..8216cf5c1 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -188,6 +188,15 @@ public class ClaimController {
+         return view(sheet, rollups.track(sheet, by, () -> service.reject(sheet, by, personId, id, request.reason())));
+     }
+ 
++    /** Re-settle a SETTLED claim at the figure it would have today: a steward only. */
++    @PostMapping("/people/{personId}/claims/{id}/resettle")
++    public ClaimView resettle(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
++            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
++        String sheet = sheetId.trim();
++        String by = SignedInUser.decode(user);
++        return view(sheet, rollups.track(sheet, by, () -> service.resettle(sheet, by, personId, id)));
++    }
++
+     /** Move a DRAFT, OPEN or PENDING claim to another person: a steward only. */
+     @PostMapping("/people/{personId}/claims/{id}/reassign")
+     public ClaimView reassign(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+@@ -227,8 +236,9 @@ public class ClaimController {
+     }
+ 
+     /** The user who opened a claim cannot settle or approve it, and only a steward approves or
+-     *  rejects a PENDING claim or moves a claim to another person. */
+-    @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class})
++     *  rejects a PENDING claim, moves a claim to another person or re-settles a SETTLED one. */
++    @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class,
++            ResettleRefusedException.class})
+     @ResponseStatus(HttpStatus.FORBIDDEN)
+     public void ownClaim() {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8852c3562..208cbd4d8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -190,6 +190,31 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /** A steward re-settles a SETTLED claim: its settled due is frozen again at the figure it would
++     *  have today as an OPEN claim bound by no statement (today's rates, grades, floor and late
++     *  charge), and its status log gains a SETTLED line. Anyone else, a claim that is not SETTLED, or
++     *  one dated in a closed period, is refused. */
++    @Transactional
++    public Claim resettle(String sheetId, String user, Long personId, Long id) {
++        Person person = person(sheetId, personId);
++        Claim claim = claim(sheetId, personId, id);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResettleRefusedException(user);
++        }
++        if (claim.getStatus() != ClaimStatus.SETTLED) {
++            throw new StatusChangeRefusedException(claim.getStatus(), ClaimStatus.SETTLED);
++        }
++        refuseClosed(sheetId, claim.getDate());
++        String old = settledDueText(claim);
++        BigDecimal figure = liveFigureOf(sheetId, person, claim);
++        claim.setSettledDue(figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure, true)));
++        Claim saved = claims.saveAndFlush(claim);
++        log(sheetId, user, person, saved);
++        audit.recordOnCommit(line("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber())
++                + " old=" + old + " new=" + settledDueText(saved));
++        return saved;
++    }
++
+     /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
+      *  number and date, loses any figure a statement bound it to (live again until its new person's
+      *  next statement), and is listed as its new person's newest claim. Anyone else, a SETTLED or VOID
+@@ -299,16 +324,17 @@ public class ClaimService {
+     /** The due a claim shows: its figure plus its late charge; null when it has no figure. */
+     public BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+         BigDecimal figure = figureOf(sheetId, person, claim);
+-        return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure));
++        return figure == null ? null : figure.add(lateChargeOf(sheetId, claim, figure, claim.getStatus().isOpen()));
+     }
+ 
+     /** The late charge on a claim with a figure: none unless it is OPEN or PENDING and overdue (its due-by is
+      *  before the sheet's today) or a correction, else the late percent of the figure for every full 30 days
+      *  it is overdue, rounded to two decimals as the claim's date decides (see roundingOf). Never bound by a statement: it follows the
+-     *  sheet's today. */
+-    private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure) {
++     *  sheet's today. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
++     *  claim as if it were still OPEN. */
++    private BigDecimal lateChargeOf(String sheetId, Claim claim, BigDecimal figure, boolean open) {
+         BigDecimal none = BigDecimal.ZERO.setScale(2);
+-        if (!claim.getStatus().isOpen() || claim.isCorrection()) {
++        if (!open || claim.isCorrection()) {
+             return none;
+         }
+         long days = ChronoUnit.DAYS.between(claim.getDueBy(), sheets.today(sheetId));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ResettleRefusedException.java b/src/main/java/net/officefloor/hq/app/claim/ResettleRefusedException.java
+new file mode 100644
+index 000000000..0b29aa15a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ResettleRefusedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.claim;
++
++/** Only a steward re-settles a claim. */
++public class ResettleRefusedException extends RuntimeException {
++
++    public ResettleRefusedException(String user) {
++        super(user + " is not a steward: only a steward re-settles a claim");
++    }
++}
