@@ -5,7 +5,9 @@ import java.util.Collections;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -65,6 +67,29 @@ public class AuditViewService {
             }
         }
         Collections.reverse(lines);
+        return lines;
+    }
+
+    /**
+     * The sheet's activity: for every user (by=) and every event (the line's first word) in the sheet's
+     * audit lines, one line "&lt;user&gt; &lt;EVENT&gt; &lt;count&gt;", sorted by user then event.
+     */
+    public List<String> activity(String sheetId) {
+        Pattern sheet = Pattern.compile("(?:^| )sheet=" + Pattern.quote(sheetId) + "(?: |$)");
+        Pattern by = Pattern.compile("(?:^| )by=(.*?)(?= [A-Za-z][\\w-]*=|$)");
+        TreeMap<String, TreeMap<String, Integer>> counts = new TreeMap<>();
+        for (String line : audit.lines()) {
+            if (!sheet.matcher(line).find()) {
+                continue;
+            }
+            Matcher m = by.matcher(line);
+            String user = m.find() ? m.group(1) : "";
+            int space = line.indexOf(' ');
+            String event = space < 0 ? line : line.substring(0, space);
+            counts.computeIfAbsent(user, u -> new TreeMap<>()).merge(event, 1, Integer::sum);
+        }
+        List<String> lines = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, n) -> lines.add(user + " " + event + " " + n)));
         return lines;
     }
 

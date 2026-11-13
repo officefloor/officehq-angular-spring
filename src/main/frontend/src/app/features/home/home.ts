@@ -15,6 +15,7 @@ import { Session, isDate } from '../../core/session';
 import { UserColumns } from '../../core/user-columns';
 import { LOCALES, UserLocale } from '../../core/user-locale';
 import { VoidReasons } from '../../core/void-reasons';
+import { ActivityPanel } from '../audit/activity';
 import { AuditPanel } from '../audit/audit';
 import { ClaimTemplatesPanel } from '../claim-templates/claim-templates';
 import { BulkOpen } from '../claims/bulk-open';
@@ -44,7 +45,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
 @Component({
   selector: 'app-home',
   hostDirectives: [LocaleFigures],
-  imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+  imports: [ActivityPanel, AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, BulkVoid, ClaimTemplatesPanel, ClassicSummaryPanel, CrewsPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, NotesPanel, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
   template: `
     @if (session.user(); as user) {
       @if (session.sheetId()) {
@@ -156,6 +157,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
         <app-classic-summary />
         <app-search />
         <app-audit />
+        <app-activity />
       }
     } @else {
       <form aria-label="Sign in" (submit)="signIn($event)">
