@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { GRADES } from './people';
 
 export interface SheetView {
   id: string;
@@ -46,6 +47,9 @@ export interface SheetView {
   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled
    *  or approved; null when none. */
   proofKinds: string | null;
+  /** The default grade: the grade a person added by the quick-add bar, or by an import line with a blank
+   *  grade, takes; null for A. */
+  defaultGrade: string | null;
   /** Whether the sheet is archived: everything stays visible and every change is refused. */
   archived: boolean;
   /** The entry date (YYYY-MM-DD): the default date of a new claim in place of the sheet's today; null when
@@ -188,6 +192,8 @@ export class Session {
   readonly reviewSla = signal<number | null>(null);
   /** The sheet's proof kinds, comma separated; null when none. */
   readonly proofKinds = signal<string | null>(null);
+  /** The sheet's default grade; null for A. Not dated. */
+  readonly defaultGrade = signal<string | null>(null);
   /** The sheet's entry date (YYYY-MM-DD); null when off. While set, it is the default date of a new claim
    *  in place of the sheet's today. */
   readonly entryDate = signal<string | null>(null);
@@ -267,6 +273,7 @@ export class Session {
       this.escalateAfter.set(sheet.escalateAfter);
       this.reviewSla.set(sheet.reviewSla);
       this.proofKinds.set(sheet.proofKinds);
+      this.defaultGrade.set(sheet.defaultGrade);
       this.entryDate.set(sheet.entryDate);
       this.pot.set(sheet.pot);
       this.alertThreshold.set(sheet.alertThreshold);
@@ -779,6 +786,27 @@ export class Session {
           { proofKinds: k || null }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.proofKinds.set(sheet.proofKinds);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's default grade (one of the grades; blank: A); an error message when refused. */
+  async setDefaultGrade(grade: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const g = grade.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (g && !(GRADES as readonly string[]).includes(g)) {
+      return `Choose a default grade of ${GRADES.join(', ')}, or leave it blank for A.`;
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/default-grade`,
+          { defaultGrade: g || null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.defaultGrade.set(sheet.defaultGrade);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';

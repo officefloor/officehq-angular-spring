@@ -223,7 +223,8 @@ public class PersonService {
     public record ImportResult(List<Person> added, List<Person> updated) {
     }
 
-    /** The import box: lines of name,grade,terms,contact (the last two may be absent or blank), blank lines
+    /** The import box: lines of name,grade,terms,contact (the last two may be absent or blank; a blank
+     *  grade is the sheet's default grade), blank lines
      *  skipped. A line whose name is a name or alias on the sheet (ignoring case) updates that person; any
      *  other adds one. Every line is checked first with the person form's rules, a name, person or contact
      *  repeated within the import too (ignoring case); a refused line refuses the import, changing no one and
@@ -232,7 +233,7 @@ public class PersonService {
      *  and contact only when the line gives them. */
     @Transactional
     public ImportResult importPeople(String sheetId, String user, String text) {
-        requireSheet(sheetId);
+        String defaultGrade = defaultGrade(sheetId);
         List<ImportLine> lines = new ArrayList<>();
         Map<ImportLine, Person> matched = new HashMap<>();
         Set<String> names = new HashSet<>();
@@ -244,7 +245,7 @@ public class PersonService {
             if (raw[i].isBlank()) {
                 continue;
             }
-            ImportLine line = parseImport(i + 1, raw[i]);
+            ImportLine line = parseImport(i + 1, raw[i], defaultGrade);
             String lower = line.name().toLowerCase(Locale.ROOT);
             if (!names.add(lower)) {
                 throw importRefused(line.number(), "the name " + line.name() + " is already in this import.");
@@ -298,7 +299,7 @@ public class PersonService {
         return new ImportResult(added, updated);
     }
 
-    private static ImportLine parseImport(int number, String raw) {
+    private static ImportLine parseImport(int number, String raw, String defaultGrade) {
         String[] f = raw.split(",", 4);
         String name = f[0].trim();
         if (name.isEmpty()) {
@@ -308,6 +309,9 @@ public class PersonService {
             throw importRefused(number, "the name is too long.");
         }
         String grade = f.length > 1 ? f[1].trim() : "";
+        if (grade.isEmpty()) {
+            grade = defaultGrade;
+        }
         if (!grade.matches("[ABC]")) {
             throw importRefused(number, "choose a grade of A, B or C.");
         }
@@ -942,6 +946,12 @@ public class PersonService {
     @Transactional(readOnly = true)
     public Person current(String sheetId, long personId) {
         return people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+    }
+
+    /** The grade a new person takes when none is given: the sheet's default grade (A when none is set). */
+    @Transactional(readOnly = true)
+    public String defaultGrade(String sheetId) {
+        return sheets.findById(sheetId).orElseThrow(SheetNotFoundException::new).defaultGradeOrA();
     }
 
     private void requireSheet(String sheetId) {

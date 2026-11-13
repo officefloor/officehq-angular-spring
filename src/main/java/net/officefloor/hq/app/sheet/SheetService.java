@@ -311,6 +311,16 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's default grade (one of the grades; blank: A). Not dated; changes no one. */
+    @Transactional
+    public Sheet setDefaultGrade(String id, String user, String grade) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        String g = grade == null ? "" : grade.trim();
+        sheet.setDefaultGrade(g.isEmpty() ? null : g);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=default-grade value=" + g);
+        return sheet;
+    }
+
     /** Change the sheet's fiscal start month (1 to 12). Not dated. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

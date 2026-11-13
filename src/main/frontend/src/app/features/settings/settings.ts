@@ -333,6 +333,17 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="proofKindsTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-proof-kinds-current">{{ session.proofKinds() ?? '' }}</strong></p>
+        <label for="setting-default-grade">Default grade (a person added by the quick-add bar, or by an import line with no grade, takes it; blank for A)</label>
+        <input
+          id="setting-default-grade"
+          data-testid="setting-default-grade"
+          [value]="defaultGrade()"
+          (input)="defaultGrade.set(value($event)); defaultGradeTouched.set(true); error.set(null)"
+          (focus)="focused.set('default-grade')"
+          (keydown.delete)="defaultGradeTouched.set(true); error.set(null)"
+          (keydown.backspace)="defaultGradeTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-default-grade-current">{{ session.defaultGrade() ?? '' }}</strong></p>
         <label for="setting-fiscal-start-month">Fiscal start month (1 to 12)</label>
         <input
           id="setting-fiscal-start-month"
@@ -518,6 +529,8 @@ export class SettingsPanel {
   protected readonly reviewSlaTouched = signal(false);
   protected readonly proofKinds = signal('');
   protected readonly proofKindsTouched = signal(false);
+  protected readonly defaultGrade = signal('');
+  protected readonly defaultGradeTouched = signal(false);
   protected readonly entryDate = signal('');
   protected readonly entryDateTouched = signal(false);
   protected readonly fiscalStartMonth = signal('');
@@ -610,7 +623,7 @@ export class SettingsPanel {
         && !this.noteThresholdTouched() && !this.reviewThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
-        && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.reviewSlaTouched() && !this.proofKindsTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
+        && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.reviewSlaTouched() && !this.proofKindsTouched() && !this.defaultGradeTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
         && !this.fiscalStartMonthTouched() && !this.alertThresholdTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
         && this.gradeProofThresholdTouched().size === 0
@@ -647,6 +660,8 @@ export class SettingsPanel {
         || (guess && this.reviewSla().trim() !== (this.session.reviewSla()?.toString() ?? ''));
       const proofKinds = this.proofKindsTouched() || pick === 'proof-kinds'
         || (guess && this.proofKinds().trim() !== (this.session.proofKinds() ?? ''));
+      const defaultGrade = this.defaultGradeTouched() || pick === 'default-grade'
+        || (guess && this.defaultGrade().trim() !== (this.session.defaultGrade() ?? ''));
       const entryDate = this.entryDateTouched() || pick === 'entry-date'
         || (guess && this.entryDate().trim() !== (this.session.entryDate() ?? ''));
       const pot = this.potTouched() || pick === 'pot'
@@ -657,7 +672,7 @@ export class SettingsPanel {
         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
       const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
-        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter && !reviewSla && !proofKinds
+        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter && !reviewSla && !proofKinds && !defaultGrade
           && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
@@ -685,6 +700,7 @@ export class SettingsPanel {
         ?? (escalateAfter ? await this.session.setEscalateAfter(this.escalateAfter()) : null)
         ?? (reviewSla ? await this.session.setReviewSla(this.reviewSla()) : null)
         ?? (proofKinds ? await this.session.setProofKinds(this.proofKinds()) : null)
+        ?? (defaultGrade ? await this.session.setDefaultGrade(this.defaultGrade()) : null)
         ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null)
         ?? (fiscalStartMonth ? await this.session.setFiscalStartMonth(this.fiscalStartMonth()) : null)
         ?? (pot ? await this.savePot() : null)
@@ -731,6 +747,8 @@ export class SettingsPanel {
         this.reviewSlaTouched.set(false);
         this.proofKinds.set('');
         this.proofKindsTouched.set(false);
+        this.defaultGrade.set('');
+        this.defaultGradeTouched.set(false);
         this.entryDate.set('');
         this.entryDateTouched.set(false);
         this.fiscalStartMonth.set('');

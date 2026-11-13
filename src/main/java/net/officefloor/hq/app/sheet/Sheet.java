@@ -120,6 +120,11 @@ public class Sheet {
     @Column(name = "proof_kinds")
     private String proofKinds;
 
+    /** The default grade: the grade a person added by the quick-add bar, or by an import line with a blank
+     *  grade, takes; none means A. Not dated. */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /** The month (1 to 12) a fiscal year starts in; a fiscal year is named by the calendar year its first
      *  day falls in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -455,6 +460,19 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    /** The grade a new person takes when none is given: the default grade, or A when none is set. */
+    public String defaultGradeOrA() {
+        return defaultGrade == null ? "A" : defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
     }
 
     public int getFiscalStartMonth() {
