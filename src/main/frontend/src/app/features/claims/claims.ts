@@ -485,7 +485,7 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message: forbidden
-          ? 'The claim could not be moved: only a steward can move a claim.'
+          ? 'The claim could not be moved: your role may not move a claim on this sheet.'
           : 'The claim could not be moved: a settled or voided claim, or a correction, stays where it is.',
       });
     }
@@ -526,13 +526,15 @@ export class PersonClaims {
         id: claim.id,
         message:
           forbidden && action === 'settle'
-            ? 'The claim could not be settled: whoever opened it cannot settle it.'
+            ? 'The claim could not be settled: whoever opened it cannot settle it, and your role must be allowed to settle.'
             : !forbidden && (action === 'settle' || action === 'approve')
               ? `The claim could not be ${PAST[action]}: one due above the proof threshold needs a proof first, and its status must allow it.`
             : forbidden && action === 'resettle'
               ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
               : forbidden
-                ? `The claim could not be ${PAST[action]}: only a steward who did not open it can.`
+                ? action === 'open' || action === 'void'
+                  ? `The claim could not be ${PAST[action]}: your role may not ${action} a claim on this sheet.`
+                  : `The claim could not be ${PAST[action]}: only a steward who did not open it can.`
               : `The claim could not be ${PAST[action]}.`,
       });
     }

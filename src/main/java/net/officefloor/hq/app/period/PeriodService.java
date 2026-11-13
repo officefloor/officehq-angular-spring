@@ -17,7 +17,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
-import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.Permission;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -78,12 +78,15 @@ public class PeriodService {
     /** Close a period, fixing each person's due-total for it, for everyone on the sheet, and its own
      *  due-total, their sum: the figures shown on the claims dated in it that counted at the end of its last day (by the
      *  status each had then, as its status log records it)
-     *  (a claim with no figure adds nothing; an OPEN claim dated within its person's hold and not bound by a statement counts for nothing). A period already closed is refused. */
+     *  (a claim with no figure adds nothing; an OPEN claim dated within its person's hold and not bound by a statement counts for nothing). A period already closed, or a close by a role the sheet's permission matrix does not allow, is refused. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
         sheets.lock(sheetId);
         Period period = periods.findBySheetIdAndName(sheetId, name)
                 .orElseThrow(() -> new NoSuchElementException("No period " + name + " on sheet " + sheetId));
+        if (!settings.allows(sheetId, user, Permission.CLOSE)) {
+            throw new PeriodRefusedException("Your role may not close the period " + name);
+        }
         if (period.isClosed()) {
             throw new PeriodClosedException("The period " + name + " is already closed");
         }
@@ -114,15 +117,15 @@ public class PeriodService {
         return saved;
     }
 
-    /** Reopen a closed period, making its due-total live again. Only a steward may; a period that
-     *  is not closed is refused. */
+    /** Reopen a closed period, making its due-total live again. Only a role the sheet's
+     *  permission matrix allows may (by the standing rule a steward); a period that is not closed is refused. */
     @Transactional
     public Period reopen(String sheetId, String user, String name) {
         sheets.lock(sheetId);
         Period period = periods.findBySheetIdAndName(sheetId, name)
                 .orElseThrow(() -> new NoSuchElementException("No period " + name + " on sheet " + sheetId));
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new PeriodRefusedException("Only a steward may reopen the period " + name);
+        if (!settings.allows(sheetId, user, Permission.REOPEN)) {
+            throw new PeriodRefusedException("Your role may not reopen the period " + name);
         }
         if (!period.isClosed()) {
             throw new PeriodRefusedException("The period " + name + " is not closed");

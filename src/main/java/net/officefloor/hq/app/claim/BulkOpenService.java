@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
+import net.officefloor.hq.app.setting.PermissionRefusedException;
 import java.util.Set;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -37,7 +38,7 @@ public class BulkOpenService {
             try {
                 opened.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
                         claim.getPersonId(), claim.getId(), ClaimStatus.OPEN)));
-            } catch (StatusChangeRefusedException | PeriodClosedException | NoSuchElementException refused) {
+            } catch (StatusChangeRefusedException | PermissionRefusedException | PeriodClosedException | NoSuchElementException refused) {
                 // Left as it is: its change rolled back with its own transaction.
             }
         }

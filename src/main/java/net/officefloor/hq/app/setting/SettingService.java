@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,14 +32,16 @@ public class SettingService {
     private final SheetRepository sheetRepository;
     private final SheetRoleRepository roles;
     private final SettingValueRepository values;
+    private final SheetPermissionRepository permissions;
     private final Audit audit;
 
     public SettingService(SheetService sheets, SheetRepository sheetRepository, SheetRoleRepository roles,
-            SettingValueRepository values, Audit audit) {
+            SettingValueRepository values, SheetPermissionRepository permissions, Audit audit) {
         this.sheets = sheets;
         this.sheetRepository = sheetRepository;
         this.roles = roles;
         this.values = values;
+        this.permissions = permissions;
         this.audit = audit;
     }
 
@@ -50,6 +53,53 @@ public class SettingService {
     /** The user's role on the sheet: clerk unless assigned another. */
     public Role roleOf(String sheetId, String user) {
         return roles.findBySheetIdAndUser(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
+    }
+
+    /** The sheet's permission matrix as set, by action label, every action listed: its roles comma
+     *  separated, blank when it keeps the standing rule. */
+    public Map<String, String> permissions(String sheetId) {
+        Map<String, String> byAction = new LinkedHashMap<>();
+        for (Permission action : Permission.values()) {
+            byAction.put(action.label(), "");
+        }
+        permissions.findBySheetId(sheetId).forEach(p -> byAction.put(p.getAction(), p.getRoles()));
+        return byAction;
+    }
+
+    /** Whether the user's role may take the action on the sheet: by the roles the matrix lists for it,
+     *  else by the standing rule. */
+    public boolean allows(String sheetId, String user, Permission action) {
+        Role role = roleOf(sheetId, user);
+        return permissions.findBySheetIdAndAction(sheetId, action.label())
+                .map(p -> Arrays.stream(p.getRoles().split(",")).anyMatch(r -> r.equals(role.label())))
+                .orElseGet(() -> action.standing().contains(role));
+    }
+
+    /** Refuse the action unless the user's role may take it on the sheet. */
+    public void refuseUnless(String sheetId, String user, Permission action) {
+        if (!allows(sheetId, user, action)) {
+            throw new PermissionRefusedException(user, action);
+        }
+    }
+
+    /** Set the roles that may take an action on the sheet; none keeps the standing rule. */
+    @Transactional
+    public void setPermission(String sheetId, String by, Permission action, List<Role> allowed) {
+        sheets.lock(sheetId);
+        String value = String.join(",", allowed.stream().map(Role::label).toList());
+        Optional<SheetPermission> existing = permissions.findBySheetIdAndAction(sheetId, action.label());
+        if (value.isEmpty()) {
+            existing.ifPresent(p -> {
+                permissions.delete(p);
+                permissions.flush();
+            });
+        } else {
+            SheetPermission saved = existing.orElseGet(() -> new SheetPermission(sheetId, action.label(), value));
+            saved.setRoles(value);
+            permissions.saveAndFlush(saved);
+        }
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=perm-" + action.label()
+                + " value=" + value);
     }
 
     /** The floor a sheet starts with: in force before the first from-date recorded for it. */

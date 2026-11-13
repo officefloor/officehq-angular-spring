@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.setting.PermissionRefusedException;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -264,10 +265,11 @@ public class ClaimController {
     public void refused() {
     }
 
-    /** The user who opened a claim cannot settle or approve it, and only a steward approves or
-     *  rejects a PENDING claim, moves a claim to another person or re-settles a SETTLED one. */
+    /** The user who opened a claim cannot settle or approve it, only a steward approves or rejects a
+     *  PENDING claim or re-settles a SETTLED one, and only a role the sheet's permission matrix allows
+     *  opens, settles, voids or moves a claim to another person. */
     @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class,
-            ResettleRefusedException.class})
+            ResettleRefusedException.class, PermissionRefusedException.class})
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public void ownClaim() {
     }

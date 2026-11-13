@@ -42,6 +42,9 @@ interface SettingsView {
   /** Every value recorded for the dated settings, by key (floor, late-pct, terms, terms-<grade>,
    *  clerk-limit, cap, proof-threshold), each list by from-date. */
   dated: Record<string, DatedValue[]>;
+  /** The permission matrix: the roles each action allows, comma separated, by action; blank keeps
+   *  the standing rule. */
+  permissions: Record<string, string>;
 }
 
 /** The value recorded that is in force on a date: the one with the latest from-date on or before
@@ -69,6 +72,21 @@ const DAYS = /^\d{1,5}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const ROLES = ['clerk', 'steward'];
+
+/** The actions the permission matrix governs, each with the roles its standing rule allows. */
+const PERMISSIONS: { action: string; label: string; standing: string }[] = [
+  { action: 'open', label: 'Open', standing: 'clerk and steward' },
+  { action: 'settle', label: 'Settle', standing: 'clerk and steward' },
+  { action: 'void', label: 'Void', standing: 'clerk and steward' },
+  { action: 'reassign', label: 'Reassign', standing: 'steward' },
+  { action: 'close', label: 'Close a period', standing: 'clerk and steward' },
+  { action: 'reopen', label: 'Reopen a period', standing: 'steward' },
+];
+
+/** Whether a permission entry is blank or a comma separated list of roles. */
+function rolesList(typed: string): boolean {
+  return typed === '' || typed.split(',').every((r) => ROLES.includes(r.trim()));
+}
 
 // The active sheet's settings, re-read whenever a sheet is loaded.
 @Injectable({ providedIn: 'root' })
@@ -113,6 +131,8 @@ export class SettingStore {
   });
   readonly policyDate = signal('');
   readonly periodNumberingFrom = signal('');
+  /** The permission matrix as set, by action; blank keeps the standing rule. */
+  readonly permissions = signal<Record<string, string>>({});
 
   private onToday(key: string): string | null | undefined {
     return valueOn(this.dated()[key], this.session.today());
@@ -126,6 +146,7 @@ export class SettingStore {
       this.dated.set({});
       this.policyDate.set('');
       this.periodNumberingFrom.set('');
+      this.permissions.set({});
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -250,6 +271,20 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Set the roles that may take an action on the active sheet; blank keeps the standing rule. */
+  async setPermission(action: string, value: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(
+        `/api/sheets/${encodeURIComponent(sheet)}/settings/permissions/${encodeURIComponent(action)}`,
+        { value },
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const settings = await firstValueFrom(
       this.http.get<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings`),
@@ -263,6 +298,7 @@ export class SettingStore {
     this.dated.set(settings.dated);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
+    this.permissions.set(settings.permissions);
   }
 }
 
@@ -274,7 +310,8 @@ export class SettingStore {
 // grade's own terms, which a claim of that grade takes instead, and the late percent, what an overdue claim's
 // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
 // claim's date makes its figures round half up rather than half to even, and the period numbering
-// from, on or after which a claim opened is numbered within its period.
+// from, on or after which a claim opened is numbered within its period, and the permission matrix,
+// the roles that may open, settle, void, reassign, close and reopen (blank keeps the standing rule).
 // The settings that carry a figure are dated: each is saved from the from-date typed beside it (blank
 // for the sheet's today), keeping the values recorded before, and the value in force on the sheet's
 // today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof threshold, the policy date and
@@ -463,6 +500,19 @@ export class SettingStore {
           (focus)="periodNumberingFromTyped.set(true)"
           (input)="periodNumberingFrom.set(value($event)); periodNumberingFromTyped.set(true); settingsError.set(null)"
         />
+        <fieldset>
+          <legend>Permissions (roles, comma separated; blank for the standing rule)</legend>
+          @for (p of permissionActions; track p.action) {
+            <label [for]="'setting-perm-' + p.action">{{ p.label }}</label>
+            <input
+              [id]="'setting-perm-' + p.action"
+              [attr.data-testid]="'setting-perm-' + p.action"
+              [value]="permissions()[p.action] ?? ''"
+              (focus)="typePermission(p.action, permissions()[p.action] ?? '')"
+              (input)="typePermission(p.action, value($event))"
+            />
+          }
+        </fieldset>
         <button type="submit" data-testid="settings-save">Save settings</button>
       </form>
       @if (settingsError(); as message) {
@@ -524,6 +574,15 @@ export class SettingStore {
           <span>off</span>
         }
       </p>
+      @for (p of permissionActions; track p.action) {
+        <p>
+          {{ p.label }} allowed for:
+          <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ store.permissions()[p.action] ?? '' }}</strong>
+          @if (!store.permissions()[p.action]) {
+            <span>{{ p.standing }} (the standing rule)</span>
+          }
+        </p>
+      }
     </section>
   `,
 })
@@ -531,6 +590,7 @@ export class Settings {
   protected readonly store = inject(SettingStore);
   protected readonly roles = ROLES;
   protected readonly grades = GRADES;
+  protected readonly permissionActions = PERMISSIONS;
 
   protected readonly user = signal('');
   protected readonly role = signal('');
@@ -561,6 +621,9 @@ export class Settings {
   protected readonly policyDateTyped = signal(false);
   protected readonly periodNumberingFrom = signal('');
   protected readonly periodNumberingFromTyped = signal(false);
+  /** The permission entries typed since the last save, by action; a focused one counts as typed, as
+   *  a blank one (the standing rule) is a value of its own. */
+  protected readonly permissions = signal<Record<string, string>>({});
   protected readonly settingsError = signal<string | null>(null);
   /** Whether a role submit is waiting for its answer; a second one meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -573,6 +636,11 @@ export class Settings {
 
   protected typeGradeTerms(grade: string, typed: string): void {
     this.gradeTerms.update((all) => ({ ...all, [grade]: typed }));
+    this.settingsError.set(null);
+  }
+
+  protected typePermission(action: string, typed: string): void {
+    this.permissions.update((all) => ({ ...all, [action]: typed }));
     this.settingsError.set(null);
   }
 
@@ -627,6 +695,9 @@ export class Settings {
     const savePolicyDate = this.policyDateTyped();
     const numberingFrom = this.periodNumberingFrom().trim();
     const saveNumberingFrom = this.periodNumberingFromTyped();
+    const permissions = Object.entries(this.permissions()).map(
+      ([action, roles]) => [action, roles.split(',').map((r) => r.trim()).filter((r) => r !== '').join(',')] as const,
+    );
     const limitFrom = this.clerkLimitFrom().trim();
     const floorFrom = this.floorFrom().trim();
     const capFrom = this.capFrom().trim();
@@ -687,6 +758,11 @@ export class Settings {
       this.settingsError.set('Type a period numbering from date as yyyy-mm-dd, or leave it blank for off.');
       return;
     }
+    const badPermission = Object.entries(this.permissions()).find(([, roles]) => !rolesList(roles.trim()));
+    if (badPermission) {
+      this.settingsError.set(`Type the roles that may ${badPermission[0]} as clerk, steward or clerk,steward, or leave it blank for the standing rule.`);
+      return;
+    }
     const fromOf = (from: string) => (from === '' ? null : from);
     this.clerkLimitTyped.set(false);
     this.floorTyped.set(false);
@@ -697,6 +773,7 @@ export class Settings {
     this.latePctTyped.set(false);
     this.policyDateTyped.set(false);
     this.periodNumberingFromTyped.set(false);
+    this.permissions.set({});
     const save = async () => {
       try {
         if (saveLimit) await this.store.setClerkLimit(limit === '' ? null : limit, fromOf(limitFrom));
@@ -710,6 +787,7 @@ export class Settings {
         if (saveLatePct) await this.store.setLatePct(latePct, fromOf(latePctFrom));
         if (savePolicyDate) await this.store.setPolicyDate(policyDate === '' ? null : policyDate);
         if (saveNumberingFrom) await this.store.setPeriodNumberingFrom(numberingFrom === '' ? null : numberingFrom);
+        for (const [action, roles] of permissions) await this.store.setPermission(action, roles);
       } catch {
         // What was typed stays to be saved again.
         if (saveLimit) this.clerkLimitTyped.set(true);
@@ -721,6 +799,7 @@ export class Settings {
         if (saveLatePct) this.latePctTyped.set(true);
         if (savePolicyDate) this.policyDateTyped.set(true);
         if (saveNumberingFrom) this.periodNumberingFromTyped.set(true);
+        this.permissions.update((typed) => ({ ...Object.fromEntries(permissions), ...typed }));
         this.settingsError.set('The settings could not be saved.');
       }
     };

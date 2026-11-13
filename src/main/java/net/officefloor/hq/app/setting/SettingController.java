@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,10 +47,11 @@ public class SettingController {
      *  the floor (two decimals), the cap (two decimals; null for none), the terms (whole days), the late percent (two decimals) and the policy
      *  date (blank for the sheet's today) and the period numbering from (blank for off), and the grades'
      *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
-     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold). */
+     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold); and
+     *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Map<String, Integer> gradeTerms,
-            Map<String, List<DatedView>> dated) {
+            Map<String, List<DatedView>> dated, Map<String, String> permissions) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -90,6 +92,10 @@ public class SettingController {
 
     /** A late percent of 0.00 or more with up to two decimals. */
     public record LatePctRequest(@NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
+    }
+
+    /** The roles that may take an action, comma separated (clerk, steward); blank keeps the standing rule. */
+    public record PermissionRequest(@Size(max = 200) String value) {
     }
 
     /** A policy date; null leaves it blank (the sheet's today). */
@@ -201,6 +207,24 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Set the roles that may take an action (open, settle, void, reassign, close or reopen); a role
+     *  other than clerk or steward is refused. */
+    @PutMapping("/permissions/{action}")
+    public SettingsView setPermission(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable String action, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated PermissionRequest request) {
+        String sheet = sheetId.trim();
+        Permission permission = Permission.of(action)
+                .orElseThrow(() -> new IllegalArgumentException("No action " + action));
+        String value = request.value() == null ? "" : request.value().trim();
+        List<Role> allowed = value.isEmpty() ? List.of()
+                : Arrays.stream(value.split(",")).map(String::trim)
+                        .map(label -> Role.of(label).orElseThrow(() -> new IllegalArgumentException("No role " + label)))
+                        .distinct().toList();
+        service.setPermission(sheet, SignedInUser.decode(user), permission, allowed);
+        return view(sheet);
+    }
+
     /** Change the sheet's policy date; the figures it moves are followed in the audit. */
     @PutMapping("/policy-date")
     public SettingsView setPolicyDate(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -234,7 +258,8 @@ public class SettingController {
                 limit != null ? limit.toPlainString() : null, service.floor(sheet, today).toPlainString(),
                 cap != null ? cap.toPlainString() : null, service.terms(sheet, today),
                 service.latePct(sheet, today).toPlainString(), policyDate != null ? policyDate.toString() : "",
-                numberingFrom != null ? numberingFrom.toString() : "", service.gradeTerms(sheet, today), dated);
+                numberingFrom != null ? numberingFrom.toString() : "", service.gradeTerms(sheet, today), dated,
+                service.permissions(sheet));
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

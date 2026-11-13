@@ -207,7 +207,7 @@ export class Periods {
     try {
       await this.store.close(period.name);
     } catch {
-      this.rowError.set({ id: period.id, message: `The period ${period.name} could not be closed.` });
+      this.rowError.set({ id: period.id, message: `The period ${period.name} could not be closed: it may be closed already, or your role may not close a period.` });
     }
   }
 
@@ -220,7 +220,7 @@ export class Periods {
     } catch {
       this.rowError.set({
         id: period.id,
-        message: `The period ${period.name} could not be reopened: only a steward may reopen a closed period.`,
+        message: `The period ${period.name} could not be reopened: it must be closed, and your role allowed to reopen a period.`,
       });
     }
   }

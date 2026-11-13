@@ -19,6 +19,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.setting.Permission;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -109,8 +110,9 @@ public class ClaimService {
         return saved;
     }
 
-    /** Move a claim to a new status; a change its status does not allow is refused, as is the user
-     *  who opened a claim settling it. A clerk settling a claim whose due is above the clerk limit
+    /** Move a claim to a new status; a change its status does not allow, or one the sheet's
+     *  permission matrix does not let the user's role make, is refused, as is the user who opened a
+     *  claim settling it. A clerk settling a claim whose due is above the clerk limit
      *  leaves it PENDING a steward's approval instead. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
@@ -121,6 +123,12 @@ public class ClaimService {
             sheets.lock(sheetId);
         }
         Claim claim = claim(sheetId, personId, id);
+        settings.refuseUnless(sheetId, user, switch (to) {
+            case OPEN -> Permission.OPEN;
+            case SETTLED -> Permission.SETTLE;
+            case VOID -> Permission.VOID;
+            case DRAFT, PENDING -> throw new StatusChangeRefusedException(claim.getStatus(), to);
+        });
         refuseClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canMoveTo(to)) {
             throw new StatusChangeRefusedException(claim.getStatus(), to);
@@ -262,7 +270,8 @@ public class ClaimService {
         return saved;
     }
 
-    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
+    /** A user whose role the sheet's permission matrix lets reassign (by the standing rule a steward)
+     *  moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
      *  number and date, loses any figure a statement bound it to (live again until its new person's
      *  next statement), and is listed as its new person's newest claim. Anyone else, a SETTLED or VOID
      *  claim, a correction (it names a claim of its own person), a claim dated in a closed period, or
@@ -272,7 +281,7 @@ public class ClaimService {
         Person from = person(sheetId, personId);
         Person to = person(sheetId, toPersonId);
         Claim claim = claim(sheetId, personId, id);
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+        if (!settings.allows(sheetId, user, Permission.REASSIGN)) {
             throw new ReassignRefusedException(user);
         }
         if (!claim.getStatus().canReassign()) {
