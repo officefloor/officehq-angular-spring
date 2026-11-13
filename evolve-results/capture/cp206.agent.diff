@@ -1,0 +1,137 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index fbdb5ce78..82370b4b7 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -134,6 +134,24 @@ export class Figures {
+     return today !== null && this.roles.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
+   });
+ 
++  /** The ids of the people a restricted user's people list shows: the person with the user's name and
++   *  everyone in a crew they lead or belong to; null when the signed-in user is not restricted (a user
++   *  delegated the steward role acts as a steward). Every other figure is still over everyone. */
++  readonly visibleIds = computed(() => {
++    const user = this.session.user();
++    if (!user || this.steward()) return null;
++    if (!this.roles.roles().some((r) => r.user === user && r.role === 'restricted')) return null;
++    const ids = new Set<number>();
++    const p = this.me();
++    if (!p) return ids;
++    ids.add(p.id);
++    for (const c of this.crews.crews()) {
++      const crew = [...(c.lead ? [c.lead.personId] : []), ...c.members.map((m) => m.personId)];
++      if (crew.includes(p.id)) crew.forEach((id) => ids.add(id));
++    }
++    return ids;
++  });
++
+   /** A steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count,
+    *  counted; null when the signed-in user is not a steward. */
+   readonly dashboard = computed(() => {
+diff --git a/src/main/frontend/src/app/core/roles.ts b/src/main/frontend/src/app/core/roles.ts
+index 6cac01a5a..c59edcc16 100644
+--- a/src/main/frontend/src/app/core/roles.ts
++++ b/src/main/frontend/src/app/core/roles.ts
+@@ -18,11 +18,12 @@ export interface DelegationView {
+ }
+ 
+ /** The roles a sheet can give a user name; a name given none is a clerk. */
+-export const ROLES = ['clerk', 'steward', 'viewer'] as const;
++export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
+ 
+ // The roles the active sheet gives user names, re-read from the server each time the sheet is loaded.
+ // A steward settles any claim; a clerk only one whose due is within the sheet's clerk limit; a viewer
+-// sees the sheet and changes nothing. A steward can delegate the steward role to a user for a from-date to
++// sees the sheet and changes nothing; a restricted user sees on the people list only the people of the crews
++// they lead or belong to, and themselves. A steward can delegate the steward role to a user for a from-date to
+ // a to-date: while the sheet's today is inside them the user acts as a steward.
+ @Injectable({ providedIn: 'root' })
+ export class Roles {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d08a17691..3135f4acd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -635,10 +635,14 @@ export class PeopleList {
+   /** The last refused switch of a column, until the next switch. */
+   protected readonly columnsError = signal<string | null>(null);
+   protected readonly grades = GRADES;
+-  /** The people the list shows: everyone, or only those not retired unless show retired is on. */
+-  protected readonly shown = computed(() =>
+-    this.people.showRetired() ? this.people.people() : this.people.people().filter((p) => !p.retired),
+-  );
++  /** The people the list shows: everyone, or only those not retired unless show retired is on; for a
++   *  restricted user, only the people of their crews and themselves. */
++  protected readonly shown = computed(() => {
++    const visible = this.figures.visibleIds();
++    return this.people
++      .people()
++      .filter((p) => (this.people.showRetired() || !p.retired) && (visible === null || visible.has(p.id)));
++  });
+   /** The sort keys the list can be shown in. */
+   protected readonly sortKeys = SORT_KEYS;
+   /** How this user's screen orders the list; only what is shown, never the stored positions. */
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleController.java b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+index 6856be683..ee2645c17 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleController.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleController.java
+@@ -31,7 +31,7 @@ public class RoleController {
+     }
+ 
+     public record RoleRequest(@NotBlank @Size(max = 200) String user,
+-            @NotBlank @Pattern(regexp = "clerk|steward|viewer") String role) {
++            @NotBlank @Pattern(regexp = "clerk|steward|viewer|restricted") String role) {
+     }
+ 
+     private final RoleService service;
+@@ -52,7 +52,7 @@ public class RoleController {
+                 .map(RoleView::of).toList();
+     }
+ 
+-    /** Give a user name a role: clerk, steward or viewer. */
++    /** Give a user name a role: clerk, steward, viewer or restricted. */
+     @PutMapping
+     public RoleView set(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+diff --git a/src/main/java/net/officefloor/hq/app/role/RoleService.java b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+index 7c6a045c4..98d387756 100644
+--- a/src/main/java/net/officefloor/hq/app/role/RoleService.java
++++ b/src/main/java/net/officefloor/hq/app/role/RoleService.java
+@@ -10,7 +10,7 @@ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-/** Keeps the role each sheet gives a user name: clerk (any name with none), steward or viewer; and the
++/** Keeps the role each sheet gives a user name: clerk (any name with none), steward, viewer or restricted; and the
+  *  delegations of the steward role, under which a user acts as a steward while the sheet's today is in range. */
+ @Service
+ public class RoleService {
+diff --git a/src/main/java/net/officefloor/hq/app/role/SheetRole.java b/src/main/java/net/officefloor/hq/app/role/SheetRole.java
+index c2a4f772a..157812e61 100644
+--- a/src/main/java/net/officefloor/hq/app/role/SheetRole.java
++++ b/src/main/java/net/officefloor/hq/app/role/SheetRole.java
+@@ -18,6 +18,8 @@ public class SheetRole {
+     public static final String CLERK = "clerk";
+     public static final String STEWARD = "steward";
+     public static final String VIEWER = "viewer";
++    /** Sees on the people list only the people of the crews they lead or belong to, and themselves. */
++    public static final String RESTRICTED = "restricted";
+ 
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+diff --git a/src/main/resources/db/migration/V109__role_restricted.sql b/src/main/resources/db/migration/V109__role_restricted.sql
+new file mode 100644
+index 000000000..118e3ff5b
+--- /dev/null
++++ b/src/main/resources/db/migration/V109__role_restricted.sql
+@@ -0,0 +1,12 @@
++-- A fourth role, restricted: sees on the people list only the people of their crews and themselves. The role's check is rebuilt to allow it.
++CREATE TABLE sheet_role_new (
++    id        BIGINT        GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    sheet_id  VARCHAR(200)  NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(200)  NOT NULL,
++    role      VARCHAR(20)   NOT NULL CHECK (role IN ('clerk', 'steward', 'viewer', 'restricted'))
++);
++INSERT INTO sheet_role_new (id, sheet_id, user_name, role) SELECT id, sheet_id, user_name, role FROM sheet_role;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_new RENAME TO sheet_role;
++ALTER TABLE sheet_role ALTER COLUMN id RESTART WITH (SELECT COALESCE(MAX(id), 0) + 1 FROM sheet_role);
++CREATE UNIQUE INDEX sheet_role_sheet_user ON sheet_role (sheet_id, user_name);

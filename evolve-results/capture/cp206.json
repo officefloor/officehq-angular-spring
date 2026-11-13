@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9f69554f39b4940bba8af911abddfa4912b6d696",
+  "reset_sha": "",
+  "preagent_sha": "2de28cf48269e8a6dfd79c23ea0597bda2ab2e7c",
+  "prev_sha": "2de28cf48269e8a6dfd79c23ea0597bda2ab2e7c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7388148000000002,
+    "input_tokens": 42,
+    "output_tokens": 6638,
+    "cache_read_tokens": 936194,
+    "cache_creation_tokens": 52331,
+    "num_turns": 22,
+    "duration_ms": 342252,
+    "duration_api_ms": 74213,
+    "model": "claude-opus-5-5",
+    "session_id": "96aa3ca3-60d7-4143-8cdc-f4945c770e66",
+    "stop_reason": "success",
+    "result_text": "I added a fourth role, `restricted`, and all 4 tests in `bin/e2e` pass.\n\nA restricted user's people list shows only themselves and the people of every crew they lead or belong to. \"Themselves\" means the person whose name or alias matches the user's name. If no person has the user's name, the list is empty. The totals row, header, summary, periods and pools are still worked out over everyone on the sheet.\n\n**Changes:**\n- **Stored data:** a new migration, `V109__role_restricted.sql`, lets the stored role be `restricted`. It rebuilds the table the same way the earlier migration that added `viewer` did.\n- **Server:** the role form now accepts `restricted` (a role like `x` is still refused), and a `RESTRICTED` constant was added in `SheetRole.java`.\n- **Front end:**\n  - `restricted` is now in the list of roles in `core/roles.ts`.\n  - `core/figures.ts` has a new `visibleIds` value: the people a restricted user may see, or no limit for anyone else.\n  - `features/people/people.ts` uses it to drop the other rows from the list.\n\n**Things to know:**\n- **Only the screen hides the rows.** The server still sends every person to a restricted user, because the shared figures are worked out in the browser. Someone who reads the server's responses directly can still see everyone. Hiding them there too would mean moving those figures to the server.\n- **Restricted users can still make changes.** The request only limits what they see, so the server treats them as clerks: they can still change things, unlike a viewer.\n- **I made one call the request doesn't cover:** a restricted user who has been delegated the steward role sees the full list for as long as the delegation lasts. This matches how a delegation already overrides the viewer role.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7388148000000002,
+        "num_turns": 22,
+        "duration_ms": 342252,
+        "duration_api_ms": 74213,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
