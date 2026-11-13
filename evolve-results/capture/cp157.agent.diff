@@ -1,0 +1,495 @@
+diff --git a/src/main/frontend/src/app/core/locale-figures.ts b/src/main/frontend/src/app/core/locale-figures.ts
+new file mode 100644
+index 000000000..25a81acc7
+--- /dev/null
++++ b/src/main/frontend/src/app/core/locale-figures.ts
+@@ -0,0 +1,71 @@
++import { DestroyRef, Directive, ElementRef, effect, inject } from '@angular/core';
++import { UserLocale } from './user-locale';
++
++/** A text whose whole content (outer spaces aside) is a figure: a number with two decimals. */
++const FIGURE = /^(\s*)(-?)(\d+)\.(\d{2})(\s*)$/;
++
++/** Elements whose text is not shown as a figure cell. */
++const SKIP = new Set(['SCRIPT', 'STYLE', 'TEXTAREA']);
++
++/** A figure as the locale shows it: de groups by threes with dots and puts a comma before the decimals;
++ *  null when the locale shows it as it is. */
++function localized(text: string, locale: string): string | null {
++  if (locale !== 'de') return null;
++  const m = FIGURE.exec(text);
++  if (!m) return null;
++  const [, lead, sign, whole, decimals, trail] = m;
++  return `${lead}${sign}${whole.replace(/\B(?=(\d{3})+$)/g, '.')},${decimals}${trail}`;
++}
++
++// Shows every figure under its host in the signed-in user's locale. Every cell whose whole text is a
++// number with two decimals is rewritten as it is rendered, so no template has to format its figures;
++// switching back restores the text the template rendered.
++@Directive({ selector: '[appLocaleFigures]' })
++export class LocaleFigures {
++  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
++  private readonly userLocale = inject(UserLocale);
++  /** The text each rewritten node had as rendered, and what it was rewritten to. */
++  private readonly rewritten = new WeakMap<Text, { shown: string; rendered: string }>();
++
++  constructor() {
++    const observer = new MutationObserver((records) => {
++      const locale = this.userLocale.locale();
++      for (const r of records) {
++        if (r.type === 'characterData') this.show(r.target, locale);
++        else r.addedNodes.forEach((n) => this.walk(n, locale));
++      }
++    });
++    observer.observe(this.host, { childList: true, characterData: true, subtree: true });
++    inject(DestroyRef).onDestroy(() => observer.disconnect());
++    effect(() => this.walk(this.host, this.userLocale.locale()));
++  }
++
++  private walk(node: Node, locale: string): void {
++    if (node.nodeType === Node.TEXT_NODE) {
++      this.show(node, locale);
++      return;
++    }
++    if (node.nodeType !== Node.ELEMENT_NODE || SKIP.has(node.nodeName)) return;
++    const texts = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
++    for (let t = texts.nextNode(); t !== null; t = texts.nextNode()) this.show(t, locale);
++  }
++
++  private show(node: Node, locale: string): void {
++    if (!(node instanceof Text) || (node.parentNode !== null && SKIP.has(node.parentNode.nodeName))) return;
++    const text = node.nodeValue ?? '';
++    const was = this.rewritten.get(node);
++    // Shown as rewritten: keep it, or restore what was rendered when the locale no longer rewrites it.
++    if (was !== undefined && was.shown === text) {
++      const shown = localized(was.rendered, locale) ?? was.rendered;
++      if (shown !== text) this.set(node, shown, was.rendered);
++      return;
++    }
++    const shown = localized(text, locale);
++    if (shown !== null) this.set(node, shown, text);
++  }
++
++  private set(node: Text, shown: string, rendered: string): void {
++    this.rewritten.set(node, { shown, rendered });
++    node.nodeValue = shown;
++  }
++}
+diff --git a/src/main/frontend/src/app/core/user-locale.ts b/src/main/frontend/src/app/core/user-locale.ts
+new file mode 100644
+index 000000000..d2843ddfc
+--- /dev/null
++++ b/src/main/frontend/src/app/core/user-locale.ts
+@@ -0,0 +1,52 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Injectable, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from './session';
++
++/** The locales a user may choose; the first is every user's until they choose another. */
++export const LOCALES = ['en', 'de'] as const;
++
++// The signed-in user's locale, kept per user on the server and re-read each time a sheet is loaded. It
++// only changes how the screen shows figures (see LocaleFigures); entries, exports and audit lines keep
++// the dot.
++@Injectable({ providedIn: 'root' })
++export class UserLocale {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  readonly locale = signal<string>(LOCALES[0]);
++  private loads = 0;
++
++  /** Re-read the signed-in user's locale from the server; an error message when that failed. */
++  async load(): Promise<string | null> {
++    const user = this.session.user();
++    const load = ++this.loads;
++    if (!user) return null;
++    try {
++      const view = await firstValueFrom(
++        this.http.get<{ locale: string }>('/api/user/locale', { headers: { 'X-User': user } }),
++      );
++      if (load === this.loads) this.locale.set(view.locale);
++      return null;
++    } catch (e) {
++      return e instanceof HttpErrorResponse ? `Could not load your locale (${e.status}).` : 'Could not load your locale.';
++    }
++  }
++
++  /** Choose the signed-in user's locale; an error message when refused. */
++  async choose(locale: string): Promise<string | null> {
++    const user = this.session.user();
++    if (!user) return 'Sign in first.';
++    try {
++      const view = await firstValueFrom(
++        this.http.put<{ locale: string }>('/api/user/locale', { locale }, { headers: { 'X-User': user } }),
++      );
++      ++this.loads;
++      this.locale.set(view.locale);
++      return null;
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string') return e.error.message;
++      return e instanceof HttpErrorResponse ? `Could not save your locale (${e.status}).` : 'Could not save your locale.';
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 1d064162e..49438333d 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,4 +1,4 @@
+-import { Component, inject, signal } from '@angular/core';
++import { Component, inject, linkedSignal, signal } from '@angular/core';
+ import { ClaimTemplates } from '../../core/claim-templates';
+ import { Claims } from '../../core/claims';
+ import { Holidays } from '../../core/holidays';
+@@ -8,7 +8,9 @@ import { Plans } from '../../core/plans';
+ import { Pools } from '../../core/pools';
+ import { Rates } from '../../core/rates';
+ import { Roles } from '../../core/roles';
++import { LocaleFigures } from '../../core/locale-figures';
+ import { Session, isDate } from '../../core/session';
++import { LOCALES, UserLocale } from '../../core/user-locale';
+ import { VoidReasons } from '../../core/void-reasons';
+ import { AuditPanel } from '../audit/audit';
+ import { ClaimTemplatesPanel } from '../claim-templates/claim-templates';
+@@ -35,6 +37,7 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ // The one screen: sign in by name, then choose a sheet by id. Everything else is kept per sheet.
+ @Component({
+   selector: 'app-home',
++  hostDirectives: [LocaleFigures],
+   imports: [AuditPanel, BulkOpen, BulkReassign, BulkRedate, BulkSettle, ClaimTemplatesPanel, ClassicSummaryPanel, GeneratePlans, HeaderCounters, HolidaysPanel, ImportPeople, ImportRates, PasteClaims, PeopleList, PeriodsPanel, PoolsPanel, RatesPanel, SearchPanel, SettingsPanel, SummaryPanel, VoidReasonsPanel],
+   template: `
+     @if (session.user(); as user) {
+@@ -43,6 +46,24 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+       }
+       <section aria-label="Session" data-testid="session-bar">
+         <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
++        <form (submit)="saveLocale($event)">
++          <label for="user-locale">Your locale</label>
++          <select
++            id="user-locale"
++            data-testid="user-locale"
++            [value]="localeInput()"
++            (change)="localeInput.set(value($event)); localeError.set(null)"
++          >
++            @for (l of locales; track l) {
++              <option [value]="l" [selected]="l === localeInput()">{{ l }}</option>
++            }
++          </select>
++          <button type="submit" data-testid="user-locale-save" [disabled]="savingLocale()">Save locale</button>
++        </form>
++        <p>Locale: <strong data-testid="user-locale-current">{{ userLocale.locale() }}</strong></p>
++        @if (localeError(); as err) {
++          <p role="alert" data-testid="user-locale-error">{{ err }}</p>
++        }
+         <form (submit)="load($event)">
+           <label for="sheet-id-input">Sheet id</label>
+           <input
+@@ -146,6 +167,8 @@ import { VoidReasonsPanel } from '../void-reasons/void-reasons';
+ })
+ export class Home {
+   protected readonly session = inject(Session);
++  protected readonly userLocale = inject(UserLocale);
++  protected readonly locales = LOCALES;
+   private readonly people = inject(People);
+   private readonly claims = inject(Claims);
+   private readonly rates = inject(Rates);
+@@ -171,6 +194,10 @@ export class Home {
+   protected readonly clonedTo = signal<string | null>(null);
+   protected readonly asOfInput = signal('');
+   protected readonly asOfError = signal<string | null>(null);
++  /** The locale chosen in the select; follows the user's saved locale each time it is re-read. */
++  protected readonly localeInput = linkedSignal(() => this.userLocale.locale());
++  protected readonly localeError = signal<string | null>(null);
++  protected readonly savingLocale = signal(false);
+ 
+   protected value(e: Event): string {
+     return (e.target as HTMLInputElement).value;
+@@ -178,7 +205,21 @@ export class Home {
+ 
+   protected signIn(e: Event): void {
+     e.preventDefault();
+-    this.signinError.set(this.session.signIn(this.nameInput()) ? null : 'Enter your name.');
++    const signedIn = this.session.signIn(this.nameInput());
++    this.signinError.set(signedIn ? null : 'Enter your name.');
++    if (signedIn) void this.userLocale.load();
++  }
++
++  protected async saveLocale(e: Event): Promise<void> {
++    e.preventDefault();
++    if (this.savingLocale()) return; // a second submit before the first has answered
++    this.localeError.set(null);
++    this.savingLocale.set(true);
++    try {
++      this.localeError.set(await this.userLocale.choose(this.localeInput()));
++    } finally {
++      this.savingLocale.set(false);
++    }
+   }
+ 
+   protected async load(e: Event): Promise<void> {
+@@ -197,7 +238,7 @@ export class Home {
+   private async loadSheet(id: string): Promise<string | null> {
+     return (
+       (await this.session.loadSheet(id)) ??
+-      (await Promise.all([this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
++      (await Promise.all([this.userLocale.load(), this.people.load(), this.claims.load(), this.rates.load(), this.periods.load(), this.roles.load(), this.holidays.load(), this.voidReasons.load(), this.claimTemplates.load(), this.pools.load(), this.plans.load()])).find((err) => err !== null) ??
+       null
+     );
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 82fe0a006..6bf17f0c3 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -10,6 +10,7 @@ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonNotFoundException;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -22,10 +23,12 @@ public class PlanService {
+     private final PersonRepository people;
+     private final ClaimService claims;
+     private final SheetService sheets;
++    private final RoleService roles;
+     private final Audit audit;
+ 
+     public PlanService(PlanRepository plans, PersonRepository people, ClaimService claims, SheetService sheets,
+-            Audit audit) {
++            RoleService roles, Audit audit) {
++        this.roles = roles;
+         this.plans = plans;
+         this.people = people;
+         this.claims = claims;
+@@ -84,11 +87,15 @@ public class PlanService {
+ 
+     /** For every plan on the sheet in the order they were added, make a DRAFT claim of its amount with an
+      *  empty note on each plan date up to its end and the sheet's today it has made none for yet; a date the
+-     *  claim form refuses is skipped, and tried again next time. */
++     *  claim form refuses is skipped, and tried again next time. Like a bulk action, a viewer's generate goes
++     *  through with nothing made. */
+     @Transactional
+     public Generated generate(String sheetId, String user) {
+         LocalDate today = sheets.today(sheetId);
+         List<Plan> all = plans.findBySheetIdOrderByIdAsc(sheetId);
++        if (roles.isViewer(sheetId, user)) {
++            return new Generated(List.of(), all, today);
++        }
+         List<Claim> made = new ArrayList<>();
+         for (Plan plan : all) {
+             if (people.findByIdAndSheetId(plan.getPersonId(), sheetId).isEmpty()) {
+diff --git a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+index 2c406b031..998099dd5 100644
+--- a/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/role/ViewerGuard.java
+@@ -12,7 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ /**
+  * A viewer sees the sheet and changes nothing: every change to a sheet by a viewer is refused before it
+  * reaches its handler. Loading the sheet is not a change, and a bulk action goes through with nothing done
+- * (each claim refused, no one graded or retired), so those are left to their handlers.
++ * (each claim refused, no one graded or retired, no plan claim made), so those are left to their handlers.
+  */
+ @Configuration
+ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+@@ -28,7 +28,8 @@ public class ViewerGuard implements WebMvcConfigurer, HandlerInterceptor {
+         registry.addInterceptor(this)
+                 .addPathPatterns("/api/sheets/*/**")
+                 .excludePathPatterns("/api/sheets/*/load", "/api/sheets/*/claims/bulk-*",
+-                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire");
++                        "/api/sheets/*/people/bulk-grade", "/api/sheets/*/people/bulk-retire",
++                        "/api/sheets/*/plans/generate");
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/officefloor/hq/app/user/LocaleRefusedException.java b/src/main/java/net/officefloor/hq/app/user/LocaleRefusedException.java
+new file mode 100644
+index 000000000..8536a8b6a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/LocaleRefusedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.user;
++
++/** A locale that cannot be chosen: it is not one the screen knows. */
++public class LocaleRefusedException extends RuntimeException {
++
++    public LocaleRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserLocale.java b/src/main/java/net/officefloor/hq/app/user/UserLocale.java
+new file mode 100644
+index 000000000..ff34c9c4c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserLocale.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A user's chosen locale, kept per user across every sheet. */
++@Entity
++@Table(name = "user_locale")
++public class UserLocale {
++
++    @Id
++    @Column(name = "user_name", nullable = false)
++    private String userName;
++
++    @Column(name = "locale", nullable = false)
++    private String locale;
++
++    protected UserLocale() {
++    }
++
++    public UserLocale(String userName, String locale) {
++        this.userName = userName;
++        this.locale = locale;
++    }
++
++    public String getUserName() {
++        return userName;
++    }
++
++    public String getLocale() {
++        return locale;
++    }
++
++    public void setLocale(String locale) {
++        this.locale = locale;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserLocaleController.java b/src/main/java/net/officefloor/hq/app/user/UserLocaleController.java
+new file mode 100644
+index 000000000..50de2c1ea
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserLocaleController.java
+@@ -0,0 +1,55 @@
++package net.officefloor.hq.app.user;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.util.Map;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The signed-in user's locale. The signed-in user's name comes in the X-User header. */
++@RestController
++@Validated
++@RequestMapping("/api/user/locale")
++public class UserLocaleController {
++
++    public record LocaleView(String locale) {
++    }
++
++    public record LocaleRequest(@Size(max = 10) String locale) {
++    }
++
++    private final UserLocaleService service;
++
++    public UserLocaleController(UserLocaleService service) {
++        this.service = service;
++    }
++
++    /** The user's locale: en unless they chose another. */
++    @GetMapping
++    public LocaleView get(@RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
++        return new LocaleView(service.locale(user.trim()));
++    }
++
++    /** Choose the user's locale. */
++    @PutMapping
++    public LocaleView choose(@RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid LocaleRequest request) {
++        return new LocaleView(service.choose(user.trim(), request.locale()));
++    }
++
++    /** A locale that cannot be chosen is refused with the reason, for the screen to show. */
++    @ExceptionHandler(LocaleRefusedException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> refused(LocaleRefusedException e) {
++        return Map.of("message", e.getMessage());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserLocaleRepository.java b/src/main/java/net/officefloor/hq/app/user/UserLocaleRepository.java
+new file mode 100644
+index 000000000..dede16d5f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserLocaleRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.user;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UserLocaleRepository extends JpaRepository<UserLocale, String> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/user/UserLocaleService.java b/src/main/java/net/officefloor/hq/app/user/UserLocaleService.java
+new file mode 100644
+index 000000000..159a6a2e1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/user/UserLocaleService.java
+@@ -0,0 +1,38 @@
++package net.officefloor.hq.app.user;
++
++import java.util.List;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Keeps each user's locale. Choosing one writes no audit record. */
++@Service
++public class UserLocaleService {
++
++    /** The locales a user may choose; the first is every user's until they choose another. */
++    public static final List<String> LOCALES = List.of("en", "de");
++
++    private final UserLocaleRepository locales;
++
++    public UserLocaleService(UserLocaleRepository locales) {
++        this.locales = locales;
++    }
++
++    /** The user's locale: en unless they chose another. */
++    @Transactional(readOnly = true)
++    public String locale(String user) {
++        return locales.findById(user).map(UserLocale::getLocale).orElse(LOCALES.get(0));
++    }
++
++    /** Choose the user's locale; one not in {@link #LOCALES} is refused. */
++    @Transactional
++    public String choose(String user, String locale) {
++        String l = locale == null ? "" : locale.trim();
++        if (!LOCALES.contains(l)) {
++            throw new LocaleRefusedException("Choose a locale: " + String.join(" or ", LOCALES) + ".");
++        }
++        UserLocale row = locales.findById(user).orElseGet(() -> new UserLocale(user, l));
++        row.setLocale(l);
++        locales.save(row);
++        return l;
++    }
++}
+diff --git a/src/main/resources/db/migration/V87__user_locale.sql b/src/main/resources/db/migration/V87__user_locale.sql
+new file mode 100644
+index 000000000..b1b528b19
+--- /dev/null
++++ b/src/main/resources/db/migration/V87__user_locale.sql
+@@ -0,0 +1,6 @@
++-- Each user's locale: how the screen shows them figures (en: 1234.56, de: 1.234,56). A user without a
++-- row is en. Kept per user, across every sheet.
++CREATE TABLE user_locale (
++    user_name VARCHAR(200) NOT NULL PRIMARY KEY,
++    locale    VARCHAR(10)  NOT NULL
++);
