@@ -1,0 +1,214 @@
+diff --git a/src/main/frontend/src/app/core/plans.ts b/src/main/frontend/src/app/core/plans.ts
+index c1bccbace..9e69d4535 100644
+--- a/src/main/frontend/src/app/core/plans.ts
++++ b/src/main/frontend/src/app/core/plans.ts
+@@ -17,6 +17,8 @@ export interface Plan {
+   day: number | null;
+   end: string;
+   generated: number;
++  /** The first five plan dates after the sheet's today and on or before the end, earliest first. */
++  nextDates: string[];
+ }
+ 
+ /** A plan's fields as typed. */
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 2f14fde1f..85d144023 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -260,12 +260,14 @@ export class Home {
+     this.todayError.set(null);
+     this.savingToday.set(true);
+     try {
+-      // A today change may close periods past their grace days, so the periods are re-read; it also
+-      // releases every claim's lock, closing their editors.
++      // A today change may close periods past their grace days, and moves the plans' next dates, so the
++      // periods and plans are re-read; it also releases every claim's lock, closing their editors.
+       const was = this.session.today();
+       const err = await this.session.setToday(this.todayInput());
+       if (err === null && this.session.today() !== was) this.claims.unlockAll();
+-      this.todayError.set(err ?? (await this.periods.load()));
++      this.todayError.set(
++        err ?? (await Promise.all([this.periods.load(), this.plans.load()])).find((e) => e !== null) ?? null,
++      );
+     } finally {
+       this.savingToday.set(false);
+     }
+diff --git a/src/main/frontend/src/app/features/plans/person-plans.ts b/src/main/frontend/src/app/features/plans/person-plans.ts
+index d2ccf001c..f08cf181b 100644
+--- a/src/main/frontend/src/app/features/plans/person-plans.ts
++++ b/src/main/frontend/src/app/features/plans/person-plans.ts
+@@ -1,7 +1,7 @@
+ import { Component, computed, inject, input, signal } from '@angular/core';
+ import { Plans } from '../../core/plans';
+ 
+-// A person's plans, each with how many claims it has made so far, and a form adding one, run every so many days
++// A person's plans, each with how many claims it has made so far and its next five dates, and a form adding one, run every so many days
+ // or monthly on a day of the month (a bad amount, interval or day, or an end before the start, is refused with
+ // an error on the row).
+ @Component({
+@@ -18,7 +18,8 @@ import { Plans } from '../../core/plans';
+             every <span data-testid="plan-every">{{ pl.every }}</span> days
+           }
+           to <span data-testid="plan-end">{{ pl.end }}</span>,
+-          made <span data-testid="plan-generated">{{ pl.generated }}</span>
++          made <span data-testid="plan-generated">{{ pl.generated }}</span>;
++          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
+         </li>
+       }
+     </ul>
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+index 8e2e4a57b..f46f8c334 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/Plan.java
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.time.YearMonth;
++import java.time.temporal.ChronoUnit;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
+@@ -107,25 +108,40 @@ public class Plan {
+         return generated.size();
+     }
+ 
+-    /** The plan dates up to its end and the given day that it has made no claim for yet, earliest first. A
+-     *  monthly plan's dates are its day in every month from the start's month, a day beyond the month's length
+-     *  falling on its last day, dates before the start left out. */
++    /** The plan dates up to its end and the given day that it has made no claim for yet, earliest first. */
+     public List<LocalDate> datesDue(LocalDate today) {
+         LocalDate last = end.isBefore(today) ? end : today;
++        return dates(start, last, Integer.MAX_VALUE).stream().filter(d -> !generated.contains(d)).toList();
++    }
++
++    /** The first so many plan dates after the given day and on or before its end, earliest first, whether or
++     *  not it has made a claim for them. */
++    public List<LocalDate> nextDates(LocalDate today, int count) {
++        return dates(today.plusDays(1), end, count);
++    }
++
++    /** The plan dates from the given first to last day, earliest first, at most so many. A monthly plan's dates
++     *  are its day in every month from the start's month, a day beyond the month's length falling on its last
++     *  day, dates before the start left out. */
++    private List<LocalDate> dates(LocalDate first, LocalDate last, int max) {
+         List<LocalDate> out = new ArrayList<>();
+         if (day != null) {
+-            for (YearMonth m = YearMonth.from(start); !m.atDay(1).isAfter(last); m = m.plusMonths(1)) {
++            for (YearMonth m = YearMonth.from(start); !m.atDay(1).isAfter(last) && out.size() < max;
++                    m = m.plusMonths(1)) {
+                 LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
+-                if (!d.isBefore(start) && !d.isAfter(last) && !generated.contains(d)) {
++                if (!d.isBefore(start) && !d.isBefore(first) && !d.isAfter(last)) {
+                     out.add(d);
+                 }
+             }
+             return out;
+         }
+-        for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
+-            if (!generated.contains(d)) {
+-                out.add(d);
+-            }
++        LocalDate d = start;
++        if (d.isBefore(first)) {
++            long steps = (ChronoUnit.DAYS.between(start, first) + every - 1) / every;
++            d = start.plusDays(steps * every);
++        }
++        for (; !d.isAfter(last) && out.size() < max; d = d.plusDays(every)) {
++            out.add(d);
+         }
+         return out;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 732fbf11f..b24222b88 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -29,13 +29,15 @@ import org.springframework.web.bind.annotation.RestController;
+ public class PlanController {
+ 
+     /** A plan as the screen shows it: the amount with two decimals, dates YYYY-MM-DD, every so many days or
+-     *  the day of the month (the other null), and how many claims it has made so far. */
++     *  the day of the month (the other null), how many claims it has made so far, and its next dates: the first
++     *  five plan dates after the sheet's today and on or before its end. */
+     public record PlanView(long id, long personId, String amount, String start, Integer every, Integer day,
+-            String end, int generated) {
++            String end, int generated, List<String> nextDates) {
+ 
+-        static PlanView of(Plan p) {
++        static PlanView of(Plan p, LocalDate today) {
+             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().toPlainString(), p.getStart().toString(),
+-                    p.getEvery(), p.getDay(), p.getEnd().toString(), p.getGeneratedCount());
++                    p.getEvery(), p.getDay(), p.getEnd().toString(), p.getGeneratedCount(),
++                    p.nextDates(today, 5).stream().map(LocalDate::toString).toList());
+         }
+     }
+ 
+@@ -61,7 +63,10 @@ public class PlanController {
+     @GetMapping("/plans")
+     public List<PlanView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+-        return service.list(sheetId.trim()).stream().map(PlanView::of).toList();
++        String sid = sheetId.trim();
++        List<Plan> plans = service.list(sid);
++        LocalDate today = service.today(sid);
++        return plans.stream().map(p -> PlanView.of(p, today)).toList();
+     }
+ 
+     /** Add a plan to a person. */
+@@ -69,8 +74,10 @@ public class PlanController {
+     public PlanView add(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable long personId,
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+             @RequestBody @Valid PlanRequest request) {
+-        return PlanView.of(service.add(sheetId.trim(), user.trim(), personId, request.amount(), request.start(),
+-                request.every(), request.day(), request.end()));
++        String sid = sheetId.trim();
++        Plan plan = service.add(sid, user.trim(), personId, request.amount(), request.start(), request.every(),
++                request.day(), request.end());
++        return PlanView.of(plan, service.today(sid));
+     }
+ 
+     /** Make the plans' claims due by the sheet's today. */
+@@ -79,7 +86,7 @@ public class PlanController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+         PlanService.Generated done = service.generate(sheetId.trim(), user.trim());
+         return new GenerateView(done.claims().size(), done.claims().stream().map(ClaimView::of).toList(),
+-                done.plans().stream().map(PlanView::of).toList());
++                done.plans().stream().map(p -> PlanView.of(p, done.today())).toList());
+     }
+ 
+     /** A plan that cannot be added is refused with the reason, for the screen to show. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index ba115f698..82fe0a006 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -40,6 +40,12 @@ public class PlanService {
+         return plans.findBySheetIdOrderByIdAsc(sheetId);
+     }
+ 
++    /** The sheet's today, from which the plans' next dates are told. */
++    @Transactional(readOnly = true)
++    public LocalDate today(String sheetId) {
++        return sheets.today(sheetId);
++    }
++
+     /** Add a plan to a person, run every so many days or monthly on a day of the month (exactly one of them);
+      *  an amount a claim would refuse (below 0.00), an interval below 1 day, a day of the month outside 1 to 31,
+      *  or an end before the start is refused. */
+@@ -72,8 +78,8 @@ public class PlanService {
+         return plan;
+     }
+ 
+-    /** What a generate did: the claims it made, in the order made, and the sheet's plans. */
+-    public record Generated(List<Claim> claims, List<Plan> plans) {
++    /** What a generate did: the claims it made, in the order made, the sheet's plans, and its today. */
++    public record Generated(List<Claim> claims, List<Plan> plans, LocalDate today) {
+     }
+ 
+     /** For every plan on the sheet in the order they were added, make a DRAFT claim of its amount with an
+@@ -97,6 +103,6 @@ public class PlanService {
+             }
+             plans.saveAndFlush(plan);
+         }
+-        return new Generated(made, all);
++        return new Generated(made, all, today);
+     }
+ }
