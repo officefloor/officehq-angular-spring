@@ -1,0 +1,279 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index da15368b5..d4a7f6b0f 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -776,6 +776,28 @@ export class Claims {
+     }
+   }
+ 
++  /** Set a DRAFT, OPEN or PENDING claim's due-by directly (a steward's action): it stays as set, and a
++   *  holiday added later does not move it. An error message when refused. */
++  async setDueBy(id: number, date: string): Promise<string | null> {
++    const sid = this.session.sheetId();
++    const user = this.session.user();
++    if (!user || !sid) return 'Load a sheet first.';
++    if (!isDate(date.trim())) return 'Enter the new due-by as YYYY-MM-DD.';
++    try {
++      const claim = await firstValueFrom(
++        this.http.post<Claim>(
++          `${this.url(sid)}/claims/${id}/due-by`,
++          { dueBy: date.trim() },
++          { headers: { 'X-User': user } },
++        ),
++      );
++      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
++      return null;
++    } catch (e) {
++      return failed('set due-by', e);
++    }
++  }
++
+   /** Split an amount (above 0.00, below the claim's) off an OPEN claim: the claim keeps the rest, unbound
+    *  from any statement, and a new OPEN claim of the same person with the amount split off is listed
+    *  newest; an error message when refused. */
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 2e6405354..9bece308c 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -296,6 +296,17 @@ import { VoidReasons } from '../../core/void-reasons';
+           <button type="button" data-testid="claim-redate" [disabled]="acting() === c.id" (click)="redate(c)">
+             Re-date<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+           </button>
++          <label [for]="'claim-due-by-new-' + c.id">New due-by</label>
++          <input
++            [id]="'claim-due-by-new-' + c.id"
++            data-testid="claim-due-by-new"
++            placeholder="YYYY-MM-DD"
++            [value]="dueByDates()[c.id] ?? ''"
++            (input)="setDueByDate(c.id, value($event))"
++          />
++          <button type="button" data-testid="claim-set-due-by" [disabled]="acting() === c.id" (click)="setDueBy(c)">
++            Set due-by<span class="visually-hidden"> of claim {{ c.amount }} on {{ c.date }}</span>
++          </button>
+           <label [for]="'claim-split-amount-' + c.id">Split off</label>
+           <input
+             [id]="'claim-split-amount-' + c.id"
+@@ -433,6 +444,7 @@ export class PersonClaims {
+   protected readonly settleDates = signal<Record<number, string>>({});
+   /** The new date typed to re-date each claim to, by claim id. */
+   protected readonly redates = signal<Record<number, string>>({});
++  protected readonly dueByDates = signal<Record<number, string>>({});
+   /** The amount typed to split off each claim, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
+   /** The amount typed to part-settle each claim, by claim id. */
+@@ -757,6 +769,22 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected setDueByDate(id: number, date: string): void {
++    this.clearActionError(id);
++    this.dueByDates.update((d) => ({ ...d, [id]: date }));
++  }
++
++  protected async setDueBy(c: Claim): Promise<void> {
++    this.clearActionError(c.id);
++    this.acting.set(c.id);
++    try {
++      const err = await this.claims.setDueBy(c.id, this.dueByDates()[c.id] ?? '');
++      if (err) this.actionError.set({ id: c.id, message: err });
++    } finally {
++      this.acting.set(null);
++    }
++  }
++
+   protected setSplitAmount(id: number, amount: string): void {
+     this.clearActionError(id);
+     this.splitAmounts.update((a) => ({ ...a, [id]: amount }));
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 5f61f3cde..1ed5c4a06 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -51,10 +51,15 @@ public class Claim {
+     /** The day it is due by: fixed when it is added, from the terms of its person's grade in force on its
+      *  date then, counted as that many business days after its date (skipping weekends and the sheet's
+      *  holidays listed then); it does not follow later changes to the terms or its date. Adding a holiday
+-     *  works it out again, with the same terms, while the claim is not SETTLED or VOID. */
++     *  works it out again, with the same terms, while the claim is not SETTLED or VOID, unless a steward set
++     *  it directly. */
+     @Column(name = "due_by", nullable = false)
+     private LocalDate dueBy;
+ 
++    /** Whether a steward set its due-by directly: it then stays as set, and adding a holiday does not move it. */
++    @Column(name = "due_by_set", nullable = false)
++    private boolean dueBySet;
++
+     /** The terms its due-by was fixed with: that many business days after its date. */
+     @Column(name = "terms", nullable = false)
+     private int terms;
+@@ -216,6 +221,7 @@ public class Claim {
+         copy.escalated = escalated;
+         copy.waived = waived;
+         copy.held = held;
++        copy.dueBySet = dueBySet;
+         copy.reviewAssignee = reviewAssignee;
+         copy.voidReason = voidReason;
+         copy.tags = tags;
+@@ -482,6 +488,14 @@ public class Claim {
+         this.waived = waived;
+     }
+ 
++    public boolean isDueBySet() {
++        return dueBySet;
++    }
++
++    public void setDueBySet(boolean dueBySet) {
++        this.dueBySet = dueBySet;
++    }
++
+     public boolean isHeld() {
+         return held;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index ea7672687..4ad7c6239 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -550,6 +550,19 @@ public class ClaimController {
+         return ClaimView.of(service.redate(sheetId.trim(), user.trim(), claimId, request.date()));
+     }
+ 
++    /** The due-by a steward sets a claim to. */
++    public record DueByRequest(LocalDate dueBy) {
++    }
++
++    /** Set a DRAFT, OPEN or PENDING claim's due-by directly: a steward's action. */
++    @PostMapping("/claims/{claimId}/due-by")
++    public ClaimView setDueBy(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @PathVariable long claimId,
++            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
++            @RequestBody @Valid DueByRequest request) {
++        return ClaimView.of(service.setDueBy(sheetId.trim(), user.trim(), claimId, request.dueBy()));
++    }
++
+     /** The amount split off a claim. */
+     public record SplitRequest(@NotNull @Digits(integer = 13, fraction = 2) BigDecimal amount) {
+     }
+@@ -788,6 +801,13 @@ public class ClaimController {
+         return Map.of("message", e.getMessage());
+     }
+ 
++    /** A due-by set that is not allowed is refused with the reason, for the screen to show. */
++    @ExceptionHandler(ClaimDueBySetException.class)
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public Map<String, String> dueBySetRefused(ClaimDueBySetException e) {
++        return Map.of("message", e.getMessage());
++    }
++
+     /** A re-date that is not allowed is refused with the reason, for the screen to show. */
+     @ExceptionHandler(ClaimRedateException.class)
+     @ResponseStatus(HttpStatus.CONFLICT)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimDueBySetException.java b/src/main/java/net/officefloor/hq/app/claim/ClaimDueBySetException.java
+new file mode 100644
+index 000000000..fcf0b08f0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimDueBySetException.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.claim;
++
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ResponseStatus;
++
++/** A due-by set that is not allowed: by anyone but a steward, or of a claim that is not DRAFT, OPEN or PENDING. */
++@ResponseStatus(HttpStatus.CONFLICT)
++public class ClaimDueBySetException extends RuntimeException {
++
++    public ClaimDueBySetException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 17e019d87..743a312e5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -818,6 +818,36 @@ public class ClaimService {
+         return updated;
+     }
+ 
++    /** Set the due-by of a DRAFT, OPEN or PENDING claim directly. It stays as set: a holiday added later does
++     *  not move it; its overdue state, late charge, grace and period follow it. Refused unless the user is a
++     *  steward, and for a claim in any other status, a missing date, and a claim whose old or new due-by is in a
++     *  closed period. */
++    @Transactional
++    public Claim setDueBy(String sheetId, String user, long claimId, LocalDate dueBy) {
++        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
++        if (!roles.isSteward(sheetId, user)) {
++            throw new ClaimDueBySetException("Only a steward can set a claim's due-by.");
++        }
++        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
++            throw new ClaimDueBySetException("Only a DRAFT, OPEN or PENDING claim can have its due-by set.");
++        }
++        if (dueBy == null) {
++            throw new ClaimDueBySetException("Enter the new due-by.");
++        }
++        refuseClosed(sheetId, claim.getDueBy());
++        refuseClosed(sheetId, dueBy);
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(PersonNotFoundException::new);
++        Rollup.Snapshot before = rollup.take(sheetId);
++        LocalDate old = claim.getDueBy();
++        claim.setDueBy(dueBy);
++        claim.setDueBySet(true);
++        Claim updated = claims.saveAndFlush(claim);
++        audit("CLAIM_DUE_BY_SET", updated, person, user, updated.getNumber(), " old=" + old + " new=" + dueBy);
++        rollup.recordChanges(sheetId, user, before);
++        return updated;
++    }
++
+     /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date and takes the next
+      *  number in the sequence it is numbered in (its old number is never used again; a claim not yet settled has none),
+      *  loses any figure a statement bound it to (live again until its new person's next statement), and is
+diff --git a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+index 2f7a70ba9..49d347206 100644
+--- a/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
++++ b/src/main/java/net/officefloor/hq/app/holiday/HolidayService.java
+@@ -40,7 +40,8 @@ public class HolidayService {
+     }
+ 
+     /** Add a date to the sheet's holidays; a date already on the list is refused. Every claim on the sheet
+-     *  that is not SETTLED or VOID and is due by the date or later is due again by the business day its terms
++     *  that is not SETTLED or VOID, is due by the date or later and whose due-by a steward did not set directly
++     *  is due again by the business day its terms
+      *  fall on over the holidays now on the sheet; figures that move as a result are recorded after it. */
+     @Transactional
+     public Holiday add(String sheetId, String user, LocalDate date) {
+@@ -55,7 +56,7 @@ public class HolidayService {
+                 .collect(Collectors.toSet());
+         for (Claim claim : claims.findBySheetIdOrderByIdDesc(sheetId)) {
+             if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+-                    || claim.getDueBy().isBefore(date)) {
++                    || claim.isDueBySet() || claim.getDueBy().isBefore(date)) {
+                 continue;
+             }
+             LocalDate dueBy = businessDaysAfter(claim.getDate(), claim.getTerms(), days);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 89739ac56..8ebd8162e 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -210,13 +210,13 @@ public class SheetCloneService {
+             long newId = insert("INSERT INTO claim (sheet_id, person_id, list_order, amount, claim_date, due_by, terms,"
+                     + " note, status, corrects_number, settled_due, opened_by, edited_by, stated, stated_due,"
+                     + " deferred_until, proofs, split_from, settle_batch, late_entry, reminded_on, ref, void_reason,"
+-                    + " tags, escalated, waived, proof_photos, held) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
++                    + " tags, escalated, waived, proof_photos, held, due_by_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     target, personIds.get(oldPerson), c.get("list_order"), c.get("amount"), c.get("claim_date"),
+                     c.get("due_by"), c.get("terms"), c.get("note"), c.get("status"), c.get("corrects_number"),
+                     c.get("settled_due"), c.get("opened_by"), c.get("edited_by"), c.get("deferred_until"),
+                     c.get("proofs"), c.get("split_from"), c.get("settle_batch"), c.get("late_entry"),
+                     c.get("reminded_on"), c.get("ref"), c.get("void_reason"), c.get("tags"),
+-                    c.get("escalated"), c.get("waived"), c.get("proof_photos"), c.get("held"));
++                    c.get("escalated"), c.get("waived"), c.get("proof_photos"), c.get("held"), c.get("due_by_set"));
+             copied.add(new long[] { oldId, newId });
+             jdbc.update("INSERT INTO claim_status_log (claim_id, seq, status, by_user, on_date, due)"
+                     + " SELECT ?, seq, status, by_user, on_date, due FROM claim_status_log WHERE claim_id = ?",
+diff --git a/src/main/resources/db/migration/V123__claim_due_by_set.sql b/src/main/resources/db/migration/V123__claim_due_by_set.sql
+new file mode 100644
+index 000000000..c5a1d1569
+--- /dev/null
++++ b/src/main/resources/db/migration/V123__claim_due_by_set.sql
+@@ -0,0 +1,2 @@
++-- Whether a steward set a claim's due-by directly: such a due-by stays as set, and adding a holiday does not move it.
++ALTER TABLE claim ADD COLUMN due_by_set BOOLEAN NOT NULL DEFAULT FALSE;
