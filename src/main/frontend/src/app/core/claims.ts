@@ -74,6 +74,8 @@ export interface Claim {
   held: boolean;
   /** Its shares, in the order shared: the other people holding a part of its due. */
   shares: ClaimShare[];
+  /** The user a steward assigned its review to; null when never assigned. */
+  reviewAssignee: string | null;
 }
 
 /** A share of a claim: the person holding it and their percent, two decimals. */
@@ -613,6 +615,28 @@ export class Claims {
       return null;
     } catch (e) {
       return failed('hold', e);
+    }
+  }
+
+  /** Assign a REVIEW claim's review to a user; an error message when refused (a blank user, a claim in any
+   *  other status, or a user who is not a steward). */
+  async assignReview(id: number, assignee: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (!assignee.trim()) return 'Enter the user to assign the review to.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(
+          `${this.url(sid)}/claims/${id}/review-assignee`,
+          { user: assignee.trim() },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('assign', e);
     }
   }
 

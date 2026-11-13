@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -45,6 +46,11 @@ public class Period {
 
     @Column(name = "closed", nullable = false)
     private boolean closed;
+
+    /** Moved on by each save, a change to its openings too, so the history keeps each change. */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     @Column(name = "soft_closed", nullable = false)
     private boolean softClosed;

@@ -140,6 +140,10 @@ public class Claim {
     @Column(name = "held", nullable = false)
     private boolean held;
 
+    /** The user a steward assigned its review to; none when never assigned. */
+    @Column(name = "review_assignee")
+    private String reviewAssignee;
+
     /** Its external reference, unique on its sheet without regard to case; none when not given. */
     @Column(name = "ref")
     private String ref;
@@ -212,6 +216,7 @@ public class Claim {
         copy.escalated = escalated;
         copy.waived = waived;
         copy.held = held;
+        copy.reviewAssignee = reviewAssignee;
         copy.voidReason = voidReason;
         copy.tags = tags;
         statusLog.forEach(l -> copy.statusLog.add(new StatusChange(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
@@ -483,6 +488,14 @@ public class Claim {
 
     public void setHeld(boolean held) {
         this.held = held;
+    }
+
+    public String getReviewAssignee() {
+        return reviewAssignee;
+    }
+
+    public void setReviewAssignee(String reviewAssignee) {
+        this.reviewAssignee = reviewAssignee;
     }
 
     public List<StatusChange> getStatusLog() {

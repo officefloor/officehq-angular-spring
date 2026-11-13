@@ -101,6 +101,7 @@ import { VoidReasons } from '../../core/void-reasons';
           <span>Period <span data-testid="claim-period">{{ periods.of(c.dueBy)?.name ?? '' }}</span></span>
           <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
+          <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span></span>
           <span>Shared with <span data-testid="claim-shares">{{ sharesShown(c) }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
@@ -240,6 +241,16 @@ import { VoidReasons } from '../../core/void-reasons';
           <button type="button" data-testid="claim-hold" [disabled]="acting() === c.id" (click)="toggleHold(c)">
             {{ c.held ? 'Release' : 'Hold' }}<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
           </button>
+          <label [for]="'claim-review-user-' + c.id">Assign review to</label>
+          <input
+            [id]="'claim-review-user-' + c.id"
+            data-testid="claim-review-user"
+            [value]="reviewUsers()[c.id] ?? ''"
+            (input)="setReviewUser(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-review-assign" [disabled]="acting() === c.id" (click)="assignReview(c)">
+            Assign review<span class="visually-hidden"> of claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
           <label [for]="'claim-share-select-' + c.id">Share with</label>
           <select
             [id]="'claim-share-select-' + c.id"
@@ -373,6 +384,7 @@ export class PersonClaims {
   /** Everyone on the sheet, whom a claim can be shared with (the server refuses the claim's own person). */
   protected readonly everyone = computed(() => this.people.people());
   /** The person chosen and the percent typed to share each claim with, by claim id. */
+  protected readonly reviewUsers = signal<Record<number, string>>({});
   protected readonly shareFields = signal<Record<number, { personId?: string; share?: string }>>({});
   /** The person chosen to move each claim to, by claim id. */
   protected readonly reassignTo = signal<Record<number, number>>({});
@@ -607,6 +619,23 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.toggleHold(c.id);
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected setReviewUser(id: number, text: string): void {
+    this.clearActionError(id);
+    this.reviewUsers.update((f) => ({ ...f, [id]: text }));
+  }
+
+  /** Assign the claim's review to the user typed. */
+  protected async assignReview(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.assignReview(c.id, this.reviewUsers()[c.id] ?? '');
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

@@ -223,6 +223,15 @@ export class Figures {
     };
   });
 
+  /** How many of the sheet's REVIEW claims are assigned to the signed-in user, names compared trimmed and
+   *  without regard to case. */
+  readonly myReviewsCount = computed(() => {
+    const user = this.session.user()?.trim().toLowerCase();
+    if (!user) return 0;
+    return this.claims.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssignee?.trim().toLowerCase() === user)
+      .length;
+  });
+
   /** A crew's due-total: the lead's and the members' due-totals as the people list shows them, added up,
    *  n/a skipped. */
   crewDueCents(c: CrewView): bigint {

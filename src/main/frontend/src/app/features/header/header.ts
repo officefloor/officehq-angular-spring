@@ -38,7 +38,7 @@ function overTree(members: TreeMember[]) {
 // sheet as of a date, every sheet of the tree as it stood at the end of that date. Likewise per grade the due-totals of
 // the people on it (retired people left out), and per status the number of claims in it. And the signed-in user's own due- and overdue-totals, when a
 // person on the sheet has their name or an alias equal to it; blank otherwise. And the user's crew total: the due-totals of
-// the crews that person leads, added up; blank when they lead none. And, for a steward, a dashboard: the
+// the crews that person leads, added up; blank when they lead none. And the REVIEW claims assigned to the user, counted. And, for a steward, a dashboard: the
 // sheet's PENDING and REVIEW claims and its overdue claims that count, counted; blank for anyone else.
 @Component({
   selector: 'app-header',
@@ -54,6 +54,7 @@ function overTree(members: TreeMember[]) {
         <div><dt>My due total</dt><dd data-testid="my-due-total">{{ figures.mine()?.dueTotal }}</dd></div>
         <div><dt>My overdue total</dt><dd data-testid="my-overdue-total">{{ figures.mine()?.overdueTotal }}</dd></div>
         <div><dt>My crew due total</dt><dd data-testid="my-crew-due-total">{{ figures.myCrewDueTotal() }}</dd></div>
+        <div><dt>My reviews</dt><dd data-testid="my-reviews-count">{{ figures.myReviewsCount() }}</dd></div>
       </dl>
       <dl aria-label="Steward dashboard">
         <div><dt>Pending to approve</dt><dd data-testid="dash-pending-count">{{ figures.dashboard()?.pending }}</dd></div>

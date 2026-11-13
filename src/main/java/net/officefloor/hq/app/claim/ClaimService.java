@@ -549,6 +549,30 @@ public class ClaimService {
         return updated;
     }
 
+    /** Assign a REVIEW claim's review to a user name (trimmed); it stays assigned once the claim leaves REVIEW;
+     *  write REVIEW_ASSIGNED ending user=<user>. Refused for a blank user, a claim in any other status, and
+     *  anyone but a steward. */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, long claimId, String assignee) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ClaimAssignException("Only a steward can assign a review.");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ClaimAssignException("Only a REVIEW claim can be assigned.");
+        }
+        if (assignee == null || assignee.isBlank()) {
+            throw new ClaimAssignException("Enter the user to assign the review to.");
+        }
+        String name = assignee.trim();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setReviewAssignee(name);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("REVIEW_ASSIGNED", updated, person, user, updated.getNumber(), " user=" + name);
+        return updated;
+    }
+
     /** Hold an OPEN or PENDING claim, or release it when held: a hold no longer leaves the live totals;
      *  write CLAIM_HELD or CLAIM_RELEASED. Refused for a claim in any other status. */
     @Transactional

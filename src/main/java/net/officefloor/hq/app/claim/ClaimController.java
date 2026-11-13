@@ -49,14 +49,14 @@ public class ClaimController {
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count and how many of them are receipts and photos,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
-     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held, and its shares, in the order shared. */
+     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived, and whether it is held, and its shares, in the order shared, and the user its review is assigned to (none when never assigned). */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, int proofReceipts, int proofPhotos, String splitFrom, String lockedBy, boolean lateEntry,
             String remindedOn, String ref, List<String> tags, String voidReason,
             List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived, boolean held,
-            List<ShareView> shares) {
+            List<ShareView> shares, String reviewAssignee) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -74,7 +74,7 @@ public class ClaimController {
                     claim.getTags(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch(),
                     claim.getLines().stream().map(LineView::of).toList(), claim.isWaived(), claim.isHeld(),
-                    claim.getShares().stream().map(ShareView::of).toList());
+                    claim.getShares().stream().map(ShareView::of).toList(), claim.getReviewAssignee());
         }
     }
 
@@ -816,6 +816,26 @@ public class ClaimController {
             @PathVariable long claimId,
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
         return ClaimView.of(service.toggleHold(sheetId.trim(), user.trim(), claimId));
+    }
+
+    /** The user to assign a claim's review to. */
+    public record AssignReviewRequest(@Size(max = 200) String user) {
+    }
+
+    /** Assign a REVIEW claim's review to a user. */
+    @PostMapping("/claims/{claimId}/review-assignee")
+    public ClaimView assignReview(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid AssignReviewRequest request) {
+        return ClaimView.of(service.assignReview(sheetId.trim(), user.trim(), claimId, request.user()));
+    }
+
+    /** An assignment that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimAssignException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> assignRefused(ClaimAssignException e) {
+        return Map.of("message", e.getMessage());
     }
 
     /** A hold or release of a claim in any status but OPEN or PENDING is refused with the reason. */
