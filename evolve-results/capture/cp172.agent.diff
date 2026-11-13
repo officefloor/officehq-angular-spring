@@ -1,0 +1,126 @@
+diff --git a/src/main/frontend/src/app/core/claims.ts b/src/main/frontend/src/app/core/claims.ts
+index ace45ddc8..796741561 100644
+--- a/src/main/frontend/src/app/core/claims.ts
++++ b/src/main/frontend/src/app/core/claims.ts
+@@ -21,8 +21,7 @@ export interface Claim {
+   settledDue: string | null;
+   /** The user who opened it; null while a draft. That user cannot settle it. */
+   openedBy: string | null;
+-  /** Bound by its person's last statement, which counted it: it shows and totals `statedDue` (not while
+-   *  PENDING, see `bound`). */
++  /** Bound by its person's last statement, which counted it: it shows and totals `statedDue` (see `bound`). */
+   stated: boolean;
+   /** The figure the last statement bound, two decimals; null while unbound, or when that was n/a. */
+   statedDue: string | null;
+@@ -121,10 +120,10 @@ export function isOpen(c: Claim): boolean {
+   return c.status === 'OPEN' || c.status === 'PENDING';
+ }
+ 
+-/** Whether a claim is bound by its person's last statement now: a PENDING claim shows and totals its
+- *  live figure until rejected back to OPEN. */
++/** Whether a claim is bound by its person's last statement now: a PENDING claim too shows and totals
++ *  the bound figure. */
+ export function bound(c: Claim): boolean {
+-  return c.stated && c.status !== 'PENDING';
++  return c.stated;
+ }
+ 
+ export interface ClaimFields {
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index e2d92e076..07743b21f 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -210,8 +210,7 @@ export class Figures {
+     return aged;
+   }
+ 
+-  /** A claim's figure: its settled due, else the figure its person's last statement bound it to (not
+-   *  while PENDING), else its live due at the rate in force on its date, an overdue claim's late charge on top, at
++  /** A claim's figure: its settled due, else the figure its person's last statement bound it to, else its live due at the rate in force on its date, an overdue claim's late charge on top, at
+    *  least the floor;
+    *  nothing when it has no figure. */
+   figureCents(c: Claim, p: Person): bigint {
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 682bc5f15..55f7f03cc 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -385,8 +385,7 @@ export class PersonClaims {
+     });
+   }
+ 
+-  /** The claim's due: fixed when settled, else as its person's last statement bound it (not while
+-   *  PENDING), else live; an
++  /** The claim's due: fixed when settled, else as its person's last statement bound it, else live; an
+    *  overdue claim's late charge on top of the bound or live figure. */
+   protected figure(c: Claim): string {
+     if (c.settledDue !== null) return c.settledDue;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index a46cea99a..13a58315b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -350,10 +350,10 @@ public class Claim {
+         return stated;
+     }
+ 
+-    /** Bound by its person's last statement now: stated, and not PENDING (a PENDING claim shows and totals
+-     *  its live figure; rejected back to OPEN, it is bound again). */
++    /** Bound by its person's last statement now: stated (a PENDING claim too: it shows and totals the bound
++     *  figure, as any other claim that counts). */
+     public boolean isBound() {
+-        return stated && status != ClaimStatus.PENDING;
++        return stated;
+     }
+ 
+     public BigDecimal getStatedDue() {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index fbba43a0c..c9a014695 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -373,7 +373,8 @@ public class ClaimService {
+         return updated;
+     }
+ 
+-    /** Approve a PENDING claim: it becomes SETTLED, its due fixed at its live figure now, its late charge on
++    /** Approve a PENDING claim: it becomes SETTLED, its due fixed at the figure its person's last statement bound
++     *  it to, else its live figure now, its late charge on
+      *  the sheet's today frozen in on top (with no figure then, its due stays live). Refused unless the
+      *  claim is PENDING and the user is a steward other than the one who opened it or last edited it. */
+     @Transactional
+@@ -395,7 +396,7 @@ public class ClaimService {
+         Rollup.Snapshot before = rollup.take(sheetId);
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(PersonNotFoundException::new);
+-        BigDecimal figure = liveDue(claim, person);
++        BigDecimal figure = claim.isBound() ? claim.getStatedDue() : liveDue(claim, person);
+         BigDecimal due = figure == null ? null : charged(claim, person, figure);
+         refuseUnproved(claim, person, due);
+         claim.setSettledDue(due);
+@@ -547,7 +548,7 @@ public class ClaimService {
+         return updated;
+     }
+ 
+-    /** Reject a PENDING claim with a reason: it goes back to OPEN, no longer in a settle batch, bound again by its person's last
++    /** Reject a PENDING claim with a reason: it goes back to OPEN, no longer in a settle batch, still bound by its person's last
+      *  statement if that statement included it. Refused unless the claim is PENDING, the user is a
+      *  steward and a reason is given. */
+     @Transactional
+@@ -866,8 +867,7 @@ public class ClaimService {
+ 
+     /** Take a person's statement: record their due-total now (late charges included) and how many claims
+      *  count, and bind each claim that counts to its rate figure now, under its late charge and floor (the charge is
+-     *  never bound: it keeps following the sheet's today, and the floor is applied on top; a PENDING claim is bound only once it is back to
+-     *  OPEN); a claim that does not count, is OPEN or PENDING, bound by no statement and dated within one of its person's holds (or its person's
++     *  never bound: it keeps following the sheet's today, and the floor is applied on top); a claim that does not count, is OPEN or PENDING, bound by no statement and dated within one of its person's holds (or its person's
+      *  retirement date is reached), or is deferred past the sheet's today, is left unbound, as the live totals leave it out. */
+     @Transactional
+     public Stated statement(String sheetId, String user, long personId) {
+@@ -1158,8 +1158,7 @@ public class ClaimService {
+         }
+     }
+ 
+-    /** A claim's figure: the due fixed when settled, else the one its last statement bound (not while
+-     *  PENDING), else its live due; none when that is n/a. */
++    /** A claim's figure: the due fixed when settled, else the one its last statement bound, else its live due; none when that is n/a. */
+     private BigDecimal due(Claim claim, Person person) {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
