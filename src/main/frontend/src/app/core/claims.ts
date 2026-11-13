@@ -60,6 +60,8 @@ export interface Claim {
   settleBatch: number | null;
   /** Its lines, in the order added; while it has any, its amount is what they add up to. */
   lines: ClaimLine[];
+  /** Whether a steward waived its late charge: from then on it bears none, whatever its overdue state. */
+  waived: boolean;
 }
 
 /** A line of a claim: its label, a whole quantity of at least 1 and a unit amount, two decimals. */
@@ -249,10 +251,10 @@ export class Claims {
   /** The late charge, in cents, on a claim's figure (in cents): while it is overdue, for each full 30 days
    *  past its due-by plus its grace (see lateFrom), the sheet's late percent in force on that boundary date
    *  (that date plus 30, 60, 90 ... days) of the figure plus the charges of the boundaries before it, rounded to cents as its date rounds, the charges added up; none otherwise, and none
-   *  on a correction. Never bound by a statement; frozen into the due when settled. */
+   *  on a correction or a waived claim. Never bound by a statement; frozen into the due when settled. */
   lateCents(c: Claim, figureCents: bigint): bigint {
     const today = this.session.today();
-    if (!this.overdue(c) || today === null || c.amount.startsWith('-')) return 0n;
+    if (!this.overdue(c) || today === null || c.amount.startsWith('-') || c.waived) return 0n;
     const from = this.lateFrom(c);
     const periods = Math.floor(daysBetween(from, today) / 30);
     const halfUp = this.session.roundsHalfUp(c.date);
@@ -536,6 +538,22 @@ export class Claims {
       return null;
     } catch (e) {
       return failed('remind', e);
+    }
+  }
+
+  /** Waive an OPEN or PENDING claim's late charge, by a steward; an error message when refused. */
+  async waive(id: number): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const claim = await firstValueFrom(
+        this.http.post<Claim>(`${this.url(sid)}/claims/${id}/waive`, null, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.claims.update((cs) => cs.map((c) => (c.id === id ? claim : c)));
+      return null;
+    } catch (e) {
+      return failed('waive', e);
     }
   }
 

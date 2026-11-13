@@ -48,13 +48,13 @@ public class ClaimController {
      *  otherwise), its status log, oldest first, and the date it is deferred until (none when never deferred), its proofs count,
      *  the user whose editor is open on it (none while unlocked), and whether it was added while its period
      *  was soft-closed, and the last day it was reminded (none when never), and its external reference (none when
-     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added. */
+     *  not given), and its tags, sorted, and its comments, in the order written, and its lines, in the order added, and whether its late charge is waived. */
     public record ClaimView(long id, long personId, String amount, String date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, String dueBy, List<StatusLine> statusLog, String deferredUntil,
             int proofs, String splitFrom, String lockedBy, boolean lateEntry,
             String remindedOn, String ref, List<String> tags, String voidReason,
-            List<CommentLine> comments, Integer settleBatch, List<LineView> lines) {
+            List<CommentLine> comments, Integer settleBatch, List<LineView> lines, boolean waived) {
 
         public static ClaimView of(Claim claim) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
@@ -70,7 +70,7 @@ public class ClaimController {
                     claim.getRemindedOn() == null ? null : claim.getRemindedOn().toString(), claim.getRef(),
                     claim.getTags(), claim.getVoidReason(),
                     claim.getComments().stream().map(CommentLine::of).toList(), claim.getSettleBatch(),
-                    claim.getLines().stream().map(LineView::of).toList());
+                    claim.getLines().stream().map(LineView::of).toList(), claim.isWaived());
         }
     }
 
@@ -393,6 +393,14 @@ public class ClaimController {
         return ClaimView.of(service.remind(sheetId.trim(), user.trim(), claimId));
     }
 
+    /** Waive an OPEN or PENDING claim's late charge, by a steward. */
+    @PostMapping("/claims/{claimId}/waive")
+    public ClaimView waive(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.waive(sheetId.trim(), user.trim(), claimId));
+    }
+
     /** A comment's text. */
     public record CommentRequest(@Size(max = 1000) String text) {
     }
@@ -710,6 +718,13 @@ public class ClaimController {
     @ExceptionHandler(ClaimRemindException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, String> remindRefused(ClaimRemindException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** A waiver that is not allowed is refused with the reason, for the screen to show. */
+    @ExceptionHandler(ClaimWaiveException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> waiveRefused(ClaimWaiveException e) {
         return Map.of("message", e.getMessage());
     }
 

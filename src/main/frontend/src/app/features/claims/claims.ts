@@ -99,6 +99,7 @@ import { VoidReasons } from '../../core/void-reasons';
           <span>Due by <span data-testid="claim-due-by">{{ claims.dueBy(c) }}</span></span>
           <span>Overdue <span data-testid="claim-overdue">{{ claims.overdue(c) ? 'yes' : 'no' }}</span></span>
           <span>Period <span data-testid="claim-period">{{ periods.of(c.dueBy)?.name ?? '' }}</span></span>
+          <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
           <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
           <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
           <span>Split from <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
@@ -209,6 +210,9 @@ import { VoidReasons } from '../../core/void-reasons';
           </button>
           <button type="button" data-testid="claim-remind" [disabled]="acting() === c.id" (click)="remind(c)">
             Remind<span class="visually-hidden"> claim {{ c.amount }} on {{ c.date }}</span>
+          </button>
+          <button type="button" data-testid="claim-waive" [disabled]="acting() === c.id" (click)="waive(c)">
+            Waive late charge<span class="visually-hidden"> on claim {{ c.amount }} on {{ c.date }}</span>
           </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -496,6 +500,17 @@ export class PersonClaims {
     this.acting.set(c.id);
     try {
       const err = await this.claims.remind(c.id);
+      if (err) this.actionError.set({ id: c.id, message: err });
+    } finally {
+      this.acting.set(null);
+    }
+  }
+
+  protected async waive(c: Claim): Promise<void> {
+    this.clearActionError(c.id);
+    this.acting.set(c.id);
+    try {
+      const err = await this.claims.waive(c.id);
       if (err) this.actionError.set({ id: c.id, message: err });
     } finally {
       this.acting.set(null);

@@ -125,6 +125,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** Whether a steward waived its late charge: from then on it bears none, whatever its overdue state. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** Its external reference, unique on its sheet without regard to case; none when not given. */
     @Column(name = "ref")
     private String ref;
@@ -188,6 +192,7 @@ public class Claim {
         copy.lateEntry = lateEntry;
         copy.remindedOn = remindedOn;
         copy.escalated = escalated;
+        copy.waived = waived;
         copy.voidReason = voidReason;
         copy.tags = tags;
         statusLog.forEach(l -> copy.statusLog.add(new StatusChange(l.getStatus(), l.getBy(), l.getOn(), l.getDue())));
@@ -435,6 +440,14 @@ public class Claim {
 
     public void setEscalated(boolean escalated) {
         this.escalated = escalated;
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    public void setWaived(boolean waived) {
+        this.waived = waived;
     }
 
     public List<StatusChange> getStatusLog() {

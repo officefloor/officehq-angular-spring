@@ -459,6 +459,30 @@ public class ClaimService {
         return updated;
     }
 
+    /** Waive an OPEN or PENDING claim's late charge: from then on it bears none; write CLAIM_WAIVED. Refused
+     *  unless the user is a steward, and for a claim in any other status or already waived. */
+    @Transactional
+    public Claim waive(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ClaimWaiveException("Only a steward can waive a late charge.");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ClaimWaiveException("Only an OPEN or PENDING claim's late charge can be waived.");
+        }
+        if (claim.isWaived()) {
+            throw new ClaimWaiveException("The claim's late charge is already waived.");
+        }
+        Rollup.Snapshot before = rollup.take(sheetId);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        claim.setWaived(true);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("CLAIM_WAIVED", updated, person, user);
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
     /** Comment on a claim: keep the text with the user and the sheet's today, and write COMMENT_ADDED.
      *  Refused for an empty comment. */
     @Transactional
@@ -536,7 +560,8 @@ public class ClaimService {
             Sheet sheet = sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new);
             LocalDate lateFrom = sheet.lateFrom(claim.getDueBy(), person.gradeOn(claim.getDate()), claim.getDate());
             due = claim.isCorrection() ? figure
-                    : sheet.floored(figure.add(sheet.lateCharge(figure, lateFrom, claim.getDate())), claim.getDate());
+                    : sheet.floored(claim.isWaived() ? figure
+                            : figure.add(sheet.lateCharge(figure, lateFrom, claim.getDate())), claim.getDate());
         }
         claim.setSettledDue(due);
         logStatus(claim, person, user);

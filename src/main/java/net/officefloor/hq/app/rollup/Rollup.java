@@ -407,12 +407,12 @@ public class Rollup {
     /** A claim's due from its figure (its rate figure, or the one its statement bound): its late charge on
      *  top while it is OPEN or PENDING (only those go overdue), then at least the sheet's floor in force on its
      *  date. A settled claim's due is frozen (it already holds the charge and floor fixed when it was
-     *  settled); a correction has neither late charge nor floor. */
+     *  settled); a correction has neither late charge nor floor, and a waived claim no late charge. */
     public static BigDecimal charged(Optional<Sheet> sheet, Claim claim, Person person, BigDecimal figure) {
         if (claim.getSettledDue() != null || claim.isCorrection()) {
             return figure;
         }
-        return sheet.map(s -> s.floored(claim.getStatus().isOpen()
+        return sheet.map(s -> s.floored(claim.getStatus().isOpen() && !claim.isWaived()
                 ? figure.add(s.lateCharge(figure, lateFrom(sheet, claim, person), claim.getDate())) : figure, claim.getDate()))
                 .orElse(figure);
     }
