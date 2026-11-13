@@ -326,6 +326,16 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's maximum of open claims per person (none: none). Not dated. */
+    @Transactional
+    public Sheet setMaxOpen(String id, String user, Integer max) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setMaxOpen(max);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=max-open value="
+                + (max == null ? "" : max.toString()));
+        return sheet;
+    }
+
     /** Change the sheet's review SLA in days (none: none). Not dated. */
     @Transactional
     public Sheet setReviewSla(String id, String user, Integer days) {

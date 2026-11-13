@@ -35,6 +35,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
             + " and (:excluded is null or c.id <> :excluded)")
     boolean refUsed(@Param("sheetId") String sheetId, @Param("ref") String ref, @Param("excluded") Long excluded);
 
+    /** How many of a person's claims are in the statuses. */
+    long countBySheetIdAndPersonIdAndStatusIn(String sheetId, Long personId, Collection<ClaimStatus> statuses);
+
     /** How many of a person's claims in the statuses are due by a day from one date to another, both inclusive. */
     long countBySheetIdAndPersonIdAndStatusInAndDueByBetween(String sheetId, Long personId,
             Collection<ClaimStatus> statuses, LocalDate from, LocalDate to);

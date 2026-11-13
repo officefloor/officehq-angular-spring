@@ -379,6 +379,18 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="reviewSlaTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' }}</strong></p>
+        <label for="setting-max-open">Maximum open claims per person (a claim is not opened when its person already has this many OPEN or PENDING claims; blank for none)</label>
+        <input
+          id="setting-max-open"
+          data-testid="setting-max-open"
+          inputmode="numeric"
+          [value]="maxOpen()"
+          (input)="maxOpen.set(value($event)); maxOpenTouched.set(true); error.set(null)"
+          (focus)="focused.set('max-open')"
+          (keydown.delete)="maxOpenTouched.set(true); error.set(null)"
+          (keydown.backspace)="maxOpenTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-max-open-current">{{ session.maxOpen() ?? '' }}</strong></p>
         <label for="setting-proof-kinds">Proof kinds (comma separated, receipt or photo: a claim above the proof threshold needs a proof of each; blank for none)</label>
         <input
           id="setting-proof-kinds"
@@ -593,6 +605,8 @@ export class SettingsPanel {
   protected readonly scoreLogTouched = signal(false);
   protected readonly reviewSla = signal('');
   protected readonly reviewSlaTouched = signal(false);
+  protected readonly maxOpen = signal('');
+  protected readonly maxOpenTouched = signal(false);
   protected readonly proofKinds = signal('');
   protected readonly proofKindsTouched = signal(false);
   protected readonly defaultGrade = signal('');
@@ -699,7 +713,7 @@ export class SettingsPanel {
         && !this.noteThresholdTouched() && !this.reviewThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
-        && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.scoreMidTouched() && !this.scoreHighTouched() && !this.scoreLogTouched() && !this.reviewSlaTouched() && !this.proofKindsTouched() && !this.defaultGradeTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
+        && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.scoreMidTouched() && !this.scoreHighTouched() && !this.scoreLogTouched() && !this.reviewSlaTouched() && !this.maxOpenTouched() && !this.proofKindsTouched() && !this.defaultGradeTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
         && !this.fiscalStartMonthTouched() && !this.alertThresholdTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
         && this.gradeProofThresholdTouched().size === 0 && this.gradeClerkLimitTouched().size === 0
@@ -742,6 +756,8 @@ export class SettingsPanel {
         || (guess && this.scoreLog().trim() !== (this.session.scoreLog() ? 'on' : ''));
       const reviewSla = this.reviewSlaTouched() || pick === 'review-sla'
         || (guess && this.reviewSla().trim() !== (this.session.reviewSla()?.toString() ?? ''));
+      const maxOpen = this.maxOpenTouched() || pick === 'max-open'
+        || (guess && this.maxOpen().trim() !== (this.session.maxOpen()?.toString() ?? ''));
       const proofKinds = this.proofKindsTouched() || pick === 'proof-kinds'
         || (guess && this.proofKinds().trim() !== (this.session.proofKinds() ?? ''));
       const defaultGrade = this.defaultGradeTouched() || pick === 'default-grade'
@@ -756,7 +772,7 @@ export class SettingsPanel {
         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
       const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
-        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter && !scoreMid && !scoreHigh && !scoreLog && !reviewSla && !proofKinds && !defaultGrade
+        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter && !scoreMid && !scoreHigh && !scoreLog && !reviewSla && !maxOpen && !proofKinds && !defaultGrade
           && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth && !limitGrade)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
@@ -787,6 +803,7 @@ export class SettingsPanel {
         ?? (scoreHigh ? await this.session.setScoreThreshold('score-high', this.scoreHigh()) : null)
         ?? (scoreLog ? await this.session.setScoreLog(this.scoreLog()) : null)
         ?? (reviewSla ? await this.session.setReviewSla(this.reviewSla()) : null)
+        ?? (maxOpen ? await this.session.setMaxOpen(this.maxOpen()) : null)
         ?? (proofKinds ? await this.session.setProofKinds(this.proofKinds()) : null)
         ?? (defaultGrade ? await this.session.setDefaultGrade(this.defaultGrade()) : null)
         ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null)
@@ -841,6 +858,8 @@ export class SettingsPanel {
         this.scoreLogTouched.set(false);
         this.reviewSla.set('');
         this.reviewSlaTouched.set(false);
+        this.maxOpen.set('');
+        this.maxOpenTouched.set(false);
         this.proofKinds.set('');
         this.proofKindsTouched.set(false);
         this.defaultGrade.set('');

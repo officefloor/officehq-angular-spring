@@ -131,6 +131,11 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The maximum of open claims per person: a claim is not opened when its person already has this many
+     *  OPEN or PENDING claims; none means none. Not dated. */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     /** The proof kinds, comma separated: a claim above the proof threshold needs at least one proof of each
      *  before it can be settled or approved; none means none. Not dated. */
     @Column(name = "proof_kinds")
@@ -499,6 +504,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getMaxOpen() {
+        return maxOpen;
+    }
+
+    public void setMaxOpen(Integer maxOpen) {
+        this.maxOpen = maxOpen;
     }
 
     public String getProofKinds() {

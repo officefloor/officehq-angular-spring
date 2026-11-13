@@ -283,6 +283,7 @@ public class ClaimService {
             refuseFlagged(sheetId, user, person);
             refuseNoteless(claim, shownDue(claim, person));
             refuseOverCap(claim);
+            refuseOverMaxOpen(claim);
         }
         Rollup.Snapshot before = rollup.take(sheetId);
         String number = claim.getNumber();
@@ -1202,6 +1203,20 @@ public class ClaimService {
         if (open >= p.getCap()) {
             throw new ClaimCapException("The person already has " + p.getCap() + " open claims in period "
                     + p.getName() + ".");
+        }
+    }
+
+    /** Refuse opening a claim when the sheet has a maximum of open claims per person and its person already
+     *  has that many OPEN or PENDING claims. */
+    private void refuseOverMaxOpen(Claim claim) {
+        Integer max = sheetRows.findById(claim.getSheetId()).map(Sheet::getMaxOpen).orElse(null);
+        if (max == null) {
+            return;
+        }
+        long open = claims.countBySheetIdAndPersonIdAndStatusIn(claim.getSheetId(), claim.getPersonId(),
+                List.of(ClaimStatus.OPEN, ClaimStatus.PENDING));
+        if (open >= max) {
+            throw new ClaimCapException("The person already has " + max + " open claims.");
         }
     }
 

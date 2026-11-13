@@ -51,6 +51,9 @@ export interface SheetView {
   /** The review SLA: a REVIEW claim whose review day plus these many days is before the sheet's today is
    *  late for review; null when none. */
   reviewSla: number | null;
+  /** The maximum of open claims per person: a claim is not opened when its person already has this many OPEN
+   *  or PENDING claims; null when none. */
+  maxOpen: number | null;
   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each to be settled
    *  or approved; null when none. */
   proofKinds: string | null;
@@ -239,6 +242,8 @@ export class Session {
   readonly scoreLog = signal(false);
   /** The sheet's review SLA in days; null when none. */
   readonly reviewSla = signal<number | null>(null);
+  /** The sheet's maximum of open claims per person; null when none. Not dated. */
+  readonly maxOpen = signal<number | null>(null);
   /** The sheet's proof kinds, comma separated; null when none. */
   readonly proofKinds = signal<string | null>(null);
   /** The sheet's default grade; null for A. Not dated. */
@@ -324,6 +329,7 @@ export class Session {
       this.scoreHigh.set(sheet.scoreHigh);
       this.scoreLog.set(sheet.scoreLog);
       this.reviewSla.set(sheet.reviewSla);
+      this.maxOpen.set(sheet.maxOpen);
       this.proofKinds.set(sheet.proofKinds);
       this.defaultGrade.set(sheet.defaultGrade);
       this.entryDate.set(sheet.entryDate);
@@ -865,6 +871,25 @@ export class Session {
           { value: v }, { headers: { 'X-User': user } }),
       );
       if (this.sheetId() === sheet.id) this.scoreLog.set(sheet.scoreLog);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Change the sheet's maximum of open claims per person (blank: none); an error message when refused. */
+  async setMaxOpen(max: string): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const m = max.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    if (m && !/^\d{1,6}$/.test(m)) return 'Enter the maximum of open claims as a whole number, or leave it blank.';
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(sid)}/settings/max-open`,
+          { maxOpen: m ? Number(m) : null }, { headers: { 'X-User': user } }),
+      );
+      if (this.sheetId() === sheet.id) this.maxOpen.set(sheet.maxOpen);
       return null;
     } catch (e) {
       return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
