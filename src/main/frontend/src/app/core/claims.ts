@@ -70,7 +70,7 @@ export interface Claim {
   lines: ClaimLine[];
   /** Whether a steward waived its late charge: from then on it bears none, whatever its overdue state. */
   waived: boolean;
-  /** Whether it is on hold: while OPEN or PENDING and bound by no statement, it counts in no live total. */
+  /** Whether it is on hold: while OPEN or PENDING and bound by no statement, it counts in claimed but in no due figure. */
   held: boolean;
 }
 
@@ -200,8 +200,23 @@ export class Claims {
     };
   });
 
-  /** The claims that count toward claimed: the live ones, leaving out claims that correct another. */
-  private readonly counted = computed(() => this.live().filter((c) => !c.corrects));
+  /** Whether a retirement leaves a claim out of claimed: it is OPEN or PENDING, bound by no statement,
+   *  and its person's retirement date is reached on the sheet's today. */
+  private readonly retiredOut = computed(() => {
+    const today = this.session.today();
+    const byId = new Map(this.people.people().map((p) => [p.id, p]));
+    return (c: Claim): boolean => {
+      const p = byId.get(c.personId);
+      return isOpen(c) && !bound(c) && p !== undefined && retiredBy(p, today);
+    };
+  });
+
+  /** The claims that count toward claimed: those that count, less those a retirement leaves out and the
+   *  deferred claims (a hold leaves a claim in claimed), leaving out claims that correct another. */
+  private readonly counted = computed(() => {
+    const retiredOut = this.retiredOut();
+    return this.claims().filter((c) => counts(c) && !retiredOut(c) && !this.deferred(c) && !c.corrects);
+  });
 
   /** Each person's claimed, in cents, by person id. */
   readonly claimedCents = computed(() => {

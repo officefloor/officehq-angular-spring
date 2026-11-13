@@ -97,12 +97,16 @@ public class Rollup {
             BigDecimal overdue = ZERO;
             boolean keptFigure = false;
             for (Claim claim : sheetClaims) {
-                if (!claim.getPersonId().equals(person.getId()) || !countsLive(claim, person, today)) {
+                if (!claim.getPersonId().equals(person.getId()) || !countsClaimed(claim, person, today)) {
                     continue;
                 }
                 if (claim.getCorrects() == null || claim.getCorrects().isEmpty()) {
                     // a claim that corrects another is left out of claimed
                     claimed = claimed.add(claim.getAmount());
+                }
+                if (heldOut(claim, person, today)) {
+                    // a hold leaves a claim in claimed, but out of the due figures
+                    continue;
                 }
                 BigDecimal kept = claim.getSettledDue() != null ? claim.getSettledDue()
                         : claim.isBound() ? claim.getStatedDue() : null;
@@ -333,10 +337,10 @@ public class Rollup {
         return dueTotal != null && dueTotal.compareTo(threshold) > 0;
     }
 
-    /** Whether a claim counts in the live totals: its status counts, it is not left out by a hold, and it
-     *  is not deferred past the sheet's today. */
-    private static boolean countsLive(Claim claim, Person person, LocalDate today) {
-        return claim.getStatus().counts() && !heldOut(claim, person, today) && !claim.deferredOn(today);
+    /** Whether a claim counts toward claimed: its status counts, it is not left out by its person's
+     *  retirement (a hold leaves it in), and it is not deferred past the sheet's today. */
+    private static boolean countsClaimed(Claim claim, Person person, LocalDate today) {
+        return claim.getStatus().counts() && !retiredOut(claim, person, today) && !claim.deferredOn(today);
     }
 
     /** Whether a claim counted by the status it had at the end of a day, as its status log records it:
@@ -375,6 +379,12 @@ public class Rollup {
     public static LocalDate lateFrom(Optional<Sheet> sheet, Claim claim, Person person) {
         String grade = person == null ? null : person.gradeOn(claim.getDate());
         return sheet.map(s -> s.lateFrom(claim.getDueBy(), grade, claim.getDate())).orElse(claim.getDueBy());
+    }
+
+    /** Whether a retirement leaves a claim out of claimed: it is OPEN or PENDING, bound by no statement, and
+     *  its person's retirement date is reached on the sheet's today. */
+    private static boolean retiredOut(Claim claim, Person person, LocalDate today) {
+        return person != null && claim.getStatus().isOpen() && !claim.isBound() && person.retiredBy(today);
     }
 
     /** Whether a hold or a retirement leaves a claim out of the live totals: it is OPEN or PENDING, bound by
