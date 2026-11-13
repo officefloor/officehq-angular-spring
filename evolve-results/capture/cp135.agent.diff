@@ -1,0 +1,112 @@
+diff --git a/src/main/frontend/src/app/core/csv.ts b/src/main/frontend/src/app/core/csv.ts
+new file mode 100644
+index 000000000..4f0ca2c70
+--- /dev/null
++++ b/src/main/frontend/src/app/core/csv.ts
+@@ -0,0 +1,16 @@
++/** Download these lines as a CSV file of this name, each line ended by a line feed. */
++export function download(lines: string[][], name: string): void {
++  const csv = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
++  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
++  const a = document.createElement('a');
++  a.href = url;
++  a.download = name;
++  a.click();
++  setTimeout(() => URL.revokeObjectURL(url), 1000);
++}
++
++/** A CSV field: wrapped in double quotes, with quotes inside doubled, when it holds a comma, a
++ *  quote or a line break. */
++function csvField(v: string): string {
++  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
++}
+diff --git a/src/main/frontend/src/app/core/pools.ts b/src/main/frontend/src/app/core/pools.ts
+index ee8ae891b..cf9fd4d5b 100644
+--- a/src/main/frontend/src/app/core/pools.ts
++++ b/src/main/frontend/src/app/core/pools.ts
+@@ -115,7 +115,7 @@ export class Pools {
+   }
+ 
+   /** Re-read the active sheet's pools without clearing the ones shown meanwhile. */
+-  private async reread(): Promise<void> {
++  async reread(): Promise<void> {
+     const user = this.session.user();
+     const sid = this.session.sheetId();
+     if (!user || !sid) return;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ca9105dc9..731050eca 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,5 +1,6 @@
+ import { Component, computed, inject, signal } from '@angular/core';
+ import { Claim, Claims } from '../../core/claims';
++import { download } from '../../core/csv';
+ import { Figures } from '../../core/figures';
+ import { GRADES, People, Person } from '../../core/people';
+ import { Periods } from '../../core/periods';
+@@ -1002,20 +1003,3 @@ export class PeopleList {
+     }
+   }
+ }
+-
+-/** Download these lines as a CSV file of this name, each line ended by a line feed. */
+-function download(lines: string[][], name: string): void {
+-  const csv = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
+-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+-  const a = document.createElement('a');
+-  a.href = url;
+-  a.download = name;
+-  a.click();
+-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+-}
+-
+-/** A CSV field: wrapped in double quotes, with quotes inside doubled, when it holds a comma, a
+- *  quote or a line break. */
+-function csvField(v: string): string {
+-  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+-}
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 0ccff0a9e..4d2a6fb09 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -1,4 +1,5 @@
+ import { Component, inject, input, signal } from '@angular/core';
++import { download } from '../../core/csv';
+ import { People } from '../../core/people';
+ import { PoolMemberChoice, PoolView, Pools } from '../../core/pools';
+ 
+@@ -131,7 +132,7 @@ export class PoolRow {
+ }
+ 
+ // The sheet's pools: a form adds one (a blank name, or one already taken, is refused), and each pool's row
+-// shows its members and adds more.
++// shows its members and adds more. A button downloads the pools as CSV.
+ @Component({
+   selector: 'app-pools',
+   imports: [PoolRow],
+@@ -151,6 +152,7 @@ export class PoolRow {
+           <p role="alert" data-testid="pool-form-error">{{ err }}</p>
+         }
+       </form>
++      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
+       @for (p of pools.pools(); track p.id) {
+         <app-pool-row [pool]="p" [attr.data-testid]="'pool-row-' + p.name" />
+       }
+@@ -167,6 +169,17 @@ export class PoolsPanel {
+     return (e.target as HTMLInputElement).value;
+   }
+ 
++  /** Download the pools as CSV, re-read first: pools and their members in the order added, a pool member
++   *  as pool:<name>, the cut as shown (empty when none). */
++  protected async exportCsv(): Promise<void> {
++    await this.pools.reread();
++    const lines = [['pool', 'member', 'share', 'cut']];
++    for (const p of this.pools.pools()) {
++      for (const m of p.members) lines.push([p.name, m.poolId !== null ? 'pool:' + m.name : m.name, m.share, m.cut ?? '']);
++    }
++    download(lines, 'pools.csv');
++  }
++
+   protected async add(e: Event): Promise<void> {
+     e.preventDefault();
+     if (this.saving()) return; // a second submit before the first has answered
