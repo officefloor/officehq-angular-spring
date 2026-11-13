@@ -267,8 +267,10 @@ export class Settings {
   protected readonly latePct = signal('');
   protected readonly latePctTyped = signal(false);
   protected readonly settingsError = signal<string | null>(null);
-  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
+  /** Whether a role submit is waiting for its answer; a second one meanwhile is dropped. */
   private readonly busy = signal(false);
+  /** The settings saves submitted, each run after the one before. */
+  private settingsSaves: Promise<void> = Promise.resolve();
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
@@ -298,9 +300,10 @@ export class Settings {
     }
   }
 
+  /** Save the settings typed. A submit while an earlier one is waiting for its answer is saved
+   *  after it, with the values typed when it was submitted. */
   protected async saveSettings(event: Event): Promise<void> {
     event.preventDefault();
-    if (this.busy()) return;
     this.settingsError.set(null);
     const limit = this.clerkLimit().trim();
     const floor = this.floor().trim();
@@ -326,28 +329,26 @@ export class Settings {
       this.settingsError.set('Type a late percent of 0.00 or more, with up to two decimals.');
       return;
     }
-    this.busy.set(true);
-    try {
-      if (saveLimit) {
-        await this.store.setClerkLimit(limit === '' ? null : limit);
-        this.clerkLimitTyped.set(false);
+    this.clerkLimitTyped.set(false);
+    this.floorTyped.set(false);
+    this.termsTyped.set(false);
+    this.latePctTyped.set(false);
+    const save = async () => {
+      try {
+        if (saveLimit) await this.store.setClerkLimit(limit === '' ? null : limit);
+        if (saveFloor) await this.store.setFloor(floor);
+        if (saveTerms) await this.store.setTerms(Number(terms));
+        if (saveLatePct) await this.store.setLatePct(latePct);
+      } catch {
+        // What was typed stays to be saved again.
+        if (saveLimit) this.clerkLimitTyped.set(true);
+        if (saveFloor) this.floorTyped.set(true);
+        if (saveTerms) this.termsTyped.set(true);
+        if (saveLatePct) this.latePctTyped.set(true);
+        this.settingsError.set('The settings could not be saved.');
       }
-      if (saveFloor) {
-        await this.store.setFloor(floor);
-        this.floorTyped.set(false);
-      }
-      if (saveTerms) {
-        await this.store.setTerms(Number(terms));
-        this.termsTyped.set(false);
-      }
-      if (saveLatePct) {
-        await this.store.setLatePct(latePct);
-        this.latePctTyped.set(false);
-      }
-    } catch {
-      this.settingsError.set('The settings could not be saved.');
-    } finally {
-      this.busy.set(false);
-    }
+    };
+    this.settingsSaves = this.settingsSaves.then(save);
+    await this.settingsSaves;
   }
 }

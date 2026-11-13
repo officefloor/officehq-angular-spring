@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.StatementService;
 import net.officefloor.hq.app.statement.StatementSummary;
 import java.util.NoSuchElementException;
@@ -33,17 +34,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/people")
 public class PersonController {
 
-    /** A person as the screen shows them, with how many statements were taken for them and the
+    /** A grade a person was given and the date it applies from (null: from the beginning of time). */
+    public record GradeView(String grade, LocalDate from) {
+        public static GradeView of(PersonGrade grade) {
+            return new GradeView(grade.getGrade(), grade.getFrom());
+        }
+    }
+
+    /** A person as the screen shows them, with the grade in force on the sheet's today and every
+     *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and whether they are on hold, and the ids of their patrons in the order
      *  they were named. */
-    public record PersonView(Long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom, boolean held,
-            List<Long> patronIds) {
-        public static PersonView of(Person person, StatementSummary statements, List<Long> patronIds) {
-            return new PersonView(person.getId(), person.getName(), person.getGrade(), person.getVersion(),
-                    statements.count(), statements.lastDueTotal(), statements.lastDate(), person.isRetired(),
-                    person.getRetiredFrom(), person.isHeld(), patronIds);
+    public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+            int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
+            boolean held, List<Long> patronIds) {
+        public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
+                StatementSummary statements, List<Long> patronIds) {
+            return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
+                    grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
+                    statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
+                    person.isHeld(), patronIds);
         }
     }
 
@@ -53,10 +64,12 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade) {
     }
 
-    /** A person's fields as saved from an editor, with the version of the person the editor loaded. */
+    /** A person's fields as saved from an editor: the grade applies from its from-date (blank takes
+     *  the sheet's today), with the version of the person the editor loaded. */
     public record PersonUpdate(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate gradeFrom,
             @NotNull Long version) {
     }
 
@@ -71,11 +84,16 @@ public class PersonController {
     private final PersonService service;
     private final StatementService statements;
     private final RollupService rollups;
+    private final PersonGradeService grades;
+    private final SheetService sheets;
 
-    public PersonController(PersonService service, StatementService statements, RollupService rollups) {
+    public PersonController(PersonService service, StatementService statements, RollupService rollups,
+            PersonGradeService grades, SheetService sheets) {
         this.service = service;
         this.statements = statements;
         this.rollups = rollups;
+        this.grades = grades;
+        this.sheets = sheets;
     }
 
     /** The sheet's people in the order they were added. */
@@ -84,8 +102,11 @@ public class PersonController {
         String sheet = sheetId.trim();
         Map<Long, StatementSummary> summaries = statements.summaries(sheet);
         Map<Long, List<Long>> patrons = service.patronIds(sheet);
+        Map<Long, List<PersonGrade>> given = grades.bySheet(sheet);
+        LocalDate today = sheets.today(sheet);
         return service.list(sheet).stream()
-                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
+                .map(p -> PersonView.of(p, given.getOrDefault(p.getId(), List.of()), today,
+                        summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         patrons.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
@@ -101,14 +122,14 @@ public class PersonController {
                 request.grade())));
     }
 
-    /** Change a person's name and grade; refused when the person was saved since the editor loaded them. */
+    /** Change a person's name and give them a grade from a date; refused when the person was saved since the editor loaded them. */
     @PutMapping("/{id}")
     public PersonView update(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PersonUpdate request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
-                request.name(), request.grade())));
+                request.name(), request.grade(), request.gradeFrom())));
     }
 
     /** Retire a person from a date. */
@@ -152,8 +173,8 @@ public class PersonController {
     }
 
     private PersonView withStatements(Person person) {
-        return PersonView.of(person, statements.summary(person.getSheetId(), person.getId()),
-                service.patronIds(person.getId()));
+        return PersonView.of(person, grades.of(person.getId()), sheets.today(person.getSheetId()),
+                statements.summary(person.getSheetId(), person.getId()), service.patronIds(person.getId()));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */

@@ -12,7 +12,9 @@ import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.NameInUseException;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.StatementService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -46,11 +48,16 @@ public class QuickAddController {
     private final QuickAddService service;
     private final StatementService statements;
     private final PersonService people;
+    private final PersonGradeService grades;
+    private final SheetService sheets;
 
-    public QuickAddController(QuickAddService service, StatementService statements, PersonService people) {
+    public QuickAddController(QuickAddService service, StatementService statements, PersonService people,
+            PersonGradeService grades, SheetService sheets) {
         this.service = service;
         this.statements = statements;
         this.people = people;
+        this.grades = grades;
+        this.sheets = sheets;
     }
 
     /** Add a DRAFT claim for the named person, adding them first when the name is not on the sheet. */
@@ -61,8 +68,9 @@ public class QuickAddController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         QuickAddService.Added added = service.add(sheet, by, request.name(), request.amount());
-        return new QuickAddView(PersonView.of(added.person(), statements.summary(sheet, added.person().getId()),
-                people.patronIds(added.person().getId())),
+        Long personId = added.person().getId();
+        return new QuickAddView(PersonView.of(added.person(), grades.of(personId), sheets.today(sheet),
+                statements.summary(sheet, personId), people.patronIds(personId)),
                 ClaimView.of(added.claim()));
     }
 

@@ -10,6 +10,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.rate.Rate;
@@ -30,18 +31,20 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final PersonRepository people;
     private final RateService rates;
+    private final PersonGradeService grades;
     private final SheetService sheets;
     private final PeriodRepository periods;
     private final SettingService settings;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates, SheetService sheets,
-            PeriodRepository periods, SettingService settings, Audit audit) {
+    public ClaimService(ClaimRepository claims, PersonRepository people, RateService rates,
+            PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, Audit audit) {
         this.periods = periods;
         this.settings = settings;
         this.claims = claims;
         this.people = people;
         this.rates = rates;
+        this.grades = grades;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -165,12 +168,13 @@ public class ClaimService {
                 .movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN);
     }
 
-    /** The due on a claim at the person's grade rate in force on the claim's date: amount times rate
+    /** The due on a claim at the rate in force on the claim's date for the person's grade in force
+     *  on the claim's date: amount times rate
      *  divided by 100, rounded half to even to two decimals, and at least the sheet's floor; null when
      *  no rate applies. */
     private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim) {
         BigDecimal amount = claim.getAmount();
-        return rates.rateOn(sheetId, person.getGrade(), claim.getDate())
+        return rates.rateOn(sheetId, grades.gradeOn(person.getId(), claim.getDate()), claim.getDate())
                 .map(Rate::getRate)
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, RoundingMode.HALF_EVEN))
                 .map(due -> due.max(settings.floor(sheetId)))

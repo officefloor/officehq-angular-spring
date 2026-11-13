@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -16,12 +18,17 @@ public class PersonService {
 
     private final PersonRepository people;
     private final PersonPatronRepository patrons;
+    private final PersonGradeService grades;
     private final SheetService sheets;
+    private final EntityManager entityManager;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, PersonPatronRepository patrons, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
+            SheetService sheets, EntityManager entityManager, Audit audit) {
         this.people = people;
         this.patrons = patrons;
+        this.grades = grades;
+        this.entityManager = entityManager;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -31,20 +38,24 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
-    /** Add a person to the sheet. */
+    /** Add a person to the sheet; the grade they are given applies from the beginning of time. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId);
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, null);
-        Person added = people.saveAndFlush(new Person(sheetId, trimmed, grade));
-        record("PERSON_ADDED", sheetId, user, added);
+        Person added = people.saveAndFlush(new Person(sheetId, trimmed));
+        grades.give(added, grade, null);
+        record("PERSON_ADDED", sheetId, user, added, grade);
         return added;
     }
 
-    /** Change a person's name and grade, from an editor that loaded the given version of them. */
+    /** Change a person's name, and give them the grade from a date (blank takes the sheet's today),
+     *  keeping the grades already given, from an editor that loaded the given version of them. A
+     *  blank from-date with the grade in force on the sheet's today gives no grade. */
     @Transactional
-    public Person update(String sheetId, String user, Long id, long version, String name, String grade) {
+    public Person update(String sheetId, String user, Long id, long version, String name, String grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
         if (person.getVersion() != version) {
@@ -53,9 +64,14 @@ public class PersonService {
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, id);
         person.setName(trimmed);
-        person.setGrade(grade);
+        LocalDate today = sheets.today(sheetId);
+        if (gradeFrom != null || !grade.equals(grades.gradeOn(id, today))) {
+            grades.give(person, grade, gradeFrom != null ? gradeFrom : today);
+            // A grade given changes the person, so an editor that loaded them before is stale.
+            entityManager.lock(person, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        }
         Person saved = people.saveAndFlush(person);
-        record("PERSON_EDITED", sheetId, user, saved);
+        record("PERSON_EDITED", sheetId, user, saved, grades.gradeOn(id, today));
         return saved;
     }
 
@@ -117,9 +133,9 @@ public class PersonService {
         return person;
     }
 
-    private void record(String event, String sheetId, String user, Person person) {
+    private void record(String event, String sheetId, String user, Person person, String grade) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.getGrade());
+                + " name=" + person.getName() + " grade=" + grade);
     }
 
     private void requireFreeName(String sheetId, String name, Long exceptId) {

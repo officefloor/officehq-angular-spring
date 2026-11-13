@@ -4,13 +4,16 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, money, overdue } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
-import { NO_RATE, RateStore, Rates } from '../rates/rates';
+import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
 
 interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the person was read. */
   grade: string;
+  /** Every grade the person was given, from the earliest, each in force from its from-date. */
+  grades: PersonGrade[];
   /** Raised on every save; an editor saves only the version it loaded. */
   version: number;
   /** How many statements were taken for the person. */
@@ -67,6 +70,14 @@ interface StatementTaken {
             <option [value]="g" [selected]="g === grade()">{{ g }}</option>
           }
         </select>
+        <label for="person-form-grade-from">Grade from</label>
+        <input
+          type="date"
+          id="person-form-grade-from"
+          data-testid="person-form-grade-from"
+          [value]="gradeFrom()"
+          (input)="gradeFrom.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
         </button>
@@ -137,7 +148,7 @@ interface StatementTaken {
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</td>
@@ -154,7 +165,7 @@ interface StatementTaken {
                 <app-person-claims
                   [personId]="p.id"
                   [claims]="claimsOf(p.id)"
-                  [rates]="rates.of(p.grade)"
+                  [grades]="p.grades"
                   [floor]="floor()"
                   [terms]="settings.terms()"
                   [latePct]="settings.latePct()"
@@ -314,18 +325,21 @@ export class People {
    *  whose date falls in the period (a claim with no figure adds nothing). */
   protected readonly periodDueTotals = computed(() => {
     const periods = this.periods.periods();
-    const grades = new Map(this.people().map((p) => [p.id, p.grade]));
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const totals = new Map<number, number>(periods.map((p) => [p.id, 0]));
     for (const c of this.live()) {
       const period = periodOf(periods, c.date);
-      const grade = grades.get(c.personId);
-      if (period === null || grade === undefined) continue;
-      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, this.rates.of(grade), this.floor(), this.late()) ?? 0));
+      const theirs = grades.get(c.personId);
+      if (period === null || theirs === undefined) continue;
+      const rates = this.rates.ofGradeOn(theirs, c.date);
+      totals.set(period.id, (totals.get(period.id) ?? 0) + (claimDueCents(c, rates, this.floor(), this.late()) ?? 0));
     }
     return new Map([...totals].map(([id, due]) => [id, money(due)]));
   });
   protected readonly name = signal('');
   protected readonly grade = signal('A');
+  /** The date the grade saved from the editor applies from; blank takes the sheet's today. */
+  protected readonly gradeFrom = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -477,23 +491,29 @@ export class People {
     return money(this.countedOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
   }
 
-  /** The sum of the dues shown on a person's claims that count, or n/a when their grade has no rate
-   *  in force on the sheet's today and no settled or stated claim of theirs keeps a figure. */
+  /** The grade in force on the sheet's today among a person's grades. */
+  protected gradeOf(person: Person): string {
+    const today = this.session.today();
+    return (today === null ? null : gradeOn(person.grades, today)) ?? person.grade;
+  }
+
+  /** The sum of the dues shown on a person's claims that count, or n/a when the grade in force on
+   *  the sheet's today has no rate in force then and no claim of theirs shows a figure. */
   protected dueBy(person: Person): string {
     const due = this.dueCentsBy(person);
     return due === null ? NO_RATE : money(due);
   }
 
   private dueCentsBy(person: Person): number | null {
-    const counted = this.countedOf(person.id);
-    const hasRate = this.rates.current().has(person.grade);
-    if (!hasRate && !counted.some((c) => c.settledDue !== null || (c.stated && c.statedDue !== null))) {
-      return null;
-    }
-    const rates = this.rates.of(person.grade);
     const floor = this.floor();
     const late = this.late();
-    return counted.reduce((sum, c) => sum + (claimDueCents(c, rates, floor, late) ?? 0), 0);
+    const dues = this.countedOf(person.id).map((c) =>
+      claimDueCents(c, this.rates.ofGradeOn(person.grades, c.date), floor, late),
+    );
+    if (!this.rates.current().has(this.gradeOf(person)) && dues.every((due) => due === null)) {
+      return null;
+    }
+    return dues.reduce<number>((sum, due) => sum + (due ?? 0), 0);
   }
 
   protected overdueOf(personId: number): Claim[] {
@@ -506,10 +526,12 @@ export class People {
   }
 
   private overdueCentsOf(person: Person): number {
-    const rates = this.rates.of(person.grade);
     const floor = this.floor();
     const late = this.late();
-    return this.overdueOf(person.id).reduce((sum, c) => sum + (claimDueCents(c, rates, floor, late) ?? 0), 0);
+    return this.overdueOf(person.id).reduce(
+      (sum, c) => sum + (claimDueCents(c, this.rates.ofGradeOn(person.grades, c.date), floor, late) ?? 0),
+      0,
+    );
   }
 
   /** A claim added (listed first) or saved in place. */
@@ -553,7 +575,8 @@ export class People {
     this.editingId.set(person.id);
     this.editingVersion.set(person.version);
     this.name.set(person.name);
-    this.grade.set(person.grade);
+    this.grade.set(this.gradeOf(person));
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -561,6 +584,7 @@ export class People {
     this.editingId.set(null);
     this.name.set('');
     this.grade.set('A');
+    this.gradeFrom.set('');
     this.error.set(null);
   }
 
@@ -582,7 +606,11 @@ export class People {
       const saved = await firstValueFrom(
         id === null
           ? this.http.post<Person>(base, body)
-          : this.http.put<Person>(`${base}/${id}`, { ...body, version: this.editingVersion() }),
+          : this.http.put<Person>(`${base}/${id}`, {
+              ...body,
+              gradeFrom: this.gradeFrom().trim() || null,
+              version: this.editingVersion(),
+            }),
       );
       if (this.session.sheetId() !== sheet) return;
       this.people.update((list) =>
@@ -664,7 +692,7 @@ export class People {
     if (this.editingId() === now.id) {
       this.editingVersion.set(now.version);
       this.name.set(now.name);
-      this.grade.set(now.grade);
+      this.grade.set(this.gradeOf(now));
     }
   }
 

@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -46,15 +47,17 @@ public class RollupService {
     private final ClaimRepository claims;
     private final ClaimService claimService;
     private final RateService rates;
+    private final PersonGradeService grades;
     private final SheetService sheets;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
-            RateService rates, SheetService sheets, Audit audit) {
+            RateService rates, PersonGradeService grades, SheetService sheets, Audit audit) {
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
+        this.grades = grades;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -104,8 +107,8 @@ public class RollupService {
     }
 
     /** A person's figures from their claims that count: the sum of their amounts, and the sum of the
-     *  figures they show, or none when the grade has no rate in force on the sheet's today and no
-     *  settled or stated claim of theirs keeps a figure. */
+     *  figures they show, or none when the grade in force on the sheet's today has no rate in force
+     *  then and no claim of theirs shows a figure. */
     private Figures figuresOf(String sheetId, LocalDate today, Person person, List<Claim> counted) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
@@ -116,9 +119,9 @@ public class RollupService {
             if (figure != null) {
                 due = due.add(figure);
             }
-            anyFigure |= claim.getSettledDue() != null || (claim.isStated() && claim.getStatedDue() != null);
+            anyFigure |= figure != null;
         }
-        boolean hasRate = rates.rateOn(sheetId, person.getGrade(), today).isPresent();
+        boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today), today).isPresent();
         return new Figures(person.getName(), claimed, hasRate || anyFigure ? due : null);
     }
 

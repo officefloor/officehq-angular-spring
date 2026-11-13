@@ -11,6 +11,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -30,16 +31,19 @@ public class StatementService {
     private final ClaimService claimService;
     private final PersonRepository people;
     private final RateService rates;
+    private final PersonGradeService grades;
     private final SheetService sheets;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
-            PersonRepository people, RateService rates, SheetService sheets, Audit audit) {
+            PersonRepository people, RateService rates, PersonGradeService grades, SheetService sheets,
+            Audit audit) {
         this.statements = statements;
         this.claims = claims;
         this.claimService = claimService;
         this.people = people;
         this.rates = rates;
+        this.grades = grades;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -76,13 +80,13 @@ public class StatementService {
             BigDecimal figure = claimService.figureOf(sheetId, person, claim);
             if (figure != null) {
                 total = total.add(claimService.dueOf(sheetId, person, claim));
-                anyFigure |= claim.getSettledDue() != null || claim.isStated();
+                anyFigure = true;
             }
             claim.bind(figure);
             counted++;
         }
         claims.saveAllAndFlush(theirs);
-        boolean hasRate = rates.rateOn(sheetId, person.getGrade(), today).isPresent();
+        boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today), today).isPresent();
         String dueTotal = hasRate || anyFigure ? total.toPlainString() : NO_RATE;
         statements.saveAndFlush(new Statement(sheetId, personId, today, dueTotal, counted));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

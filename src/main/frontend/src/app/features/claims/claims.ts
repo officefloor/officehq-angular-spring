@@ -3,7 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { PeriodStore, periodOf } from '../periods/periods';
-import { NO_RATE, Rate, dueCents, rateOn } from '../rates/rates';
+import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, rateOn } from '../rates/rates';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim can be VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
@@ -177,11 +177,12 @@ export class PersonClaims {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   private readonly periods = inject(PeriodStore);
+  private readonly rates = inject(RateStore);
 
   readonly personId = input.required<number>();
   readonly claims = input.required<Claim[]>();
-  /** The rates for the person's grade; none when the grade has no rate. */
-  readonly rates = input.required<Rate[]>();
+  /** The person's grades, each in force from its from-date. */
+  readonly grades = input.required<PersonGrade[]>();
   /** The sheet's floor in cents: the least a live due can be. */
   readonly floor = input.required<number>();
   /** The sheet's terms in days: a claim is due by its date plus them. */
@@ -207,7 +208,7 @@ export class PersonClaims {
   /** The claim's due (see claimDueCents), or n/a when it has no figure. */
   protected dueOf(claim: Claim): string {
     const late = { pct: this.latePct(), terms: this.terms(), today: this.session.today() };
-    const due = claimDueCents(claim, this.rates(), this.floor(), late);
+    const due = claimDueCents(claim, this.rates.ofGradeOn(this.grades(), claim.date), this.floor(), late);
     return due === null ? NO_RATE : money(due);
   }
 

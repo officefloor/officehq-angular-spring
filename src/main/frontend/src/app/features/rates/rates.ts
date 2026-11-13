@@ -38,6 +38,25 @@ export function rateOn(rates: Rate[], date: string): string | null {
   return best?.rate ?? null;
 }
 
+/** A grade a person was given, in force from its from-date. */
+export interface PersonGrade {
+  grade: string;
+  /** The date the grade applies from (yyyy-mm-dd); null when it applies from the beginning of time,
+   *  as the first grade a person was given does. */
+  from: string | null;
+}
+
+/** The grade in force on a date among a person's grades: the one whose from-date is the latest on
+ *  or before the date; null when none applies. */
+export function gradeOn(grades: PersonGrade[], date: string): string | null {
+  let best: PersonGrade | null = null;
+  for (const g of grades) {
+    if (g.from !== null && g.from > date) continue;
+    if (best === null || (best.from ?? '') < (g.from ?? '')) best = g;
+  }
+  return best?.grade ?? null;
+}
+
 /** Rates in the order they are listed: by grade, then from the earliest. */
 function byGradeAndFrom(a: Rate, b: Rate): number {
   return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
@@ -75,6 +94,12 @@ export class RateStore {
   /** A grade's rates; none when the grade has no rate. */
   of(grade: string): Rate[] {
     return this.byGrade().get(grade) ?? [];
+  }
+
+  /** The rates of a person's grade in force on a date; none when that grade has no rate. */
+  ofGradeOn(grades: PersonGrade[], date: string): Rate[] {
+    const grade = gradeOn(grades, date);
+    return grade === null ? [] : this.of(grade);
   }
 
   constructor() {

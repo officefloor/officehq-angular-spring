@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 
-/** A person on a sheet, with a name and a grade (A, B or C). */
+/** A person on a sheet, with a name; their grades, each dated, are kept as {@link PersonGrade}s. */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -23,9 +23,6 @@ public class Person {
 
     @Column(name = "name", nullable = false)
     private String name;
-
-    @Column(name = "grade", nullable = false)
-    private String grade;
 
     /** Raised on every save, so a save from an editor that loaded an older version is refused. */
     @Version
@@ -43,10 +40,9 @@ public class Person {
     protected Person() {
     }
 
-    public Person(String sheetId, String name, String grade) {
+    public Person(String sheetId, String name) {
         this.sheetId = sheetId;
         this.name = name;
-        this.grade = grade;
     }
 
     public Long getId() {
@@ -67,14 +63,6 @@ public class Person {
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public String getGrade() {
-        return grade;
-    }
-
-    public void setGrade(String grade) {
-        this.grade = grade;
     }
 
     public LocalDate getRetiredFrom() {
