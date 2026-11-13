@@ -445,8 +445,8 @@ public class ClaimService {
         if (claim.getStatus() != ClaimStatus.PENDING) {
             throw new ClaimStatusException(claim.getStatus(), ClaimStatus.SETTLED);
         }
-        if (!roles.isSteward(sheetId, user)) {
-            throw new ClaimApprovalException("Only a steward can approve a claim.");
+        if (!mayApprove(sheetId, user, claim)) {
+            throw new ClaimApprovalException("Only a steward or the person's approver can approve a claim.");
         }
         if (user.equals(claim.getOpenedBy())) {
             throw new ClaimApprovalException("The user who opened a claim cannot approve it.");
@@ -664,8 +664,8 @@ public class ClaimService {
         if (claim.getStatus() != ClaimStatus.PENDING) {
             throw new ClaimStatusException(claim.getStatus(), ClaimStatus.OPEN);
         }
-        if (!roles.isSteward(sheetId, user)) {
-            throw new ClaimApprovalException("Only a steward can reject a claim.");
+        if (!mayApprove(sheetId, user, claim)) {
+            throw new ClaimApprovalException("Only a steward or the person's approver can reject a claim.");
         }
         if (reason.isEmpty()) {
             throw new ClaimApprovalException("Give a reason to reject the claim.");
@@ -1168,6 +1168,15 @@ public class ClaimService {
         if (periods.closedOn(sheetId, date)) {
             throw new PeriodClosedException();
         }
+    }
+
+    /** Whether the user may approve or reject the claim: a steward, or the approver named on its person. */
+    private boolean mayApprove(String sheetId, String user, Claim claim) {
+        if (roles.isSteward(sheetId, user)) {
+            return true;
+        }
+        return people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .map(p -> user.equals(p.getApprover())).orElse(false);
     }
 
     /** Refuse opening a claim of a person flagged on the sheet's today, by anyone but a steward. */

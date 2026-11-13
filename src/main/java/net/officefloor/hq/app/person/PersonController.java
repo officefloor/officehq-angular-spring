@@ -52,7 +52,7 @@ public class PersonController {
             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, Integer baseTerms,
             List<TermsView> datedTerms, String contact,
             List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots,
-            List<String> statementLines, String flag) {
+            List<String> statementLines, String flag, String approver) {
 
         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
                 boolean watched, boolean clashing, List<PersonSnapshot> snapshots) {
@@ -68,7 +68,7 @@ public class PersonController {
                     watched, person.termsOn(today), person.getTerms(),
                     person.getDatedTerms().stream().map(TermsView::of).toList(), person.getContact(), person.getAliases(), clashing,
                     person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList(),
-                    statementLines(statements), person.flagShownOn(today));
+                    statementLines(statements), person.flagShownOn(today), person.getApprover());
         }
 
         /** One line per statement standing, in the order they were taken (one taken as of an earlier date
@@ -191,6 +191,10 @@ public class PersonController {
 
     /** The date a person is retired from; none takes the sheet's today. */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** The user name to name as a person's approver; blank for none. */
+    public record ApproverRequest(@Size(max = 200) String user) {
     }
 
     /** A flag's reason and the last date it is in force on. */
@@ -377,6 +381,16 @@ public class PersonController {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public Map<String, String> flagRefused(FlagRefusedException e) {
         return Map.of("message", e.getMessage());
+    }
+
+    /** Name the user who may approve or reject a person's PENDING claims. */
+    @PostMapping("/{personId}/approver")
+    public PersonView setApprover(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long personId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ApproverRequest request) {
+        Person updated = service.setApprover(sheetId.trim(), user.trim(), personId, request.user());
+        return view(updated, user.trim());
     }
 
     /** Name another person on the sheet as the person's patron. */

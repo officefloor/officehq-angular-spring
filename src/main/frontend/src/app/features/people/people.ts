@@ -527,6 +527,22 @@ function compareKeys(a: string, b: string): number {
                 >
                   Flag<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+                <span>Approver: <span data-testid="person-approver">{{ p.approver ?? '' }}</span></span>
+                <label [for]="'person-approver-input-' + p.id">Approver<span class="visually-hidden"> for {{ p.name }}</span></label>
+                <input
+                  [id]="'person-approver-input-' + p.id"
+                  data-testid="person-approver-input"
+                  [value]="approverEntries()[p.id] ?? ''"
+                  (input)="setApproverEntry(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-approver-save"
+                  [disabled]="settingApprover() === p.id"
+                  (click)="setApprover(p)"
+                >
+                  Set approver<span class="visually-hidden"> of {{ p.name }}</span>
+                </button>
                 <label [for]="'person-hold-from-' + p.id">Hold from<span class="visually-hidden"> for {{ p.name }}</span></label>
                 <input
                   [id]="'person-hold-from-' + p.id"
@@ -656,6 +672,10 @@ export class PeopleList {
   protected readonly flagEntries = signal<Record<number, { reason: string; until: string }>>({});
   /** The id of the person being flagged. */
   protected readonly flagging = signal<number | null>(null);
+  /** The approver typed on each person's row. */
+  protected readonly approverEntries = signal<Record<number, string>>({});
+  /** The id of the person whose approver is being set. */
+  protected readonly settingApprover = signal<number | null>(null);
   /** The id of the person being retired. */
   protected readonly retiring = signal<number | null>(null);
   /** The id of the person being moved. */
@@ -1005,6 +1025,22 @@ export class PeopleList {
       if (err) this.actionError.set({ id: p.id, message: err });
     } finally {
       this.flagging.set(null);
+    }
+  }
+
+  protected setApproverEntry(id: number, text: string): void {
+    this.clearActionError(id);
+    this.approverEntries.update((es) => ({ ...es, [id]: text }));
+  }
+
+  protected async setApprover(p: Person): Promise<void> {
+    this.clearActionError(p.id);
+    this.settingApprover.set(p.id);
+    try {
+      const err = await this.people.setApprover(p.id, this.approverEntries()[p.id] ?? '');
+      if (err) this.actionError.set({ id: p.id, message: err });
+    } finally {
+      this.settingApprover.set(null);
     }
   }
 

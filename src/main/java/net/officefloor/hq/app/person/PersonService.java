@@ -795,6 +795,20 @@ public class PersonService {
         return flagged;
     }
 
+    /** Name the user who may approve or reject a person's PENDING claims as a steward may; a blank name
+     *  clears it. A viewer is refused. */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long personId, String approver) {
+        roles.requireNotViewer(sheetId, user);
+        Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+        String name = approver == null || approver.isBlank() ? null : approver.trim();
+        person.setApprover(name);
+        Person updated = saved(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user + " name=" + updated.getName()
+                + " user=" + (name == null ? "" : name));
+        return updated;
+    }
+
     /** Unretire a retired person on the sheet's today, their retirement kept as a past one; anyone not
      *  retired is refused. */
     @Transactional

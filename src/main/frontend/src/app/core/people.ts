@@ -101,6 +101,8 @@ export interface Person {
   statementLines: string[];
   /** The reason of their flag while it is in force on the sheet's today; null when none is. */
   flag: string | null;
+  /** The user name who may approve or reject their PENDING claims; null when none. */
+  approver: string | null;
 }
 
 /** A person after a statement, with their claims as it bound them, newest first. */
@@ -390,6 +392,24 @@ export class People {
     } catch (e) {
       if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string') return e.error.message;
       return failed('flag', e);
+    }
+  }
+
+  /** Name the user who may approve or reject a person's PENDING claims (blank for none); an error message
+   *  when refused (a viewer). */
+  async setApprover(id: number, approver: string): Promise<string | null> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    try {
+      const person = await firstValueFrom(
+        this.http.post<Person>(`${this.url(sid)}/${id}/approver`, { user: approver.trim() }, { headers: { 'X-User': user } }),
+      );
+      if (this.session.sheetId() === sid) this.people.update((ps) => ps.map((p) => (p.id === id ? person : p)));
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && typeof e.error?.message === 'string') return e.error.message;
+      return failed('set approver', e);
     }
   }
 

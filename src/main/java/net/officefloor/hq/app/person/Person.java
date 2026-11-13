@@ -96,6 +96,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user name who may approve or reject their PENDING claims as a steward may; null when none. */
+    @Column(name = "approver")
+    private String approver;
+
     /** Their place in the sheet's list; set when they are first saved, next after everyone on the sheet. */
     @Column(name = "list_position", nullable = false)
     private Long position;
@@ -295,6 +299,16 @@ public class Person {
     public void flag(String reason, LocalDate until) {
         this.flagReason = reason;
         this.flagUntil = until;
+    }
+
+    /** The user name who may approve or reject their PENDING claims; null when none. */
+    public String getApprover() {
+        return approver;
+    }
+
+    /** Name the user who may approve or reject their PENDING claims; null for none. */
+    public void setApprover(String approver) {
+        this.approver = approver;
     }
 
     /** Whether their flag is in force on a day (the sheet's today): it is on or before its until-date. */
