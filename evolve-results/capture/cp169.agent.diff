@@ -1,0 +1,461 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 270a57a1b..a6a8c5beb 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -75,8 +75,13 @@ export interface Person {
+   patronIds: number[];
+   /** Whether the signed-in user watches them. */
+   watched: boolean;
+-  /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
++  /** Their own terms in days in force on the sheet's today, ahead of their grade's and the sheet's; null
++   *  when they have none then. */
+   terms: number | null;
++  /** Their own terms from the beginning of time; null when they have none. */
++  baseTerms: number | null;
++  /** Their own terms recorded from a date, by from-date; terms null for none of their own. */
++  datedTerms: { terms: number | null; from: string }[];
+   /** Their contact, trimmed and lower-cased; null when they have none. */
+   contact: string | null;
+   /** The other names they go by, sorted as names are compared: without regard to case. */
+@@ -115,6 +120,8 @@ export interface PersonFields {
+   gradeFrom?: string;
+   /** Their own terms in days; blank for none. */
+   terms?: string;
++  /** The date an edit's terms apply from (YYYY-MM-DD); blank for from the beginning of time. */
++  termsFrom?: string;
+   /** Their contact; blank for none. */
+   contact?: string;
+   /** Their tags, comma separated; blank for none. */
+@@ -207,7 +214,8 @@ export class People {
+     try {
+       put(
+         await firstValueFrom(
+-          this.http.put<Person>(`${this.url(sid)}/${id}`, { ...this.body(f), gradeFrom: f.gradeFrom?.trim() || null, version }, {
++          this.http.put<Person>(`${this.url(sid)}/${id}`, { ...this.body(f), gradeFrom: f.gradeFrom?.trim() || null,
++            termsFrom: f.termsFrom?.trim() || null, version }, {
+             headers: { 'X-User': this.session.user()! },
+           }),
+         ),
+@@ -529,6 +537,8 @@ export class People {
+     if (!(GRADES as readonly string[]).includes(f.grade)) return 'Choose a grade.';
+     const from = f.gradeFrom?.trim();
+     if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return 'Enter the grade\'s from-date as YYYY-MM-DD.';
++    const termsFrom = f.termsFrom?.trim();
++    if (termsFrom && !/^\d{4}-\d{2}-\d{2}$/.test(termsFrom)) return 'Enter the terms\' from-date as YYYY-MM-DD.';
+     const terms = f.terms?.trim();
+     if (terms && !/^\d{1,6}$/.test(terms)) return 'Enter the terms as a whole number of days, or leave them blank.';
+     if ((f.contact?.trim().length ?? 0) > 200) return 'Enter a contact of at most 200 characters.';
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 39e5b5c66..5570a04b7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -69,6 +69,16 @@ function compareKeys(a: string, b: string): number {
+           [value]="terms()"
+           (input)="terms.set(value($event)); error.set(null)"
+         />
++        @if (editing() !== null) {
++          <label for="person-form-terms-from">Terms from (blank for the beginning of time)</label>
++          <input
++            id="person-form-terms-from"
++            data-testid="person-form-terms-from"
++            placeholder="YYYY-MM-DD"
++            [value]="termsFrom()"
++            (input)="termsFrom.set(value($event)); error.set(null)"
++          />
++        }
+         <label for="person-form-contact">Contact (blank for none)</label>
+         <input
+           id="person-form-contact"
+@@ -654,6 +664,8 @@ export class PeopleList {
+   protected readonly gradeFrom = signal('');
+   /** The person's own terms in days; blank for none. */
+   protected readonly terms = signal('');
++  /** The date the edit's terms apply from; blank for the beginning of time. */
++  protected readonly termsFrom = signal('');
+   /** The person's contact; blank for none. */
+   protected readonly contact = signal('');
+   /** The person's tags, comma separated; blank for none. */
+@@ -1033,7 +1045,7 @@ export class PeopleList {
+     try {
+       const grade = this.inlineGrades()[p.id] ?? this.gradeToday(p);
+       const refusal = await this.people.update(p.id, p.version, {
+-        name: p.name, grade, gradeFrom: '', terms: p.terms === null ? '' : String(p.terms),
++        name: p.name, grade, gradeFrom: '', terms: p.baseTerms === null ? '' : String(p.baseTerms),
+         contact: p.contact ?? '', tags: p.tags.join(', '),
+       });
+       if (refusal) this.actionError.set({ id: p.id, message: refusal.error });
+@@ -1071,7 +1083,8 @@ export class PeopleList {
+     this.name.set(p.name);
+     this.grade.set(this.gradeToday(p));
+     this.gradeFrom.set('');
+-    this.terms.set(p.terms === null ? '' : String(p.terms));
++    this.terms.set(p.baseTerms === null ? '' : String(p.baseTerms));
++    this.termsFrom.set('');
+     this.contact.set(p.contact ?? '');
+     this.tags.set(p.tags.join(', '));
+   }
+@@ -1082,6 +1095,7 @@ export class PeopleList {
+     this.grade.set('A');
+     this.gradeFrom.set('');
+     this.terms.set('');
++    this.termsFrom.set('');
+     this.contact.set('');
+     this.tags.set('');
+     this.error.set(null);
+@@ -1111,7 +1125,7 @@ export class PeopleList {
+     this.saving.set(true);
+     try {
+       const f = { name: this.name(), grade: this.grade(), gradeFrom: this.gradeFrom(), terms: this.terms(),
+-        contact: this.contact(), tags: this.tags() };
++        termsFrom: this.termsFrom(), contact: this.contact(), tags: this.tags() };
+       const id = this.editing();
+       if (id === null) {
+         const err = await this.people.add(f);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index a1bfc9de8..fbba43a0c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -97,7 +97,8 @@ public class ClaimService {
+             String corrects, String ref, List<String> tags) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         LocalDate on = date != null ? date : sheets.entryDefault(sheetId);
+-        int terms = person.getTerms() != null ? person.getTerms()
++        Integer own = person.termsOn(on);
++        int terms = own != null ? own
+                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new).termsFor(person.gradeOn(on), on);
+         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
+         refuseClosed(sheetId, dueBy);
+@@ -698,7 +699,8 @@ public class ClaimService {
+         claim.setAmount(claim.getAmount().subtract(part));
+         claim.setStated(false, null);
+         Claim kept = claims.saveAndFlush(claim);
+-        int terms = person.getTerms() != null ? person.getTerms()
++        Integer own = person.termsOn(claim.getDate());
++        int terms = own != null ? own
+                 : sheetRows.findById(sheetId).orElseThrow(SheetNotFoundException::new)
+                         .termsFor(person.gradeOn(claim.getDate()), claim.getDate());
+         Claim split = new Claim(sheetId, person.getId(), part, claim.getDate(),
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 3dcc96fec..65d3e8e2a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -42,10 +42,16 @@ public class Person {
+     @JoinColumn(name = "person_id", nullable = false)
+     private List<PersonGrade> grades = new ArrayList<>();
+ 
+-    /** Their own terms in days, ahead of their grade's and the sheet's; null when they have none. */
++    /** Their own terms in days from the beginning of time, ahead of their grade's and the sheet's; null
++     *  when they have none. */
+     @Column(name = "terms")
+     private Integer terms;
+ 
++    /** Their own terms recorded from a date, each ahead of those from the beginning of time from then on. */
++    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
++    @JoinColumn(name = "person_id", nullable = false)
++    private List<PersonTerms> datedTerms = new ArrayList<>();
++
+     /** Their contact, trimmed and lower-cased; null when they have none. Unique on the sheet. */
+     @Column(name = "contact")
+     private String contact;
+@@ -141,6 +147,7 @@ public class Person {
+         grades.add(new PersonGrade(grade, from));
+     }
+ 
++    /** Their own terms from the beginning of time; null when they have none. */
+     public Integer getTerms() {
+         return terms;
+     }
+@@ -149,6 +156,42 @@ public class Person {
+         this.terms = terms;
+     }
+ 
++    /** Their own terms recorded from a date, by from-date. */
++    public List<PersonTerms> getDatedTerms() {
++        return datedTerms.stream().sorted(Comparator.comparing(PersonTerms::getFromDate)).toList();
++    }
++
++    /** Their own terms in force on a date: those whose from-date is the latest on or before it, else those
++     *  from the beginning of time; null when they have none then. */
++    public Integer termsOn(LocalDate date) {
++        Integer found = terms;
++        for (PersonTerms t : getDatedTerms()) {
++            if (!t.getFromDate().isAfter(date)) {
++                found = t.getTerms();
++            }
++        }
++        return found;
++    }
++
++    /** Record their own terms (null: none) from a date, replacing those recorded from that same date; with no
++     *  date, set those from the beginning of time. Whether anything recorded changed. */
++    public boolean setTerms(Integer terms, LocalDate from) {
++        if (from == null) {
++            boolean changed = !Objects.equals(this.terms, terms);
++            this.terms = terms;
++            return changed;
++        }
++        for (PersonTerms t : datedTerms) {
++            if (t.getFromDate().equals(from)) {
++                boolean changed = !Objects.equals(t.getTerms(), terms);
++                t.setTerms(terms);
++                return changed;
++            }
++        }
++        datedTerms.add(new PersonTerms(terms, from));
++        return true;
++    }
++
+     public String getOriginSheet() {
+         return originSheet;
+     }
+@@ -247,14 +290,15 @@ public class Person {
+         aliases.add(new PersonAlias(sheetId, trimmed, copy));
+     }
+ 
+-    /** A copy of them for another sheet: every grade they were given (with its from-date), their terms,
+-     *  contact, tags and aliases; not their holds. */
++    /** A copy of them for another sheet: every grade they were given (with its from-date), their terms
++     *  (each with its from-date), contact, tags and aliases; not their holds. */
+     public Person copyTo(String otherSheetId) {
+         Person copy = new Person();
+         copy.sheetId = otherSheetId;
+         copy.name = name;
+         grades.forEach(g -> copy.grades.add(new PersonGrade(g.getGrade(), g.getFromDate())));
+         copy.terms = terms;
++        datedTerms.forEach(t -> copy.datedTerms.add(new PersonTerms(t.getTerms(), t.getFromDate())));
+         copy.contact = contact;
+         copy.tags = tags;
+         copy.originSheet = sheetId;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 793271585..f568ffcf0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -41,14 +41,16 @@ public class PersonController {
+ 
+     /** A person as the screen shows it, with how many statements were taken of them and the last one's
+      *  due-total (n/a when it was) and date; none of either before their first statement; and the ids
+-     *  of their patrons. Their grade is the one in force on the sheet's today; grades lists every grade
++     *  of their patrons. Their grade is the one in force on the sheet's today, and terms their own terms
++     *  in force then (baseTerms those from the beginning of time, datedTerms those from a date); grades lists every grade
+      *  they were given, each with its from-date (YYYY-MM-DD, none for the first); watched says whether
+      *  the signed-in user watches them; clashing says whether their name or an alias is used on another sheet
+      *  of the sheet's tree; origin is the sheet they were transferred from, null for anyone else. */
+     public record PersonView(long id, String name, String grade, List<GradeView> grades, long version, int statementCount,
+             String statedTotal, String statementDate, boolean retired, String retiredFrom,
+             List<RetirementView> retirements,
+-            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
++            boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, Integer baseTerms,
++            List<TermsView> datedTerms, String contact,
+             List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots,
+             List<String> statementLines) {
+ 
+@@ -63,7 +65,8 @@ public class PersonController {
+                     person.isRetired(), person.getRetiredFrom() == null ? null : person.getRetiredFrom().toString(),
+                     person.getRetirements().stream().map(RetirementView::of).toList(),
+                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
+-                    watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
++                    watched, person.termsOn(today), person.getTerms(),
++                    person.getDatedTerms().stream().map(TermsView::of).toList(), person.getContact(), person.getAliases(), clashing,
+                     person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList(),
+                     statementLines(statements));
+         }
+@@ -85,6 +88,14 @@ public class PersonController {
+         }
+     }
+ 
++    /** Terms a person was given from a date (YYYY-MM-DD); none for no terms of their own. */
++    public record TermsView(Integer terms, String from) {
++
++        static TermsView of(PersonTerms terms) {
++            return new TermsView(terms.getTerms(), terms.getFromDate().toString());
++        }
++    }
++
+     /** A past retirement of a person: the date they were retired from and the day they were unretired. */
+     public record RetirementView(String from, String to) {
+ 
+@@ -127,6 +138,7 @@ public class PersonController {
+             @NotNull @Pattern(regexp = "[ABC]") String grade,
+             LocalDate gradeFrom,
+             @Min(0) Integer terms,
++            LocalDate termsFrom,
+             @Size(max = 200) String contact,
+             @Size(max = 2000) String tags,
+             @NotNull Long version) {
+@@ -264,7 +276,7 @@ public class PersonController {
+             @RequestBody @Valid PersonUpdate request) {
+         try {
+             Person updated = service.update(sheetId.trim(), user.trim(), personId, request.version(),
+-                    request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact(),
++                    request.name(), request.grade(), request.gradeFrom(), request.terms(), request.termsFrom(), request.contact(),
+                     request.tagList());
+             return view(updated, user.trim());
+         } catch (ObjectOptimisticLockingFailureException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 39466d779..a61643807 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -286,7 +286,7 @@ public class PersonService {
+                     Person now = people.findByIdAndSheetId(match.getId(), sheetId)
+                             .orElseThrow(PersonNotFoundException::new);
+                     updated.add(update(sheetId, user, now.getId(), now.getVersion(), now.getName(), line.grade(),
+-                            null, line.terms() != null ? line.terms() : now.getTerms(),
++                            null, line.terms() != null ? line.terms() : now.getTerms(), null,
+                             line.contact() != null ? line.contact() : now.getContact(), null, true));
+                 }
+             } catch (PersonNameTakenException | PersonContactTakenException | PersonNotFoundException
+@@ -330,24 +330,28 @@ public class PersonService {
+     @Transactional
+     /** Change a person's name, and record the grade from a date (the sheet's today when none is given),
+      *  keeping the grades already recorded; a save leaving the grade as it is on the sheet's today, with no
+-     *  from-date, records nothing. Their own terms are set to those given (none clears them), and their
+-     *  contact to the one given (blank clears it). */
++     *  from-date, records nothing. Their own terms from the beginning of time are set to those given (none
++     *  clears them), and their contact to the one given (blank clears it). */
+     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+             LocalDate gradeFrom, Integer terms, String contact) {
+-        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, null, true);
++        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, null, contact, null, true);
+     }
+ 
+-    /** As {@link #update}, also setting the tags they carry (normalised; none: kept as they are). */
++    /** As {@link #update}, recording their own terms (none: none of their own) from a date, keeping those
++     *  already recorded (replacing those from that same date), or from the beginning of time when no date is
++     *  given; and setting the tags they carry (normalised; none: kept as they are). */
+     @Transactional
+     public Person update(String sheetId, String user, long personId, long version, String name, String grade,
+-            LocalDate gradeFrom, Integer terms, String contact, List<String> tags) {
+-        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, contact, tags, true);
++            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, List<String> tags) {
++        return update(sheetId, user, personId, version, name, grade, gradeFrom, terms, termsFrom, contact, tags,
++                true);
+     }
+ 
+     /** As the person form saves, which (form) also refuses a name or alias some other sheet of the tree
+      *  uses, so a person who clashes keeps being refused until a rename leaves them clashing with no one. */
+     private Person update(String sheetId, String user, long personId, long version, String name, String grade,
+-            LocalDate gradeFrom, Integer terms, String contact, List<String> tags, boolean form) {
++            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, List<String> tags,
++            boolean form) {
+         Person person = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+         if (person.getVersion() != version) {
+             throw new PersonVersionConflictException(person);
+@@ -364,8 +368,7 @@ public class PersonService {
+         Rollup.Snapshot before = rollup.take(sheetId);
+         LocalDate today = today(sheetId);
+         person.setName(name.trim());
+-        boolean termsChanged = !Objects.equals(terms, person.getTerms());
+-        person.setTerms(terms);
++        boolean termsChanged = person.setTerms(terms, termsFrom);
+         boolean contactChanged = !Objects.equals(key, person.getContact());
+         person.setContact(key);
+         if (tags != null) {
+@@ -376,7 +379,7 @@ public class PersonService {
+             person.setGrade(grade, gradeFrom != null ? gradeFrom : today);
+         }
+         Person updated = saved(person);
+-        audit("PERSON_EDITED", updated, user, today, (termsChanged ? " terms=" + (terms == null ? "" : terms) : "")
++        audit("PERSON_EDITED", updated, user, today, (termsChanged ? " terms=" + Objects.toString(updated.termsOn(today), "") : "")
+                 + (contactChanged ? " contact=" + (key == null ? "" : key) : ""));
+         rollup.recordChanges(sheetId, user, before);
+         return updated;
+@@ -398,7 +401,7 @@ public class PersonService {
+             throw new PersonNotFoundException();
+         }
+         return picked.stream().map(p -> update(sheetId, user, p.getId(), p.getVersion(), p.getName(), grade, from,
+-                p.getTerms(), p.getContact(), null, false)).toList();
++                p.getTerms(), null, p.getContact(), null, false)).toList();
+     }
+ 
+     /** Give a person an alias, stored trimmed: refused when blank, or when it equals, ignoring case, any
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTerms.java b/src/main/java/net/officefloor/hq/app/person/PersonTerms.java
+new file mode 100644
+index 000000000..b9ec5b265
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTerms.java
+@@ -0,0 +1,47 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A person's own terms from a date; none when from that date they have no terms of their own. */
++@Entity
++@Table(name = "person_terms")
++public class PersonTerms {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    /** Their terms in days; null for none of their own. */
++    @Column(name = "terms")
++    private Integer terms;
++
++    /** The first day the terms apply. */
++    @Column(name = "from_date", nullable = false)
++    private LocalDate fromDate;
++
++    protected PersonTerms() {
++    }
++
++    PersonTerms(Integer terms, LocalDate fromDate) {
++        this.terms = terms;
++        this.fromDate = fromDate;
++    }
++
++    public Integer getTerms() {
++        return terms;
++    }
++
++    void setTerms(Integer terms) {
++        this.terms = terms;
++    }
++
++    public LocalDate getFromDate() {
++        return fromDate;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 97776f41f..175c537e6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -122,7 +122,7 @@ public class SheetCloneService {
+                 + " SELECT ?, tag FROM sheet_tag WHERE sheet_id = ? ORDER BY id", target, id);
+     }
+ 
+-    /** Copy the people with their grades, holds, retirements, aliases and patrons; the new id of each. */
++    /** Copy the people with their grades, dated terms, holds, retirements, aliases and patrons; the new id of each. */
+     private Map<Long, Long> copyPeople(String id, String target) {
+         Map<Long, Long> ids = new LinkedHashMap<>();
+         for (Map<String, Object> p : jdbc.queryForList("SELECT * FROM person WHERE sheet_id = ? ORDER BY id", id)) {
+@@ -134,6 +134,8 @@ public class SheetCloneService {
+             ids.put(oldId, newId);
+             jdbc.update("INSERT INTO person_grade (person_id, grade, from_date)"
+                     + " SELECT ?, grade, from_date FROM person_grade WHERE person_id = ? ORDER BY id", newId, oldId);
++            jdbc.update("INSERT INTO person_terms (person_id, terms, from_date)"
++                    + " SELECT ?, terms, from_date FROM person_terms WHERE person_id = ? ORDER BY id", newId, oldId);
+             jdbc.update("INSERT INTO person_hold (person_id, from_date, to_date)"
+                     + " SELECT ?, from_date, to_date FROM person_hold WHERE person_id = ? ORDER BY id", newId, oldId);
+             jdbc.update("INSERT INTO person_retirement (person_id, from_date, to_date)"
+diff --git a/src/main/resources/db/migration/V92__person_terms_dated.sql b/src/main/resources/db/migration/V92__person_terms_dated.sql
+new file mode 100644
+index 000000000..0c126f45c
+--- /dev/null
++++ b/src/main/resources/db/migration/V92__person_terms_dated.sql
+@@ -0,0 +1,10 @@
++-- A person's own terms can be dated: besides the terms they have from the beginning of time (person.terms),
++-- each row here records terms (none: no terms of their own) from a date. On a date the terms in force are
++-- those whose from-date is the latest on or before it, else those from the beginning of time.
++CREATE TABLE person_terms (
++    id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    person_id BIGINT NOT NULL REFERENCES person (id),
++    terms     INTEGER,
++    from_date DATE   NOT NULL
++);
++CREATE UNIQUE INDEX person_terms_from ON person_terms (person_id, from_date);
