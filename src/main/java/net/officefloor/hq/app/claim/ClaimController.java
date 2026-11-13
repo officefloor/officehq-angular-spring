@@ -333,6 +333,25 @@ public class ClaimController {
                 done.claims().stream().map(ClaimView::of).toList());
     }
 
+    /** The claims chosen to re-date together, and the date they are re-dated to; a missing date is the sheet's today. */
+    public record BulkRedateRequest(@NotNull @Size(max = 10000) List<@NotNull Long> claimIds, LocalDate date) {
+    }
+
+    /** How many a bulk re-date re-dated and refused, and the claims it re-dated. */
+    public record BulkRedateView(int redated, int refused, List<ClaimView> claims) {
+    }
+
+    /** Re-date the chosen claims together, in list order; each that cannot be re-dated is left as it is. */
+    @PostMapping("/claims/bulk-redate")
+    public BulkRedateView bulkRedate(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid BulkRedateRequest request) {
+        ClaimService.BulkRedated done = service.bulkRedate(sheetId.trim(), user.trim(), request.claimIds(),
+                request.date());
+        return new BulkRedateView(done.redated(), done.refused(),
+                done.claims().stream().map(ClaimView::of).toList());
+    }
+
     /** Settle an OPEN claim; a clerk settling a due above the clerk limit puts it PENDING instead. */
     @PostMapping("/claims/{claimId}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId,

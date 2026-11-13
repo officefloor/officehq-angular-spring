@@ -739,6 +739,35 @@ export class Claims {
     }
   }
 
+  /** Re-date the chosen claims to one date together, the server re-dating them in list order as a single
+   *  re-date would and leaving each that cannot be re-dated as it is; a blank date is the sheet's today.
+   *  How many were re-dated and refused, or an error message. */
+  async bulkRedate(date: string): Promise<{ redated: number; refused: number } | string> {
+    const sid = this.session.sheetId();
+    const user = this.session.user();
+    if (!user || !sid) return 'Load a sheet first.';
+    const claimIds = [...this.selected()];
+    if (claimIds.length === 0) return 'Select the claims to re-date.';
+    if (date.trim() !== '' && !isDate(date.trim())) return 'Enter the new date as YYYY-MM-DD.';
+    try {
+      const done = await firstValueFrom(
+        this.http.post<{ redated: number; refused: number; claims: Claim[] }>(
+          `${this.url(sid)}/claims/bulk-redate`,
+          { claimIds, date: date.trim() === '' ? null : date.trim() },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.session.sheetId() === sid) {
+        const byId = new Map(done.claims.map((c) => [c.id, c]));
+        this.claims.update((cs) => cs.map((c) => byId.get(c.id) ?? c));
+        this.selected.set(new Set());
+      }
+      return { redated: done.redated, refused: done.refused };
+    } catch (e) {
+      return failed('re-date', e).replace(' claim', ' claims');
+    }
+  }
+
   private check(f: ClaimFields): string | null {
     if (!this.session.user() || !this.session.sheetId()) return 'Load a sheet first.';
     if (!/^-?\d+(\.\d{1,2})?$/.test(f.amount.trim())) return 'Enter an amount with up to two decimals.';

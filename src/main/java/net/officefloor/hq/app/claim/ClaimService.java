@@ -776,6 +776,31 @@ public class ClaimService {
         return new BulkReassigned(moved.size(), chosen.size() - moved.size(), moved);
     }
 
+    /** What a bulk re-date did: how many it re-dated and refused, and the claims it re-dated, in the order re-dated. */
+    public record BulkRedated(int redated, int refused, List<Claim> claims) {
+    }
+
+    /** Re-date the chosen claims to one date together in list order (people by their position, each
+     *  person's claims newest first), each as a single re-date by the user would; one that cannot be re-dated
+     *  is left as it is and counted as refused, as is one not on the sheet. */
+    @Transactional
+    public BulkRedated bulkRedate(String sheetId, String user, Collection<Long> claimIds, LocalDate date) {
+        Set<Long> chosen = new HashSet<>(claimIds);
+        if (roles.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+            return new BulkRedated(0, chosen.size(), List.of());
+        }
+        List<Claim> redated = new ArrayList<>();
+        for (Claim claim : inListOrder(sheetId, chosen)) {
+            try {
+                redated.add(redate(sheetId, user, claim.getId(), date));
+            } catch (ClaimRedateException | PersonRetiredException | PersonNotFoundException
+                    | PeriodClosedException | ClaimNotFoundException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkRedated(redated.size(), chosen.size() - redated.size(), redated);
+    }
+
     /** The sheet's chosen claims in list order: people by their position, each person's claims
      *  newest first. */
     private List<Claim> inListOrder(String sheetId, Set<Long> chosen) {
