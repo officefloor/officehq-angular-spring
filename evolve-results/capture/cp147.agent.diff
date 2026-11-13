@@ -1,0 +1,389 @@
+diff --git a/src/main/frontend/src/app/core/people.ts b/src/main/frontend/src/app/core/people.ts
+index 91dd0059c..db14443d6 100644
+--- a/src/main/frontend/src/app/core/people.ts
++++ b/src/main/frontend/src/app/core/people.ts
+@@ -88,6 +88,9 @@ export interface Person {
+   origin: string | null;
+   /** Their tags: trimmed, lower-cased, without repeats, sorted; empty when they carry none. */
+   tags: string[];
++  /** Their snapshot lines, oldest first: one per day the sheet's today moved on from, as
++   *  `<the day being left> <due-total>` (n/a when it was). */
++  snapshots: string[];
+ }
+ 
+ /** A person after a statement, with their claims as it bound them, newest first. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 74915da23..8499c6811 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -213,7 +213,7 @@ function compareKeys(a: string, b: string): number {
+       </section>
+       <table data-testid="person-list">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due total</th><th scope="col">Settled total</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th><th scope="col">Excess</th><th scope="col">Overdue</th><th scope="col">Overdue total</th><th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th><th scope="col">Statements</th><th scope="col">Snapshots</th><th scope="col">Retired</th><th scope="col">On hold</th><th scope="col">Patrons</th><th scope="col">Backing</th><th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of sorted(); track p.id) {
+@@ -297,6 +297,13 @@ function compareKeys(a: string, b: string): number {
+                 <span>Last <span data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</span></span>
+                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+               </td>
++              <td>
++                <ul class="holds">
++                  @for (line of p.snapshots; track $index) {
++                    <li data-testid="person-snapshot-line">{{ line }}</li>
++                  }
++                </ul>
++              </td>
+               <td>
+                 <span data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</span>
+                 <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 8c08f6015..6a09855d7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -218,7 +218,8 @@ public class ClaimController {
+             @RequestBody @Valid QuickAddRequest request) {
+         QuickAddService.Added added = quickAdd.add(sheetId.trim(), user.trim(), request.name(), request.amount());
+         return new QuickAddView(PersonView.of(added.person(), people.today(sheetId.trim()), people.statementsOf(added.person().getId()),
+-                people.patronsOf(added.person().getId()), people.watching(added.person().getId(), user.trim()), people.clashing(added.person())),
++                people.patronsOf(added.person().getId()), people.watching(added.person().getId(), user.trim()), people.clashing(added.person()),
++                people.snapshotsOf(added.person().getId())),
+                 added.personAdded(), ClaimView.of(added.claim()));
+     }
+ 
+@@ -528,7 +529,8 @@ public class ClaimController {
+         ClaimService.Stated stated = asOf == null ? service.statement(sheetId.trim(), user.trim(), personId)
+                 : service.statementAsOf(sheetId.trim(), user.trim(), personId, asOf);
+         return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
+-                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim()), people.clashing(stated.person())),
++                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim()), people.clashing(stated.person()),
++                people.snapshotsOf(stated.person().getId())),
+                 stated.claims().stream().map(ClaimView::of).toList());
+     }
+ 
+@@ -539,7 +541,8 @@ public class ClaimController {
+             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+         ClaimService.Stated stated = service.cancelStatement(sheetId.trim(), user.trim(), personId);
+         return new StatementView(PersonView.of(stated.person(), people.today(sheetId.trim()), stated.statements(),
+-                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim()), people.clashing(stated.person())),
++                people.patronsOf(stated.person().getId()), people.watching(stated.person().getId(), user.trim()), people.clashing(stated.person()),
++                people.snapshotsOf(stated.person().getId())),
+                 stated.claims().stream().map(ClaimView::of).toList());
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 070faeba6..6274ce2f7 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -48,10 +48,10 @@ public class PersonController {
+             String statedTotal, String statementDate, boolean retired, String retiredFrom,
+             List<RetirementView> retirements,
+             boolean held, List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
+-            List<String> aliases, boolean clashing, String origin, List<String> tags) {
++            List<String> aliases, boolean clashing, String origin, List<String> tags, List<String> snapshots) {
+ 
+         public static PersonView of(Person person, LocalDate today, List<Statement> statements, List<Long> patronIds,
+-                boolean watched, boolean clashing) {
++                boolean watched, boolean clashing, List<PersonSnapshot> snapshots) {
+             Statement last = statements.isEmpty() ? null : statements.get(statements.size() - 1);
+             return new PersonView(person.getId(), person.getName(), person.gradeOn(today),
+                     person.getGrades().stream().map(GradeView::of).toList(), person.getVersion(),
+@@ -62,7 +62,7 @@ public class PersonController {
+                     person.getRetirements().stream().map(RetirementView::of).toList(),
+                     person.isHeld(), person.getHolds().stream().map(HoldView::of).toList(), patronIds,
+                     watched, person.getTerms(), person.getContact(), person.getAliases(), clashing,
+-                    person.getOriginSheet(), person.getTags());
++                    person.getOriginSheet(), person.getTags(), snapshots.stream().map(PersonSnapshot::line).toList());
+         }
+     }
+ 
+@@ -196,10 +196,13 @@ public class PersonController {
+                 : this.asOf.watches(id, asOf).stream().filter(w -> w.getUser().equals(user.trim()))
+                         .map(Watch::getPersonId).collect(Collectors.toSet());
+         Set<String> treeNames = service.treeNames(id);
++        Map<Long, List<PersonSnapshot>> snapshots = service.snapshots(id);
+         return people.stream()
+                 .map(p -> PersonView.of(p, today, statements.getOrDefault(p.getId(), List.of()),
+                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
+-                        PersonService.clashing(p, treeNames)))
++                        PersonService.clashing(p, treeNames), asOf == null ? snapshots.getOrDefault(p.getId(), List.of())
++                                : snapshots.getOrDefault(p.getId(), List.of()).stream()
++                                        .filter(s -> s.getDay().isBefore(asOf)).toList()))
+                 .toList();
+     }
+ 
+@@ -211,7 +214,7 @@ public class PersonController {
+         Person added = service.add(sheetId.trim(), user.trim(), request.name(), request.grade(), request.terms(),
+                 request.contact(), request.tagList());
+         return PersonView.of(added, service.today(sheetId.trim()), List.of(), List.of(), false,
+-                service.clashing(added));
++                service.clashing(added), List.of());
+     }
+ 
+     /** The import box's lines of name,grade,terms,contact. */
+@@ -231,7 +234,7 @@ public class PersonController {
+         PersonService.ImportResult done = service.importPeople(sheetId.trim(), user.trim(), request.text());
+         LocalDate today = service.today(sheetId.trim());
+         return new ImportView(done.added().size(), done.added().stream()
+-                .map(p -> PersonView.of(p, today, List.of(), List.of(), false, service.clashing(p))).toList(),
++                .map(p -> PersonView.of(p, today, List.of(), List.of(), false, service.clashing(p), List.of())).toList(),
+                 done.updated().size(), done.updated().stream().map(p -> view(p, user.trim())).toList());
+     }
+ 
+@@ -451,7 +454,8 @@ public class PersonController {
+ 
+     private PersonView view(Person person, String user) {
+         return PersonView.of(person, service.today(person.getSheetId()), service.statementsOf(person.getId()),
+-                service.patronsOf(person.getId()), service.watching(person.getId(), user), service.clashing(person));
++                service.patronsOf(person.getId()), service.watching(person.getId(), user), service.clashing(person),
++                service.snapshotsOf(person.getId()));
+     }
+ 
+     /** A save from an editor that loaded an older version: refused, answering the person as it is now. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 56aff9453..5764ebfb9 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -43,6 +43,7 @@ public class PersonService {
+     private final PersonRepository people;
+     private final SheetRepository sheets;
+     private final StatementRepository statements;
++    private final PersonSnapshotRepository snapshots;
+     private final PatronRepository patrons;
+     private final WatchRepository watches;
+     private final RoleService roles;
+@@ -57,7 +58,8 @@ public class PersonService {
+     public PersonService(PersonRepository people, SheetRepository sheets, StatementRepository statements,
+             PatronRepository patrons, WatchRepository watches, Rollup rollup, Audit audit, RoleService roles,
+             ClaimRepository claims, PoolRepository pools, PeriodRepository periods, SheetService sheetService,
+-            SheetTagRepository sheetTags) {
++            SheetTagRepository sheetTags, PersonSnapshotRepository snapshots) {
++        this.snapshots = snapshots;
+         this.sheetTags = sheetTags;
+         this.sheetService = sheetService;
+         this.claims = claims;
+@@ -92,6 +94,19 @@ public class PersonService {
+         return statements.findByPersonIdOrderByIdAsc(personId);
+     }
+ 
++    /** The sheet's snapshots by person id, each person's oldest first. */
++    @Transactional(readOnly = true)
++    public Map<Long, List<PersonSnapshot>> snapshots(String sheetId) {
++        return snapshots.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .collect(Collectors.groupingBy(PersonSnapshot::getPersonId));
++    }
++
++    /** The person's snapshots, oldest first. */
++    @Transactional(readOnly = true)
++    public List<PersonSnapshot> snapshotsOf(long personId) {
++        return snapshots.findByPersonIdOrderByIdAsc(personId);
++    }
++
+     /** The sheet's patrons: each person's patrons' ids, by person id. */
+     @Transactional(readOnly = true)
+     public Map<Long, List<Long>> patrons(String sheetId) {
+@@ -473,6 +488,7 @@ public class PersonService {
+         }
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+         carryStatements(from, into);
++        carrySnapshots(from, into);
+         // everything naming them goes before they do
+         people.flush();
+ 
+@@ -598,6 +614,7 @@ public class PersonService {
+         }
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+         carryStatements(from, arrived);
++        carrySnapshots(from, arrived);
+         claims.deleteAll(leaving);
+         // everything naming them goes before they do
+         people.flush();
+@@ -637,6 +654,24 @@ public class PersonService {
+         statements.flush();
+     }
+ 
++    /** Carry a person's snapshots to whom they merge into or arrive as (on that person's sheet), the two
++     *  people's kept oldest first by the day each was written for. */
++    private void carrySnapshots(Person from, Person into) {
++        List<PersonSnapshot> theirs = snapshots.findByPersonIdOrderByIdAsc(from.getId());
++        if (theirs.isEmpty()) {
++            return;
++        }
++        List<PersonSnapshot> own = snapshots.findByPersonIdOrderByIdAsc(into.getId());
++        List<PersonSnapshot> all = new ArrayList<>(theirs);
++        all.addAll(own);
++        all.sort(Comparator.comparing(PersonSnapshot::getDay));
++        snapshots.deleteAll(theirs);
++        snapshots.deleteAll(own);
++        snapshots.flush();
++        all.forEach(s -> snapshots.save(s.copyTo(into.getSheetId(), into.getId())));
++        snapshots.flush();
++    }
++
+     /** Swap a person with the one above them in the list (up) or below them (down); the top cannot move up
+      *  nor the bottom down. Answers the two people swapped, in their new list order. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonSnapshot.java b/src/main/java/net/officefloor/hq/app/person/PersonSnapshot.java
+new file mode 100644
+index 000000000..652552a6c
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonSnapshot.java
+@@ -0,0 +1,73 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A snapshot of a person written as the sheet's today moved on: the day being left and their due-total
++ *  then (none when it was n/a). */
++@Entity
++@Table(name = "person_snapshot")
++public class PersonSnapshot {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(name = "left_on", nullable = false)
++    private LocalDate day;
++
++    @Column(name = "due_total")
++    private BigDecimal dueTotal;
++
++    protected PersonSnapshot() {
++    }
++
++    public PersonSnapshot(String sheetId, Long personId, LocalDate day, BigDecimal dueTotal) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.day = day;
++        this.dueTotal = dueTotal;
++    }
++
++    /** The same snapshot, of another person (on this sheet or another). */
++    public PersonSnapshot copyTo(String otherSheetId, Long otherPersonId) {
++        return new PersonSnapshot(otherSheetId, otherPersonId, day, dueTotal);
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public LocalDate getDay() {
++        return day;
++    }
++
++    public BigDecimal getDueTotal() {
++        return dueTotal;
++    }
++
++    /** The line the screen shows: the day being left, then the due-total (n/a when it was). */
++    public String line() {
++        return day + " " + (dueTotal == null ? "n/a" : dueTotal.toPlainString());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonSnapshotRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonSnapshotRepository.java
+new file mode 100644
+index 000000000..317d6e12b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/PersonSnapshotRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.person;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PersonSnapshotRepository extends JpaRepository<PersonSnapshot, Long> {
++
++    /** The sheet's snapshots, oldest first. */
++    List<PersonSnapshot> findBySheetIdOrderByIdAsc(String sheetId);
++
++    /** The person's snapshots, oldest first. */
++    List<PersonSnapshot> findByPersonIdOrderByIdAsc(Long personId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 8a85dfdd2..9226ba0b9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -13,6 +13,8 @@ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.period.PeriodService;
++import net.officefloor.hq.app.person.PersonSnapshot;
++import net.officefloor.hq.app.person.PersonSnapshotRepository;
+ import net.officefloor.hq.app.role.ActionNotAllowedException;
+ import net.officefloor.hq.app.role.RoleService;
+ import net.officefloor.hq.app.rollup.Rollup;
+@@ -34,11 +36,13 @@ public class SheetService {
+     private final Audit audit;
+     private final ClaimRepository claims;
+     private final History history;
++    private final PersonSnapshotRepository snapshots;
+ 
+     public SheetService(SheetRepository sheets, ClaimSequenceRepository sequences,
+             FiscalClaimSequenceRepository fiscalSequences, PeriodRepository periods,
+             PeriodService periodService, Rollup rollup, RoleService roles, Audit audit, ClaimRepository claims,
+-            History history) {
++            History history, PersonSnapshotRepository snapshots) {
++        this.snapshots = snapshots;
+         this.fiscalSequences = fiscalSequences;
+         this.history = history;
+         this.claims = claims;
+@@ -113,13 +117,17 @@ public class SheetService {
+ 
+     /** Change the sheet's today, closing the periods past their grace days and recording the figures it
+      *  moves; a new today first records a SNAPSHOT line of each person's due-total on the day being left, in
+-     *  list order, and releases every claim's lock (their editors close). */
++     *  list order, keeps it as each person's snapshot line, and releases every claim's lock (their editors
++     *  close). */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+         Rollup.Snapshot before = rollup.take(id);
+         if (!today.equals(sheet.getToday())) {
+             rollup.recordSnapshot(id, user, before);
++            LocalDate left = sheet.getToday();
++            before.people().forEach((personId, figures) -> snapshots.save(
++                    new PersonSnapshot(id, personId, left, figures.dueTotal())));
+             claims.unlockAll(id);
+         }
+         sheet.setToday(today);
+diff --git a/src/main/resources/db/migration/V81__person_snapshot.sql b/src/main/resources/db/migration/V81__person_snapshot.sql
+new file mode 100644
+index 000000000..693c46c54
+--- /dev/null
++++ b/src/main/resources/db/migration/V81__person_snapshot.sql
+@@ -0,0 +1,11 @@
++-- A snapshot of a person's due-total, written as the sheet's today moves on: the day being left and their
++-- due-total then (none when it was n/a). Listed oldest first (by id).
++CREATE TABLE person_snapshot (
++    id          BIGINT         GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
++    sheet_id    VARCHAR(200)   NOT NULL REFERENCES sheet (id),
++    person_id   BIGINT         NOT NULL REFERENCES person (id),
++    left_on     DATE           NOT NULL,
++    due_total   DECIMAL(15, 2)
++);
++CREATE INDEX person_snapshot_person ON person_snapshot (person_id, id);
++CREATE INDEX person_snapshot_sheet ON person_snapshot (sheet_id, id);
