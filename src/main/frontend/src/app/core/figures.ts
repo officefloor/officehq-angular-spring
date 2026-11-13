@@ -190,6 +190,15 @@ export class Figures {
     return f === null ? 0n : this.claims.chargedCents(c, f);
   }
 
+  /** A claim's due as its row shows it: its figure with two decimals, or n/a when it has none. */
+  claimDue(c: Claim, p: Person): string {
+    if (c.settledDue !== null) return c.settledDue;
+    const f = bound(c)
+      ? (c.statedDue === null ? null : hundredths(c.statedDue))
+      : this.rates.dueCents(hundredths(c.amount), gradeOn(p.grades, c.date), c.date, this.claims.roundingDate(c));
+    return f === null ? NO_RATE : money(this.claims.chargedCents(c, f));
+  }
+
   /** What a candidate rate (a percent with up to two decimals) would change if it applied to a grade on
    *  every date: of the OPEN and PENDING claims of people on that grade on the claim's date, not bound
    *  by a statement, how many would show a different due, and the sum of new due minus current due in

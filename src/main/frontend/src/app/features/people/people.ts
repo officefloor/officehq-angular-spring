@@ -139,6 +139,7 @@ import { PersonClaims } from '../claims/claims';
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+      <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <section aria-label="Grade or retire selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select
@@ -692,13 +693,27 @@ export class PeopleList {
   protected exportCsv(): void {
     const lines = [['name', 'grade', 'retired-from', 'due-total']];
     for (const p of this.people.people()) lines.push([p.name, this.gradeToday(p), p.retiredFrom ?? '', this.due(p)]);
-    const csv = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'people.csv';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    download(lines, 'people.csv');
+  }
+
+  /** Download every claim as CSV: people in list order, retired included, each person's claims
+   *  oldest first, with number, due and period as their rows show them. */
+  protected exportClaims(): void {
+    const lines = [['person', 'number', 'date', 'amount', 'due', 'status', 'period']];
+    for (const p of this.people.people()) {
+      for (const c of [...this.claims.of(p.id)].reverse()) {
+        lines.push([
+          p.name,
+          c.number ?? '',
+          c.date,
+          c.amount,
+          this.figures.claimDue(c, p),
+          c.status,
+          this.periods.of(c.dueBy)?.name ?? '',
+        ]);
+      }
+    }
+    download(lines, 'claims.csv');
   }
 
   protected async statement(p: Person): Promise<void> {
@@ -925,6 +940,17 @@ export class PeopleList {
       this.saving.set(false);
     }
   }
+}
+
+/** Download these lines as a CSV file of this name, each line ended by a line feed. */
+function download(lines: string[][], name: string): void {
+  const csv = lines.map((l) => l.map(csvField).join(',') + '\n').join('');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** A CSV field: wrapped in double quotes, with quotes inside doubled, when it holds a comma, a
