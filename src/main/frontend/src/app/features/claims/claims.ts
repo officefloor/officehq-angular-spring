@@ -922,10 +922,13 @@ export class PersonClaims {
         if (err) this.error.set(err);
         else this.reset();
       } else {
-        // a refused edit leaves the editor open; a claim no longer a DRAFT shows the refusal on itself
+        // a refused edit leaves the editor open; one the claim itself refuses (no longer a DRAFT, or its
+        // amount taken from its lines) closes the editor, the refusal showing on the claim
         const refused = await this.claims.update(id, f);
-        if (refused?.onClaim) this.actionError.set({ id, message: refused.message });
-        else if (refused) this.error.set(refused.message);
+        if (refused?.onClaim) {
+          this.cancel();
+          this.actionError.set({ id, message: refused.message });
+        } else if (refused) this.error.set(refused.message);
         else this.reset();
       }
     } finally {

@@ -270,7 +270,7 @@ function compareKeys(a: string, b: string): number {
       </fieldset>
       <table data-testid="person-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th>@if (col('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th>@if (col('terms')) {<th scope="col">Terms</th>}@if (col('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (col('claimed')) {<th scope="col">Claimed</th>}@if (col('due-total')) {<th scope="col">Due total</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th>@if (col('excess')) {<th scope="col">Excess</th>}@if (col('overdue-count')) {<th scope="col">Overdue</th>}@if (col('overdue-total')) {<th scope="col">Overdue total</th>}<th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th>@if (col('statement-count')) {<th scope="col">Statements</th>}@if (col('stated-total')) {<th scope="col">Last stated</th>}@if (col('statement-date')) {<th scope="col">Stated on</th>}<th scope="col">Statement lines</th><th scope="col">Snapshots</th>@if (col('retired')) {<th scope="col">Retired</th>}@if (col('hold')) {<th scope="col">On hold</th>}@if (col('patrons')) {<th scope="col">Patrons</th>}@if (col('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Came from</th>@if (col('aliases')) {<th scope="col">Aliases</th>}<th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Active</th>@if (col('terms')) {<th scope="col">Terms</th>}@if (col('contact')) {<th scope="col">Contact</th>}<th scope="col">Tags</th>@if (col('claimed')) {<th scope="col">Claimed</th>}@if (col('due-total')) {<th scope="col">Due total</th>}<th scope="col">Settled total</th><th scope="col">Score</th><th scope="col">Band</th><th scope="col">Open total</th><th scope="col">Cut total</th><th scope="col">Due by period</th>@if (col('excess')) {<th scope="col">Excess</th>}@if (col('overdue-count')) {<th scope="col">Overdue</th>}@if (col('overdue-total')) {<th scope="col">Overdue total</th>}<th scope="col">Aged 0–30</th><th scope="col">Aged 31–60</th><th scope="col">Aged 61+</th>@if (col('statement-count')) {<th scope="col">Statements</th>}@if (col('stated-total')) {<th scope="col">Last stated</th>}@if (col('statement-date')) {<th scope="col">Stated on</th>}<th scope="col">Statement lines</th><th scope="col">Snapshots</th>@if (col('retired')) {<th scope="col">Retired</th>}@if (col('hold')) {<th scope="col">On hold</th>}@if (col('patrons')) {<th scope="col">Patrons</th>}@if (col('backing')) {<th scope="col">Backing</th>}<th scope="col">Watched</th><th scope="col">Timeline</th><th scope="col">Plans</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of sorted(); track p.id) {
@@ -454,6 +454,13 @@ function compareKeys(a: string, b: string): number {
                 >
                   Watch<span class="visually-hidden"> {{ p.name }}</span>
                 </button>
+              </td>
+              <td>
+                <ul class="holds">
+                  @for (line of timeline(p); track $index) {
+                    <li data-testid="person-timeline-line">{{ line }}</li>
+                  }
+                </ul>
               </td>
               <td><app-person-plans [personId]="p.id" [personName]="p.name" /></td>
               <td><app-person-claims [personId]="p.id" [grades]="p.grades" /></td>
@@ -676,6 +683,23 @@ export class PeopleList {
       .people()
       .filter((p) => (this.people.showRetired() || !p.retired) && (visible === null || visible.has(p.id)));
   });
+  /** A person's timeline: one line per dated thing about them, by date, and on a date their grade
+   *  changes, then claims (by their line), then holds, then retirements, then unretirements. */
+  protected timeline(p: Person): string[] {
+    const entries: { date: string; kind: number; line: string }[] = [];
+    const add = (date: string | null, kind: number, line: string) => {
+      if (date !== null) entries.push({ date, kind, line: `${date} ${line}` });
+    };
+    for (const g of p.grades) add(g.from, 0, `grade ${g.grade}`);
+    for (const c of this.claims.of(p.id)) add(c.date, 1, `claim ${c.amount} ${c.status}`);
+    for (const h of p.holds) add(h.from, 2, h.to === null ? 'hold' : `hold to ${h.to}`);
+    for (const r of p.retirements) add(r.from, 3, 'retired');
+    add(p.retiredFrom, 3, 'retired');
+    for (const r of p.retirements) add(r.to, 4, 'unretired');
+    return entries
+      .sort((a, b) => compareKeys(a.date, b.date) || a.kind - b.kind || compareKeys(a.line, b.line))
+      .map((e) => e.line);
+  }
   /** The sort keys the list can be shown in. */
   protected readonly sortKeys = SORT_KEYS;
   /** How this user's screen orders the list; only what is shown, never the stored positions. */
