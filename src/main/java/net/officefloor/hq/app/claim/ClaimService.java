@@ -225,7 +225,7 @@ public class ClaimService {
             case OPEN -> "open";
             case SETTLED, PENDING -> "settle";
             case VOID -> "void";
-            case DRAFT, DELETED -> throw new IllegalStateException();
+            case DRAFT, DELETED, REVIEW -> throw new IllegalStateException();
         });
         if (!claim.getStatus().canBecome(to)) {
             throw new ClaimStatusException(claim.getStatus(), to);
@@ -258,7 +258,10 @@ public class ClaimService {
         }
         Rollup.Snapshot before = rollup.take(sheetId);
         String number = claim.getNumber();
-        if (to == ClaimStatus.OPEN) {
+        if (to == ClaimStatus.OPEN && overReviewThreshold(claim, shownDue(claim, person))) {
+            to = ClaimStatus.REVIEW;
+            claim.setOpenedBy(user);
+        } else if (to == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId, claim.getDueBy());
             claim.setOpenedBy(user);
         }
@@ -281,6 +284,7 @@ public class ClaimService {
         Claim updated = claims.saveAndFlush(claim);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
+            case REVIEW -> "CLAIM_REVIEW";
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
@@ -338,6 +342,32 @@ public class ClaimService {
         logStatus(claim, person, user);
         Claim updated = claims.saveAndFlush(claim);
         audit(event, updated, person, user);
+        rollup.recordChanges(sheetId, user, before);
+        return updated;
+    }
+
+    /** Review a REVIEW claim: it becomes OPEN, numbered now, keeping who opened it; writes CLAIM_REVIEWED
+     *  then CLAIM_OPENED. Refused unless the claim is REVIEW and the user is a steward. */
+    @Transactional
+    public Claim review(String sheetId, String user, long claimId) {
+        Claim claim = claims.findForUpdateByIdAndSheetId(claimId, sheetId).orElseThrow(ClaimNotFoundException::new);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ClaimStatusException(claim.getStatus(), ClaimStatus.OPEN);
+        }
+        if (!roles.isSteward(sheetId, user)) {
+            throw new ClaimApprovalException("Only a steward can review a claim.");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(PersonNotFoundException::new);
+        Rollup.Snapshot before = rollup.take(sheetId);
+        audit("CLAIM_REVIEWED", claim, person, user);
+        String number = sheets.nextClaimNumber(sheetId, claim.getDueBy());
+        claim.setNumber(number);
+        claim.setStatus(ClaimStatus.OPEN);
+        logStatus(claim, person, user);
+        Claim updated = claims.saveAndFlush(claim);
+        audit("CLAIM_OPENED", updated, person, user, number, "");
         rollup.recordChanges(sheetId, user, before);
         return updated;
     }
@@ -1049,6 +1079,14 @@ public class ClaimService {
         if (ref != null && claims.refUsed(sheetId, ref, excluded)) {
             throw new ClaimRefException("The reference " + ref + " is already used on this sheet.");
         }
+    }
+
+    /** Whether a claim being opened goes to REVIEW: its due is above the review threshold in force on its
+     *  date; a due of n/a, or no threshold then, does not. */
+    private boolean overReviewThreshold(Claim claim, BigDecimal due) {
+        BigDecimal threshold = sheetRows.findById(claim.getSheetId()).orElseThrow(SheetNotFoundException::new)
+                .reviewThresholdOn(claim.getDate());
+        return threshold != null && due != null && due.compareTo(threshold) > 0;
     }
 
     /** Refuse opening a claim with an empty note whose due is above the note threshold in force on its date;

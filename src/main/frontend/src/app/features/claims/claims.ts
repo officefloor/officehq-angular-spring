@@ -324,11 +324,12 @@ export class PersonClaims {
     { action: 'delete', label: 'Delete' },
     { action: 'restore', label: 'Restore' },
   ];
-  /** A steward's review of a PENDING claim, offered on every claim (the server refuses it unless
-   *  PENDING). */
+  /** A steward's review of a PENDING claim (approve, reject) or of a REVIEW claim (review), offered on
+   *  every claim (the server refuses each unless the claim is in its status). */
   protected readonly reviews: { action: ClaimAction; label: string }[] = [
     { action: 'approve', label: 'Approve' },
     { action: 'reject', label: 'Reject' },
+    { action: 'review', label: 'Review' },
   ];
   /** The date typed to defer each claim to, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});

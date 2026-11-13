@@ -6,7 +6,7 @@ import { NO_RATE, Rates, hundredths, money, rounded } from './rates';
 import { Session, addDays } from './session';
 
 /** The statuses claims are counted by, in the order the screen shows them. */
-export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 
 /** People's figures added up, leaving out the single highest and the single lowest when there are
  *  three or more. */

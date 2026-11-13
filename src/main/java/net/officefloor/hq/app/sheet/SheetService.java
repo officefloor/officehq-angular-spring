@@ -184,6 +184,14 @@ public class SheetService {
                 from, false);
     }
 
+    /** Record the sheet's review threshold from a date (none: the sheet's today): a claim dated then whose
+     *  due is above it goes to REVIEW when opened; none for no threshold. */
+    @Transactional
+    public Sheet setReviewThreshold(String id, String user, BigDecimal threshold, LocalDate from) {
+        return setDated(id, user, Sheet.REVIEW_THRESHOLD,
+                threshold == null ? null : threshold.setScale(2).toPlainString(), from, false);
+    }
+
     /** Record the sheet's terms from a date (none: the sheet's today): the number of days after a claim's
      *  date it is due by, for a claim added later dated then whose grade has no terms of its own. A claim
      *  already added keeps its due-by. */

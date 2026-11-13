@@ -31,14 +31,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen shows it: its today, its clerk limit (two decimals; none for no limit) and
-     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date).
+     *  its floor (two decimals), its terms (days), its late percent (two decimals) and its policy date (none: the sheet's today) and its period numbering from-date (none: off), the terms of each grade that has its own, and its cap (two decimals; none for no cap), and its proof threshold (two decimals; none for no threshold), and its note threshold (two decimals; none for no threshold), and its review threshold (two decimals; none for no threshold), and its grace days (none: off), and whether it is archived, and its entry date (none: off), and the number of its last settle batch (none before the first), and its pot (two decimals; none for no pot), and its parent sheet's id (none for no parent), and its fiscal start month (1 to 12), and its alert threshold (two decimals; none for off), and its rounding mode (half-up or half-even; none: by the policy date).
      *  The dated settings show the value in force on the sheet's today; every value recorded for them is in
      *  settings. */
     public record SheetView(String id, LocalDate today, String clerkLimit, String floor, int terms, String latePct,
             LocalDate policyDate, LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
             List<SettingView> settings, String proofThreshold, Map<String, String> permissions, Integer graceDays,
             boolean archived, String noteThreshold, LocalDate entryDate, Integer lastSettleBatch, String pot,
-            String parent, int fiscalStartMonth, String alertThreshold, String rounding) {
+            String parent, int fiscalStartMonth, String alertThreshold, String rounding, String reviewThreshold) {
 
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(),
@@ -55,11 +55,12 @@ public class SheetController {
                     sheet.getPot() == null ? null : sheet.getPot().toPlainString(), sheet.getParent(),
                     sheet.getFiscalStartMonth(),
                     sheet.getAlertThreshold() == null ? null : sheet.getAlertThreshold().toPlainString(),
-                    sheet.getRoundingMode());
+                    sheet.getRoundingMode(),
+                    sheet.getReviewThreshold() == null ? null : sheet.getReviewThreshold().toPlainString());
         }
     }
 
-    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>, note-threshold or rounding)
+    /** A value recorded for a dated setting (key floor, late-pct, terms, terms-<grade>, grace-<grade>, clerk-limit, cap, proof-threshold, proof-threshold-<grade>, note-threshold, review-threshold or rounding)
      *  from a date; none for no limit, no cap, or a grade using the sheet's terms. */
     public record SettingView(String key, LocalDate from, String value) {
 
@@ -91,6 +92,11 @@ public class SheetController {
 
     /** The sheet's note threshold from a date (missing: the sheet's today); a missing one means none. */
     public record NoteThresholdRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal noteThreshold,
+            LocalDate from) {
+    }
+
+    /** The sheet's review threshold from a date (missing: the sheet's today); a missing one means none. */
+    public record ReviewThresholdRequest(@DecimalMin("0.00") @Digits(integer = 13, fraction = 2) BigDecimal reviewThreshold,
             LocalDate from) {
     }
 
@@ -251,6 +257,14 @@ public class SheetController {
             @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
             @RequestBody @Valid NoteThresholdRequest request) {
         return SheetView.of(service.setNoteThreshold(id.trim(), user.trim(), request.noteThreshold(), request.from()));
+    }
+
+    /** Change the sheet's review threshold. */
+    @PutMapping("/{id}/settings/review-threshold")
+    public SheetView setReviewThreshold(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user,
+            @RequestBody @Valid ReviewThresholdRequest request) {
+        return SheetView.of(service.setReviewThreshold(id.trim(), user.trim(), request.reviewThreshold(), request.from()));
     }
 
     /** Change the sheet's terms. */

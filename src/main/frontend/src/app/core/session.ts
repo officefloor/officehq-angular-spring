@@ -29,6 +29,8 @@ export interface SheetView {
   proofThreshold: string | null;
   /** The due above which a claim cannot be opened with an empty note, two decimals; null for none. */
   noteThreshold: string | null;
+  /** The due above which a claim goes to REVIEW when opened, two decimals; null for none. */
+  reviewThreshold: string | null;
   /** The permission matrix: the roles typed for an action (comma separated); one not here keeps the
    *  standing rule. */
   permissions: Record<string, string>;
@@ -115,6 +117,9 @@ export class Session {
   /** The sheet's note threshold (two decimals) in force on its today: a claim dated then whose due is above
    *  it cannot be opened with an empty note; null when there is none. */
   readonly noteThreshold = computed(() => this.onToday('note-threshold'));
+  /** The sheet's review threshold (two decimals) in force on its today: a claim dated then whose due is above
+   *  it goes to REVIEW when opened, for a steward to review; null when there is none. */
+  readonly reviewThreshold = computed(() => this.onToday('review-threshold'));
   /** The sheet's rounding mode (half-up or half-even) in force on its today; null when there is none (a
    *  claim rounds by the policy date). */
   readonly rounding = computed(() => this.onToday('rounding'));
@@ -453,6 +458,33 @@ export class Session {
         this.http.put<SheetView>(
           `/api/sheets/${encodeURIComponent(sid)}/settings/note-threshold`,
           { noteThreshold: t || null, from: d || null },
+          { headers: { 'X-User': user } },
+        ),
+      );
+      if (this.sheetId() === sheet.id) this.settings.set(sheet.settings);
+      return null;
+    } catch (e) {
+      return e instanceof HttpErrorResponse ? `Could not save settings (${e.status}).` : 'Could not save settings.';
+    }
+  }
+
+  /** Record the sheet's review threshold (blank: none) from a date (blank: the sheet's today); an error message
+   *  when refused. */
+  async setReviewThreshold(threshold: string, from = ''): Promise<string | null> {
+    const user = this.user();
+    const sid = this.sheetId();
+    const t = threshold.trim();
+    if (!user || !sid) return 'Load a sheet first.';
+    const d = from.trim();
+    if (d && !isDate(d)) return 'Enter a from-date as YYYY-MM-DD, or leave it blank for the sheet\'s today.';
+    if (t && !/^\d+(\.\d{1,2})?$/.test(t)) {
+      return 'Enter a review threshold of 0.00 or more, with up to two decimals, or leave it blank.';
+    }
+    try {
+      const sheet = await firstValueFrom(
+        this.http.put<SheetView>(
+          `/api/sheets/${encodeURIComponent(sid)}/settings/review-threshold`,
+          { reviewThreshold: t || null, from: d || null },
           { headers: { 'X-User': user } },
         ),
       );

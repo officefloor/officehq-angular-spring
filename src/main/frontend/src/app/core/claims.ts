@@ -89,11 +89,12 @@ export interface StatusLine {
 /** DRAFT when added; DRAFT -> OPEN -> SETTLED, and DRAFT, OPEN or PENDING -> VOID. A clerk settling a
  *  due above the clerk limit makes it PENDING: a steward approves it (SETTLED) or rejects it (OPEN). A
  *  steward can re-settle a SETTLED claim at its figure today. A DRAFT can be deleted (DELETED, counting
- *  nowhere) and restored to DRAFT on the sheet's today it was deleted. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+ *  nowhere) and restored to DRAFT on the sheet's today it was deleted. A claim whose due is above the review
+ *  threshold goes to REVIEW when opened (counting nowhere, unnumbered) until a steward reviews it (OPEN). */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 /** A status change a claim's buttons ask for. */
-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'reject' | 'resettle' | 'delete' | 'restore' | 'review';
 
 /** Whether a claim in this status counts toward claimed, due-total and every total. */
 export function counts(c: Claim): boolean {

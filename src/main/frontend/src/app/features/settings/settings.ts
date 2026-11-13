@@ -11,7 +11,8 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
 // floor (the least a claim's live due can be), the rounding mode (half-up or half-even: how a claim dated while it is in force rounds every
 // live figure; blank for none, rounding by the policy date), the cap (the most a person's due-total can be; blank for none), the proof threshold (a claim whose due is above
 // the one in force on its date needs a proof to be settled or approved; blank for none), the note threshold (a claim whose due
-// is above the one in force on its date cannot be opened with an empty note; blank for none), the terms (the business days after a claim's date it is due by, fixed
+// is above the one in force on its date cannot be opened with an empty note; blank for none), the review threshold (a claim
+// whose due is above the one in force on its date goes to REVIEW when opened, for a steward to review; blank for none), the terms (the business days after a claim's date it is due by, fixed
 // when the claim is added), each grade's own terms (blank: the grade uses the sheet's terms), each grade's
 // grace days (a claim whose person's grade on its date has grace then is overdue, and its late charge counted, only
 // from its due-by plus them; blank for none), the late percent (what an overdue claim's due gains of its figure for every full 30 days), the policy
@@ -159,6 +160,25 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (input)="setFrom('note-threshold', value($event))"
         />
         <p>In force: <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
+        <label for="setting-review-threshold">Review threshold (a claim due above it goes to REVIEW when opened, for a steward to review; blank for none)</label>
+        <input
+          id="setting-review-threshold"
+          data-testid="setting-review-threshold"
+          inputmode="decimal"
+          [value]="reviewThreshold()"
+          (input)="reviewThreshold.set(value($event)); reviewThresholdTouched.set(true); error.set(null)"
+          (focus)="focused.set('review-threshold')"
+          (keydown.delete)="reviewThresholdTouched.set(true); error.set(null)"
+          (keydown.backspace)="reviewThresholdTouched.set(true); error.set(null)"
+        />
+        <label for="setting-review-threshold-from">Review threshold from (YYYY-MM-DD; blank for the sheet's today)</label>
+        <input
+          id="setting-review-threshold-from"
+          data-testid="setting-review-threshold-from"
+          [value]="fromOf('review-threshold')"
+          (input)="setFrom('review-threshold', value($event))"
+        />
+        <p>In force: <strong data-testid="setting-review-threshold-current">{{ session.reviewThreshold() ?? '' }}</strong></p>
         <label for="setting-terms">Terms (business days after a claim's date it is due by)</label>
         <input
           id="setting-terms"
@@ -429,6 +449,8 @@ export class SettingsPanel {
   protected readonly proofThresholdTouched = signal(false);
   protected readonly noteThreshold = signal('');
   protected readonly noteThresholdTouched = signal(false);
+  protected readonly reviewThreshold = signal('');
+  protected readonly reviewThresholdTouched = signal(false);
   protected readonly terms = signal('');
   protected readonly termsTouched = signal(false);
   protected readonly grades = GRADES;
@@ -544,7 +566,7 @@ export class SettingsPanel {
       // saved; with none focused, those that differ from the value in force (a blank field clears one), else
       // the clerk limit.
       const untouched = !this.limitTouched() && !this.floorTouched() && !this.roundingTouched() && !this.capTouched() && !this.proofThresholdTouched()
-        && !this.noteThresholdTouched()
+        && !this.noteThresholdTouched() && !this.reviewThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
         && !this.graceDaysTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
@@ -568,6 +590,8 @@ export class SettingsPanel {
         || (guess && this.proofThreshold().trim() !== (this.session.proofThreshold() ?? ''));
       const noteThreshold = this.noteThresholdTouched() || pick === 'note-threshold'
         || (guess && this.noteThreshold().trim() !== (this.session.noteThreshold() ?? ''));
+      const reviewThreshold = this.reviewThresholdTouched() || pick === 'review-threshold'
+        || (guess && this.reviewThreshold().trim() !== (this.session.reviewThreshold() ?? ''));
       const terms = this.termsTouched();
       const latePct = this.latePctTouched();
       const policyDate = this.policyDateTouched() || pick === 'policy-date'
@@ -586,7 +610,7 @@ export class SettingsPanel {
         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
       const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
-        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !policyDate && !numberingFrom && !graceDays
+        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays
           && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
@@ -599,6 +623,9 @@ export class SettingsPanel {
         ?? (await this.saveGradeProofThreshold())
         ?? (noteThreshold
           ? await this.session.setNoteThreshold(this.noteThreshold(), this.fromOf('note-threshold'))
+          : null)
+        ?? (reviewThreshold
+          ? await this.session.setReviewThreshold(this.reviewThreshold(), this.fromOf('review-threshold'))
           : null)
         ?? (terms ? await this.session.setTerms(this.terms(), this.fromOf('terms')) : null)
         ?? (await this.saveGradeTerms())
@@ -627,6 +654,8 @@ export class SettingsPanel {
         this.proofThresholdTouched.set(false);
         this.noteThreshold.set('');
         this.noteThresholdTouched.set(false);
+        this.reviewThreshold.set('');
+        this.reviewThresholdTouched.set(false);
         this.terms.set('');
         this.termsTouched.set(false);
         this.gradeTerms.set({});

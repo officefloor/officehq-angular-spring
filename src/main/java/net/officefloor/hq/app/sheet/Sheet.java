@@ -39,6 +39,7 @@ public class Sheet {
     public static final String CAP = "cap";
     public static final String PROOF_THRESHOLD = "proof-threshold";
     public static final String NOTE_THRESHOLD = "note-threshold";
+    public static final String REVIEW_THRESHOLD = "review-threshold";
     public static final String ROUNDING = "rounding";
     /** The rounding modes a sheet can set: each value, and how it rounds. */
     public static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
@@ -76,7 +77,7 @@ public class Sheet {
 
     /** The settings that carry a figure, each value from a from-date: the floor, the late percent, the terms,
      *  each grade's terms (terms-<grade>), each grade's grace days (grace-<grade>), the clerk limit, the cap, the proof threshold, each grade's proof
-     *  threshold (proof-threshold-<grade>), the note threshold and the rounding mode. */
+     *  threshold (proof-threshold-<grade>), the note threshold, the review threshold and the rounding mode. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private List<SheetSetting> settings = new ArrayList<>();
@@ -240,6 +241,17 @@ public class Sheet {
     /** The note threshold in force on the sheet's today; none when there is no threshold. */
     public BigDecimal getNoteThreshold() {
         return noteThresholdOn(today);
+    }
+
+    /** The review threshold in force on a date: a claim dated then whose due is above it goes to REVIEW when
+     *  opened, for a steward to review; none when there is no threshold. */
+    public BigDecimal reviewThresholdOn(LocalDate date) {
+        return decimalOn(REVIEW_THRESHOLD, date, null);
+    }
+
+    /** The review threshold in force on the sheet's today; none when there is no threshold. */
+    public BigDecimal getReviewThreshold() {
+        return reviewThresholdOn(today);
     }
 
     /** A person's due-total as it counts: at most the cap; none (n/a) stays none. */

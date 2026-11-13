@@ -361,6 +361,14 @@ public class ClaimController {
         return ClaimView.of(service.changeStatus(sheetId.trim(), user.trim(), claimId, ClaimStatus.SETTLED));
     }
 
+    /** Review a REVIEW claim: a steward opens it. */
+    @PostMapping("/claims/{claimId}/review")
+    public ClaimView review(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable long claimId,
+            @RequestHeader("X-User") @NotBlank @Size(max = 200) String user) {
+        return ClaimView.of(service.review(sheetId.trim(), user.trim(), claimId));
+    }
+
     /** Approve a PENDING claim: a steward other than its opener settles it. */
     @PostMapping("/claims/{claimId}/approve")
     public ClaimView approve(@PathVariable @NotBlank @Size(max = 200) String sheetId,
