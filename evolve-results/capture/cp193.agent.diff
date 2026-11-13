@@ -1,0 +1,38 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+index f51c5103c..451d46669 100644
+--- a/src/main/frontend/src/app/core/figures.ts
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -234,6 +234,18 @@ export class Figures {
+     return aged;
+   }
+ 
++  /** The sheet's age buckets: every person's agedCents added up, not trimmed, each with two decimals. */
++  readonly agedTotals = computed(() => {
++    const sum = { upTo30: 0n, upTo60: 0n, over60: 0n };
++    for (const p of this.people.people()) {
++      const a = this.agedCents(p);
++      sum.upTo30 += a.upTo30;
++      sum.upTo60 += a.upTo60;
++      sum.over60 += a.over60;
++    }
++    return { upTo30: money(sum.upTo30), upTo60: money(sum.upTo60), over60: money(sum.over60) };
++  });
++
+   /** A claim's figure: its settled due, else the figure its person's last statement bound it to, else its live due at the rate in force on its date, an overdue claim's late charge on top, at
+    *  least the floor;
+    *  nothing when it has no figure. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c4416ff1d..7f94527c6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -131,6 +131,10 @@ function compareKeys(a: string, b: string): number {
+       <p>Overdue: <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+       <p>Overdue total: <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+       <p>Cut total: <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
++      @let agedTotals = figures.agedTotals();
++      <p>Aged 0 to 30 days: <strong data-testid="rollup-aged-0-30">{{ agedTotals.upTo30 }}</strong></p>
++      <p>Aged 31 to 60 days: <strong data-testid="rollup-aged-31-60">{{ agedTotals.upTo60 }}</strong></p>
++      <p>Aged 61 days or more: <strong data-testid="rollup-aged-61">{{ agedTotals.over60 }}</strong></p>
+       @if (figures.tagTotals().length > 0) {
+         <table data-testid="tag-totals">
+           <caption>Due total by tag</caption>
