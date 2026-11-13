@@ -291,6 +291,16 @@ public class SheetService {
         return sheet;
     }
 
+    /** Change the sheet's review SLA in days (none: none). Not dated. */
+    @Transactional
+    public Sheet setReviewSla(String id, String user, Integer days) {
+        Sheet sheet = sheets.findForUpdateById(id).orElseThrow(SheetNotFoundException::new);
+        sheet.setReviewSla(days);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + id + " by=" + user + " key=review-sla value="
+                + (days == null ? "" : days.toString()));
+        return sheet;
+    }
+
     /** Change the sheet's fiscal start month (1 to 12). Not dated. */
     @Transactional
     public Sheet setFiscalStartMonth(String id, String user, int month) {

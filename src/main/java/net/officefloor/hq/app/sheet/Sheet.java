@@ -110,6 +110,11 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The review SLA: a REVIEW claim whose review day (the sheet's today when it went to REVIEW) plus these
+     *  many days is before the sheet's today is late for review; none means none. Not dated. */
+    @Column(name = "review_sla")
+    private Integer reviewSla;
+
     /** The month (1 to 12) a fiscal year starts in; a fiscal year is named by the calendar year its first
      *  day falls in. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
@@ -416,6 +421,14 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    public Integer getReviewSla() {
+        return reviewSla;
+    }
+
+    public void setReviewSla(Integer reviewSla) {
+        this.reviewSla = reviewSla;
     }
 
     public int getFiscalStartMonth() {

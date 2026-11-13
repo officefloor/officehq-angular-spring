@@ -9,7 +9,8 @@ import { VoidReasons } from '../../core/void-reasons';
 // The sheet at a glance, from the same figures the lists show: per grade, the people on it today
 // (retired people left out), their due-totals added up (one that is n/a adds nothing) and how many
 // of them are active; per period,
-// its due-total and its change from the period before it by from-date (none for the earliest); per status, the claims in it; per void reason on the list, the VOID claims voided with it.
+// its due-total and its change from the period before it by from-date (none for the earliest); per status, the claims in it,
+// and the REVIEW claims late for review; per void reason on the list, the VOID claims voided with it.
 @Component({
   selector: 'app-summary',
   template: `
@@ -60,6 +61,7 @@ import { VoidReasons } from '../../core/void-reasons';
           }
         </tbody>
       </table>
+      <p>Late for review <span data-testid="summary-review-late-count">{{ reviewLate() }}</span></p>
       <table data-testid="summary-void-reasons">
         <caption>By void reason</caption>
         <thead>
@@ -108,6 +110,8 @@ export class SummaryPanel {
   });
 
   protected readonly byStatus = this.figures.statusCounts;
+
+  protected readonly reviewLate = computed(() => this.claims.claims().filter((c) => this.claims.reviewLate(c)).length);
 
   protected readonly byVoidReason = computed(() => {
     const voided = this.claims.claims().filter((c) => c.status === 'VOID');

@@ -310,6 +310,18 @@ import { PERMISSION_ACTIONS, Session } from '../../core/session';
           (keydown.backspace)="escalateAfterTouched.set(true); error.set(null)"
         />
         <p>In force: <strong data-testid="setting-escalate-after-current">{{ session.escalateAfter() ?? '' }}</strong></p>
+        <label for="setting-review-sla">Review SLA (a REVIEW claim not reviewed within this many days of going to REVIEW is late; blank for none)</label>
+        <input
+          id="setting-review-sla"
+          data-testid="setting-review-sla"
+          inputmode="numeric"
+          [value]="reviewSla()"
+          (input)="reviewSla.set(value($event)); reviewSlaTouched.set(true); error.set(null)"
+          (focus)="focused.set('review-sla')"
+          (keydown.delete)="reviewSlaTouched.set(true); error.set(null)"
+          (keydown.backspace)="reviewSlaTouched.set(true); error.set(null)"
+        />
+        <p>In force: <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' }}</strong></p>
         <label for="setting-fiscal-start-month">Fiscal start month (1 to 12)</label>
         <input
           id="setting-fiscal-start-month"
@@ -491,6 +503,8 @@ export class SettingsPanel {
   protected readonly graceDaysTouched = signal(false);
   protected readonly escalateAfter = signal('');
   protected readonly escalateAfterTouched = signal(false);
+  protected readonly reviewSla = signal('');
+  protected readonly reviewSlaTouched = signal(false);
   protected readonly entryDate = signal('');
   protected readonly entryDateTouched = signal(false);
   protected readonly fiscalStartMonth = signal('');
@@ -583,7 +597,7 @@ export class SettingsPanel {
         && !this.noteThresholdTouched() && !this.reviewThresholdTouched()
         && !this.termsTouched()
         && !this.latePctTouched() && !this.policyDateTouched() && !this.numberingFromTouched()
-        && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
+        && !this.graceDaysTouched() && !this.escalateAfterTouched() && !this.reviewSlaTouched() && !this.entryDateTouched() && !this.potTouched() && !this.parentTouched()
         && !this.fiscalStartMonthTouched() && !this.alertThresholdTouched()
         && this.gradeTermsTouched().size === 0 && this.gradeGraceTouched().size === 0
         && this.gradeProofThresholdTouched().size === 0
@@ -616,6 +630,8 @@ export class SettingsPanel {
         || (guess && this.graceDays().trim() !== (this.session.graceDays()?.toString() ?? ''));
       const escalateAfter = this.escalateAfterTouched() || pick === 'escalate-after'
         || (guess && this.escalateAfter().trim() !== (this.session.escalateAfter()?.toString() ?? ''));
+      const reviewSla = this.reviewSlaTouched() || pick === 'review-sla'
+        || (guess && this.reviewSla().trim() !== (this.session.reviewSla()?.toString() ?? ''));
       const entryDate = this.entryDateTouched() || pick === 'entry-date'
         || (guess && this.entryDate().trim() !== (this.session.entryDate() ?? ''));
       const pot = this.potTouched() || pick === 'pot'
@@ -626,7 +642,7 @@ export class SettingsPanel {
         || (guess && this.parent().trim() !== (this.session.parent() ?? ''));
       const fiscalStartMonth = this.fiscalStartMonthTouched();
       const limit = this.limitTouched() || pick === 'limit'
-        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter
+        || (guess && !rounding && !cap && !proofThreshold && !noteThreshold && !reviewThreshold && !policyDate && !numberingFrom && !graceDays && !escalateAfter && !reviewSla
           && !entryDate && !pot && !alertThreshold && !parent && !fiscalStartMonth)
         || (guess && this.limit().trim() !== (this.session.clerkLimit() ?? ''));
       const err = (limit ? await this.session.setClerkLimit(this.limit(), this.fromOf('clerk-limit')) : null)
@@ -652,6 +668,7 @@ export class SettingsPanel {
         ?? (numberingFrom ? await this.session.setPeriodNumberingFrom(this.numberingFrom()) : null)
         ?? (graceDays ? await this.session.setGraceDays(this.graceDays()) : null)
         ?? (escalateAfter ? await this.session.setEscalateAfter(this.escalateAfter()) : null)
+        ?? (reviewSla ? await this.session.setReviewSla(this.reviewSla()) : null)
         ?? (entryDate ? await this.session.setEntryDate(this.entryDate()) : null)
         ?? (fiscalStartMonth ? await this.session.setFiscalStartMonth(this.fiscalStartMonth()) : null)
         ?? (pot ? await this.savePot() : null)
@@ -694,6 +711,8 @@ export class SettingsPanel {
         this.graceDaysTouched.set(false);
         this.escalateAfter.set('');
         this.escalateAfterTouched.set(false);
+        this.reviewSla.set('');
+        this.reviewSlaTouched.set(false);
         this.entryDate.set('');
         this.entryDateTouched.set(false);
         this.fiscalStartMonth.set('');
