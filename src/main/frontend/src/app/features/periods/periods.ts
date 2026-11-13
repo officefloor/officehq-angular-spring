@@ -59,6 +59,26 @@ export class PeriodStore {
     );
   }
 
+  /** Generate one period per calendar month between two dates (blank: the sheet's today) on the
+   *  active sheet, leaving out months whose name is taken or whose days overlap a period; the
+   *  server refuses a to-date before the from-date. Resolves to how many were made. */
+  async generate(from: string, to: string): Promise<number> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const result = await firstValueFrom(
+      this.http.post<{ made: number }>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate`, {
+        from: from || null,
+        to: to || null,
+      }),
+    );
+    if (this.session.sheetId() !== sheet) return result.made;
+    const list = await firstValueFrom(
+      this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`),
+    );
+    if (this.session.sheetId() === sheet) this.periods.set(list);
+    return result.made;
+  }
+
   /** Close a period on the active sheet, fixing its due-total; the server refuses one already
    *  closed. */
   async close(name: string): Promise<void> {
@@ -134,6 +154,31 @@ export class PeriodStore {
       @if (error(); as message) {
         <p role="alert" data-testid="period-form-error">{{ message }}</p>
       }
+      <form (submit)="generate($event)">
+        <label for="period-generate-from">Generate from</label>
+        <input
+          id="period-generate-from"
+          type="date"
+          data-testid="period-generate-from"
+          [value]="generateFrom()"
+          (input)="generateFrom.set(value($event)); generateError.set(null)"
+        />
+        <label for="period-generate-to">Generate to</label>
+        <input
+          id="period-generate-to"
+          type="date"
+          data-testid="period-generate-to"
+          [value]="generateTo()"
+          (input)="generateTo.set(value($event)); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <output data-testid="period-generated" aria-live="polite">{{ generated() }}</output>
+        }
+      </form>
+      @if (generateError(); as message) {
+        <p role="alert" data-testid="period-generate-error">{{ message }}</p>
+      }
       <table>
         <thead>
           <tr>
@@ -192,6 +237,12 @@ export class Periods {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly generateFrom = signal('');
+  protected readonly generateTo = signal('');
+  /** How many periods the last generate made; null while one runs or before any. */
+  protected readonly generated = signal<number | null>(null);
+  protected readonly generateError = signal<string | null>(null);
+  private readonly generating = signal(false);
   /** The error from the last close or reopen refused, and the period it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
@@ -222,6 +273,33 @@ export class Periods {
         id: period.id,
         message: `The period ${period.name} could not be reopened: it must be closed, and your role allowed to reopen a period.`,
       });
+    }
+  }
+
+  /** Generate monthly periods between the two dates (blank: the sheet's today); a to-date before
+   *  the from-date is refused. */
+  protected async generate(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.generating()) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const from = this.generateFrom().trim();
+    const to = this.generateTo().trim();
+    if ((from && !DATE.test(from)) || (to && !DATE.test(to))) {
+      this.generateError.set('Type the dates (yyyy-mm-dd) to generate periods from and to.');
+      return;
+    }
+    if (from && to && from > to) {
+      this.generateError.set('The to-date must not be before the from-date.');
+      return;
+    }
+    this.generating.set(true);
+    try {
+      this.generated.set(await this.store.generate(from, to));
+    } catch {
+      this.generateError.set('The periods could not be generated: the to-date must not be before the from-date.');
+    } finally {
+      this.generating.set(false);
     }
   }
 

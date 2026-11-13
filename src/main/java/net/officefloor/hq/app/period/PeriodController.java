@@ -68,6 +68,23 @@ public class PeriodController {
                 request.from(), request.to()));
     }
 
+    /** Monthly periods to generate: the dates whose months they run from and to; a blank date is the
+     *  sheet's today. */
+    public record GenerateRequest(LocalDate from, LocalDate to) {
+    }
+
+    /** How many periods a generate made. */
+    public record GenerateView(int made) {
+    }
+
+    /** Generate one period per calendar month between two dates, leaving out months taken. */
+    @PostMapping("/generate")
+    public GenerateView generate(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody GenerateRequest request) {
+        return new GenerateView(service.generate(sheetId.trim(), SignedInUser.decode(user), request.from(),
+                request.to()));
+    }
+
     /** Close a period, fixing its due-total. */
     @PostMapping("/{name}/close")
     public PeriodView close(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable String name,
