@@ -1,0 +1,269 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 576b0f041..2c266cc0c 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -71,7 +71,7 @@ const DAYS = /^\d{1,5}$/;
+ /** A date, yyyy-mm-dd. */
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+-const ROLES = ['clerk', 'steward'];
++const ROLES = ['clerk', 'steward', 'viewer'];
+ 
+ /** The actions the permission matrix governs, each with the roles its standing rule allows. */
+ const PERMISSIONS: { action: string; label: string; standing: string }[] = [
+@@ -302,7 +302,8 @@ export class SettingStore {
+   }
+ }
+ 
+-// The sheet's settings: the role given each user name (clerk, the default, or steward) and the
++// The sheet's settings: the role given each user name (clerk, the default, steward, or viewer, who
++// sees everything and can change nothing) and the
+ // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
+ // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
+ // in force on its date) cannot be settled or approved until the claim has a proof,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+index 6aa9c3b21..880400c70 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkOpenService.java
+@@ -4,6 +4,7 @@ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.NoSuchElementException;
+ import net.officefloor.hq.app.setting.PermissionRefusedException;
++import net.officefloor.hq.app.setting.SettingService;
+ import java.util.Set;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -21,11 +22,13 @@ public class BulkOpenService {
+     private final ClaimListOrder order;
+     private final ClaimService service;
+     private final RollupService rollups;
++    private final SettingService settings;
+ 
+-    public BulkOpenService(ClaimListOrder order, ClaimService service, RollupService rollups) {
++    public BulkOpenService(ClaimListOrder order, ClaimService service, RollupService rollups, SettingService settings) {
+         this.order = order;
+         this.service = service;
+         this.rollups = rollups;
++        this.settings = settings;
+     }
+ 
+     /** Open each selected claim that can be opened, in list order (people in the order they were
+@@ -34,6 +37,10 @@ public class BulkOpenService {
+      *  own, so a refused one writes nothing. */
+     public Result open(String sheetId, String user, Set<Long> ids) {
+         List<Claim> opened = new ArrayList<>();
++        if (settings.isViewer(sheetId, user)) {
++            // A viewer changes nothing: every selected claim is refused.
++            return new Result(opened, ids.size());
++        }
+         for (Claim claim : order.selected(sheetId, ids)) {
+             try {
+                 opened.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+index 63bf8a945..4530fe82c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+@@ -4,6 +4,7 @@ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.NoSuchElementException;
+ import net.officefloor.hq.app.setting.PermissionRefusedException;
++import net.officefloor.hq.app.setting.SettingService;
+ import java.util.Set;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -21,11 +22,13 @@ public class BulkSettleService {
+     private final ClaimListOrder order;
+     private final ClaimService service;
+     private final RollupService rollups;
++    private final SettingService settings;
+ 
+-    public BulkSettleService(ClaimListOrder order, ClaimService service, RollupService rollups) {
++    public BulkSettleService(ClaimListOrder order, ClaimService service, RollupService rollups, SettingService settings) {
+         this.order = order;
+         this.service = service;
+         this.rollups = rollups;
++        this.settings = settings;
+     }
+ 
+     /** Settle each selected claim that can be settled, in list order (people in the order they were
+@@ -35,6 +38,10 @@ public class BulkSettleService {
+      *  one writes nothing. */
+     public Result settle(String sheetId, String user, Set<Long> ids) {
+         List<Claim> settled = new ArrayList<>();
++        if (settings.isViewer(sheetId, user)) {
++            // A viewer changes nothing: every selected claim is refused.
++            return new Result(settled, ids.size());
++        }
+         for (Claim claim : order.selected(sheetId, ids)) {
+             try {
+                 settled.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
+diff --git a/src/main/java/net/officefloor/hq/app/setting/Role.java b/src/main/java/net/officefloor/hq/app/setting/Role.java
+index 055864856..e2b0bc5a0 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/Role.java
++++ b/src/main/java/net/officefloor/hq/app/setting/Role.java
+@@ -3,9 +3,10 @@ package net.officefloor.hq.app.setting;
+ import java.util.Arrays;
+ import java.util.Optional;
+ 
+-/** The role a sheet's settings give a user name; any name not given one is a clerk. */
++/** The role a sheet's settings give a user name; any name not given one is a clerk. A viewer sees
++ *  everything and can change nothing. */
+ public enum Role {
+-    CLERK, STEWARD;
++    CLERK, STEWARD, VIEWER;
+ 
+     /** The name the screen and the audit use for the role. */
+     public String label() {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 89706d9c3..4df2c5dfd 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -55,6 +55,11 @@ public class SettingService {
+         return roles.findBySheetIdAndUser(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
+     }
+ 
++    /** Whether the user is a viewer on the sheet: one who can change nothing. */
++    public boolean isViewer(String sheetId, String user) {
++        return roleOf(sheetId, user) == Role.VIEWER;
++    }
++
+     /** The sheet's permission matrix as set, by action label, every action listed: its roles comma
+      *  separated, blank when it keeps the standing rule. */
+     public Map<String, String> permissions(String sheetId) {
+@@ -70,6 +75,9 @@ public class SettingService {
+      *  else by the standing rule. */
+     public boolean allows(String sheetId, String user, Permission action) {
+         Role role = roleOf(sheetId, user);
++        if (role == Role.VIEWER) {
++            return false;
++        }
+         return permissions.findBySheetIdAndAction(sheetId, action.label())
+                 .map(p -> Arrays.stream(p.getRoles().split(",")).anyMatch(r -> r.equals(role.label())))
+                 .orElseGet(() -> action.standing().contains(role));
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SheetRole.java b/src/main/java/net/officefloor/hq/app/setting/SheetRole.java
+index 8f0b5ffbe..85d6a03a9 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SheetRole.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SheetRole.java
+@@ -22,7 +22,7 @@ public class SheetRole {
+     @Column(name = "user_name", nullable = false)
+     private String user;
+ 
+-    /** The role's label: clerk or steward. */
++    /** The role's label: clerk, steward or viewer. */
+     @Column(name = "role", nullable = false)
+     private String role;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+new file mode 100644
+index 000000000..7ff122ae9
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+@@ -0,0 +1,63 @@
++package net.officefloor.hq.app.setting;
++
++import jakarta.servlet.http.HttpServletRequest;
++import jakarta.servlet.http.HttpServletResponse;
++import java.net.URLDecoder;
++import java.nio.charset.StandardCharsets;
++import java.util.Map;
++import java.util.Set;
++import net.officefloor.hq.app.SignedInUser;
++import org.springframework.http.HttpMethod;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Component;
++import org.springframework.util.AntPathMatcher;
++import org.springframework.web.servlet.HandlerInterceptor;
++
++/**
++ * A viewer sees every screen and figure and can change nothing: every request that would change a
++ * sheet is refused (403) before it reaches its controller, so it writes nothing to the store or the
++ * audit. Loading a sheet changes nothing and is let through; so are the bulk actions, which a
++ * viewer takes with nothing done (every selected item refused, see the bulk services).
++ */
++@Component
++public class ViewerGuard implements HandlerInterceptor {
++
++    /** The sheet-scoped requests the guard watches. */
++    public static final String PATTERN = "/api/sheets/{sheetId}/**";
++
++    /** The requests a viewer may make: loading a sheet, and the bulk actions that refuse every item. */
++    private static final Set<String> LET_THROUGH = Set.of(
++            "/api/sheets/{sheetId}/load",
++            "/api/sheets/{sheetId}/claims/open",
++            "/api/sheets/{sheetId}/claims/settle");
++
++    private final AntPathMatcher paths = new AntPathMatcher();
++    private final SettingService settings;
++
++    public ViewerGuard(SettingService settings) {
++        this.settings = settings;
++    }
++
++    @Override
++    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
++        String method = request.getMethod();
++        if (HttpMethod.GET.matches(method) || HttpMethod.HEAD.matches(method) || HttpMethod.OPTIONS.matches(method)) {
++            return true;
++        }
++        String path = request.getRequestURI().substring(request.getContextPath().length());
++        if (!paths.match(PATTERN, path) || LET_THROUGH.stream().anyMatch(p -> paths.match(p, path))) {
++            return true;
++        }
++        String header = request.getHeader(SignedInUser.HEADER);
++        if (header == null || header.isBlank()) {
++            return true;
++        }
++        Map<String, String> vars = paths.extractUriTemplateVariables(PATTERN, path);
++        String sheetId = URLDecoder.decode(vars.get("sheetId"), StandardCharsets.UTF_8).trim();
++        if (settings.isViewer(sheetId, SignedInUser.decode(header))) {
++            response.setStatus(HttpStatus.FORBIDDEN.value());
++            return false;
++        }
++        return true;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/ViewerGuardConfig.java b/src/main/java/net/officefloor/hq/app/setting/ViewerGuardConfig.java
+new file mode 100644
+index 000000000..240bc909f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/setting/ViewerGuardConfig.java
+@@ -0,0 +1,21 @@
++package net.officefloor.hq.app.setting;
++
++import org.springframework.context.annotation.Configuration;
++import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
++import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
++
++/** Puts the {@link ViewerGuard} in front of every sheet-scoped request. */
++@Configuration
++public class ViewerGuardConfig implements WebMvcConfigurer {
++
++    private final ViewerGuard guard;
++
++    public ViewerGuardConfig(ViewerGuard guard) {
++        this.guard = guard;
++    }
++
++    @Override
++    public void addInterceptors(InterceptorRegistry registry) {
++        registry.addInterceptor(guard).addPathPatterns("/api/sheets/**");
++    }
++}
+diff --git a/src/main/resources/db/migration/V39__viewer_role.sql b/src/main/resources/db/migration/V39__viewer_role.sql
+new file mode 100644
+index 000000000..60c48703d
+--- /dev/null
++++ b/src/main/resources/db/migration/V39__viewer_role.sql
+@@ -0,0 +1,12 @@
++-- A third role, viewer: sees every figure and can change nothing. The role check is rebuilt to allow it.
++CREATE TABLE sheet_role_new (
++    id BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(200) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(200) NOT NULL,
++    role VARCHAR(20) NOT NULL,
++    CHECK (role IN ('clerk', 'steward', 'viewer'))
++);
++INSERT INTO sheet_role_new (sheet_id, user_name, role) SELECT sheet_id, user_name, role FROM sheet_role ORDER BY id;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_new RENAME TO sheet_role;
++CREATE UNIQUE INDEX sheet_role_sheet_user ON sheet_role (sheet_id, user_name);
