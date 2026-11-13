@@ -1,0 +1,150 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index ef7c22036..ff0051f9f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -227,7 +227,10 @@ public class Person {
+ 
+     /** Give them another name they go by, stored trimmed. */
+     public void addAlias(String alias) {
+-        aliases.add(new PersonAlias(sheetId, alias.trim()));
++        String trimmed = alias.trim();
++        String key = trimmed.toLowerCase(Locale.ROOT);
++        int copy = (int) aliases.stream().filter(a -> a.getAlias().toLowerCase(Locale.ROOT).equals(key)).count();
++        aliases.add(new PersonAlias(sheetId, trimmed, copy));
+     }
+ 
+     /** A copy of them for another sheet: every grade they were given (with its from-date), their terms,
+@@ -240,7 +243,7 @@ public class Person {
+         copy.terms = terms;
+         copy.contact = contact;
+         copy.originSheet = sheetId;
+-        aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias())));
++        aliases.forEach(a -> copy.aliases.add(new PersonAlias(otherSheetId, a.getAlias(), a.getAliasCopy())));
+         return copy;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonAlias.java b/src/main/java/net/officefloor/hq/app/person/PersonAlias.java
+index a1fa0a7dc..4af57f878 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonAlias.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonAlias.java
+@@ -23,12 +23,21 @@ public class PersonAlias {
+     @Column(name = "alias", nullable = false)
+     private String alias;
+ 
++    /** Which of the person's aliases that compare equal this is: 0 for the first. */
++    @Column(name = "alias_copy", nullable = false)
++    private int aliasCopy;
++
+     protected PersonAlias() {
+     }
+ 
+     PersonAlias(String sheetId, String alias) {
++        this(sheetId, alias, 0);
++    }
++
++    PersonAlias(String sheetId, String alias, int aliasCopy) {
+         this.sheetId = sheetId;
+         this.alias = alias;
++        this.aliasCopy = aliasCopy;
+     }
+ 
+     public Long getId() {
+@@ -42,4 +51,8 @@ public class PersonAlias {
+     public String getAlias() {
+         return alias;
+     }
++
++    public int getAliasCopy() {
++        return aliasCopy;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index d77ad4884..fc43432d7 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -472,7 +472,11 @@ public class PersonService {
+      *  are not carried. They leave this sheet entirely: their patron links, pool memberships, watches,
+      *  statements, holds and fixed period figures are dropped. Refused for anyone but a steward, a retired
+      *  person, this sheet's own id, an archived sheet, and when their name, an alias or their contact is already
+-     *  on the other sheet or their name or an alias on another sheet of its tree; a sheet never loaded is started. Answers the person as they arrived. */
++     *  on the other sheet or their name or an alias on another sheet of its tree; a sheet never loaded is started.
++     *  When their name or an alias is, ignoring case, that of one person on the other sheet, they are instead
++     *  merged into that person there exactly as a merge would (claims listed after theirs, names joining their
++     *  aliases, contact dropped); refused when it is that of more than one, or that person is retired. Answers
++     *  the person as they arrived, or whom they were merged into. */
+     @Transactional
+     public Person transfer(String sheetId, String user, long personId, String toSheetId) {
+         Person from = people.findByIdAndSheetId(personId, sheetId).orElseThrow(PersonNotFoundException::new);
+@@ -497,20 +501,35 @@ public class PersonService {
+         List<String> names = new ArrayList<>();
+         names.add(from.getName());
+         names.addAll(from.getAliases());
++        // someone there with one of their names or aliases is whom they merge into
++        Map<Long, Person> matched = new LinkedHashMap<>();
+         for (String name : names) {
+-            if (people.nameTaken(to, name, null)
++            people.findByNameOrAlias(to, name).ifPresent(p -> matched.putIfAbsent(p.getId(), p));
++        }
++        if (matched.size() > 1) {
++            throw new TransferRefusedException("The names of " + from.getName() + " belong to more than one person"
++                    + " on sheet " + to + ".");
++        }
++        Person into = matched.values().stream().findFirst().orElse(null);
++        if (into != null && into.isRetired()) {
++            throw new TransferRefusedException(into.getName() + " on sheet " + to + " is retired, so "
++                    + from.getName() + " cannot be merged into them.");
++        }
++        for (String name : names) {
++            if ((into == null && people.nameTaken(to, name, null))
+                     || namesInTree(to, from.getId()).contains(name.toLowerCase(Locale.ROOT))) {
+                 throw new TransferRefusedException("The name " + name + " is already in use on sheet " + to + ".");
+             }
+         }
+-        if (from.getContact() != null && people.contactTaken(to, from.getContact(), null)) {
++        // a merged person's contact is dropped, as a merge drops it
++        if (into == null && from.getContact() != null && people.contactTaken(to, from.getContact(), null)) {
+             throw new TransferRefusedException("The contact " + from.getContact() + " is already in use on sheet "
+                     + to + ".");
+         }
+ 
+         Rollup.Snapshot beforeHere = rollup.take(sheetId);
+         Rollup.Snapshot beforeThere = rollup.take(to);
+-        Person arrived = saved(from.copyTo(to));
++        Person arrived = into != null ? into : saved(from.copyTo(to));
+         List<Claim> leaving = new ArrayList<>(
+                 claims.findForUpdateBySheetIdAndPersonIdOrderByListOrderDesc(sheetId, from.getId()));
+         List<Claim> listed = new ArrayList<>(leaving);
+@@ -558,12 +577,20 @@ public class PersonService {
+         people.flush();
+         people.delete(from);
+         people.flush();
++        if (into != null) {
++            names.forEach(into::addAlias);
++            arrived = people.saveAndFlush(into);
++        }
+ 
+         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user + " name=" + from.getName()
+                 + " to=" + to);
+         rollup.recordChanges(sheetId, user, beforeHere);
+-        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + to + " by=" + user + " name=" + arrived.getName()
++        audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + to + " by=" + user + " name=" + from.getName()
+                 + " from=" + sheetId);
++        if (into != null) {
++            audit.recordOnCommit("PERSON_MERGED sheet=" + to + " by=" + user + " from=" + from.getName()
++                    + " into=" + arrived.getName());
++        }
+         rollup.recordChanges(to, user, beforeThere);
+         return arrived;
+     }
+diff --git a/src/main/resources/db/migration/V73__person_alias_copy.sql b/src/main/resources/db/migration/V73__person_alias_copy.sql
+new file mode 100644
+index 000000000..b895419d5
+--- /dev/null
++++ b/src/main/resources/db/migration/V73__person_alias_copy.sql
+@@ -0,0 +1,6 @@
++-- A person merged with another may hold two aliases that compare equal (Addie and addie): alias_copy
++-- tells them apart on the one person (0 for the first, 1 for the next, ...), so the index still refuses
++-- an alias, as compared, held by two people at once.
++ALTER TABLE person_alias ADD COLUMN alias_copy INT DEFAULT 0 NOT NULL;
++DROP INDEX person_alias_sheet_key;
++CREATE UNIQUE INDEX person_alias_sheet_key ON person_alias (sheet_id, alias_key, alias_copy);
