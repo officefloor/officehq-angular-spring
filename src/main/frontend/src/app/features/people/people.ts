@@ -228,6 +228,9 @@ interface StatementTaken {
             <th scope="col">Due</th>
             <th scope="col">Overdue</th>
             <th scope="col">Overdue due</th>
+            <th scope="col">Due aged 0–30</th>
+            <th scope="col">Due aged 31–60</th>
+            <th scope="col">Due aged 61+</th>
             <th scope="col">Statements</th>
             <th scope="col">Last stated</th>
             <th scope="col">Stated on</th>
@@ -266,6 +269,10 @@ interface StatementTaken {
               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
               <td data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</td>
               <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
+              @let aged = agedOf(p);
+              <td data-testid="person-aged-0-30">{{ aged[0] }}</td>
+              <td data-testid="person-aged-31-60">{{ aged[1] }}</td>
+              <td data-testid="person-aged-61">{{ aged[2] }}</td>
               <td data-testid="person-statement-count">{{ p.statementCount }}</td>
               <td data-testid="person-stated-total">{{ p.statedTotal ?? '' }}</td>
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
@@ -903,6 +910,23 @@ export class People {
   /** The dues of a person's overdue claims that count added up (a claim with no figure adds nothing). */
   protected overdueTotalOf(person: Person): string {
     return money(this.overdueCentsOf(person));
+  }
+
+  /** The dues of a person's OPEN and PENDING claims that count added up by the claim's age on the
+   *  sheet's today, the days from its date: 0 to 30 (a claim dated after today too), 31 to 60, and 61
+   *  or more (a claim with no figure adds nothing). */
+  protected agedOf(person: Person): [string, string, string] {
+    const today = this.session.today();
+    const floor = this.floor();
+    const late = this.late();
+    const sums = [0, 0, 0];
+    for (const c of this.countedOf(person.id)) {
+      if (!isOpen(c)) continue;
+      const age = today === null ? 0 : Math.round((Date.parse(today) - Date.parse(c.date)) / 86_400_000);
+      const bucket = age <= 30 ? 0 : age <= 60 ? 1 : 2;
+      sums[bucket] += claimDueCents(c, this.rates.ofGradeOn(person.grades, c.date), floor, late) ?? 0;
+    }
+    return [money(sums[0]), money(sums[1]), money(sums[2])];
   }
 
   private overdueCentsOf(person: Person): number {
