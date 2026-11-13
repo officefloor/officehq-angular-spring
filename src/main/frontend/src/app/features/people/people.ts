@@ -679,15 +679,21 @@ export class People {
       .join(', ');
   }
 
-  /** A person's patrons' due-totals added up, skipping those with no figure; 0.00 with no patrons. */
+  /** A person's patrons' settled figures added up: the due frozen on each of their SETTLED claims dated
+   *  within the 90 days up to and including the sheet's today; 0.00 with none. */
   protected backingOf(person: Person): string {
-    const byId = new Map(this.people().map((p) => [p.id, p]));
+    const today = this.session.today();
+    if (today === null) return money(0);
+    const since = plusDays(today, -89);
+    const byPerson = this.claimsByPerson();
     return money(
-      person.patronIds.reduce((sum, id) => {
-        const patron = byId.get(id);
-        const due = patron ? this.dueCentsBy(patron) : null;
-        return due === null ? sum : sum + due;
-      }, 0),
+      person.patronIds.reduce(
+        (sum, id) =>
+          (byPerson.get(id) ?? [])
+            .filter((c) => c.status === 'SETTLED' && c.settledDue !== null && since <= c.date && c.date <= today)
+            .reduce((total, c) => total + cents(c.settledDue ?? '0'), sum),
+        0,
+      ),
     );
   }
 
