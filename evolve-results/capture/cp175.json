@@ -1,0 +1,64 @@
+{
+  "checkpoint": 175,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp175_transfer-undo",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "On the sheet a transfer brought a person to, a steward can undo it on the same sheet-today they\narrived (a button on the row; any later day, anyone else, or a person who did not arrive by transfer\nis refused with an error on the row): the person is transferred back to the sheet they came from by\nexactly the transfer rules and lines, and this sheet then writes PERSON_TRANSFER_UNDONE name=<name>\nto=<sheet id>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nOn the sheet a transfer brought a person to, a steward can undo it on the same sheet-today they\narrived (a button on the row; any later day, anyone else, or a person who did not arrive by transfer\nis refused with an error on the row): the person is transferred back to the sheet they came from by\nexactly the transfer rules and lines, and this sheet then writes PERSON_TRANSFER_UNDONE name=<name>\nto=<sheet id>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "05438d696d3eb9463f0fa778c5c6d6c99b3d02b7",
+  "reset_sha": "",
+  "preagent_sha": "b35a3ef9c2f632cf785c15b900e9b4a70352c53c",
+  "prev_sha": "b35a3ef9c2f632cf785c15b900e9b4a70352c53c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6878688,
+    "input_tokens": 36,
+    "output_tokens": 8105,
+    "cache_read_tokens": 723644,
+    "cache_creation_tokens": 47612,
+    "num_turns": 20,
+    "duration_ms": 284392,
+    "duration_api_ms": 82690,
+    "model": "claude-opus-5-5",
+    "session_id": "eaeabfe8-abdc-4d28-a367-2ca8d67ddc38",
+    "stop_reason": "success",
+    "result_text": "Transfer undo is in, and `bin/e2e` passes all 4 tests: the transfer-undo test and the three regression scenarios.\n\n**How it works:** every person row now has an **Undo transfer** button (`person-transfer-undo`). The server refuses the undo, and the row shows `person-error`, in three cases:\n- the user isn't a steward on this sheet;\n- the person didn't arrive by transfer;\n- the sheet's today is no longer the day they arrived.\n\nOtherwise the person goes back to the sheet they came from through the existing transfer code, so they get the same checks, renumbering and audit lines as any transfer. This sheet then writes `PERSON_TRANSFER_UNDONE name=<name> to=<sheet id>`, followed by its updated figures.\n\n**What changed:**\n- **Stored data:** a new migration, `V97__person_arrived_on.sql`, adds an `arrived_on` date to people. A transfer sets it to the receiving sheet's today.\n- **Server:** `undoTransfer` in `PersonService` does the checks and runs the transfer back. `PersonController` exposes it as `POST /{personId}/transfer-undo`.\n- **Front end:** an `undoTransfer` call in `core/people.ts`, and the button and error handling in `features/people/people.ts`.\n\n**Decisions for you:**\n- **Who counts as \"anyone else\":** I read it as anyone who isn't a steward, so any steward on the sheet can undo, not only the one who made the transfer. If you meant only the person who made the transfer, the app would also need to record who made each transfer.\n- **Undo after a merge:** a person who was merged into someone already on the sheet, rather than arriving as a new row, gets no arrival date. Undo refuses them.\n- **Cloned sheets:** cloning a sheet doesn't copy the arrival date, so people on a clone can't be undone back.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6878688,
+        "num_turns": 20,
+        "duration_ms": 284392,
+        "duration_api_ms": 82690,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp175.agent.jsonl",
+  "agent_diff_file": "cp175.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
