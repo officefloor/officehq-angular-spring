@@ -69,6 +69,13 @@ public class PeriodController {
         return PeriodView.of(service.close(sheetId.trim(), SignedInUser.decode(user), name));
     }
 
+    /** Reopen a closed period, making its due-total live again; only a steward may. */
+    @PostMapping("/{name}/reopen")
+    public PeriodView reopen(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable String name,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PeriodView.of(service.reopen(sheetId.trim(), SignedInUser.decode(user), name));
+    }
+
     /** A period already closed is refused. */
     @ExceptionHandler(PeriodClosedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
@@ -80,7 +87,8 @@ public class PeriodController {
     public void notFound() {
     }
 
-    /** A name taken, dates running backwards or a period overlapping another is refused. */
+    /** A name taken, dates running backwards, a period overlapping another, or a reopen by other
+     *  than a steward or of a period not closed is refused. */
     @ExceptionHandler({PeriodRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {

@@ -71,6 +71,21 @@ export class PeriodStore {
     this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
   }
 
+  /** Reopen a closed period on the active sheet, making its due-total live again; the server
+   *  refuses anyone but a steward, and a period not closed. */
+  async reopen(name: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<Period>(
+        `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(name)}/reopen`,
+        null,
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const list = await firstValueFrom(
       this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`),
@@ -144,6 +159,14 @@ export class PeriodStore {
                 >
                   Close
                 </button>
+                <button
+                  type="button"
+                  data-testid="period-reopen"
+                  [attr.aria-label]="'Reopen period ' + p.name"
+                  (click)="reopen(p)"
+                >
+                  Reopen
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" data-testid="period-error">{{ e.message }}</p>
@@ -166,7 +189,7 @@ export class Periods {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
-  /** The error from the last close refused, and the period it belongs to. */
+  /** The error from the last close or reopen refused, and the period it belongs to. */
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -182,6 +205,20 @@ export class Periods {
       await this.store.close(period.name);
     } catch {
       this.rowError.set({ id: period.id, message: `The period ${period.name} could not be closed.` });
+    }
+  }
+
+  /** Reopen a closed period; one not closed, or a reopen by anyone but a steward, is refused on
+   *  its row. */
+  protected async reopen(period: Period): Promise<void> {
+    this.rowError.set(null);
+    try {
+      await this.store.reopen(period.name);
+    } catch {
+      this.rowError.set({
+        id: period.id,
+        message: `The period ${period.name} could not be reopened: only a steward may reopen a closed period.`,
+      });
     }
   }
 
