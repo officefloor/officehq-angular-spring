@@ -41,20 +41,27 @@ public class PersonController {
         }
     }
 
+    /** A hold put on a person: from its from-date to its to-date (null: it does not end). */
+    public record HoldView(LocalDate from, LocalDate to) {
+        public static HoldView of(PersonHold hold) {
+            return new HoldView(hold.getFrom(), hold.getTo());
+        }
+    }
+
     /** A person as the screen shows them, with the grade in force on the sheet's today and every
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
-     *  when (null when not), and whether they are on hold, and the ids of their patrons in the order
+     *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
      *  they were named. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            boolean held, List<Long> patronIds) {
+            List<HoldView> holds, List<Long> patronIds) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
-                StatementSummary statements, List<Long> patronIds) {
+                StatementSummary statements, List<PersonHold> holds, List<Long> patronIds) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
-                    person.isHeld(), patronIds);
+                    holds.stream().map(HoldView::of).toList(), patronIds);
         }
     }
 
@@ -75,6 +82,10 @@ public class PersonController {
 
     /** A retirement: the date the person is retired from (blank takes the sheet's today). */
     public record RetireRequest(LocalDate from) {
+    }
+
+    /** A hold: the date it runs from (blank takes the sheet's today) and an optional to-date. */
+    public record HoldRequest(LocalDate from, LocalDate to) {
     }
 
     /** A patron to name: the id of another person on the sheet. */
@@ -103,10 +114,12 @@ public class PersonController {
         Map<Long, StatementSummary> summaries = statements.summaries(sheet);
         Map<Long, List<Long>> patrons = service.patronIds(sheet);
         Map<Long, List<PersonGrade>> given = grades.bySheet(sheet);
+        Map<Long, List<PersonHold>> holds = service.holds(sheet);
         LocalDate today = sheets.today(sheet);
         return service.list(sheet).stream()
                 .map(p -> PersonView.of(p, given.getOrDefault(p.getId(), List.of()), today,
                         summaries.getOrDefault(p.getId(), StatementSummary.NONE),
+                        holds.getOrDefault(p.getId(), List.of()),
                         patrons.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
@@ -141,13 +154,14 @@ public class PersonController {
         return withStatements(service.retire(sheet, by, id, request.from()));
     }
 
-    /** Put a person on hold, or take them off hold. */
+    /** Put a hold on a person from a date to an optional to-date. */
     @PostMapping("/{id}/hold")
     public PersonView hold(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
-            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody HoldRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return withStatements(rollups.track(sheet, by, () -> service.toggleHold(sheet, by, id)));
+        return withStatements(rollups.track(sheet, by,
+                () -> service.hold(sheet, by, id, request.from(), request.to())));
     }
 
     /** Name another person on the sheet as a person's patron. */
@@ -159,8 +173,8 @@ public class PersonController {
         return withStatements(service.addPatron(sheet, by, id, request.patronId()));
     }
 
-    /** A date that is not a real yyyy-mm-dd date is refused. */
-    @ExceptionHandler(HttpMessageNotReadableException.class)
+    /** A date that is not a real yyyy-mm-dd date, or a hold that ends before it starts, is refused. */
+    @ExceptionHandler({HttpMessageNotReadableException.class, HoldRefusedException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
     }
@@ -174,7 +188,8 @@ public class PersonController {
 
     private PersonView withStatements(Person person) {
         return PersonView.of(person, grades.of(person.getId()), sheets.today(person.getSheetId()),
-                statements.summary(person.getSheetId(), person.getId()), service.patronIds(person.getId()));
+                statements.summary(person.getSheetId(), person.getId()), service.holds(person.getId()),
+                service.patronIds(person.getId()));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */

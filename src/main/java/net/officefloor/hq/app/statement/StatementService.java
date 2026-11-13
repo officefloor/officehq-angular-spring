@@ -12,7 +12,9 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonGradeService;
+import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -32,18 +34,20 @@ public class StatementService {
     private final PersonRepository people;
     private final RateService rates;
     private final PersonGradeService grades;
+    private final PersonService personService;
     private final SheetService sheets;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
-            PersonRepository people, RateService rates, PersonGradeService grades, SheetService sheets,
-            Audit audit) {
+            PersonRepository people, RateService rates, PersonGradeService grades, PersonService personService,
+            SheetService sheets, Audit audit) {
         this.statements = statements;
         this.claims = claims;
         this.claimService = claimService;
         this.people = people;
         this.rates = rates;
         this.grades = grades;
+        this.personService = personService;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -68,11 +72,13 @@ public class StatementService {
                 .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
         LocalDate today = sheets.today(sheetId);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
+        List<PersonHold> holds = personService.holds(personId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
         int counted = 0;
         for (Claim claim : theirs) {
-            if (!claim.countsLive(person.isHeld())) {
+            // A held claim is left out of the statement, whether or not an earlier one bound it.
+            if (!claim.counts() || claim.heldBy(holds)) {
                 claim.unbind();
                 continue;
             }

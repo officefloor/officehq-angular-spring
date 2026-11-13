@@ -12,7 +12,9 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -28,16 +30,19 @@ public class PeriodService {
     private final ClaimRepository claims;
     private final ClaimService claimService;
     private final PersonRepository people;
+    private final PersonService personService;
     private final SettingService settings;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
-            ClaimService claimService, PersonRepository people, SettingService settings, Audit audit) {
+            ClaimService claimService, PersonRepository people, PersonService personService, SettingService settings,
+            Audit audit) {
         this.periods = periods;
         this.sheets = sheets;
         this.claims = claims;
         this.claimService = claimService;
         this.people = people;
+        this.personService = personService;
         this.settings = settings;
         this.audit = audit;
     }
@@ -69,7 +74,7 @@ public class PeriodService {
     }
 
     /** Close a period, fixing its due-total: the figures shown on the claims that count dated in it
-     *  (a claim with no figure adds nothing; a held person's OPEN claims count for nothing). A period already closed is refused. */
+     *  (a claim with no figure adds nothing; an OPEN claim dated within its person's hold and not bound by a statement counts for nothing). A period already closed is refused. */
     @Transactional
     public Period close(String sheetId, String user, String name) {
         sheets.lock(sheetId);
@@ -80,10 +85,12 @@ public class PeriodService {
         }
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
-            if (person == null || !claim.countsLive(person.isHeld()) || !period.contains(claim.getDate())) {
+            if (person == null || !claim.countsLive(holds.getOrDefault(person.getId(), List.of()))
+                    || !period.contains(claim.getDate())) {
                 continue;
             }
             BigDecimal due = claimService.dueOf(sheetId, person, claim);

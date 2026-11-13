@@ -2,11 +2,17 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, isOpen, money, overdue } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, money, overdue } from '../claims/claims';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
 import { Summary } from '../summary/summary';
+
+/** A hold put on a person: from its from-date to its to-date, both included (null: it does not end). */
+interface Hold {
+  from: string;
+  to: string | null;
+}
 
 interface Person {
   id: number;
@@ -27,8 +33,9 @@ interface Person {
   retired: boolean;
   /** The date the person is retired from; null when they are not retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: while held, their OPEN and PENDING claims count in no live total. */
-  held: boolean;
+  /** The holds put on the person, in the order they were: their OPEN claims dated within one, unless
+   *  bound by a statement, count in no live total. */
+  holds: Hold[];
   /** The ids of the person's patrons, in the order they were named. */
   patronIds: number[];
 }
@@ -151,6 +158,7 @@ interface StatementTaken {
             <th scope="col">Retired</th>
             <th scope="col">Retired from</th>
             <th scope="col">On hold</th>
+            <th scope="col">Holds</th>
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
             <th scope="col">Claims</th>
@@ -171,7 +179,14 @@ interface StatementTaken {
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
-              <td data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</td>
+              <td data-testid="person-hold">{{ p.holds.length > 0 ? 'yes' : 'no' }}</td>
+              <td>
+                <ul [attr.aria-label]="'Holds of ' + p.name">
+                  @for (h of p.holds; track $index) {
+                    <li data-testid="person-hold-line">from {{ h.from }}{{ h.to ? ' to ' + h.to : '' }}</li>
+                  }
+                </ul>
+              </td>
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td>
@@ -222,13 +237,29 @@ interface StatementTaken {
                 >
                   Retire
                 </button>
+                <label [for]="'person-hold-from-' + p.id">Hold from</label>
+                <input
+                  type="date"
+                  [id]="'person-hold-from-' + p.id"
+                  data-testid="person-hold-from"
+                  [value]="holdDates()[p.id]?.from ?? ''"
+                  (input)="setHoldDate(p.id, 'from', value($event))"
+                />
+                <label [for]="'person-hold-to-' + p.id">Hold to</label>
+                <input
+                  type="date"
+                  [id]="'person-hold-to-' + p.id"
+                  data-testid="person-hold-to"
+                  [value]="holdDates()[p.id]?.to ?? ''"
+                  (input)="setHoldDate(p.id, 'to', value($event))"
+                />
                 <button
                   type="button"
                   data-testid="person-hold-toggle"
-                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name"
-                  (click)="toggleHold(p)"
+                  [attr.aria-label]="'Hold ' + p.name"
+                  (click)="hold(p)"
                 >
-                  {{ p.held ? 'Release' : 'Hold' }}
+                  Hold
                 </button>
                 <label [for]="'person-patron-select-' + p.id">Patron</label>
                 <select
@@ -289,13 +320,19 @@ export class People {
   );
   /** The retirement date typed on each person's row, by person id. */
   protected readonly retireDates = signal<Record<number, string>>({});
+  /** The hold from- and to-dates typed on each person's row, by person id. */
+  protected readonly holdDates = signal<Record<number, { from?: string; to?: string }>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
-  /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except a held
-   *  person's OPEN and PENDING ones. */
+  /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except an OPEN
+   *  one dated within one of its person's holds and not bound by a statement. */
   private readonly live = computed(() => {
-    const held = new Set(this.people().filter((p) => p.held).map((p) => p.id));
-    return this.claims().filter((c) => counts(c) && !(isOpen(c) && held.has(c.personId)));
+    const holds = new Map(this.people().map((p) => [p.id, p.holds]));
+    const held = (c: Claim) =>
+      c.status === 'OPEN' &&
+      !c.stated &&
+      (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
+    return this.claims().filter((c) => counts(c) && !held(c));
   });
   /** Each person's claims that count toward what is claimed and due, by person id. */
   private readonly countedByPerson = computed(() => {
@@ -415,6 +452,7 @@ export class People {
       this.claims.set([]);
       this.rowError.set(null);
       this.retireDates.set({});
+      this.holdDates.set({});
       this.patronChoices.set({});
       this.selectedClaims.set(new Set());
       this.bulkOpenResult.set(null);
@@ -514,21 +552,28 @@ export class People {
     );
   }
 
-  /** Put a person on hold, or take them off hold; their row and the totals then show it. */
-  protected async toggleHold(person: Person): Promise<void> {
+  protected setHoldDate(personId: number, field: 'from' | 'to', date: string): void {
+    this.holdDates.update((dates) => ({ ...dates, [personId]: { ...dates[personId], [field]: date } }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Put a hold on a person from the typed from-date (blank takes the sheet's today) to the typed
+   *  to-date (blank: it does not end); their row and the totals then show it. */
+  protected async hold(person: Person): Promise<void> {
     this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
+    const typed = this.holdDates()[person.id] ?? {};
+    const from = (typed.from ?? '').trim() || null;
+    const to = (typed.to ?? '').trim() || null;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/hold`;
     try {
-      const saved = await firstValueFrom(this.http.post<Person>(url, null));
+      const saved = await firstValueFrom(this.http.post<Person>(url, { from, to }));
       if (this.session.sheetId() !== sheet) return;
       this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.holdDates.update((dates) => ({ ...dates, [person.id]: {} }));
     } catch {
-      this.rowError.set({
-        id: person.id,
-        message: `${person.name} could not be ${person.held ? 'taken off hold' : 'put on hold'}.`,
-      });
+      this.rowError.set({ id: person.id, message: `${person.name} could not be put on hold.` });
     }
   }
 

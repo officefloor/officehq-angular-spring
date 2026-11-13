@@ -19,15 +19,17 @@ public class PersonService {
     private final PersonRepository people;
     private final PersonPatronRepository patrons;
     private final PersonGradeService grades;
+    private final PersonHoldRepository holds;
     private final SheetService sheets;
     private final EntityManager entityManager;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
-            SheetService sheets, EntityManager entityManager, Audit audit) {
+            PersonHoldRepository holds, SheetService sheets, EntityManager entityManager, Audit audit) {
         this.people = people;
         this.patrons = patrons;
         this.grades = grades;
+        this.holds = holds;
         this.entityManager = entityManager;
         this.sheets = sheets;
         this.audit = audit;
@@ -88,16 +90,32 @@ public class PersonService {
         return saved;
     }
 
-    /** Put a person on hold, or take them off hold when they are held already. */
+    /** Put a hold on a person from a date (a missing date takes the sheet's today) to an optional
+     *  to-date, keeping the holds they have; refused when the to-date is before the from-date. */
     @Transactional
-    public Person toggleHold(String sheetId, String user, Long id) {
+    public Person hold(String sheetId, String user, Long id, LocalDate from, LocalDate to) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
-        person.setHeld(!person.isHeld());
-        Person saved = people.saveAndFlush(person);
-        audit.recordOnCommit((saved.isHeld() ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId
-                + " by=" + user + " name=" + saved.getName());
-        return saved;
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        if (to != null && to.isBefore(on)) {
+            throw new HoldRefusedException("The hold's to-date " + to + " is before its from-date " + on);
+        }
+        holds.saveAndFlush(new PersonHold(sheetId, id, on, to));
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " from=" + on);
+        return person;
+    }
+
+    /** Each person's holds on the sheet, in the order they were put on, by person id; a person with
+     *  none is absent. */
+    public Map<Long, List<PersonHold>> holds(String sheetId) {
+        return holds.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(PersonHold::getPersonId));
+    }
+
+    /** A person's holds, in the order they were put on. */
+    public List<PersonHold> holds(Long personId) {
+        return holds.findByPersonIdOrderByIdAsc(personId);
     }
 
     /** Each person's patron ids on the sheet, in the order they were named, by person id; a person

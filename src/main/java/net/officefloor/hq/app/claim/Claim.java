@@ -10,6 +10,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
+import net.officefloor.hq.app.person.PersonHold;
 
 /** A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
  *  when added). A claim with a negative amount is a correction, naming the number of the SETTLED
@@ -206,8 +208,14 @@ public class Claim {
         return status.counts();
     }
 
-    /** Whether the claim counts in live totals, its person held or not: while held, only SETTLED ones do. */
-    public boolean countsLive(boolean personHeld) {
-        return personHeld ? status == ClaimStatus.SETTLED : counts();
+    /** Whether the claim is held: it is OPEN and dated within one of its person's holds. */
+    public boolean heldBy(List<PersonHold> holds) {
+        return status == ClaimStatus.OPEN && holds.stream().anyMatch(hold -> hold.contains(date));
+    }
+
+    /** Whether the claim counts in live totals given its person's holds: one that counts, unless it
+     *  is held and not bound by a statement (a bound claim stays in whatever its date). */
+    public boolean countsLive(List<PersonHold> holds) {
+        return counts() && (stated || !heldBy(holds));
     }
 }

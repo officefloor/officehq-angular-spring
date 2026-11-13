@@ -33,10 +33,6 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: while held, their OPEN claims count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
-
     protected Person() {
     }
 
@@ -76,13 +72,5 @@ public class Person {
     /** Whether the person is retired: any retirement date set counts, even one after the sheet's today. */
     public boolean isRetired() {
         return retiredFrom != null;
-    }
-
-    public boolean isHeld() {
-        return held;
-    }
-
-    public void setHeld(boolean held) {
-        this.held = held;
     }
 }

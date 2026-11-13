@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -15,7 +14,9 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonGradeService;
+import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -48,16 +49,19 @@ public class RollupService {
     private final ClaimService claimService;
     private final RateService rates;
     private final PersonGradeService grades;
+    private final PersonService personService;
     private final SheetService sheets;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
-            RateService rates, PersonGradeService grades, SheetService sheets, Audit audit) {
+            RateService rates, PersonGradeService grades, PersonService personService, SheetService sheets,
+            Audit audit) {
         this.people = people;
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
         this.grades = grades;
+        this.personService = personService;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -88,9 +92,9 @@ public class RollupService {
     private Rollup rollup(String sheetId) {
         LocalDate today = sheets.today(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
-        Set<Long> held = sheetPeople.stream().filter(Person::isHeld).map(Person::getId).collect(Collectors.toSet());
+        Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
         Map<Long, List<Claim>> counted = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
-                .filter(claim -> claim.countsLive(held.contains(claim.getPersonId())))
+                .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of())))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;
