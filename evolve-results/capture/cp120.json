@@ -1,0 +1,72 @@
+{
+  "checkpoint": 120,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp120_hold-pauses-cuts",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    115,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp115_nested-pools.spec.ts::nested pools",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "A person with a hold in force on the sheet's today (a hold whose dates include today) gets no cut\nfrom any pool, and their share is spread over the other members with a cut in proportion to those\nmembers' shares: each member's cut is the pot times their share divided by the shares of the members\nwith a cut, added up, rounded half to even, with the remainder to the largest share as before (when\nno member is left with a cut, each shows 0.00). The pool's total share and balance are unchanged by\nthe hold.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person with a hold in force on the sheet's today (a hold whose dates include today) gets no cut\nfrom any pool, and their share is spread over the other members with a cut in proportion to those\nmembers' shares: each member's cut is the pot times their share divided by the shares of the members\nwith a cut, added up, rounded half to even, with the remainder to the largest share as before (when\nno member is left with a cut, each shows 0.00). The pool's total share and balance are unchanged by\nthe hold.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4f1100d8bb1356728a9b3c42ce9f5ff0bacf6d58",
+  "reset_sha": "",
+  "preagent_sha": "a766f411ce1e96c747ffa452c0945188b281cd45",
+  "prev_sha": "a766f411ce1e96c747ffa452c0945188b281cd45",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8250078000000001,
+    "input_tokens": 32,
+    "output_tokens": 8155,
+    "cache_read_tokens": 739539,
+    "cache_creation_tokens": 64234,
+    "num_turns": 16,
+    "duration_ms": 414622,
+    "duration_api_ms": 77929,
+    "model": "claude-opus-5-5",
+    "session_id": "2d25bda3-fed5-4bae-89f3-5e304f7e0cff",
+    "stop_reason": "success",
+    "result_text": "Holds now pause pool cuts, and all 4 tests in `bin/e2e` pass.\n\n**The hold change** (front end only, since cuts were already worked out there):\n- `src/main/frontend/src/app/features/pools/pools.ts`: a person member with a hold covering the sheet's today now gets 0.00 in every pool. The rest of the pot is split among the members who still get a cut, in proportion to their shares and rounded half to even. Any leftover hundredths go to the largest share among them, as before. If nobody is left with a cut, every member shows 0.00. A pool's total share and whether it balances don't change because of a hold.\n- `src/main/frontend/src/app/features/people/people.ts`: the cut total on each person's row uses the same rule, based on the sheet's today.\n\n**A second fix the test needed:** one test failed for a reason unrelated to holds. It looks at the sheet as of an earlier date and expects to see a statement that was cancelled later. Cancelling a statement used to delete it, so that earlier view had lost it. Now:\n- A new migration, `V72__statement_cancelled.sql`, adds a `cancelled_on` date to the statement table.\n- Cancelling a statement marks it with that date instead of deleting it.\n- The current view ignores cancelled statements. A view as of an earlier date still shows a statement if it was cancelled after that date.\n\nThis also means cancelled statements now stay in the database.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8250078000000001,
+        "num_turns": 16,
+        "duration_ms": 414622,
+        "duration_api_ms": 77929,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp120.agent.jsonl",
+  "agent_diff_file": "cp120.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
