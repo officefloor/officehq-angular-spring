@@ -7,10 +7,10 @@ import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError, statementError } from './people-api';
+import { GRADES, PeopleApi, Person, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
-// claims, what they have claimed, their due-total and their overdue claims; the sheet's claimed-total,
+// claims, what they have claimed, their due-total, their overdue claims, and their patrons and backing; the sheet's claimed-total,
 // due-total and overdue claims; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
@@ -60,7 +60,7 @@ import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError
       </label>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -93,6 +93,23 @@ import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
                 <button type="button" data-testid="person-hold-toggle" (click)="hold(p)"
                   [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
+              </td>
+              <td>
+                <span data-testid="person-patrons">{{ patronNamesOf(p) }}</span>
+                <span>backing <span data-testid="person-backing">{{ backingOf(p) }}</span></span>
+                <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron for {{ p.name }}</label>
+                <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
+                  (change)="clearRowError(p.id)">
+                  <option value="">Choose a patron</option>
+                  @for (o of patronChoicesFor(p); track o.id) {
+                    <option [value]="o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-patron-add" (click)="addPatron(p, patronSelect.value)"
+                  [attr.aria-label]="'Add patron for ' + p.name">Add patron</button>
+                @if (patronErrors()[p.id]; as err) {
+                  <p role="alert" data-testid="person-patron-error">{{ err }}</p>
+                }
               </td>
               <td>
                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)" [periods]="periods()"
@@ -209,6 +226,8 @@ export class People {
     }
     return out;
   });
+  /** The names of the people on the sheet, by person id (retired ones too). */
+  private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));
   /** Everyone's due-total added up, skipping n/a. */
   protected readonly dueTotal = computed(() =>
     money([...this.dueByPerson().values()].reduce<number>((sum, d) => sum + (d ?? 0), 0)));
@@ -222,6 +241,8 @@ export class People {
   protected readonly error = signal<string | null>(null);
   /** The error of each person's last refused row action, by person id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The error of each person's last refused patron, by person id. */
+  protected readonly patronErrors = signal<Record<number, string>>({});
 
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: Validators.required }),
@@ -248,6 +269,7 @@ export class People {
       untracked(() => {
         this.reset();
         this.rowErrors.set({});
+        this.patronErrors.set({});
         this.quickForm.reset({ name: '', amount: '' });
         this.quickError.set(null);
         this.people.set([]);
@@ -288,6 +310,40 @@ export class People {
     return due === null || due === undefined ? 'n/a' : money(due);
   }
 
+  /** The person's patrons' names, sorted, comma and space separated. */
+  protected patronNamesOf(p: Person): string {
+    const names = this.namesById();
+    return p.patronIds.map((id) => names.get(id) ?? '').filter((n) => n).sort().join(', ');
+  }
+
+  /** The person's patrons' due-totals added up, skipping n/a; 0.00 with no patrons. */
+  protected backingOf(p: Person): string {
+    const dues = this.dueByPerson();
+    return money(p.patronIds.reduce((sum, id) => sum + (dues.get(id) ?? 0), 0));
+  }
+
+  /** The people the person may name as a patron: everyone else on the sheet. */
+  protected patronChoicesFor(p: Person): Person[] {
+    return this.people().filter((o) => o.id !== p.id);
+  }
+
+  /** Name another person as the person's patron; the row then shows them among its patrons. */
+  protected async addPatron(p: Person, patronId: string): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    if (!patronId) {
+      this.patronErrors.update((errs) => ({ ...errs, [p.id]: 'Choose a patron.' }));
+      return;
+    }
+    try {
+      const saved = await this.api.addPatron(sheetId, p.id, Number(patronId));
+      if (this.session.sheetId() === sheetId) this.taken(saved);
+    } catch (e) {
+      this.patronErrors.update((errs) => ({ ...errs, [p.id]: patronError(e) }));
+    }
+  }
+
   /** The last statement's due-total: blank with none, n/a when it was n/a. */
   protected statedTotalOf(p: Person): string {
     return p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a');
@@ -295,7 +351,7 @@ export class People {
 
   /** Take a statement of a person; the row then shows it and their claims as bound now. */
   protected async statement(p: Person): Promise<void> {
-    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    this.clearRowError(p.id);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     try {
@@ -336,6 +392,7 @@ export class People {
 
   protected clearRowError(id: number): void {
     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
+    this.patronErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
   /** Take in a rate just set, in place of the grade's old one for the same from-date. */

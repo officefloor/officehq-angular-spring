@@ -22,6 +22,8 @@ export interface Person {
   retiredFrom: string | null;
   /** Whether the person is on hold: their OPEN claims then count in no live total. */
   held: boolean;
+  /** The ids of the person's patrons (other people on the sheet), in the order they were named. */
+  patronIds: number[];
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */
@@ -81,6 +83,13 @@ export class PeopleApi {
     );
   }
 
+  /** Name another person on the sheet as the person's patron. */
+  addPatron(sheetId: string, id: number, patronId: number): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/patrons`, { patronId }, { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/people`;
   }
@@ -110,6 +119,14 @@ export function retireError(e: unknown): string {
 
 export function holdError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return 'Something went wrong; try again.';
+}
+
+export function patronError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a patron.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That person is already a patron.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A person cannot be their own patron.';
   return 'Something went wrong; try again.';
 }
 

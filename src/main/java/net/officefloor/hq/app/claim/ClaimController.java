@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.person.PersonController.PersonView;
+import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.session.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -58,9 +59,11 @@ public class ClaimController {
     }
 
     private final ClaimService service;
+    private final PersonService people;
 
-    public ClaimController(ClaimService service) {
+    public ClaimController(ClaimService service, PersonService people) {
         this.service = service;
+        this.people = people;
     }
 
     @GetMapping("/claims")
@@ -119,7 +122,7 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         ClaimService.Statement s = service.statement(sheetId, user.trim(), personId);
-        return new StatementView(PersonView.of(s.person(), s.summary()),
+        return new StatementView(PersonView.of(s.person(), s.summary(), people.patronIds(s.person().getId())),
                 s.claims().stream().map(ClaimView::of).toList());
     }
 }

@@ -28,13 +28,14 @@ public class PersonController {
 
     /** A person as the screen shows them, with their statement count and their last statement's
      *  due-total (two decimals; null when it was n/a or they have none) and date, and the date
-     *  they are retired from (null while not retired), and whether they are on hold. */
+     *  they are retired from (null while not retired), whether they are on hold, and the ids of
+     *  their patrons in the order they were named. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held) {
-        public static PersonView of(Person p, StatementSummary s) {
+            String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Long> patronIds) {
+        public static PersonView of(Person p, StatementSummary s, List<Long> patronIds) {
             return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
-                    p.getRetiredFrom(), p.isHeld());
+                    p.getRetiredFrom(), p.isHeld(), patronIds);
         }
     }
 
@@ -54,6 +55,10 @@ public class PersonController {
     public record HoldForm(@NotNull Boolean held) {
     }
 
+    /** A patron as the row submits it: the id of another person on the sheet. */
+    public record PatronForm(@NotNull Long patronId) {
+    }
+
     private final PersonService service;
 
     public PersonController(PersonService service) {
@@ -65,8 +70,10 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         Map<Long, StatementSummary> summaries = service.statementSummaries(sheetId);
+        Map<Long, List<Long>> patrons = service.patronIds(sheetId);
         return service.list(sheetId).stream()
-                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE)))
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
+                        patrons.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -114,7 +121,16 @@ public class PersonController {
         return view(service.hold(sheetId, user.trim(), id, body.held()));
     }
 
+    @PostMapping("/{id}/patrons")
+    public PersonView addPatron(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PatronForm body) {
+        return view(service.addPatron(sheetId, user.trim(), id, body.patronId()));
+    }
+
     private PersonView view(Person p) {
-        return PersonView.of(p, service.statementSummary(p.getId()));
+        return PersonView.of(p, service.statementSummary(p.getId()), service.patronIds(p.getId()));
     }
 }

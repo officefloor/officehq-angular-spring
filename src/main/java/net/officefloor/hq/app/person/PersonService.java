@@ -19,14 +19,16 @@ public class PersonService {
 
     private final PersonRepository people;
     private final PersonStatementRepository statements;
+    private final PersonPatronRepository patrons;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, PersonStatementRepository statements, SheetService sheets,
-            RollupService rollup, Audit audit) {
+    public PersonService(PersonRepository people, PersonStatementRepository statements,
+            PersonPatronRepository patrons, SheetService sheets, RollupService rollup, Audit audit) {
         this.people = people;
         this.statements = statements;
+        this.patrons = patrons;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -54,6 +56,43 @@ public class PersonService {
     @Transactional(readOnly = true)
     public StatementSummary statementSummary(long personId) {
         return StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId));
+    }
+
+    /** Each person's patron ids in the order they were named, by person id; a person with none is missing. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<Long>> patronIds(String sheetId) {
+        return patrons.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(PersonPatron::getPersonId,
+                        Collectors.mapping(PersonPatron::getPatronId, Collectors.toList())));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Long> patronIds(long personId) {
+        return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(PersonPatron::getPatronId).toList();
+    }
+
+    /** Name another person on the sheet as the person's patron; refused for the person themselves
+     *  and for a patron they already have. */
+    @Transactional
+    public Person addPatron(String sheetId, String user, long id, long patronId) {
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Person patron = people.findByIdAndSheetId(patronId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such patron"));
+        if (person.getId().equals(patron.getId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A person cannot be their own patron");
+        }
+        if (patrons.existsByPersonIdAndPatronId(person.getId(), patron.getId())) {
+            throw patronAlready();
+        }
+        try {
+            patrons.saveAndFlush(new PersonPatron(sheetId, person.getId(), patron.getId()));
+        } catch (DataIntegrityViolationException e) {
+            throw patronAlready(); // named by another user at the same moment
+        }
+        audit.recordOnCommit("PATRON_ADDED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " patron=" + patron.getName());
+        return person;
     }
 
     /** Add a person to the sheet (the sheet is created first if it was never loaded). */
@@ -147,6 +186,10 @@ public class PersonService {
 
     private static ResponseStatusException savedByAnother() {
         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Saved by someone else since it was loaded");
+    }
+
+    private static ResponseStatusException patronAlready() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Already a patron");
     }
 
     private static ResponseStatusException nameInUse() {
