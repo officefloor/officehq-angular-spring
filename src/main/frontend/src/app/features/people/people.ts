@@ -5,7 +5,7 @@ import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
 import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, personError } from './people-api';
+import { GRADES, PeopleApi, Person, isStale, personError } from './people-api';
 
 // The sheet's rates; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed and their due-total; the sheet's claimed-total and due-total; and
@@ -108,6 +108,10 @@ export class People {
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.byPerson().get(p.id)?.cents ?? 0), 0)));
   protected readonly editingId = signal<number | null>(null);
+  /** The version of the person the open editor loaded. */
+  private editingVersion = 0;
+  /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
+  private submitting = false;
   protected readonly error = signal<string | null>(null);
 
   protected readonly form = new FormGroup({
@@ -136,6 +140,7 @@ export class People {
   protected edit(p: Person): void {
     this.error.set(null);
     this.editingId.set(p.id);
+    this.editingVersion = p.version;
     this.form.setValue({ name: p.name, grade: p.grade });
   }
 
@@ -174,6 +179,7 @@ export class People {
   }
 
   protected async submit(): Promise<void> {
+    if (this.submitting) return;
     this.error.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
@@ -187,17 +193,40 @@ export class People {
       return;
     }
     const editing = this.editingId();
+    this.submitting = true;
     try {
       if (editing === null) {
         const added = await this.api.add(sheetId, value);
         if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, added]);
       } else {
-        const saved = await this.api.update(sheetId, editing, value);
-        if (this.session.sheetId() === sheetId) this.people.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
+        const saved = await this.api.update(sheetId, editing, { ...value, version: this.editingVersion });
+        if (this.session.sheetId() === sheetId) this.taken(saved);
       }
       this.reset();
     } catch (e) {
+      if (editing !== null && isStale(e)) await this.reloadEditing(sheetId, editing);
       this.error.set(personError(e));
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Take in a person as the store now holds them, in place of the old row. */
+  private taken(person: Person): void {
+    this.people.update((ps) => ps.map((p) => (p.id === person.id ? person : p)));
+  }
+
+  /** After a save refused as stale, show the person's current values in the row and the open
+   *  editor, which then edits that version. */
+  private async reloadEditing(sheetId: string, id: number): Promise<void> {
+    try {
+      const current = await this.api.get(sheetId, id);
+      if (this.session.sheetId() !== sheetId || this.editingId() !== id) return;
+      this.taken(current);
+      this.editingVersion = current.version;
+      this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+    } catch {
+      // the error shown already says the save was refused
     }
   }
 

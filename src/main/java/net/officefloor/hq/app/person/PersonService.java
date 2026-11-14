@@ -5,6 +5,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -27,6 +28,12 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    @Transactional(readOnly = true)
+    public Person get(String sheetId, long id) {
+        return people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+    }
+
     /** Add a person to the sheet (the sheet is created first if it was never loaded). */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
@@ -43,10 +50,14 @@ public class PersonService {
         return person;
     }
 
+    /** Save a person; refused when {@code version} (the one the editor loaded) is no longer the stored one. */
     @Transactional
-    public Person update(String sheetId, String user, long id, String name, String grade) {
+    public Person update(String sheetId, String user, long id, Long version, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (version == null || version != person.getVersion()) {
+            throw savedByAnother();
+        }
         String trimmed = name.trim();
         requireUnusedName(sheetId, id, trimmed);
         person.setName(trimmed);
@@ -55,6 +66,8 @@ public class PersonService {
             people.flush();
         } catch (DataIntegrityViolationException e) {
             throw nameInUse(); // taken by another user at the same moment
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw savedByAnother(); // saved by another user at the same moment
         }
         record("PERSON_EDITED", sheetId, user, person);
         return person;
@@ -72,6 +85,10 @@ public class PersonService {
         if (taken) {
             throw nameInUse();
         }
+    }
+
+    private static ResponseStatusException savedByAnother() {
+        return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Saved by someone else since it was loaded");
     }
 
     private static ResponseStatusException nameInUse() {

@@ -9,11 +9,15 @@ export interface Person {
   id: number;
   name: string;
   grade: string;
+  /** Raised on every save. */
+  version: number;
 }
 
 export interface PersonForm {
   name: string;
   grade: string;
+  /** On an edit, the version of the person the editor loaded. */
+  version?: number;
 }
 
 // The people kept on the active sheet, read and written through the server.
@@ -28,6 +32,10 @@ export class PeopleApi {
 
   add(sheetId: string, form: PersonForm): Promise<Person> {
     return firstValueFrom(this.http.post<Person>(this.url(sheetId), form, { headers: this.headers() }));
+  }
+
+  get(sheetId: string, id: number): Promise<Person> {
+    return firstValueFrom(this.http.get<Person>(`${this.url(sheetId)}/${id}`, { headers: this.headers() }));
   }
 
   update(sheetId: string, id: number, form: PersonForm): Promise<Person> {
@@ -45,6 +53,12 @@ export class PeopleApi {
 
 export function personError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name and choose a grade.';
+  if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use on this sheet.';
   return 'Something went wrong; try again.';
+}
+
+/** Whether a save was refused because someone else saved the person since the editor loaded it. */
+export function isStale(e: unknown): boolean {
+  return e instanceof HttpErrorResponse && e.status === 412;
 }

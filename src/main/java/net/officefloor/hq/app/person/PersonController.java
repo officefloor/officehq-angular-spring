@@ -24,16 +24,18 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade) {
+    public record PersonView(long id, String name, String grade, long version) {
         static PersonView of(Person p) {
-            return new PersonView(p.getId(), p.getName(), p.getGrade());
+            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion());
         }
     }
 
-    /** A person's values as the form submits them; the name is stored with surrounding spaces removed. */
+    /** A person's values as the form submits them; the name is stored with surrounding spaces removed.
+     *  An edit carries the version of the person its editor loaded. */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade) {
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            Long version) {
     }
 
     private final PersonService service;
@@ -47,6 +49,14 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return service.list(sheetId).stream().map(PersonView::of).toList();
+    }
+
+    @GetMapping("/{id}")
+    public PersonView get(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return PersonView.of(service.get(sheetId, id));
     }
 
     @PostMapping
@@ -64,6 +74,6 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
-        return PersonView.of(service.update(sheetId, user.trim(), id, body.name(), body.grade()));
+        return PersonView.of(service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade()));
     }
 }

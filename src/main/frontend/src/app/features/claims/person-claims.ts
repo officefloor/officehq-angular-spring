@@ -71,6 +71,8 @@ export class PersonClaims {
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
   /** The error of each claim's last refused status change, by claim id. */
+  /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
+  private submitting = false;
   protected readonly rowErrors = signal<Record<number, string>>({});
   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
 
@@ -99,6 +101,7 @@ export class PersonClaims {
   }
 
   protected async submit(): Promise<void> {
+    if (this.submitting) return;
     this.error.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
@@ -115,6 +118,7 @@ export class PersonClaims {
     }
     const form = { amount, date: date || null, note: value.note };
     const editing = this.editingId();
+    this.submitting = true;
     try {
       const claim = editing === null
         ? await this.api.add(sheetId, this.personId(), form)
@@ -123,6 +127,8 @@ export class PersonClaims {
       this.reset();
     } catch (e) {
       this.error.set(claimError(e));
+    } finally {
+      this.submitting = false;
     }
   }
 

@@ -74,6 +74,8 @@ export class Rates {
 
   protected readonly grades = GRADES;
   protected readonly error = signal<string | null>(null);
+  /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
+  private submitting = false;
 
   protected readonly form = new FormGroup({
     grade: new FormControl<string>('A', { nonNullable: true }),
@@ -91,6 +93,7 @@ export class Rates {
   }
 
   protected async submit(): Promise<void> {
+    if (this.submitting) return;
     this.error.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
@@ -109,12 +112,15 @@ export class Rates {
       this.error.set('Enter a from-date as yyyy-mm-dd, or leave it blank.');
       return;
     }
+    this.submitting = true;
     try {
       const rate = await this.api.set(sheetId, grade, value, fromDate || null);
       if (this.session.sheetId() === sheetId) this.saved.emit(rate);
       this.form.reset({ grade, pct: '', from: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(rateError(e));
+    } finally {
+      this.submitting = false;
     }
   }
 }
