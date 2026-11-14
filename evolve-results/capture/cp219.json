@@ -1,0 +1,64 @@
+{
+  "checkpoint": 219,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp219_rollover-undo",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can undo the last rollover on the same sheet-today it was made (a button;\nROLLOVER_UNDONE fy=<old FY>): the periods it generated are removed and the opening balances it set\nare taken back. A later day, anyone else, or a generated period that a claim now belongs to is\nrefused with an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can undo the last rollover on the same sheet-today it was made (a button;\nROLLOVER_UNDONE fy=<old FY>): the periods it generated are removed and the opening balances it set\nare taken back. A later day, anyone else, or a generated period that a claim now belongs to is\nrefused with an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e614c76538d7ba9451b6672147917a84e9d4a3ec",
+  "reset_sha": "",
+  "preagent_sha": "55b80c3fee228bec8db2f2d42d5edcb8bfc0c74d",
+  "prev_sha": "55b80c3fee228bec8db2f2d42d5edcb8bfc0c74d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4270502000000003,
+    "input_tokens": 74,
+    "output_tokens": 20363,
+    "cache_read_tokens": 2012071,
+    "cache_creation_tokens": 77135,
+    "num_turns": 38,
+    "duration_ms": 972631,
+    "duration_api_ms": 210961,
+    "model": "claude-opus-5-5",
+    "session_id": "d64d5e17-0b9d-467a-98ac-0264132c797b",
+    "stop_reason": "success",
+    "result_text": "Stewards can now undo the last rollover, and all 4 tests in `bin/e2e` pass.\n\n**How it works**\n- **Saving each rollover:** the new `V121__rollover.sql` adds a `rollover` table that stores who made the rollover and the sheet-today it was made on. It also stores the periods the rollover generated and the opening balance it added for each person. The data model is in `Rollover.java` and `RolloverRepository.java`.\n- **Undo** (`PeriodService.undoRollover`, `POST /periods/rollover/undo`): it removes the generated periods and their saved history, and takes back the openings the rollover added. If those openings went onto a period that already existed, it subtracts them. It then marks the rollover undone and writes `ROLLOVER_UNDONE sheet=\u2026 by=\u2026 fy=FY<old>`.\n- **Refused, with the `rollover-error` message:**\n  - there's no rollover, or the last one is already undone\n  - the person isn't the steward who made it\n  - the sheet's today has moved on\n  - a claim of any status, voided ones included, is dated in a generated period\n\n  A refused undo writes nothing.\n- **Front end:** a `rollover-undo` button next to \"Roll over\" in `periods.ts`, which reloads the sheet after an undo.\n\n**Two behaviour changes the test needed that the request didn't spell out:**\n1. **Rolling the same year over again no longer carries the same balance twice.** Before, a second rollover of a year added each person's open amount to the new year's opening balance again. Now it adds only what earlier rollovers of that year (not undone) haven't already carried. The test expects no `OPENING_SET` on the repeat rollover of 2026\u201112\u201121; without this change Ada's January 2027 carried figure came out at 3.00 instead of 2.00.\n2. **A viewer pressing \"generate periods\" now gets `0` instead of an error.** This has nothing to do with rollovers, but scenario 1 expects a viewer's generate to show `0` and write nothing. The app used to block it with a 403. I let `/periods/generate` through `ViewerGuard` and made the service return 0 for viewers, the same way plans' generate already works. Generating a fiscal year or quarters is still refused for viewers. You may want to confirm this is the intended rule.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4270502000000003,
+        "num_turns": 38,
+        "duration_ms": 972631,
+        "duration_api_ms": 210961,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp219.agent.jsonl",
+  "agent_diff_file": "cp219.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
