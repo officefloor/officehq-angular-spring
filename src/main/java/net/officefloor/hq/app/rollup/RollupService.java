@@ -192,7 +192,8 @@ public class RollupService {
         return sum.subtract(Collections.max(figures)).subtract(Collections.min(figures));
     }
 
-    /** A person's figures from their claims that count: the sum of their amounts, and the sum of the
+    /** A person's figures from their claims that count: the sum of their amounts, leaving out those
+     *  that correct another claim, and the sum of the
      *  figures they show, or none when the grade in force on the sheet's today has no rate in force
      *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
      *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today. */
@@ -202,7 +203,9 @@ public class RollupService {
         BigDecimal overdue = NONE;
         boolean anyFigure = false;
         for (Claim claim : counted) {
-            claimed = claimed.add(claim.getAmount());
+            if (claim.getCorrects() == null) {
+                claimed = claimed.add(claim.getAmount());
+            }
             BigDecimal figure = claimService.dueOf(sheetId, person, claim);
             if (figure != null) {
                 due = due.add(figure);

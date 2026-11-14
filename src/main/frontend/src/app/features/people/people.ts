@@ -859,7 +859,7 @@ export class People {
     return map;
   });
   protected readonly claimedTotal = computed(() =>
-    money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)),
+    money(this.live().reduce((sum, c) => sum + claimedCents(c), 0)),
   );
   /** Everyone's due-total added up, skipping those whose grade has no rate, trimmed. */
   protected readonly dueTotal = computed(() =>
@@ -1570,7 +1570,7 @@ export class People {
   }
 
   protected claimedBy(personId: number): string {
-    return money(this.countedOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
+    return money(this.countedOf(personId).reduce((sum, c) => sum + claimedCents(c), 0));
   }
 
   /** The grade in force on the sheet's today among a person's grades. */
@@ -2240,4 +2240,9 @@ function halfEven(numerator: number, divisor: number): number {
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((total, figure) => total + figure, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+}
+
+/** What a claim adds to what is claimed, in cents: its amount, or nothing when it corrects another. */
+function claimedCents(claim: Claim): number {
+  return claim.corrects === null ? cents(claim.amount) : 0;
 }
