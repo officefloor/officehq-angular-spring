@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rollup;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -15,6 +16,7 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonGradeService;
@@ -38,7 +40,8 @@ public class RollupService {
     private static final BigDecimal NONE = BigDecimal.ZERO.setScale(2);
 
     /** A person's figures; due is null when it has no rate to work from. */
-    private record Figures(String name, BigDecimal claimed, BigDecimal due, BigDecimal overdue) {
+    private record Figures(String name, BigDecimal claimed, BigDecimal due, BigDecimal overdue, BigDecimal settled,
+            int overdueCount) {
         boolean sameAs(Figures other) {
             return other != null && claimed.compareTo(other.claimed) == 0 && Objects.equals(due, other.due)
                     && overdue.compareTo(other.overdue) == 0;
@@ -205,14 +208,28 @@ public class RollupService {
 
     /** Record in the audit each person's due-total as it stands now, in list order: the figures of
      *  the day the sheet's today is about to leave; each is kept for the person with that day and the
-     *  day the sheet's today is moving to. */
+     *  day the sheet's today is moving to. While the score log is on, each person's score then is
+     *  recorded first, in list order. */
     public void snapshot(String sheetId, String user, LocalDate movingTo) {
         LocalDate leaving = sheets.today(sheetId);
-        rollup(sheetId).people().forEach((personId, figures) -> {
+        Rollup rollup = rollup(sheetId);
+        if (settings.scoreLog(sheetId)) {
+            rollup.people().values().forEach(figures -> audit.recordOnCommit("SCORE sheet=" + sheetId + " by=" + user
+                    + " name=" + figures.name() + " score=" + score(figures).toPlainString()));
+        }
+        rollup.people().forEach((personId, figures) -> {
             personService.snapshot(sheetId, personId, leaving, text(figures.due()), movingTo);
             audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + user + " name=" + figures.name()
                     + " due-total=" + text(figures.due()));
         });
+    }
+
+    /** A person's score: their settled figures divided by 100, minus 5 for each overdue claim of theirs
+     *  that counts, rounded half to even to a whole number. */
+    private static BigDecimal score(Figures figures) {
+        BigDecimal score = figures.settled().movePointLeft(2).subtract(BigDecimal.valueOf(5L * figures.overdueCount()))
+                .setScale(0, RoundingMode.HALF_EVEN);
+        return score.signum() == 0 ? BigDecimal.ZERO : score;
     }
 
     private Rollup rollup(String sheetId) {
@@ -265,15 +282,25 @@ public class RollupService {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
         BigDecimal overdue = NONE;
+        BigDecimal settled = NONE;
+        int overdueCount = 0;
         boolean anyFigure = false;
         for (Claim claim : counted) {
             if (claim.getCorrects() == null) {
                 claimed = claimed.add(claim.getAmount());
             }
             BigDecimal figure = claimService.dueOf(sheetId, person, claim, asOf);
+            boolean late = claim.getStatus().isOpen()
+                    && claimService.overdueFrom(sheetId, person, claim, asOf).isBefore(today);
+            if (late) {
+                overdueCount++;
+            }
+            if (figure != null && claim.getStatus() == ClaimStatus.SETTLED) {
+                settled = settled.add(figure);
+            }
             if (figure != null) {
                 due = due.add(figure);
-                if (claim.getStatus().isOpen() && claimService.overdueFrom(sheetId, person, claim, asOf).isBefore(today)) {
+                if (late) {
                     overdue = overdue.add(figure);
                 }
             }
@@ -281,7 +308,7 @@ public class RollupService {
         }
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today, asOf), today, asOf).isPresent();
         return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due, asOf) : null,
-                overdue);
+                overdue, settled, overdueCount);
     }
 
     private static String text(BigDecimal due) {

@@ -77,6 +77,11 @@ public class Sheet {
     @Column(name = "score_mid")
     private Integer scoreMid;
 
+    /** The score log switch: while on, changing the sheet's today records each person's score on
+     *  the day being left. */
+    @Column(name = "score_log", nullable = false)
+    private boolean scoreLog;
+
     @Column(name = "score_high")
     private Integer scoreHigh;
 
@@ -198,6 +203,14 @@ public class Sheet {
 
     public void setScoreMid(Integer scoreMid) {
         this.scoreMid = scoreMid;
+    }
+
+    public boolean isScoreLog() {
+        return scoreLog;
+    }
+
+    public void setScoreLog(boolean scoreLog) {
+        this.scoreLog = scoreLog;
     }
 
     public Integer getScoreHigh() {

@@ -73,6 +73,7 @@ public class SettingService {
     private static final String REVIEW_SLA = "review-sla";
     private static final String SCORE_MID = "score-mid";
     private static final String SCORE_HIGH = "score-high";
+    private static final String SCORE_LOG = "score-log";
     private static final String ENTRY_DATE = "entry-date";
     private static final String POT = "pot";
     private static final String ALERT_THRESHOLD = "alert-threshold";
@@ -88,7 +89,7 @@ public class SettingService {
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
             int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla,
-            List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh) {
+            List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -124,6 +125,7 @@ public class SettingService {
         String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
         String scoreMid = kept.contains(SCORE_MID) ? then.get(SCORE_MID) : Objects.toString(scoreMid(sheetId), null);
         String scoreHigh = kept.contains(SCORE_HIGH) ? then.get(SCORE_HIGH) : Objects.toString(scoreHigh(sheetId), null);
+        boolean scoreLog = kept.contains(SCORE_LOG) ? then.get(SCORE_LOG) != null : scoreLog(sheetId);
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
         BigDecimal alertNow = alertThreshold(sheetId);
@@ -152,7 +154,7 @@ public class SettingService {
                 fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
                 escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null,
                 kindsOf(kinds), defaultGrade, scoreMid != null ? Integer.valueOf(scoreMid) : null,
-                scoreHigh != null ? Integer.valueOf(scoreHigh) : null);
+                scoreHigh != null ? Integer.valueOf(scoreHigh) : null, scoreLog);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -509,6 +511,11 @@ public class SettingService {
         return sheets.load(sheetId).getScoreMid();
     }
 
+    /** Whether the sheet's score log is on. */
+    public boolean scoreLog(String sheetId) {
+        return sheets.load(sheetId).isScoreLog();
+    }
+
     /** The sheet's high score threshold; null when it is blank. */
     public Integer scoreHigh(String sheetId) {
         return sheets.load(sheetId).getScoreHigh();
@@ -818,6 +825,19 @@ public class SettingService {
         history.settingSet(sheetId, SCORE_HIGH, value != null ? value.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-high value="
                 + (value != null ? value.toString() : ""));
+        return saved;
+    }
+
+    /** Turn the sheet's score log on or off (blank). */
+    @Transactional
+    public Sheet setScoreLog(String sheetId, String by, boolean on) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setScoreLog(on);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, SCORE_LOG, on ? "on" : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-log value="
+                + (on ? "on" : ""));
         return saved;
     }
 

@@ -54,13 +54,13 @@ public class SettingController {
      *  rounding); and
      *  the permission matrix, the roles each action allows by action (blank for the standing rule); and the
      *  proof kinds, comma separated (blank for none); and the default grade (blank for A); and the score
-     *  thresholds, mid and high (null for blank). */
+     *  thresholds, mid and high (null for blank); and the score log, on or blank. */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
             String entryDate, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
-            Integer scoreMid, Integer scoreHigh) {
+            Integer scoreMid, Integer scoreHigh, String scoreLog) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -176,6 +176,10 @@ public class SettingController {
     public record DefaultGradeRequest(@Size(max = 200) String value) {
     }
 
+    /** The score log switch: on, or null or blank for off. */
+    public record ScoreLogRequest(@Pattern(regexp = "\\s*(on)?\\s*") String value) {
+    }
+
     /** A review SLA of 0 or more whole days; null leaves it blank (none). */
     public record ReviewSlaRequest(@Min(0) @Max(36500) Integer value) {
     }
@@ -222,7 +226,8 @@ public class SettingController {
                 then.pot() != null ? then.pot().toPlainString() : null, then.parent() != null ? then.parent() : "",
                 then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null,
                 then.escalateAfter(), then.reviewSla(), String.join(",", then.proofKinds()),
-                then.defaultGrade() != null ? then.defaultGrade() : "", then.scoreMid(), then.scoreHigh());
+                then.defaultGrade() != null ? then.defaultGrade() : "", then.scoreMid(), then.scoreHigh(),
+                then.scoreLog() ? "on" : "");
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -512,6 +517,17 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Turn the sheet's score log on or off; while on, changing the sheet's today records each
+     *  person's score on the day being left. */
+    @PutMapping("/score-log")
+    public SettingsView setScoreLog(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ScoreLogRequest request) {
+        String sheet = sheetId.trim();
+        service.setScoreLog(sheet, SignedInUser.decode(user), request.value() != null && !request.value().isBlank());
+        return view(sheet);
+    }
+
     /** Change the sheet's fiscal year start month; the fiscal year each period falls in follows it. */
     @PutMapping("/fiscal-start-month")
     public SettingsView setFiscalStartMonth(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -578,7 +594,8 @@ public class SettingController {
                 parent != null ? parent : "", service.fiscalStartMonth(sheet),
                 alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet),
                 service.reviewSla(sheet), String.join(",", service.proofKinds(sheet)),
-                defaultGrade != null ? defaultGrade : "", service.scoreMid(sheet), service.scoreHigh(sheet));
+                defaultGrade != null ? defaultGrade : "", service.scoreMid(sheet), service.scoreHigh(sheet),
+                service.scoreLog(sheet) ? "on" : "");
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
