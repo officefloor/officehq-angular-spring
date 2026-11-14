@@ -1,0 +1,666 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4916774c8..e51bb2355 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -11,6 +11,7 @@ import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates'
+ import { SettingStore, Settings } from '../settings/settings';
+ import { Summary } from '../summary/summary';
+ import { Counters } from '../counters/counters';
++import { Pools } from '../pools/pools';
+ 
+ /** A hold put on a person: from its from-date to its to-date, both included (null: it does not end). */
+ interface Hold {
+@@ -64,7 +65,7 @@ interface StatementTaken {
+ // saves their changes.
+ @Component({
+   selector: 'app-people',
+-  imports: [ClaimTemplates, Counters, Holidays, PersonClaims, Periods, Rates, Settings, Summary, VoidReasons],
++  imports: [ClaimTemplates, Counters, Holidays, PersonClaims, Periods, Pools, Rates, Settings, Summary, VoidReasons],
+   template: `
+     <app-counters
+       [peopleCount]="people().length"
+@@ -78,6 +79,7 @@ interface StatementTaken {
+     <app-holidays />
+     <app-void-reasons />
+     <app-claim-templates />
++    <app-pools [people]="people()" />
+     <app-summary
+       [grades]="gradeSummary()"
+       [periods]="periodSummary()"
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+new file mode 100644
+index 000000000..6a442d558
+--- /dev/null
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -0,0 +1,249 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++export interface PoolMember {
++  personId: number;
++  /** The member's share percent (two decimals). */
++  share: string;
++}
++
++export interface Pool {
++  id: number;
++  /** The pool's name, trimmed; unique on the sheet, it names the pool's row. */
++  name: string;
++  /** The pool's members, in the order they were added. */
++  members: PoolMember[];
++}
++
++/** A person as a pool shows them: their name, and whether a retirement date is set. */
++export interface PoolPerson {
++  id: number;
++  name: string;
++  retired: boolean;
++}
++
++/** A share (two decimals, more than 0.00 and at most 100.00). */
++const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
++
++// The active sheet's pools, in the order they were added, re-read whenever a sheet is loaded.
++@Injectable({ providedIn: 'root' })
++export class PoolStore {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  readonly pools = signal<Pool[]>([]);
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheetId();
++      const load = this.session.loads();
++      this.pools.set([]);
++      if (sheet) void this.read(sheet, load);
++    });
++  }
++
++  /** Add a pool to the active sheet; the server refuses a blank name or one already a pool's. */
++  async add(name: string): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(this.http.post<Pool>(`${this.base(sheet)}`, { name }));
++    this.keep(sheet, saved);
++  }
++
++  /** Add a person to a pool with a share; the server refuses a person already in it, or a bad share. */
++  async addMember(poolId: number, personId: number, share: string): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(
++      this.http.post<Pool>(`${this.base(sheet)}/${poolId}/members`, { personId, share }),
++    );
++    this.keep(sheet, saved);
++  }
++
++  private base(sheet: string): string {
++    return `/api/sheets/${encodeURIComponent(sheet)}/pools`;
++  }
++
++  /** Show a pool as saved, in its place, or last when it is new. */
++  private keep(sheet: string, saved: Pool): void {
++    if (this.session.sheetId() !== sheet) return;
++    this.pools.update((list) =>
++      list.some((p) => p.id === saved.id) ? list.map((p) => (p.id === saved.id ? saved : p)) : [...list, saved],
++    );
++  }
++
++  private async read(sheet: string, load: number): Promise<void> {
++    const list = await firstValueFrom(this.http.get<Pool[]>(this.base(sheet)));
++    if (this.session.loads() !== load) return;
++    this.pools.set(list);
++  }
++}
++
++/** A pool as its row shows it: its members with their names, its total share and whether it balances. */
++interface PoolRow {
++  pool: Pool;
++  members: { personId: number; name: string; share: string }[];
++  /** The members' shares added up, a retired member's counting as 0.00 (two decimals). */
++  total: string;
++  /** Whether the total is exactly 100.00. */
++  balanced: boolean;
++}
++
++// The sheet's pools, the form that adds one, and on each pool's row the entry that adds a member.
++@Component({
++  selector: 'app-pools',
++  template: `
++    <section aria-labelledby="pools-heading">
++      <h2 id="pools-heading">Pools</h2>
++      <form (submit)="submit($event)">
++        <label for="pool-form-name">Pool name</label>
++        <input
++          id="pool-form-name"
++          data-testid="pool-form-name"
++          [value]="name()"
++          (input)="name.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="pool-form-submit">Add pool</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="pool-form-error">{{ message }}</p>
++        }
++      </form>
++      <ul>
++        @for (row of rows(); track row.pool.id) {
++          <li [attr.data-testid]="'pool-row-' + row.pool.name">
++            <h3>{{ row.pool.name }}</h3>
++            <p>
++              Total share <strong data-testid="pool-total-share">{{ row.total }}</strong>,
++              balanced <strong data-testid="pool-balanced">{{ row.balanced ? 'yes' : 'no' }}</strong>
++            </p>
++            <ul>
++              @for (m of row.members; track m.personId) {
++                <li [attr.data-testid]="'pool-member-' + row.pool.name + '-' + m.personId">
++                  {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>%
++                </li>
++              }
++            </ul>
++            <label [for]="'pool-member-select-' + row.pool.id">Member</label>
++            <select
++              [id]="'pool-member-select-' + row.pool.id"
++              data-testid="pool-member-select"
++              (change)="setPerson(row.pool.id, value($event))"
++            >
++              <option value="" [selected]="!entries()[row.pool.id]?.personId">Choose a person</option>
++              @for (p of people(); track p.id) {
++                <option [value]="p.id" [selected]="entries()[row.pool.id]?.personId === '' + p.id">{{ p.name }}</option>
++              }
++            </select>
++            <label [for]="'pool-member-share-' + row.pool.id">Share %</label>
++            <input
++              [id]="'pool-member-share-' + row.pool.id"
++              data-testid="pool-member-share"
++              [value]="entries()[row.pool.id]?.share ?? ''"
++              (input)="setShare(row.pool.id, value($event))"
++            />
++            <button type="button" data-testid="pool-member-add" (click)="addMember(row.pool)">Add member</button>
++            @if (memberErrors()[row.pool.id]; as message) {
++              <p role="alert" data-testid="pool-error">{{ message }}</p>
++            }
++          </li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class Pools {
++  /** The sheet's people, a member's name and retirement read from here. */
++  readonly people = input.required<PoolPerson[]>();
++
++  protected readonly store = inject(PoolStore);
++  protected readonly name = signal('');
++  protected readonly error = signal<string | null>(null);
++  /** The person and share chosen on each pool's row, by pool id. */
++  protected readonly entries = signal<Record<number, { personId?: string; share?: string }>>({});
++  /** The error shown on each pool's row, by pool id. */
++  protected readonly memberErrors = signal<Record<number, string | null>>({});
++  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
++  private readonly busy = signal(false);
++
++  protected readonly rows = computed<PoolRow[]>(() => {
++    const byId = new Map(this.people().map((p) => [p.id, p]));
++    return this.store.pools().map((pool) => {
++      const members = pool.members.map((m) => ({
++        personId: m.personId,
++        name: byId.get(m.personId)?.name ?? '',
++        share: m.share,
++      }));
++      const cents = pool.members
++        .filter((m) => !byId.get(m.personId)?.retired)
++        .reduce((sum, m) => sum + Math.round(Number(m.share) * 100), 0);
++      return { pool, members, total: (cents / 100).toFixed(2), balanced: cents === 10000 };
++    });
++  });
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  protected setPerson(poolId: number, personId: string): void {
++    this.entries.update((e) => ({ ...e, [poolId]: { ...e[poolId], personId } }));
++    this.memberErrors.update((e) => ({ ...e, [poolId]: null }));
++  }
++
++  protected setShare(poolId: number, share: string): void {
++    this.entries.update((e) => ({ ...e, [poolId]: { ...e[poolId], share } }));
++    this.memberErrors.update((e) => ({ ...e, [poolId]: null }));
++  }
++
++  /** Add the typed pool, its name trimmed; a blank name or one already a pool's is refused beside the form. */
++  protected async submit(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy()) return;
++    this.error.set(null);
++    const name = this.name().trim();
++    if (name === '') {
++      this.error.set('Type a name for the pool.');
++      return;
++    }
++    this.busy.set(true);
++    try {
++      await this.store.add(name);
++    } catch {
++      this.error.set(`The pool ${name} could not be added: the name may be a pool's already.`);
++    } finally {
++      this.busy.set(false);
++    }
++  }
++
++  /** Add the chosen person with the typed share; a person already in the pool, or a share not more
++   *  than 0.00 and at most 100.00 with two decimals, is refused on the pool's row. */
++  protected async addMember(pool: Pool): Promise<void> {
++    if (this.busy()) return;
++    const refuse = (message: string) => this.memberErrors.update((e) => ({ ...e, [pool.id]: message }));
++    this.memberErrors.update((e) => ({ ...e, [pool.id]: null }));
++    const entry = this.entries()[pool.id] ?? {};
++    const personId = Number(entry.personId);
++    const share = (entry.share ?? '').trim();
++    if (!entry.personId || !Number.isInteger(personId)) {
++      refuse('Choose a person to add.');
++      return;
++    }
++    if (!SHARE.test(share) || Number(share) <= 0 || Number(share) > 100) {
++      refuse('A share is more than 0.00 and at most 100.00, with up to two decimals.');
++      return;
++    }
++    if (pool.members.some((m) => m.personId === personId)) {
++      refuse('That person is in the pool already.');
++      return;
++    }
++    this.busy.set(true);
++    try {
++      await this.store.addMember(pool.id, personId, share);
++    } catch {
++      refuse('The member could not be added: they may be in the pool already.');
++    } finally {
++      this.busy.set(false);
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pool.java b/src/main/java/net/officefloor/hq/app/pool/Pool.java
+new file mode 100644
+index 000000000..b64c518f5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/Pool.java
+@@ -0,0 +1,44 @@
++package net.officefloor.hq.app.pool;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** A pool on a sheet: a name, unique on the sheet, whose members each hold a share percent. */
++@Entity
++@Table(name = "pool")
++public class Pool {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "name", nullable = false)
++    private String name;
++
++    protected Pool() {
++    }
++
++    public Pool(String sheetId, String name) {
++        this.sheetId = sheetId;
++        this.name = name;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getName() {
++        return name;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+new file mode 100644
+index 000000000..24f16e682
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -0,0 +1,91 @@
++package net.officefloor.hq.app.pool;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.SignedInUser;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.converter.HttpMessageNotReadableException;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/pools")
++public class PoolController {
++
++    /** A pool member as the screen shows it; the share is a string with two decimals. */
++    public record PoolMemberView(Long personId, String share) {
++        static PoolMemberView of(PoolMember member) {
++            return new PoolMemberView(member.getPersonId(), member.getShare().toPlainString());
++        }
++    }
++
++    /** A pool as the screen shows it, with its members in the order they were added. */
++    public record PoolView(Long id, String name, List<PoolMemberView> members) {
++        static PoolView of(PoolService.PoolWithMembers pool) {
++            return new PoolView(pool.pool().getId(), pool.pool().getName(),
++                    pool.members().stream().map(PoolMemberView::of).toList());
++        }
++    }
++
++    /** A pool: its name, trimmed as it is added. */
++    public record PoolRequest(@NotBlank @Size(max = 255) String name) {
++    }
++
++    /** A member: a person of the sheet and their share percent. */
++    public record PoolMemberRequest(@NotNull Long personId, @NotNull BigDecimal share) {
++    }
++
++    private final PoolService service;
++
++    public PoolController(PoolService service) {
++        this.service = service;
++    }
++
++    /** The sheet's pools, in the order they were added. */
++    @GetMapping
++    public List<PoolView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
++        return service.list(sheetId.trim()).stream().map(PoolView::of).toList();
++    }
++
++    /** Add a pool to the sheet. */
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public PoolView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PoolRequest request) {
++        return PoolView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name()));
++    }
++
++    /** Add a member to one of the sheet's pools. */
++    @PostMapping("/{poolId}/members")
++    @ResponseStatus(HttpStatus.CREATED)
++    public PoolView addMember(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long poolId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated PoolMemberRequest request) {
++        return PoolView.of(service.addMember(sheetId.trim(), SignedInUser.decode(user), poolId, request.personId(),
++                request.share()));
++    }
++
++    /** A blank or used name, a person already in the pool, or a bad share, is refused. */
++    @ExceptionHandler({PoolRefusedException.class, DataIntegrityViolationException.class})
++    @ResponseStatus(HttpStatus.CONFLICT)
++    public void refused() {
++    }
++
++    @ExceptionHandler(HttpMessageNotReadableException.class)
++    @ResponseStatus(HttpStatus.BAD_REQUEST)
++    public void unreadable() {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+new file mode 100644
+index 000000000..74aafb77a
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+@@ -0,0 +1,53 @@
++package net.officefloor.hq.app.pool;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++
++/** A person's membership of a pool, with their share percent (two decimals). */
++@Entity
++@Table(name = "pool_member")
++public class PoolMember {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "pool_id", nullable = false)
++    private Long poolId;
++
++    @Column(name = "person_id", nullable = false)
++    private Long personId;
++
++    @Column(name = "share", nullable = false)
++    private BigDecimal share;
++
++    protected PoolMember() {
++    }
++
++    public PoolMember(Long poolId, Long personId, BigDecimal share) {
++        this.poolId = poolId;
++        this.personId = personId;
++        this.share = share;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getPoolId() {
++        return poolId;
++    }
++
++    public Long getPersonId() {
++        return personId;
++    }
++
++    public BigDecimal getShare() {
++        return share;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java b/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java
+new file mode 100644
+index 000000000..c1fdb7021
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMemberRepository.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.pool;
++
++import java.util.Collection;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
++
++    /** The members of these pools, in the order they were added. */
++    List<PoolMember> findByPoolIdInOrderByIdAsc(Collection<Long> poolIds);
++
++    /** Whether the person is a member of the pool. */
++    boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolRefusedException.java b/src/main/java/net/officefloor/hq/app/pool/PoolRefusedException.java
+new file mode 100644
+index 000000000..6633aa9dc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolRefusedException.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.pool;
++
++/** A pool or a pool member that cannot be added: a blank or used name, a person already in the
++ *  pool, or a share that is not more than 0.00 and at most 100.00 with two decimals. */
++public class PoolRefusedException extends RuntimeException {
++
++    public PoolRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolRepository.java b/src/main/java/net/officefloor/hq/app/pool/PoolRepository.java
+new file mode 100644
+index 000000000..a7e134d44
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolRepository.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.pool;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PoolRepository extends JpaRepository<Pool, Long> {
++
++    /** The sheet's pools, in the order they were added. */
++    List<Pool> findBySheetIdOrderByIdAsc(String sheetId);
++
++    Optional<Pool> findByIdAndSheetId(Long id, String sheetId);
++
++    /** Whether the name is a pool's on the sheet. */
++    boolean existsBySheetIdAndName(String sheetId, String name);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+new file mode 100644
+index 000000000..d82ec4105
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -0,0 +1,88 @@
++package net.officefloor.hq.app.pool;
++
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** The pools on a sheet: each a name and its members, people of the sheet with a share percent. */
++@Service
++public class PoolService {
++
++    private static final BigDecimal HUNDRED = new BigDecimal("100.00");
++
++    /** A pool with its members, in the order they were added. */
++    public record PoolWithMembers(Pool pool, List<PoolMember> members) {
++    }
++
++    private final PoolRepository pools;
++    private final PoolMemberRepository members;
++    private final PersonRepository people;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
++            SheetService sheets, Audit audit) {
++        this.pools = pools;
++        this.members = members;
++        this.people = people;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    /** The sheet's pools, in the order they were added, each with its members. */
++    public List<PoolWithMembers> list(String sheetId) {
++        List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
++        Map<Long, List<PoolMember>> byPool = members
++                .findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList()).stream()
++                .collect(Collectors.groupingBy(PoolMember::getPoolId));
++        return list.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()))).toList();
++    }
++
++    /** Add a pool, its name trimmed. Refused when the name is blank or already a pool's on the sheet.
++     *  The sheet is held locked so the same name added at the same moment is checked against itself. */
++    @Transactional
++    public PoolWithMembers add(String sheetId, String user, String name) {
++        String key = name == null ? "" : name.trim();
++        if (key.isEmpty()) {
++            throw new PoolRefusedException("A pool needs a name");
++        }
++        sheets.lock(sheetId);
++        if (pools.existsBySheetIdAndName(sheetId, key)) {
++            throw new PoolRefusedException("The pool " + key + " is on the sheet already");
++        }
++        Pool saved = pools.saveAndFlush(new Pool(sheetId, key));
++        audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + key);
++        return new PoolWithMembers(saved, List.of());
++    }
++
++    /** Add a person of the sheet to a pool with a share percent: more than 0.00 and at most 100.00,
++     *  with up to two decimals. Refused for a person already in the pool, or such a share. */
++    @Transactional
++    public PoolWithMembers addMember(String sheetId, String user, Long poolId, Long personId, BigDecimal share) {
++        if (share == null || share.signum() <= 0 || share.compareTo(HUNDRED) > 0
++                || share.stripTrailingZeros().scale() > 2) {
++            throw new PoolRefusedException("A share is more than 0.00 and at most 100.00, with two decimals");
++        }
++        BigDecimal scaled = share.setScale(2, RoundingMode.UNNECESSARY);
++        sheets.lock(sheetId);
++        Pool pool = pools.findByIdAndSheetId(poolId, sheetId)
++                .orElseThrow(() -> new PoolRefusedException("No such pool on the sheet"));
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new PoolRefusedException("No such person on the sheet"));
++        if (members.existsByPoolIdAndPersonId(poolId, personId)) {
++            throw new PoolRefusedException(person.getName() + " is in the pool " + pool.getName() + " already");
++        }
++        members.saveAndFlush(new PoolMember(poolId, personId, scaled));
++        audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
++                + " name=" + person.getName() + " share=" + scaled.toPlainString());
++        return new PoolWithMembers(pool, members.findByPoolIdInOrderByIdAsc(List.of(poolId)));
++    }
++}
+diff --git a/src/main/resources/db/migration/V65__pool.sql b/src/main/resources/db/migration/V65__pool.sql
+new file mode 100644
+index 000000000..f1f7103dd
+--- /dev/null
++++ b/src/main/resources/db/migration/V65__pool.sql
+@@ -0,0 +1,18 @@
++-- A sheet's pools: each a name, on a sheet at most once, and its members. A member is a person of
++-- the sheet with a share percent (more than 0.00, at most 100.00); a person is in a pool at most
++-- once, and may be in several pools. A retired member's share counts as 0.00 toward the pool's
++-- total, which the screen works out from the people as they are.
++CREATE TABLE pool (
++    id BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(200) NOT NULL REFERENCES sheet (id),
++    name VARCHAR(255) NOT NULL
++);
++CREATE UNIQUE INDEX pool_sheet_name ON pool (sheet_id, name);
++
++CREATE TABLE pool_member (
++    id BIGINT AUTO_INCREMENT PRIMARY KEY,
++    pool_id BIGINT NOT NULL REFERENCES pool (id),
++    person_id BIGINT NOT NULL REFERENCES person (id),
++    share DECIMAL(5, 2) NOT NULL
++);
++CREATE UNIQUE INDEX pool_member_pool_person ON pool_member (pool_id, person_id);
