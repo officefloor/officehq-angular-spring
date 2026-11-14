@@ -54,6 +54,9 @@ interface SettingsView {
   /** The escalation gap: reminding a claim whose previous reminder was at least this many days before
    *  the sheet's today escalates it; null for off. */
   escalateAfter: number | null;
+  /** The review SLA: a REVIEW claim whose review day plus this many days is before the sheet's
+   *  today is late for review; null for none. */
+  reviewSla: number | null;
   /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
   fiscalStartMonth: number;
   /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
@@ -196,6 +199,8 @@ export class SettingStore {
   readonly graceDays = signal('');
   /** The escalation gap as text: whole days, blank for off. */
   readonly escalateAfter = signal('');
+  /** The review SLA as text: whole days, blank for none. */
+  readonly reviewSla = signal('');
   /** The fiscal year start month, 1 to 12; 1 unless set. */
   readonly fiscalStartMonth = signal(1);
   /** The pot as text: two decimals, blank for none. */
@@ -223,6 +228,7 @@ export class SettingStore {
       this.entryDate.set('');
       this.graceDays.set('');
       this.escalateAfter.set('');
+      this.reviewSla.set('');
       this.fiscalStartMonth.set(1);
       this.pot.set('');
       this.alertThreshold.set('');
@@ -471,6 +477,16 @@ export class SettingStore {
     if (this.session.sheetId() !== sheet) return;
     this.show(saved);
   }
+  /** Change the active sheet's review SLA; null leaves it blank (none). */
+  async setReviewSla(value: number | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/review-sla`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
 
   /** Change the active sheet's fiscal year start month (1 to 12); the server refuses any other. */
   async setFiscalStartMonth(value: number): Promise<void> {
@@ -549,6 +565,7 @@ export class SettingStore {
     this.entryDate.set(settings.entryDate);
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.escalateAfter.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
+    this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
     this.fiscalStartMonth.set(settings.fiscalStartMonth);
     this.pot.set(settings.pot ?? '');
     this.alertThreshold.set(settings.alertThreshold ?? '');
@@ -916,6 +933,15 @@ export class SettingStore {
           (focus)="escalateAfterTyped.set(true)"
           (input)="escalateAfter.set(value($event)); escalateAfterTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-review-sla">Review SLA (days)</label>
+        <input
+          id="setting-review-sla"
+          data-testid="setting-review-sla"
+          inputmode="numeric"
+          [value]="reviewSla()"
+          (focus)="reviewSlaTyped.set(true)"
+          (input)="reviewSla.set(value($event)); reviewSlaTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input
           id="setting-fiscal-start-month"
@@ -1087,6 +1113,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Review SLA:
+        <strong data-testid="setting-review-sla-current">{{ store.reviewSla() }}</strong>
+        @if (store.reviewSla() === '') {
+          <span>none</span>
+        }
+      </p>
+      <p>
         Fiscal year start month:
         <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong>
       </p>
@@ -1185,6 +1218,8 @@ export class Settings {
   protected readonly graceDaysTyped = signal(false);
   protected readonly escalateAfter = signal('');
   protected readonly escalateAfterTyped = signal(false);
+  protected readonly reviewSla = signal('');
+  protected readonly reviewSlaTyped = signal(false);
   protected readonly fiscalStartMonth = signal('');
   protected readonly fiscalStartMonthTyped = signal(false);
   protected readonly pot = signal('');
@@ -1330,6 +1365,8 @@ export class Settings {
     const saveGraceDays = this.graceDaysTyped();
     const escalateAfter = this.escalateAfter().trim();
     const saveEscalateAfter = this.escalateAfterTyped();
+    const reviewSla = this.reviewSla().trim();
+    const saveReviewSla = this.reviewSlaTyped();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
     const saveFiscalStartMonth = this.fiscalStartMonthTyped();
     const pot = this.pot().trim();
@@ -1449,6 +1486,10 @@ export class Settings {
       this.settingsError.set('Type an escalation gap of 0 or more whole days, or leave it blank for off.');
       return;
     }
+    if (saveReviewSla && reviewSla !== '' && !DAYS.test(reviewSla)) {
+      this.settingsError.set('Type a review SLA of 0 or more whole days, or leave it blank for none.');
+      return;
+    }
     if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
       this.settingsError.set('Type a fiscal year start month of 1 to 12.');
       return;
@@ -1484,6 +1525,7 @@ export class Settings {
     this.entryDateTyped.set(false);
     this.graceDaysTyped.set(false);
     this.escalateAfterTyped.set(false);
+    this.reviewSlaTyped.set(false);
     this.fiscalStartMonthTyped.set(false);
     this.potTyped.set(false);
     this.alertThresholdTyped.set(false);
@@ -1518,6 +1560,7 @@ export class Settings {
         if (saveEntryDate) await this.store.setEntryDate(entryDate === '' ? null : entryDate);
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
         if (saveEscalateAfter) await this.store.setEscalateAfter(escalateAfter === '' ? null : Number(escalateAfter));
+        if (saveReviewSla) await this.store.setReviewSla(reviewSla === '' ? null : Number(reviewSla));
         if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
         if (savePot) await this.store.setPot(pot === '' ? null : pot);
         if (saveAlertThreshold) await this.store.setAlertThreshold(alertThreshold === '' ? null : alertThreshold);
@@ -1542,6 +1585,7 @@ export class Settings {
         if (saveEntryDate) this.entryDateTyped.set(true);
         if (saveGraceDays) this.graceDaysTyped.set(true);
         if (saveEscalateAfter) this.escalateAfterTyped.set(true);
+        if (saveReviewSla) this.reviewSlaTyped.set(true);
         if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
         if (savePot) this.potTyped.set(true);
         if (saveAlertThreshold) this.alertThresholdTyped.set(true);

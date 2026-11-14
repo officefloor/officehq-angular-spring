@@ -191,6 +191,19 @@ export function overdue(claim: Claim, today: string | null, grace = 0): boolean 
   return isOpen(claim) && today !== null && plusDays(claim.dueBy, grace) < today && !deferred(claim, today);
 }
 
+/** Whether a claim is late for review: it is REVIEW, a review SLA is set, and its review day (the
+ *  sheet's today when it last went to REVIEW, as its status log records it) plus the SLA days is
+ *  before the sheet's today. */
+export function reviewLate(claim: Claim, today: string | null, sla: string): boolean {
+  if (claim.status !== 'REVIEW' || sla === '' || today === null) return false;
+  let reviewDay: string | null = null;
+  for (const line of claim.log) {
+    const match = /^REVIEW by .* on (\d{4}-\d{2}-\d{2}) due=\S+$/.exec(line);
+    if (match) reviewDay = match[1];
+  }
+  return reviewDay !== null && plusDays(reviewDay, Number(sla)) < today;
+}
+
 /** Cents shown with two decimals. */
 export function money(total: number): string {
   return (total / 100).toFixed(2);
@@ -315,6 +328,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-review-late">{{ isReviewLate(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
@@ -546,6 +560,8 @@ export class PersonClaims {
   readonly roundingOn = input.required<(date: string) => string | null>();
   /** The grace days in force on a date for a grade (0 for none). */
   readonly graceOn = input.required<(grade: string | null, date: string) => number>();
+  /** The sheet's review SLA in whole days; blank for none. */
+  readonly reviewSla = input('');
   /** The ids of the claims selected to act on together. */
   readonly selectedIds = input.required<ReadonlySet<number>>();
   /** The people on the sheet, in the order they were added: a claim can move to any other. */
@@ -659,6 +675,10 @@ export class PersonClaims {
   /** The claim's grace days: those in force on its date for the person's grade in force then. */
   private graceOf(claim: Claim): number {
     return this.graceOn()(gradeOn(this.grades(), claim.date), claim.date);
+  }
+
+  protected isReviewLate(claim: Claim): boolean {
+    return reviewLate(claim, this.session.today(), this.reviewSla());
   }
 
   /** Whether the row shows the claim deferred: the date it was deferred until is still after the

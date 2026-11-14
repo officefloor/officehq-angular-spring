@@ -64,6 +64,7 @@ public class SettingService {
     private static final String NUMBERING_FROM = "period-numbering-from";
     private static final String GRACE_DAYS = "grace-days";
     private static final String ESCALATE_AFTER = "escalate-after";
+    private static final String REVIEW_SLA = "review-sla";
     private static final String ENTRY_DATE = "entry-date";
     private static final String POT = "pot";
     private static final String ALERT_THRESHOLD = "alert-threshold";
@@ -75,7 +76,7 @@ public class SettingService {
             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
-            int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter) {
+            int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -105,6 +106,7 @@ public class SettingService {
         String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
         String escalate = kept.contains(ESCALATE_AFTER) ? then.get(ESCALATE_AFTER)
                 : Objects.toString(escalateAfter(sheetId), null);
+        String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
         BigDecimal alertNow = alertThreshold(sheetId);
@@ -131,7 +133,7 @@ public class SettingService {
                 latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
                 entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent,
                 fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
-                escalate != null ? Integer.valueOf(escalate) : null);
+                escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -443,6 +445,11 @@ public class SettingService {
         return sheets.load(sheetId).getEscalateAfter();
     }
 
+    /** The sheet's review SLA in days; null when it is blank (none). */
+    public Integer reviewSla(String sheetId) {
+        return sheets.load(sheetId).getReviewSla();
+    }
+
     /** The rounding modes a sheet may set, by the word that names them. */
     private static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
             "half-up", RoundingMode.HALF_UP, "half-even", RoundingMode.HALF_EVEN);
@@ -664,6 +671,19 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         history.settingSet(sheetId, ESCALATE_AFTER, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=escalate-after value="
+                + (days != null ? days.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's review SLA; null leaves it blank (none). */
+    @Transactional
+    public Sheet setReviewSla(String sheetId, String by, Integer days) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setReviewSla(days);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, REVIEW_SLA, days != null ? days.toString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=review-sla value="
                 + (days != null ? days.toString() : ""));
         return saved;
     }

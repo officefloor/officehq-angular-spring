@@ -102,6 +102,7 @@ export interface VoidReasonSummary {
           }
         </tbody>
       </table>
+      <p>Late for review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
       <table>
         <caption>By void reason</caption>
         <thead>
@@ -148,6 +149,8 @@ export class Summary {
   readonly periods = input.required<PeriodSummary[]>();
   readonly statuses = input.required<StatusSummary[]>();
   readonly voids = input.required<VoidReasonSummary[]>();
+  /** How many of the sheet's REVIEW claims are late for review. */
+  readonly reviewLateCount = input.required<number>();
   readonly classicPeriods = input.required<ClassicPeriodSummary[]>();
   readonly classicDueTotal = input.required<string>();
 }
