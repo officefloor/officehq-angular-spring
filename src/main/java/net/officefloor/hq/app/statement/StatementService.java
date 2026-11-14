@@ -112,10 +112,10 @@ public class StatementService {
             // The claim as it stood at the end of the day; one not yet theirs then is left out.
             Claim then = asOf == null ? claim
                     : history.claim(claim.getId(), asOf).filter(was -> was.getPersonId().equals(personId)).orElse(null);
-            // A held or deferred claim, or one left out for the person's retirement, is left out of the
-            // statement, whether or not an earlier one bound it.
+            // A held or deferred claim is left out of the statement, whether or not an earlier one bound
+            // it; one left out for the person's retirement is left out unless an earlier one bound it.
             if (then == null || !then.counts() || then.heldBy(holds) || then.deferredOn(day)
-                    || then.retiredOn(person.getRetiredFrom(), day)) {
+                    || (!then.isStated() && then.retiredOn(person.getRetiredFrom(), day))) {
                 claim.unbind();
                 continue;
             }
