@@ -1,0 +1,64 @@
+{
+  "checkpoint": 227,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp227_preview-exports",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Exports taken while a preview date is set use the preview figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nExports taken while a preview date is set use the preview figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d724d99b64ebea334183c258cffc08a9e263f7e4",
+  "reset_sha": "",
+  "preagent_sha": "d724d99b64ebea334183c258cffc08a9e263f7e4",
+  "prev_sha": "d724d99b64ebea334183c258cffc08a9e263f7e4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.32667159999999995,
+    "input_tokens": 26,
+    "output_tokens": 2942,
+    "cache_read_tokens": 333438,
+    "cache_creation_tokens": 25130,
+    "num_turns": 13,
+    "duration_ms": 214576,
+    "duration_api_ms": 34013,
+    "model": "claude-opus-5-5",
+    "session_id": "d0c68b6a-b671-41f2-a84c-39b324950a04",
+    "stop_reason": "success",
+    "result_text": "I made no changes: the app already does what the request asks. `bin/e2e` passed all 4 tests in the spec on the first run, before I touched anything.\n\n**Why it already works:**\n- The people, claims, statement and pools exports are all built in the browser from the figures already on screen (`features/people/people.ts:2102`, `features/pools/pools.ts:462`). They don't call the server separately.\n- Those figures (grade in force, late charge, dues, pool cuts) all use `session.today()`. That value is the preview date while one is set (`core/session.ts:39`).\n- When a preview is set, the screen re-reads its data with the `X-Preview` header, and the server answers reads as if that date were today (`PreviewInterceptor`, `SheetService`).\n\nSo an export taken during a preview gets the preview figures. In the main test, Ada's due is 10.00 normally, 11.00 with the preview set to 2026-05-01, and 10.00 again once it's cleared.\n\nThe pools and per-person statement exports aren't in the test, but they work the same way, so they also follow the preview date.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.32667159999999995,
+        "num_turns": 13,
+        "duration_ms": 214576,
+        "duration_api_ms": 34013,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp227.agent.jsonl",
+  "agent_diff_file": "cp227.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
