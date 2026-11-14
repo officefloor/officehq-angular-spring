@@ -1,0 +1,345 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 126de7df9..2c9ec83b6 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -6,6 +6,12 @@ import { Session } from '../../core/session';
+ /** An amount of 0.00 or more with up to two decimals. */
+ export const AMOUNT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
+ 
++/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
++export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
++
++/** A move of a claim's status, as the server names it. */
++export type ClaimAction = 'open' | 'settle' | 'void';
++
+ export interface Claim {
+   id: number;
+   personId: number;
+@@ -13,6 +19,12 @@ export interface Claim {
+   amount: string;
+   date: string;
+   note: string;
++  status: ClaimStatus;
++}
++
++/** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
++export function counts(c: Claim): boolean {
++  return c.status === 'OPEN' || c.status === 'SETTLED';
+ }
+ 
+ export interface ClaimForm {
+@@ -43,6 +55,12 @@ export class ClaimsApi {
+     return firstValueFrom(this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}`, form, { headers: this.headers() }));
+   }
+ 
++  changeStatus(sheetId: string, id: number, action: ClaimAction): Promise<Claim> {
++    return firstValueFrom(
++      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() }),
++    );
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+@@ -58,6 +76,12 @@ export function claimError(e: unknown): string {
+   return 'Something went wrong; try again.';
+ }
+ 
++export function statusError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status.';
++  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
++  return 'Something went wrong; try again.';
++}
++
+ /** An amount in whole cents. */
+ export function cents(amount: string): number {
+   const [whole, frac = ''] = amount.split('.');
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 032017f21..34ec1e2b7 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -2,7 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+ import { dueCents } from '../rates/rates-api';
+-import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, claimError, money } from './claims-api';
++import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, money, statusError } from './claims-api';
+ 
+ // One person's claims, newest first, and the one form that adds a claim or, with a claim's
+ // editor open, saves that claim.
+@@ -32,11 +32,21 @@ import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, claimError, money } from './cl
+             <span data-testid="claim-date">{{ c.date }}</span>
+             <span data-testid="claim-note">{{ c.note }}</span>
+             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
++            <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
++            <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
++              [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
++            <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
++              [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
++            <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'void')"
++              [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+             <button type="button" data-testid="claim-edit" (click)="edit(c)"
+               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+             @if (editingId() === c.id) {
+               <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+             }
++            @if (rowErrors()[c.id]; as err) {
++              <p role="alert" data-testid="claim-error">{{ err }}</p>
++            }
+           </li>
+         }
+       </ul>
+@@ -58,6 +68,8 @@ export class PersonClaims {
+ 
+   protected readonly editingId = signal<number | null>(null);
+   protected readonly error = signal<string | null>(null);
++  /** The error of each claim's last refused status change, by claim id. */
++  protected readonly rowErrors = signal<Record<number, string>>({});
+   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
+ 
+   protected readonly form = new FormGroup({
+@@ -78,6 +90,7 @@ export class PersonClaims {
+ 
+   protected edit(c: Claim): void {
+     this.error.set(null);
++    this.clearRowError(c.id);
+     this.editingId.set(c.id);
+     this.form.setValue({ amount: c.amount, date: c.date, note: c.note });
+   }
+@@ -110,6 +123,23 @@ export class PersonClaims {
+     }
+   }
+ 
++  /** Open, settle or void a claim; a move its status does not allow shows an error on the claim. */
++  protected async changeStatus(c: Claim, action: ClaimAction): Promise<void> {
++    this.clearRowError(c.id);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    try {
++      const claim = await this.api.changeStatus(sheetId, c.id, action);
++      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
++    } catch (e) {
++      this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e) }));
++    }
++  }
++
++  private clearRowError(id: number): void {
++    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
++  }
++
+   protected reset(): void {
+     this.editingId.set(null);
+     this.form.reset({ amount: '', date: '', note: '' });
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a39102462..eb9d261c1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,7 +1,7 @@
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Session } from '../../core/session';
+-import { Claim, ClaimsApi, cents, money } from '../claims/claims-api';
++import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
+ import { PersonClaims } from '../claims/person-claims';
+ import { Rates } from '../rates/rates';
+ import { Rate, RatesApi, dueCents } from '../rates/rates-api';
+@@ -73,13 +73,13 @@ export class People {
+   protected readonly people = signal<Person[]>([]);
+   /** Every claim on the sheet, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
+-  /** Each person's claims (newest first) and claimed in cents, by person id. */
++  /** Each person's claims (newest first) and claimed in cents (OPEN and SETTLED claims only), by person id. */
+   private readonly byPerson = computed(() => {
+     const out = new Map<number, { claims: Claim[]; cents: number }>();
+     for (const c of this.claims()) {
+       const entry = out.get(c.personId) ?? { claims: [], cents: 0 };
+       entry.claims.push(c);
+-      entry.cents += cents(c.amount);
++      if (counts(c)) entry.cents += cents(c.amount);
+       out.set(c.personId, entry);
+     }
+     return out;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index e642cefdb..b4975b897 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -2,6 +2,8 @@ package net.officefloor.hq.app.claim;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EnumType;
++import jakarta.persistence.Enumerated;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+@@ -9,7 +11,7 @@ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ 
+-/** A claim made by a person on a sheet: an amount, a date and a note. */
++/** A claim made by a person on a sheet: an amount, a date, a note and its status. */
+ @Entity
+ @Table(name = "claim")
+ public class Claim {
+@@ -33,6 +35,10 @@ public class Claim {
+     @Column(name = "note", nullable = false)
+     private String note;
+ 
++    @Enumerated(EnumType.STRING)
++    @Column(name = "status", nullable = false)
++    private ClaimStatus status = ClaimStatus.DRAFT;
++
+     protected Claim() {
+     }
+ 
+@@ -79,4 +85,12 @@ public class Claim {
+     public void setNote(String note) {
+         this.note = note;
+     }
++
++    public ClaimStatus getStatus() {
++        return status;
++    }
++
++    public void setStatus(ClaimStatus status) {
++        this.status = status;
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index eb10304d9..2c34c3335 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -27,10 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
+ public class ClaimController {
+ 
+     /** A claim as the screen shows it: the amount always with two decimals. */
+-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note) {
++    public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
++            ClaimStatus status) {
+         static ClaimView of(Claim c) {
+             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
+-                    c.getDate(), c.getNote());
++                    c.getDate(), c.getNote(), c.getStatus());
+         }
+     }
+ 
+@@ -73,4 +74,28 @@ public class ClaimController {
+             @Valid @RequestBody ClaimForm body) {
+         return ClaimView.of(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note()));
+     }
++
++    @PostMapping("/claims/{id}/open")
++    public ClaimView open(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.OPEN));
++    }
++
++    @PostMapping("/claims/{id}/settle")
++    public ClaimView settle(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
++    }
++
++    @PostMapping("/claims/{id}/void")
++    public ClaimView voidClaim(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.VOID));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index 1894fd32b..b3856afe9 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -2,7 +2,10 @@ package net.officefloor.hq.app.claim;
+ 
+ import java.util.List;
+ import java.util.Optional;
++import jakarta.persistence.LockModeType;
+ import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Query;
+ 
+ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+ 
+@@ -10,4 +13,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
+ 
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
++
++    /** The claim, locked for a status change so two users cannot move it at once. */
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")
++    Optional<Claim> findForUpdate(Long id, String sheetId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 71ed7277d..1ab956816 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -58,6 +58,29 @@ public class ClaimService {
+         return claim;
+     }
+ 
++    /** Move a claim to a new status; a move its status does not allow is refused (409). */
++    @Transactional
++    public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
++        Claim claim = claims.findForUpdate(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
++        if (!claim.getStatus().canMoveTo(to)) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot become " + to);
++        }
++        claim.setStatus(to);
++        claims.flush();
++        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        String event = switch (to) {
++            case OPEN -> "CLAIM_OPENED";
++            case SETTLED -> "CLAIM_SETTLED";
++            case VOID -> "CLAIM_VOIDED";
++            case DRAFT -> throw new IllegalArgumentException("A claim cannot return to DRAFT");
++        };
++        record(event, user, person, claim);
++        return claim;
++    }
++
+     /** Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd. */
+     private void record(String event, String user, Person person, Claim claim) {
+         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+new file mode 100644
+index 000000000..46477f8d2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimStatus.java
+@@ -0,0 +1,16 @@
++package net.officefloor.hq.app.claim;
++
++/** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
++public enum ClaimStatus {
++    DRAFT, OPEN, SETTLED, VOID;
++
++    /** Whether a claim in this status may move to the given status. */
++    public boolean canMoveTo(ClaimStatus to) {
++        return switch (to) {
++            case OPEN -> this == DRAFT;
++            case SETTLED -> this == OPEN;
++            case VOID -> this == DRAFT || this == OPEN;
++            case DRAFT -> false;
++        };
++    }
++}
+diff --git a/src/main/resources/db/migration/V7__claim_status.sql b/src/main/resources/db/migration/V7__claim_status.sql
+new file mode 100644
+index 000000000..7c4e0af76
+--- /dev/null
++++ b/src/main/resources/db/migration/V7__claim_status.sql
+@@ -0,0 +1,4 @@
++-- A claim's status: DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be
++-- VOID. Only OPEN and SETTLED claims count toward claimed and due totals.
++ALTER TABLE claim ADD COLUMN status VARCHAR(10) NOT NULL DEFAULT 'DRAFT'
++    CHECK (status IN ('DRAFT', 'OPEN', 'SETTLED', 'VOID'));
