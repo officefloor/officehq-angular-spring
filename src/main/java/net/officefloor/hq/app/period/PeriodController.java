@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -34,24 +35,28 @@ import org.springframework.web.bind.annotation.RestController;
 public class PeriodController {
 
     /** A period as the screen shows it; closedPersonTotals is each person's due-total for it fixed
-     *  when it was closed, by person id (empty while it is open). */
+     *  when it was closed, and closedPersonCarried each person's carried figure for it fixed then, by
+     *  person id (both empty while it is open). */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap) {
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
+            Map<Long, String> closedPersonCarried) {
         static PeriodView of(Period period) {
-            Map<Long, String> personTotals = new TreeMap<>();
-            period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null,
-                    personTotals, period.getCap());
+                    texts(period.getPersonTotals()), period.getCap(), texts(period.getPersonCarried()));
         }
 
         static PeriodView of(History.PeriodThen period, Integer cap) {
-            Map<Long, String> personTotals = new TreeMap<>();
-            period.personTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.id(), period.name(), period.from(), period.to(), period.closed(),
                     period.softClosed(), period.closedTotal() != null ? period.closedTotal().toPlainString() : null,
-                    personTotals, cap);
+                    texts(period.personTotals()), cap, texts(period.personCarried()));
+        }
+
+        private static Map<Long, String> texts(Map<Long, BigDecimal> figures) {
+            Map<Long, String> texts = new TreeMap<>();
+            figures.forEach((id, figure) -> texts.put(id, figure.toPlainString()));
+            return texts;
         }
     }
 

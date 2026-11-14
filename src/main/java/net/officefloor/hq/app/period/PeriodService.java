@@ -71,7 +71,8 @@ public class PeriodService {
     private Period save(Period period) {
         Period saved = periods.saveAndFlush(period);
         history.periodSaved(saved.getId(), saved.getSheetId(), saved.getName(), saved.getFrom(), saved.getTo(),
-                saved.isClosed(), saved.isSoftClosed(), saved.getClosedTotal(), saved.getPersonTotals());
+                saved.isClosed(), saved.isSoftClosed(), saved.getClosedTotal(), saved.getPersonTotals(),
+                saved.getPersonCarried());
         return saved;
     }
 
@@ -194,7 +195,7 @@ public class PeriodService {
         }
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
         BigDecimal total = sum(personTotals);
-        period.softClose(total, personTotals);
+        period.softClose(total, personTotals, personCarried(sheetId, period));
         Period saved = save(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
                 + " total=" + total.toPlainString());
@@ -205,7 +206,7 @@ public class PeriodService {
         String name = period.getName();
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
         BigDecimal total = sum(personTotals);
-        period.close(total, personTotals);
+        period.close(total, personTotals, personCarried(sheetId, period));
         Period saved = save(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
                 + " total=" + total.toPlainString() + suffix);
@@ -239,6 +240,37 @@ public class PeriodService {
             }
         }
         return personTotals;
+    }
+
+    /** Each person's carried figure for the period now, by person id, everyone on the sheet: the dues
+     *  shown now on their claims whose due-by falls in a period ending before this one starts, that
+     *  were still OPEN or PENDING at the end of this period's last day (by the status each had then, as
+     *  its status log records it) and the live rules leave in (a claim with no figure adds nothing). */
+    private Map<Long, BigDecimal> personCarried(String sheetId, Period period) {
+        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, Function.identity()));
+        Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
+        List<Period> all = periods.findBySheetIdOrderByFromAsc(sheetId);
+        LocalDate today = sheets.today(sheetId);
+        Map<Long, BigDecimal> carried = new LinkedHashMap<>();
+        byId.keySet().forEach(id -> carried.put(id, BigDecimal.ZERO.setScale(2)));
+        Map<Long, ClaimStatus> atEnd = claimService.statusesAsOf(sheetId, period.getTo());
+        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            ClaimStatus then = atEnd.get(claim.getId());
+            if (person == null || then == null || !then.isOpen()
+                    || !claim.countsAsOf(then, holds.getOrDefault(person.getId(), List.of()),
+                            person.getRetiredFrom(), today)
+                    || all.stream().noneMatch(own -> own.contains(claim.getDueBy())
+                            && own.getTo().isBefore(period.getFrom()))) {
+                continue;
+            }
+            BigDecimal due = claimService.dueOf(sheetId, person, claim);
+            if (due != null) {
+                carried.merge(person.getId(), due, BigDecimal::add);
+            }
+        }
+        return carried;
     }
 
     /** Reopen a closed or soft-closed period, making its due-total live again. Only a role the sheet's

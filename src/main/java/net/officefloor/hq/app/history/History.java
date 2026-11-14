@@ -170,37 +170,48 @@ public class History {
 
     /** A period as it stood at the end of a day. */
     public record PeriodThen(Long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
-            BigDecimal closedTotal, Map<Long, BigDecimal> personTotals) {
+            BigDecimal closedTotal, Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
     }
 
     /** Keep a period's state as it is now saved, with the sheet's today. */
     public void periodSaved(Long periodId, String sheetId, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals) {
-        String totals = String.join(",", personTotals.entrySet().stream()
-                .map(e -> e.getKey() + "=" + e.getValue().toPlainString()).toList());
+            boolean softClosed, BigDecimal closedTotal, Map<Long, BigDecimal> personTotals,
+            Map<Long, BigDecimal> personCarried) {
         jdbc.update("INSERT INTO period_history (period_id, sheet_id, name, from_date, to_date, closed, soft_closed,"
-                        + " closed_total, person_totals, made_on) SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, today FROM sheet"
-                        + " WHERE id = ?",
-                periodId, name, from, to, closed, softClosed, closedTotal, totals, sheetId);
+                        + " closed_total, person_totals, person_carried, made_on) SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ?,"
+                        + " today FROM sheet WHERE id = ?",
+                periodId, name, from, to, closed, softClosed, closedTotal, pairs(personTotals), pairs(personCarried),
+                sheetId);
+    }
+
+    /** Figures by person id as person-id=figure pairs separated by commas. */
+    private static String pairs(Map<Long, BigDecimal> figures) {
+        return String.join(",", figures.entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue().toPlainString()).toList());
+    }
+
+    /** Figures by person id read back from {@link #pairs}. */
+    private static Map<Long, BigDecimal> unpair(String kept) {
+        Map<Long, BigDecimal> figures = new LinkedHashMap<>();
+        if (kept != null && !kept.isEmpty()) {
+            for (String pair : kept.split(",")) {
+                String[] parts = pair.split("=");
+                figures.put(Long.valueOf(parts[0]), new BigDecimal(parts[1]));
+            }
+        }
+        return figures;
     }
 
     /** The sheet's periods as they stood at the end of a day, by period id; a period saved only after
      *  it, or before their states were kept, is absent. */
     public Map<Long, PeriodThen> periods(String sheetId, LocalDate day) {
         Map<Long, PeriodThen> then = new LinkedHashMap<>();
-        jdbc.query("SELECT * FROM period_history WHERE sheet_id = ? AND made_on <= ? ORDER BY id", (rs, n) -> {
-            Map<Long, BigDecimal> totals = new LinkedHashMap<>();
-            String kept = rs.getString("person_totals");
-            if (!kept.isEmpty()) {
-                for (String pair : kept.split(",")) {
-                    String[] parts = pair.split("=");
-                    totals.put(Long.valueOf(parts[0]), new BigDecimal(parts[1]));
-                }
-            }
-            return new PeriodThen(rs.getLong("period_id"), rs.getString("name"),
-                    rs.getObject("from_date", LocalDate.class), rs.getObject("to_date", LocalDate.class),
-                    rs.getBoolean("closed"), rs.getBoolean("soft_closed"), rs.getBigDecimal("closed_total"), totals);
-        }, sheetId, day).forEach(period -> then.put(period.id(), period));
+        jdbc.query("SELECT * FROM period_history WHERE sheet_id = ? AND made_on <= ? ORDER BY id", (rs, n) ->
+                new PeriodThen(rs.getLong("period_id"), rs.getString("name"),
+                        rs.getObject("from_date", LocalDate.class), rs.getObject("to_date", LocalDate.class),
+                        rs.getBoolean("closed"), rs.getBoolean("soft_closed"), rs.getBigDecimal("closed_total"),
+                        unpair(rs.getString("person_totals")), unpair(rs.getString("person_carried"))),
+                sheetId, day).forEach(period -> then.put(period.id(), period));
         return then;
     }
 

@@ -66,8 +66,8 @@ interface Person {
   clashing: boolean;
 }
 
-/** The figures of a sheet's descendants added up, each as that sheet shows it, and the sheet's own
- *  figures as it shows them now (absent until read). */
+/** The figures of a sheet's descendants added up, each as that sheet shows it (as of the screen's
+ *  as-of date while one is set), and the sheet's own figures likewise (absent until read). */
 interface DescendantFigures {
   people: number;
   dueTotal: string;
@@ -1013,22 +1013,15 @@ export class People {
   });
   /** The sheet's descendants' figures added up, as the store last told them. */
   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
-  /** The consolidated figures: the sheet's own as it shows them now (read from the server while the
-   *  screen shows a past day) plus its descendants'. */
-  protected readonly consolidatedPeople = computed(() => {
-    const d = this.descendantFigures();
-    return (this.session.asOf() && d.ownPeople !== undefined ? d.ownPeople : this.people().length) + d.people;
-  });
-  protected readonly consolidatedDue = computed(() => {
-    const d = this.descendantFigures();
-    const own = this.session.asOf() && d.ownDueTotal !== undefined ? d.ownDueTotal : this.dueTotal();
-    return money(cents(own) + cents(d.dueTotal));
-  });
-  protected readonly consolidatedOverdue = computed(() => {
-    const d = this.descendantFigures();
-    const own = this.session.asOf() && d.ownOverdueTotal !== undefined ? d.ownOverdueTotal : this.overdueTotal();
-    return money(cents(own) + cents(d.overdueTotal));
-  });
+  /** The consolidated figures: the sheet's own as it shows them plus its descendants', each as of the
+   *  screen's as-of date while one is set. */
+  protected readonly consolidatedPeople = computed(() => this.people().length + this.descendantFigures().people);
+  protected readonly consolidatedDue = computed(() =>
+    money(cents(this.dueTotal()) + cents(this.descendantFigures().dueTotal)),
+  );
+  protected readonly consolidatedOverdue = computed(() =>
+    money(cents(this.overdueTotal()) + cents(this.descendantFigures().overdueTotal)),
+  );
   /** Every tag ever used on the sheet, as the store last told it. */
   private readonly usedTags = signal<string[]>([]);
   /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it,
@@ -1122,14 +1115,20 @@ export class People {
     }
     return totals;
   });
-  /** Each person's carried figure for each period, in cents, by period id then person id: the dues
-   *  shown now on their claims that count and whose due-by falls in a period ending before this one
-   *  starts, that were still OPEN or PENDING at the end of this period's last day, as their status
-   *  logs record it, and the live rules leave in (a claim with no figure adds nothing). */
+  /** Each person's carried figure for each period, in cents, by period id then person id: while the
+   *  period is open, the dues shown now on their claims that count and whose due-by falls in a period
+   *  ending before this one starts, that were still OPEN or PENDING at the end of this period's last
+   *  day, as their status logs record it, and the live rules leave in (a claim with no figure adds
+   *  nothing); once it is closed or soft-closed, the figures fixed then (a person added later has none
+   *  and counts 0.00). */
   protected readonly personCarriedCents = computed(() => {
     const periods = this.periods.periods();
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
-    const totals = new Map<number, Map<number, number>>(periods.map((p) => [p.id, new Map()]));
+    const totals = new Map<number, Map<number, number>>();
+    for (const period of periods) {
+      const fixed = Object.entries(period.closed || period.softClosed ? (period.closedPersonCarried ?? {}) : {});
+      totals.set(period.id, new Map(fixed.map(([id, carried]) => [Number(id), cents(carried)])));
+    }
     const keep = this.liveRulesKeep();
     for (const c of this.claims()) {
       const own = periodOf(periods, c.dueBy);
@@ -1137,7 +1136,7 @@ export class People {
       if (own === null || theirs === undefined || !keep(c)) continue;
       let due: number | null = null;
       for (const period of periods) {
-        if (own.to >= period.from) continue;
+        if (period.closed || period.softClosed || own.to >= period.from) continue;
         const then = statusAsOf(c, period.to);
         if (then !== 'OPEN' && then !== 'PENDING') continue;
         due ??= claimDueCents(c, this.rates.ofGradeOn(theirs, c), this.floor(), this.late()) ?? 0;

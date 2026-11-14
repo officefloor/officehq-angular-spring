@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.period.PeriodService;
@@ -36,8 +37,8 @@ public class SheetController {
         }
     }
 
-    /** The figures of a sheet's descendants added up, each as that sheet shows it now, and the sheet's
-     *  own figures as it shows them now (whatever day a screen is set to show it as of). */
+    /** The figures of a sheet's descendants added up, each as that sheet shows it, and the sheet's own
+     *  figures: as they are now, or as they stood at the end of the screen's as-of date. */
     public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
             String ownDueTotal, String ownOverdueTotal) {
     }
@@ -76,20 +77,24 @@ public class SheetController {
     }
 
     /** The sheet's descendants' figures added up: how many people are on them, and each one's
-     *  due-total and overdue-total as that sheet shows it. The sheet's own figures now are given apart. */
+     *  due-total and overdue-total as that sheet shows it. The sheet's own figures are given apart.
+     *  While the screen is set to an as-of date, every sheet's figures are as it stood at the end of
+     *  that day, the date standing in for the sheet's today. */
     @GetMapping("/{id}/descendant-figures")
-    public DescendantFigures descendantFigures(@PathVariable @NotBlank @Size(max = 200) String id) {
+    public DescendantFigures descendantFigures(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
+        LocalDate asOf = AsOf.parse(asOfHeader);
         int people = 0;
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
         var descendants = service.descendants(id.trim());
         for (String sheet : descendants) {
-            RollupService.Headline figures = rollups.headline(sheet);
+            RollupService.Headline figures = rollups.headline(sheet, asOf);
             people += figures.people();
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
         }
-        RollupService.Headline own = rollups.headline(id.trim());
+        RollupService.Headline own = rollups.headline(id.trim(), asOf);
         return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString(),
                 own.people(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString());
     }

@@ -23,6 +23,9 @@ export interface Period {
   closedPersonTotals: Record<string, string>;
   /** The most OPEN and PENDING claims a person may have in the period; null for no cap. */
   cap: number | null;
+  /** Each person's carried figure for the period fixed when it was closed or soft-closed (two
+   *  decimals), by person id; empty while it is open. */
+  closedPersonCarried: Record<string, string>;
 }
 
 /** The period whose dates contain a date; null when none does. Periods never overlap, so at most

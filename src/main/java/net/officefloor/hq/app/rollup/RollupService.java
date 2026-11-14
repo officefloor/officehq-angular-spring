@@ -15,10 +15,10 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonHold;
-import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.setting.SettingService;
@@ -51,7 +51,6 @@ public class RollupService {
             BigDecimal overdueTotal) {
     }
 
-    private final PersonRepository people;
     private final ClaimRepository claims;
     private final ClaimService claimService;
     private final RateService rates;
@@ -59,12 +58,13 @@ public class RollupService {
     private final PersonService personService;
     private final SheetService sheets;
     private final SettingService settings;
+    private final History history;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, ClaimService claimService,
+    public RollupService(ClaimRepository claims, ClaimService claimService,
             RateService rates, PersonGradeService grades, PersonService personService, SheetService sheets,
-            SettingService settings, Audit audit) {
-        this.people = people;
+            SettingService settings, History history, Audit audit) {
+        this.history = history;
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
@@ -141,7 +141,14 @@ public class RollupService {
     /** The sheet's headline figures as it shows them now. */
     @Transactional(readOnly = true)
     public Headline headline(String sheetId) {
-        Rollup rollup = rollup(sheetId);
+        return headline(sheetId, null);
+    }
+
+    /** The sheet's headline figures as it stood at the end of a day, that day standing in for the
+     *  sheet's today (null: as it shows them now). */
+    @Transactional(readOnly = true)
+    public Headline headline(String sheetId, LocalDate asOf) {
+        Rollup rollup = rollup(sheetId, asOf);
         return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal());
     }
 
@@ -166,12 +173,19 @@ public class RollupService {
     }
 
     private Rollup rollup(String sheetId) {
-        LocalDate today = sheets.today(sheetId);
-        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
-        Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
+        return rollup(sheetId, null);
+    }
+
+    /** The sheet's figures as it stood at the end of a day: its people, claims, holds, grades, rates
+     *  and settings as they stood then, the day standing in for the sheet's today (null: now). */
+    private Rollup rollup(String sheetId, LocalDate asOf) {
+        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+        List<Person> sheetPeople = personService.list(sheetId, asOf);
+        Map<Long, List<PersonHold>> holds = personService.holds(sheetId, asOf);
         Map<Long, LocalDate> retiredFrom = new HashMap<>();
         sheetPeople.forEach(person -> retiredFrom.put(person.getId(), person.getRetiredFrom()));
-        Map<Long, List<Claim>> counted = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDesc(sheetId);
+        Map<Long, List<Claim>> counted = (asOf == null ? sheetClaims : history.claims(sheetClaims, asOf)).stream()
                 .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of()),
                         retiredFrom.get(claim.getPersonId()), today))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
@@ -180,7 +194,7 @@ public class RollupService {
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : sheetPeople) {
-            Figures f = figuresOf(sheetId, today, person, counted.getOrDefault(person.getId(), List.of()));
+            Figures f = figuresOf(sheetId, today, asOf, person, counted.getOrDefault(person.getId(), List.of()));
             figures.put(person.getId(), f);
             claimedTotal = claimedTotal.add(f.claimed());
             if (f.due() != null) {
@@ -206,7 +220,7 @@ public class RollupService {
      *  figures they show, or none when the grade in force on the sheet's today has no rate in force
      *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
      *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today. */
-    private Figures figuresOf(String sheetId, LocalDate today, Person person, List<Claim> counted) {
+    private Figures figuresOf(String sheetId, LocalDate today, LocalDate asOf, Person person, List<Claim> counted) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
         BigDecimal overdue = NONE;
@@ -215,17 +229,17 @@ public class RollupService {
             if (claim.getCorrects() == null) {
                 claimed = claimed.add(claim.getAmount());
             }
-            BigDecimal figure = claimService.dueOf(sheetId, person, claim);
+            BigDecimal figure = claimService.dueOf(sheetId, person, claim, asOf);
             if (figure != null) {
                 due = due.add(figure);
-                if (claim.getStatus().isOpen() && claimService.overdueFrom(sheetId, person, claim, null).isBefore(today)) {
+                if (claim.getStatus().isOpen() && claimService.overdueFrom(sheetId, person, claim, asOf).isBefore(today)) {
                     overdue = overdue.add(figure);
                 }
             }
             anyFigure |= figure != null;
         }
-        boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today), today).isPresent();
-        return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due) : null,
+        boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today, asOf), today, asOf).isPresent();
+        return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due, asOf) : null,
                 overdue);
     }
 
