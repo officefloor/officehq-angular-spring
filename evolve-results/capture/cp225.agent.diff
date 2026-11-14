@@ -1,0 +1,297 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 37f435874..ce48724c5 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -72,6 +72,11 @@ export class Session {
+     this.loads.update((n) => n + 1);
+   }
+ 
++  /** Re-read everything on the active sheet after a change that touched much of it. */
++  reread(): void {
++    this.loads.update((n) => n + 1);
++  }
++
+   /** Show the sheet as of a date (yyyy-mm-dd) on this screen, re-reading everything as it stood then. */
+   setAsOf(date: string): void {
+     this.asOf.set(date);
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+index 788fee32f..ac09e7120 100644
+--- a/src/main/frontend/src/app/features/grades/grades.ts
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Component, Injectable, effect, inject, signal } from '@angular/core';
++import { Component, Injectable, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { GRADES } from '../rates/rates';
+@@ -39,6 +39,18 @@ export class GradeStore {
+     this.grades.set(list);
+   }
+ 
++  /** Merge a grade into another on the active sheet; how many people were given the other grade.
++   *  Everything on the screen is re-read, as the people merged changed. */
++  async merge(from: string, into: string): Promise<number> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const view = await firstValueFrom(
++      this.http.post<{ merged: number }>(`/api/sheets/${encodeURIComponent(sheet)}/grades/merge`, { from, into }),
++    );
++    if (this.session.sheetId() === sheet) this.session.reread();
++    return view.merged;
++  }
++
+   private async read(sheet: string, load: number): Promise<void> {
+     const list = await firstValueFrom(this.http.get<Grade[]>(`/api/sheets/${encodeURIComponent(sheet)}/grades`));
+     if (this.session.loads() !== load) return;
+@@ -66,10 +78,38 @@ export class GradeStore {
+           }
+         </select>
+         <button type="submit" data-testid="grade-retire">Retire grade</button>
+-        @if (error(); as message) {
+-          <p role="alert" data-testid="grade-error">{{ message }}</p>
++      </form>
++      <form (submit)="merge($event)" aria-label="Merge a grade into another">
++        <label for="grade-merge-from">Merge grade</label>
++        <select
++          id="grade-merge-from"
++          data-testid="grade-merge-from"
++          [value]="mergeFrom()"
++          (change)="mergeFrom.set(value($event)); error.set(null)"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="mergeFrom() === g">{{ g }}</option>
++          }
++        </select>
++        <label for="grade-merge-into">into</label>
++        <select
++          id="grade-merge-into"
++          data-testid="grade-merge-into"
++          [value]="mergeInto()"
++          (change)="mergeInto.set(value($event)); error.set(null)"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="mergeInto() === g">{{ g }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="grade-merge">Merge grades</button>
++        @if (merged() !== null) {
++          Moved <strong data-testid="grade-merged">{{ merged() }}</strong>
+         }
+       </form>
++      @if (error(); as message) {
++        <p role="alert" data-testid="grade-error">{{ message }}</p>
++      }
+       <table>
+         <thead>
+           <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
+@@ -90,6 +130,17 @@ export class Grades {
+   protected readonly store = inject(GradeStore);
+   protected readonly grades = GRADES;
+   protected readonly grade = signal(GRADES[0]);
++  protected readonly mergeFrom = signal(GRADES[0]);
++  protected readonly mergeInto = signal(GRADES[1]);
++  private readonly session = inject(Session);
++  /** How many people the last merge gave the other grade, with the sheet load it was made on; null
++   *  while it runs or before one. */
++  private readonly lastMerge = signal<{ load: number; merged: number } | null>(null);
++  /** The last merge's count, shown until the sheet is loaded again. */
++  protected readonly merged = computed(() => {
++    const last = this.lastMerge();
++    return last && last.load === this.session.loads() ? last.merged : null;
++  });
+   protected readonly error = signal<string | null>(null);
+   /** Whether a retire is waiting for its answer; a second one meanwhile is dropped. */
+   private readonly busy = signal(false);
+@@ -113,4 +164,24 @@ export class Grades {
+       this.busy.set(false);
+     }
+   }
++
++  /** Merge the chosen grade into the other; the same grade twice, or anyone but a steward, is
++   *  refused beside the entry. */
++  protected async merge(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy()) return;
++    this.error.set(null);
++    this.lastMerge.set(null);
++    const from = this.mergeFrom();
++    const into = this.mergeInto();
++    this.busy.set(true);
++    try {
++      const merged = await this.store.merge(from, into);
++      this.lastMerge.set({ load: this.session.loads(), merged });
++    } catch {
++      this.error.set(`The grade ${from} could not be merged into ${into}: only a steward merges two different grades.`);
++    } finally {
++      this.busy.set(false);
++    }
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0a29f1ae6..87243a118 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2199,7 +2199,8 @@ export class People {
+   protected excessOf(person: Person): string {
+     const sum = this.uncappedCentsBy(person);
+     const cap = this.cap();
+-    return money(sum === null || cap === null ? 0 : Math.max(sum + this.cutCentsOf(person) - cap, 0));
++    // What the cap holds back: the uncapped sum less the due it leaves (a cut above the cap leaves none).
++    return money(sum === null || cap === null ? 0 : Math.max(sum - Math.max(cap - this.cutCentsOf(person), 0), 0));
+   }
+ 
+   private dueCentsBy(person: Person): number | null {
+diff --git a/src/main/java/net/officefloor/hq/app/grade/GradeController.java b/src/main/java/net/officefloor/hq/app/grade/GradeController.java
+index a52d35d60..a3cb40fe0 100644
+--- a/src/main/java/net/officefloor/hq/app/grade/GradeController.java
++++ b/src/main/java/net/officefloor/hq/app/grade/GradeController.java
+@@ -6,6 +6,9 @@ import jakarta.validation.constraints.Size;
+ import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.SignedInUser;
++import net.officefloor.hq.app.person.ContactInUseException;
++import net.officefloor.hq.app.person.NameInUseException;
++import net.officefloor.hq.app.person.StalePersonException;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.converter.HttpMessageNotReadableException;
+@@ -33,10 +36,20 @@ public class GradeController {
+     public record RetireRequest(@NotNull @Size(max = 10) String grade) {
+     }
+ 
++    /** A grade to merge into another. */
++    public record MergeRequest(@NotNull @Size(max = 10) String from, @NotNull @Size(max = 10) String into) {
++    }
++
++    /** How many people a merge gave the other grade. */
++    public record MergeView(int merged) {
++    }
++
+     private final GradeService service;
++    private final GradeMergeService merges;
+ 
+-    public GradeController(GradeService service) {
++    public GradeController(GradeService service, GradeMergeService merges) {
+         this.service = service;
++        this.merges = merges;
+     }
+ 
+     /** Every grade, in order, each with whether it is retired on the sheet. */
+@@ -55,8 +68,19 @@ public class GradeController {
+         return list(sheet);
+     }
+ 
+-    /** A grade that is not one, or is retired already, is refused. */
+-    @ExceptionHandler({GradeRetiredException.class, DataIntegrityViolationException.class})
++    /** Merge a grade into another; how many people were given the other grade. */
++    @PostMapping("/merge")
++    public MergeView merge(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated MergeRequest request) {
++        return new MergeView(merges.merge(sheetId.trim(), SignedInUser.decode(user), request.from().trim(),
++                request.into().trim()).size());
++    }
++
++    /** A grade that is not one, or is retired already, is refused; so is a merge refused, or one that
++     *  could not give a person the grade as their editor would. */
++    @ExceptionHandler({GradeRetiredException.class, GradeMergeRefusedException.class,
++            DataIntegrityViolationException.class, StalePersonException.class, NameInUseException.class,
++            ContactInUseException.class})
+     @ResponseStatus(HttpStatus.CONFLICT)
+     public void refused() {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/grade/GradeMergeRefusedException.java b/src/main/java/net/officefloor/hq/app/grade/GradeMergeRefusedException.java
+new file mode 100644
+index 000000000..7520fc854
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/grade/GradeMergeRefusedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.grade;
++
++/** A grade merge by anyone but a steward, of a grade into itself, or of something that is not a grade. */
++public class GradeMergeRefusedException extends RuntimeException {
++
++    public GradeMergeRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/grade/GradeMergeService.java b/src/main/java/net/officefloor/hq/app/grade/GradeMergeService.java
+new file mode 100644
+index 000000000..dbf968a27
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/grade/GradeMergeService.java
+@@ -0,0 +1,74 @@
++package net.officefloor.hq.app.grade;
++
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonGradeService;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonService;
++import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.setting.Role;
++import net.officefloor.hq.app.setting.SettingService;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Merges one grade into another: everyone on the merged grade today is given the other. */
++@Service
++public class GradeMergeService {
++
++    private final PersonRepository people;
++    private final PersonService service;
++    private final PersonGradeService grades;
++    private final RollupService rollups;
++    private final SettingService settings;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public GradeMergeService(PersonRepository people, PersonService service, PersonGradeService grades,
++            RollupService rollups, SettingService settings, SheetService sheets, Audit audit) {
++        this.people = people;
++        this.service = service;
++        this.grades = grades;
++        this.rollups = rollups;
++        this.settings = settings;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    /** A steward merges a grade into another: every person whose grade in force on the sheet's today
++     *  is the merged grade is given the other from the sheet's today, in list order, exactly as saving
++     *  them from the editor with their name and terms unchanged would, each followed by the figures it
++     *  moved, and the merge as a whole is followed by the figures it moved. Anyone but a steward, the same grade twice, or a grade that is not one, is refused, as is
++     *  the merge as a whole when any person cannot be given the grade (a retired one). Returns the
++     *  people given the grade, in that order. */
++    @Transactional
++    public List<Person> merge(String sheetId, String user, String from, String into) {
++        if (!GradeService.GRADES.contains(from) || !GradeService.GRADES.contains(into)) {
++            throw new GradeMergeRefusedException("There is no grade " + from + " or " + into);
++        }
++        if (from.equals(into)) {
++            throw new GradeMergeRefusedException("A grade cannot be merged into itself");
++        }
++        sheets.lock(sheetId);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new GradeMergeRefusedException(user + " is not a steward: only a steward merges grades");
++        }
++        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
++        LocalDate today = sheets.today(sheetId);
++        return rollups.track(sheetId, user, () -> {
++            List<Person> merged = new ArrayList<>();
++            for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++                if (!from.equals(grades.gradeOn(person.getId(), today))) {
++                    continue;
++                }
++                merged.add(rollups.track(sheetId, user, () -> service.update(sheetId, user, person.getId(),
++                        person.getVersion(), person.getName(), into, today, service.termsOn(person, today),
++                        person.getContact())));
++            }
++            return merged;
++        });
++    }
++}
