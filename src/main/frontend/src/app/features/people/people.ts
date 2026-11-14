@@ -486,6 +486,31 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       @if (bulkRetireError(); as message) {
         <p role="alert" data-testid="person-error">{{ message }}</p>
       }
+      <form (submit)="holdSelected($event)" aria-label="Hold the selected people">
+        <label for="bulk-hold-from">Hold the selected people from</label>
+        <input
+          type="date"
+          id="bulk-hold-from"
+          data-testid="bulk-hold-from"
+          [value]="bulkHoldFrom()"
+          (input)="bulkHoldFrom.set(value($event)); bulkHoldError.set(null)"
+        />
+        <label for="bulk-hold-to">To</label>
+        <input
+          type="date"
+          id="bulk-hold-to"
+          data-testid="bulk-hold-to"
+          [value]="bulkHoldTo()"
+          (input)="bulkHoldTo.set(value($event)); bulkHoldError.set(null)"
+        />
+        <button type="submit" data-testid="bulk-hold">Hold selected people</button>
+        @if (bulkHeld() !== null) {
+          Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong>
+        }
+      </form>
+      @if (bulkHoldError(); as message) {
+        <p role="alert" data-testid="person-error">{{ message }}</p>
+      }
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
@@ -1663,6 +1688,16 @@ export class People {
   protected readonly bulkRetireError = signal<string | null>(null);
   /** Whether a bulk retire is waiting for its answer; a second press meanwhile is dropped. */
   private readonly bulkRetireBusy = signal(false);
+  /** The date the selected people are held from; blank takes the sheet's today. */
+  protected readonly bulkHoldFrom = signal('');
+  /** The date the selected people's hold ends; blank: it does not end. */
+  protected readonly bulkHoldTo = signal('');
+  /** How many people the last bulk hold held; null while it runs or before one. */
+  protected readonly bulkHeld = signal<number | null>(null);
+  /** Why the last bulk hold could not be done; null when it was. */
+  protected readonly bulkHoldError = signal<string | null>(null);
+  /** Whether a bulk hold is waiting for its answer; a second press meanwhile is dropped. */
+  private readonly bulkHoldBusy = signal(false);
   /** The date typed to take each person's statement as of (blank: now), by person id. */
   protected readonly statementDates = signal<Record<number, string>>({});
   /** The patron chosen on each person's row (a person id, or blank), by person id. */
@@ -1716,6 +1751,10 @@ export class People {
       this.bulkRetireFrom.set('');
       this.bulkRetired.set(null);
       this.bulkRetireError.set(null);
+      this.bulkHoldFrom.set('');
+      this.bulkHoldTo.set('');
+      this.bulkHeld.set(null);
+      this.bulkHoldError.set(null);
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -2558,6 +2597,7 @@ export class People {
     });
     this.bulkGradeError.set(null);
     this.bulkRetireError.set(null);
+    this.bulkHoldError.set(null);
   }
 
   /** Retire the selected people from the typed date (blank takes the sheet's today), in list order,
@@ -2568,6 +2608,7 @@ export class People {
     this.bulkRetired.set(null);
     this.bulkRetireError.set(null);
     this.bulkGradeError.set(null);
+    this.bulkHoldError.set(null);
     this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
@@ -2597,6 +2638,47 @@ export class People {
     }
   }
 
+  /** Hold the selected people from the typed from-date (blank takes the sheet's today) to the typed
+   *  to-date (blank: it does not end), in list order, each as its row's hold would; the screen shows
+   *  how many were held. */
+  protected async holdSelected(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.bulkHoldBusy()) return;
+    this.bulkHeld.set(null);
+    this.bulkHoldError.set(null);
+    this.bulkGradeError.set(null);
+    this.bulkRetireError.set(null);
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const personIds = [...this.selectedPeople()];
+    if (personIds.length === 0) {
+      this.bulkHoldError.set('Select the people to hold.');
+      return;
+    }
+    this.bulkHoldBusy.set(true);
+    try {
+      const held = await firstValueFrom(
+        this.http.post<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people/hold`, {
+          personIds,
+          from: this.bulkHoldFrom().trim() || null,
+          to: this.bulkHoldTo().trim() || null,
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      const saved = new Map(held.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => saved.get(p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkHoldFrom.set('');
+      this.bulkHoldTo.set('');
+      this.bulkHeld.set(held.length);
+    } catch {
+      this.bulkHoldError.set('The selected people could not be held.');
+    } finally {
+      this.bulkHoldBusy.set(false);
+    }
+  }
+
   /** Give the selected people the chosen grade from the typed date (blank takes the sheet's today),
    *  in list order, each as saving them from the editor would; the screen shows how many were changed. */
   protected async gradeSelected(event: Event): Promise<void> {
@@ -2605,6 +2687,7 @@ export class People {
     this.bulkGraded.set(null);
     this.bulkGradeError.set(null);
     this.bulkRetireError.set(null);
+    this.bulkHoldError.set(null);
     this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;

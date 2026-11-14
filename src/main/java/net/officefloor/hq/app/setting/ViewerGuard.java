@@ -37,6 +37,7 @@ public class ViewerGuard implements HandlerInterceptor {
             "/api/sheets/{sheetId}/claims/reassign",
             "/api/sheets/{sheetId}/people/grade",
             "/api/sheets/{sheetId}/people/retire",
+            "/api/sheets/{sheetId}/people/hold",
             "/api/sheets/{sheetId}/plans/generate",
             "/api/sheets/{sheetId}/periods/generate");
 

@@ -133,6 +133,13 @@ public class PersonController {
             LocalDate from) {
     }
 
+    /** People selected to be held together from a date (blank takes the sheet's today) to an optional to-date. */
+    public record BulkHoldRequest(
+            @NotNull @Size(max = 10000) Set<@NotNull Long> personIds,
+            LocalDate from,
+            LocalDate to) {
+    }
+
     /** A retirement: the date the person is retired from (blank takes the sheet's today). */
     public record RetireRequest(LocalDate from) {
     }
@@ -188,14 +195,17 @@ public class PersonController {
     private final SheetService sheets;
     private final BulkGradeService bulkGrade;
     private final BulkRetireService bulkRetire;
+    private final BulkHoldService bulkHold;
     private final PersonMergeService merges;
     private final PersonTransferService transfers;
     private final PersonImportService imports;
 
     public PersonController(PersonService service, StatementService statements, RollupService rollups,
             PersonGradeService grades, SheetService sheets, BulkGradeService bulkGrade, PersonMergeService merges,
-            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire) {
+            PersonTransferService transfers, PersonImportService imports, BulkRetireService bulkRetire,
+            BulkHoldService bulkHold) {
         this.bulkRetire = bulkRetire;
+        this.bulkHold = bulkHold;
         this.imports = imports;
         this.transfers = transfers;
         this.bulkGrade = bulkGrade;
@@ -292,6 +302,17 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return bulkRetire.retire(sheet, by, request.personIds(), request.from()).stream()
+                .map(person -> withStatements(person, by)).toList();
+    }
+
+    /** Hold the selected people from a date to an optional to-date, in list order, each as its row's
+     *  hold would; the people held, in that order. */
+    @PostMapping("/hold")
+    public List<PersonView> holdAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkHoldRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return bulkHold.hold(sheet, by, request.personIds(), request.from(), request.to()).stream()
                 .map(person -> withStatements(person, by)).toList();
     }
 
