@@ -167,6 +167,66 @@ public class PeriodService {
         return generate(sheetId, user, first, first.plusMonths(11));
     }
 
+    /** A steward rolls fiscal year FY<year> over: the twelve monthly periods of FY<year+1> are generated
+     *  as {@link #generateFiscalYear} does, then each person's open figure at the end of the old year's
+     *  last period (the dues of their claims that count, due by a day in a period of the old year, and
+     *  OPEN or PENDING at the end of that last period's last day) is added to their opening balance for
+     *  the new year's first period. A period belongs to the fiscal year its from-date falls in. Anyone
+     *  but a steward, or an old year with no periods on the sheet, is refused. Returns how many periods
+     *  were made. */
+    @Transactional
+    public int rollover(String sheetId, String user, int year) {
+        sheets.lock(sheetId);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodRefusedException(user + " is not a steward: only a steward rolls the year over");
+        }
+        LocalDate oldFirst = LocalDate.of(year, settings.fiscalStartMonth(sheetId), 1);
+        LocalDate newFirst = oldFirst.plusYears(1);
+        LocalDate newLast = newFirst.plusYears(1).minusDays(1);
+        List<Period> oldYear = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> !p.getFrom().isBefore(oldFirst) && p.getFrom().isBefore(newFirst)).toList();
+        if (oldYear.isEmpty()) {
+            throw new PeriodRefusedException("FY" + String.format("%04d", year) + " has no periods");
+        }
+        Period last = oldYear.stream().max(Comparator.comparing(Period::getTo)).orElseThrow();
+        int made = generateFiscalYear(sheetId, user, year + 1);
+        Period first = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> !p.getFrom().isBefore(newFirst) && !p.getFrom().isAfter(newLast))
+                .findFirst()
+                .orElseThrow(() -> new PeriodRefusedException("FY" + String.format("%04d", year + 1)
+                        + " has no period to carry into"));
+
+        List<Person> everyone = people.findBySheetIdOrderByIdAsc(sheetId);
+        Map<Long, BigDecimal> open = new LinkedHashMap<>();
+        everyone.forEach(person -> open.put(person.getId(), BigDecimal.ZERO.setScale(2)));
+        Map<Long, Person> byId = everyone.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
+        LocalDate today = sheets.today(sheetId);
+        Map<Long, ClaimStatus> atEnd = claimService.statusesAsOf(sheetId, last.getTo());
+        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            ClaimStatus then = atEnd.get(claim.getId());
+            if (person == null || then == null || !then.isOpen()
+                    || !claim.countsAsOf(then, person.getRetiredFrom(), today)
+                    || oldYear.stream().noneMatch(p -> p.contains(claim.getDueBy()))) {
+                continue;
+            }
+            BigDecimal due = claimService.dueOf(sheetId, person, claim);
+            if (due != null) {
+                open.merge(person.getId(), due, BigDecimal::add);
+            }
+        }
+        for (Person person : everyone) {
+            BigDecimal amount = open.get(person.getId());
+            first.addOpening(person.getId(), amount);
+            audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                    + " period=" + first.getName() + " amount=" + amount.toPlainString());
+        }
+        periods.saveAndFlush(first);
+        audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + String.format("%04d", year)
+                + " periods=" + made);
+        return made;
+    }
+
     /** Close a period (one soft-closed too, fixing its figures afresh), fixing each person's due-total for it, for everyone on the sheet, and its own
      *  due-total, their sum: the figures shown on the claims due by a day in it that counted at the end of its last day (by the
      *  status each had then, as its status log records it)

@@ -154,6 +154,19 @@ public class PeriodController {
                 request.year()));
     }
 
+    /** A fiscal year to roll over into the next: FY<year>. */
+    public record RolloverRequest(@NotNull @Min(1) @Max(9997) Integer year) {
+    }
+
+    /** Roll a fiscal year over, generating the next year's periods and carrying each person's open
+     *  figure into its first; only a steward may. */
+    @PostMapping("/rollover")
+    public GenerateView rollover(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated RolloverRequest request) {
+        return new GenerateView(service.rollover(sheetId.trim(), SignedInUser.decode(user), request.year()));
+    }
+
     /** A calendar year to generate the quarterly periods of. */
     public record GenerateQuartersRequest(@NotNull @Min(1) @Max(9999) Integer year) {
     }
