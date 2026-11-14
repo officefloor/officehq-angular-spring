@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { Figures } from '../../core/figures';
 import { LOCALES, Locale, Session } from '../../core/session';
 import { AuditViewer } from '../audit/audit-viewer';
+import { Duplicates } from '../duplicates/duplicates';
 import { People } from '../people/people';
 import { TreeSearch } from '../search/tree-search';
 import { SettingStore } from '../settings/settings';
@@ -9,7 +10,7 @@ import { SettingStore } from '../settings/settings';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [AuditViewer, Figures, People, TreeSearch],
+  imports: [AuditViewer, Duplicates, Figures, People, TreeSearch],
   template: `
     <div appFigures>
     @if (session.user(); as user) {
@@ -98,6 +99,7 @@ import { SettingStore } from '../settings/settings';
           <p role="alert" data-testid="asof-error">{{ error }}</p>
         }
         <app-people />
+        <app-duplicates />
         <app-tree-search />
         <app-audit-viewer />
       } @else {
