@@ -70,6 +70,9 @@ export interface Claim {
   comments: string[];
   /** The number of the settle batch that settled the claim; null when a bulk settle did not. */
   batch: number | null;
+  /** The claim's lines, oldest first, each as <label> <qty> x <unit>; empty when it has none. A claim
+   *  with lines has them added up as its amount. */
+  lines: string[];
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -203,6 +206,9 @@ export const AMOUNT = /^\d+(\.\d{1,2})?$/;
 
 /** A claim's amount: any amount with up to two decimals; a negative one is a correction. */
 const CLAIM_AMOUNT = /^-?\d+(\.\d{1,2})?$/;
+
+/** A line's quantity: a whole number. */
+const QTY = /^\d+$/;
 
 /** A claim number a correction names: sheet-wide (1, 2, ...) or within a period (P1-1, X-1). */
 const NUMBER = /^\S+$/;
@@ -367,6 +373,37 @@ const NUMBER = /^\S+$/;
           <button type="button" data-testid="claim-split" [attr.aria-label]="'Split claim ' + c.id" (click)="split(c)">
             Split
           </button>
+          <ol data-testid="claim-lines" [attr.aria-label]="'Lines of claim ' + c.id">
+            @for (line of c.lines; track $index) {
+              <li data-testid="claim-lines-line">{{ line }}</li>
+            }
+          </ol>
+          <label [for]="'claim-line-label-' + c.id">Line label</label>
+          <input
+            [id]="'claim-line-label-' + c.id"
+            data-testid="claim-line-label"
+            [value]="lineFields()[c.id]?.label ?? ''"
+            (input)="setLineField(c.id, 'label', value($event))"
+          />
+          <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+          <input
+            [id]="'claim-line-qty-' + c.id"
+            data-testid="claim-line-qty"
+            inputmode="numeric"
+            [value]="lineFields()[c.id]?.qty ?? ''"
+            (input)="setLineField(c.id, 'qty', value($event))"
+          />
+          <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+          <input
+            [id]="'claim-line-unit-' + c.id"
+            data-testid="claim-line-unit"
+            inputmode="decimal"
+            [value]="lineFields()[c.id]?.unit ?? ''"
+            (input)="setLineField(c.id, 'unit', value($event))"
+          />
+          <button type="button" data-testid="claim-line-add" [attr.aria-label]="'Add a line to claim ' + c.id" (click)="addLine(c)">
+            Add line
+          </button>
           <ol data-testid="claim-comments" [attr.aria-label]="'Comments on claim ' + c.id">
             @for (line of c.comments; track $index) {
               <li data-testid="claim-comments-line">{{ line }}</li>
@@ -527,6 +564,9 @@ export class PersonClaims {
 
   /** The comment typed on each claim's row, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
+
+  /** The line typed on each claim's row to add to it, by claim id. */
+  protected readonly lineFields = signal<Record<number, { label: string; qty: string; unit: string }>>({});
 
   /** The new amount typed on each claim's row to save in place, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
@@ -891,6 +931,48 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message: 'A proof could not be added: a settled or voided claim, or one in a closed period, takes no more.',
+      });
+    }
+  }
+
+  protected setLineField(id: number, field: 'label' | 'qty' | 'unit', text: string): void {
+    this.lineFields.update((all) => ({ ...all, [id]: { ...(all[id] ?? { label: '', qty: '', unit: '' }), [field]: text } }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Add the line typed on its row to a DRAFT claim, which then takes its lines added up as its
+   *  amount; a blank label, a quantity that is not a whole number of at least 1, a unit amount not in
+   *  its form, a claim that is not a draft, one due by a day in a closed period or one another user's
+   *  editor locks, is refused on the row. */
+  protected async addLine(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const typed = this.lineFields()[claim.id] ?? { label: '', qty: '', unit: '' };
+    const label = typed.label.trim();
+    const qty = typed.qty.trim();
+    const unit = typed.unit.trim();
+    if (label === '' || !QTY.test(qty) || Number(qty) < 1 || !AMOUNT.test(unit)) {
+      this.rowError.set({
+        id: claim.id,
+        message: 'Type a label, a whole quantity of at least 1 and a unit amount with up to two decimals.',
+      });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/lines`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { label, qty: Number(qty), unit }));
+      if (this.session.sheetId() !== sheet) return;
+      this.lineFields.update((all) => ({ ...all, [claim.id]: { label: '', qty: '', unit: '' } }));
+      if (this.editingId() === claim.id) this.amount.set(saved.amount);
+      this.saved.emit(saved);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.rowError.set({
+        id: claim.id,
+        message: forbidden
+          ? 'The line could not be added: your role may not change this sheet.'
+          : 'The line could not be added: only a draft outside a closed period takes lines, and not while another user is editing it.',
       });
     }
   }

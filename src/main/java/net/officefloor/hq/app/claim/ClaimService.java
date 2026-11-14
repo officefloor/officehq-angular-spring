@@ -53,6 +53,7 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final ClaimLogRepository logs;
     private final ClaimCommentRepository comments;
+    private final ClaimLineRepository lines;
     private final PersonRepository people;
     private final RateService rates;
     private final PersonGradeService grades;
@@ -68,7 +69,8 @@ public class ClaimService {
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
             HolidayService holidays, VoidReasonService voidReasons, ClaimCommentRepository comments, PersonRetirementRepository retirements,
-            Audit audit) {
+            ClaimLineRepository lines, Audit audit) {
+        this.lines = lines;
         this.retirements = retirements;
         this.comments = comments;
         this.holidays = holidays;
@@ -185,6 +187,7 @@ public class ClaimService {
         refuseBadCorrection(sheetId, personId, amount, corrects);
         ref = refOf(ref);
         refuseRefInUse(sheetId, ref, claim.getId());
+        refuseRelined(claim, scaled(amount));
         claim.setAmount(scaled(amount));
         claim.setRef(ref);
         claim.setTags(tagsOf(tags));
@@ -197,6 +200,58 @@ public class ClaimService {
         useTags(sheetId, saved);
         record("CLAIM_EDITED", sheetId, user, person, saved);
         return saved;
+    }
+
+    /** Add a line to a DRAFT claim, counting as an edit of it: its amount becomes the quantities times
+     *  the unit amounts of its lines added up, and CLAIM_LINE_ADDED is written ending with the line. A
+     *  claim that is not a DRAFT, a correction, one due by a day in a closed period, one another user's
+     *  editor locks, a blank label, a quantity below 1 or a negative unit amount, is refused. */
+    @Transactional
+    public Claim addLine(String sheetId, String user, Long personId, Long id, String label, int qty,
+            BigDecimal unit) {
+        Person person = person(sheetId, personId);
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, personId, id);
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ClaimNotEditableException(claim.getStatus());
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.lockedAgainst(user)) {
+            throw new ClaimLockedException(claim.getLockedBy());
+        }
+        if (claim.isCorrection()) {
+            throw new LinedAmountException("A correction takes no lines");
+        }
+        String trimmed = label == null ? "" : label.trim();
+        if (trimmed.isEmpty() || qty < 1 || unit.signum() < 0) {
+            throw new LinedAmountException("A line needs a label, a quantity of at least 1 and a unit amount");
+        }
+        ClaimLine added = lines.save(new ClaimLine(claim.getId(), trimmed, qty, scaled(unit)));
+        claim.setAmount(lines.findByClaimIdOrderByIdAsc(claim.getId()).stream().map(ClaimLine::total)
+                .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.UNNECESSARY));
+        claim.setEditedBy(user);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(line("CLAIM_LINE_ADDED", sheetId, user, person, saved, saved.getNumber())
+                + " label=" + added.getLabel() + " qty=" + added.getQty() + " unit=" + added.getUnit().toPlainString());
+        return saved;
+    }
+
+    /** A claim's lines, oldest first, each as <label> <qty> x <unit>. */
+    public List<String> linesOf(Long claimId) {
+        return lines.findByClaimIdOrderByIdAsc(claimId).stream().map(ClaimLine::line).toList();
+    }
+
+    /** The lines of the sheet's claims by claim id, each oldest first. */
+    public Map<Long, List<String>> linesOf(String sheetId) {
+        return lines.ofSheet(sheetId).stream().collect(Collectors.groupingBy(ClaimLine::getClaimId,
+                Collectors.mapping(ClaimLine::line, Collectors.toList())));
+    }
+
+    /** A claim with lines keeps the amount they add up to: an edit typing another is refused. */
+    private void refuseRelined(Claim claim, BigDecimal amount) {
+        if (claim.getAmount().compareTo(amount) != 0 && !lines.findByClaimIdOrderByIdAsc(claim.getId()).isEmpty()) {
+            throw new LinedAmountException("A claim with lines takes its amount from them");
+        }
     }
 
     /** Open a claim's editor: lock the claim to the user until they save or cancel it, or the

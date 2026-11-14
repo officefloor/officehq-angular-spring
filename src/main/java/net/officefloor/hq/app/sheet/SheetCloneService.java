@@ -145,7 +145,7 @@ public class SheetCloneService {
         }
 
         // Claims, person by person in the order they were listed, unnumbered, unbound and unlocked;
-        // then their logs and comments.
+        // then their logs, comments and lines.
         List<Copied> copied = new ArrayList<>();
         for (Map.Entry<Long, Long> person : people.entrySet()) {
             for (Long id : ids("SELECT id FROM claim WHERE person_id = ? ORDER BY listed, id", person.getKey())) {
@@ -161,6 +161,8 @@ public class SheetCloneService {
                 jdbc.update("INSERT INTO claim_comment (sheet_id, claim_id, written_by, written_on, text)"
                         + " SELECT ?, ?, written_by, written_on, text FROM claim_comment WHERE claim_id = ? ORDER BY id",
                         to, is, id);
+                jdbc.update("INSERT INTO claim_line (claim_id, label, qty, unit_amount)"
+                        + " SELECT ?, label, qty, unit_amount FROM claim_line WHERE claim_id = ? ORDER BY id", is, id);
                 Map<String, Object> was = jdbc.queryForMap("SELECT claim_number, due_by, corrects_number, split_from"
                         + " FROM claim WHERE id = ?", id);
                 LocalDate openedOn = jdbc.query("SELECT changed_on FROM claim_status_log WHERE claim_id = ?"

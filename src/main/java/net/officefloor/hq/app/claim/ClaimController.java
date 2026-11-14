@@ -1,6 +1,9 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -54,14 +57,20 @@ public class ClaimController {
      *  (null when none was); ref is its external reference (null when it has none); tags are its tags,
      *  sorted (empty when it has none); voidReason is the reason it was voided with (null when none
      *  was given); comments are its comments, oldest first, each as <user> on <date>: <text>; batch
-     *  is the number of the settle batch that settled it (null when a bulk settle did not). */
+     *  is the number of the settle batch that settled it (null when a bulk settle did not); lines are
+     *  its lines, oldest first, each as <label> <qty> x <unit> (empty when it has none). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
             LocalDate remindedOn, String ref, List<String> tags, String voidReason, List<String> comments,
-            Long batch) {
+            Long batch, List<String> lines) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log, List<String> comments) {
+            return of(claim, roundsBy, log, comments, List.of());
+        }
+
+        public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log, List<String> comments,
+                List<String> lines) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
                     claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : null,
@@ -70,7 +79,7 @@ public class ClaimController {
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), claim.getTags(),
-                    claim.getVoidReason(), comments, claim.getBatch());
+                    claim.getVoidReason(), comments, claim.getBatch(), lines);
         }
     }
 
@@ -89,6 +98,14 @@ public class ClaimController {
 
     /** The name of the sheet's claim template a claim is added from. */
     public record FromTemplateRequest(@NotBlank @Size(max = 255) String template) {
+    }
+
+    /** A line added to a DRAFT claim: a label, a whole quantity of at least 1 and a unit amount with
+     *  up to two decimals. */
+    public record LineRequest(
+            @NotBlank @Size(max = 255) String label,
+            @NotNull @Min(1) @Max(1_000_000) Integer qty,
+            @NotNull @DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal unit) {
     }
 
     /** The date an OPEN claim is deferred until. */
@@ -180,10 +197,11 @@ public class ClaimController {
         LocalDate asOf = AsOf.parse(asOfHeader);
         Map<Long, List<String>> logs = service.logsOf(sheet, asOf);
         Map<Long, List<String>> comments = service.commentsOf(sheet, asOf);
+        Map<Long, List<String>> lines = service.linesOf(sheet);
         List<Claim> claims = asOf == null ? service.list(sheet) : history.claims(service.list(sheet), asOf);
         return claims.stream()
                 .map(claim -> ClaimView.of(claim, service.roundsBy(sheet, claim), logs.getOrDefault(claim.getId(), List.of()),
-                        comments.getOrDefault(claim.getId(), List.of())))
+                        comments.getOrDefault(claim.getId(), List.of()), lines.getOrDefault(claim.getId(), List.of())))
                 .toList();
     }
 
@@ -381,6 +399,17 @@ public class ClaimController {
         return view(sheet, service.addProof(sheet, by, personId, id));
     }
 
+    /** Add a line to a DRAFT claim: its amount becomes its lines added up. */
+    @PostMapping("/people/{personId}/claims/{id}/lines")
+    public ClaimView addLine(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated LineRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by,
+                () -> service.addLine(sheet, by, personId, id, request.label(), request.qty(), request.unit())));
+    }
+
     /** Comment on a claim, kept with the user and the sheet's today; an empty comment is refused. */
     @PostMapping("/people/{personId}/claims/{id}/comments")
     public ClaimView addComment(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -430,7 +459,7 @@ public class ClaimController {
 
     private ClaimView view(String sheet, Claim claim) {
         return ClaimView.of(claim, service.roundsBy(sheet, claim), service.logOf(claim.getId()),
-                service.commentsOf(claim.getId()));
+                service.commentsOf(claim.getId()), service.linesOf(claim.getId()));
     }
 
     /** A status change the claim's status does not allow, an edit of a claim that is not a DRAFT,
@@ -444,12 +473,14 @@ public class ClaimController {
      *  re-date of a claim that is not OPEN or PENDING, or opening or saving the editor of a claim
      *  another user's editor locks, or a reminder of a claim that is not OPEN or PENDING or was already
      *  reminded on the sheet's today, or an empty comment, or a delete of a claim that is not a DRAFT or
-     *  a restore of one not deleted on the sheet's today, is refused. */
+     *  a restore of one not deleted on the sheet's today, or a line on a correction, or an edit typing
+     *  an amount other than the one a claim's lines add up to, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
             SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class,
-            RemindRefusedException.class, CommentRefusedException.class, DeleteRefusedException.class, RefInUseException.class, DataIntegrityViolationException.class})
+            RemindRefusedException.class, CommentRefusedException.class, DeleteRefusedException.class, RefInUseException.class, LinedAmountException.class,
+            DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }
