@@ -1,0 +1,421 @@
+diff --git a/src/main/frontend/src/app/features/notes/notes.ts b/src/main/frontend/src/app/features/notes/notes.ts
+new file mode 100644
+index 000000000..881b27e9a
+--- /dev/null
++++ b/src/main/frontend/src/app/features/notes/notes.ts
+@@ -0,0 +1,111 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, Injectable, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++export interface Note {
++  id: number;
++  /** The sheet's today (yyyy-mm-dd) when the note was added. */
++  addedOn: string;
++  /** The user who added it. */
++  by: string;
++  text: string;
++}
++
++// The active sheet's notes, the newest first, re-read whenever a sheet is loaded or the as-of date changes.
++@Injectable({ providedIn: 'root' })
++export class NoteStore {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  readonly notes = signal<Note[]>([]);
++
++  constructor() {
++    effect(() => {
++      const sheet = this.session.sheetId();
++      const load = this.session.loads();
++      this.notes.set([]);
++      if (sheet) void this.read(sheet, load);
++    });
++  }
++
++  /** Add a note to the active sheet; the server refuses a blank text. */
++  async add(text: string): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(
++      this.http.post<Note>(`/api/sheets/${encodeURIComponent(sheet)}/notes`, { text }),
++    );
++    if (this.session.sheetId() !== sheet) return;
++    this.notes.update((list) => [saved, ...list.filter((n) => n.id !== saved.id)]);
++  }
++
++  private async read(sheet: string, load: number): Promise<void> {
++    const list = await firstValueFrom(
++      this.http.get<Note[]>(`/api/sheets/${encodeURIComponent(sheet)}/notes`),
++    );
++    if (this.session.loads() !== load) return;
++    this.notes.set(list);
++  }
++}
++
++// The sheet's notes, the newest first, and the entry that adds one.
++@Component({
++  selector: 'app-notes',
++  template: `
++    <section aria-labelledby="notes-heading">
++      <h2 id="notes-heading">Notes</h2>
++      <form (submit)="submit($event)">
++        <label for="note-text">Note</label>
++        <input
++          id="note-text"
++          type="text"
++          data-testid="note-text"
++          [value]="text()"
++          (input)="text.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="note-add">Add note</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="note-error">{{ message }}</p>
++        }
++      </form>
++      <ul>
++        @for (n of store.notes(); track n.id) {
++          <li data-testid="note-line">{{ n.addedOn }} {{ n.by }}: {{ n.text }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class Notes {
++  protected readonly store = inject(NoteStore);
++  protected readonly text = signal('');
++  protected readonly error = signal<string | null>(null);
++  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
++  private readonly busy = signal(false);
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  /** Add the typed text as a note; a blank text, or one the sheet refuses, shows beside the entry. */
++  protected async submit(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.busy()) return;
++    this.error.set(null);
++    const text = this.text().trim();
++    if (!text) {
++      this.error.set('Type a text for the note.');
++      return;
++    }
++    this.busy.set(true);
++    try {
++      await this.store.add(text);
++      this.text.set('');
++    } catch {
++      this.error.set('The note could not be added.');
++    } finally {
++      this.busy.set(false);
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 5a9602315..9e7360e69 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, reviewLate, statusAsOf } from '../claims/claims';
+ import { Holidays } from '../holidays/holidays';
++import { Notes } from '../notes/notes';
+ import { VoidReasonStore, VoidReasons } from '../void-reasons/void-reasons';
+ import { ClaimTemplates } from '../claim-templates/claim-templates';
+ import { PeriodStore, Periods, periodOf } from '../periods/periods';
+@@ -134,7 +135,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+ // saves their changes.
+ @Component({
+   selector: 'app-people',
+-  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
++  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, Notes, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
+   template: `
+     <app-counters
+       [peopleCount]="people().length"
+@@ -153,6 +154,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+     <app-rates />
+     <app-periods [dueTotals]="periodDueTotals()" />
+     <app-holidays />
++    <app-notes />
+     <app-void-reasons />
+     <app-claim-templates />
+     <app-pools [people]="people()" />
+@@ -1035,18 +1037,18 @@ export class People {
+   /** The sheet's claims, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
+   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
+-   *  on the sheet's today, and, unless bound by a statement, an OPEN one dated within one of its person's
+-   *  holds or an OPEN or PENDING one whose person is retired by the sheet's today. */
++   *  on the sheet's today, and, unless bound by a statement, an OPEN or PENDING one dated within one of its
++   *  person's holds or an OPEN or PENDING one whose person is retired by the sheet's today. */
+   private readonly live = computed(() => this.claims().filter((c) => counts(c) && this.liveRulesKeep()(c)));
+   /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and, unless bound
+-   *  by a statement, not an OPEN one dated within one of its person's holds, nor an OPEN or PENDING one
++   *  by a statement, not an OPEN or PENDING one dated within one of its person's holds, nor an OPEN or PENDING one
+    *  whose person's retirement date is on or before the sheet's today. */
+   private readonly liveRulesKeep = computed(() => {
+     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
+     const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
+     const today = this.session.today();
+     const held = (c: Claim) =>
+-      c.status === 'OPEN' &&
++      isOpen(c) &&
+       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
+     const retired = (c: Claim) => {
+       const from = retiredFrom.get(c.personId) ?? null;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index b698bd30a..392e4f542 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -496,9 +496,9 @@ public class Claim {
+         return status.counts();
+     }
+ 
+-    /** Whether the claim is held: it is OPEN and dated within one of its person's holds. */
++    /** Whether the claim is held: it is OPEN or PENDING and dated within one of its person's holds. */
+     public boolean heldBy(List<PersonHold> holds) {
+-        return status == ClaimStatus.OPEN && holds.stream().anyMatch(hold -> hold.contains(date));
++        return status.isOpen() && holds.stream().anyMatch(hold -> hold.contains(date));
+     }
+ 
+     /** Whether the claim is left out for its person's retirement: it is OPEN or PENDING and the
+diff --git a/src/main/java/net/officefloor/hq/app/note/NoteRefusedException.java b/src/main/java/net/officefloor/hq/app/note/NoteRefusedException.java
+new file mode 100644
+index 000000000..a4591f3c7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/NoteRefusedException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.note;
++
++/** A note that cannot be added: its text is blank. */
++public class NoteRefusedException extends RuntimeException {
++
++    public NoteRefusedException(String message) {
++        super(message);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/SheetNote.java b/src/main/java/net/officefloor/hq/app/note/SheetNote.java
+new file mode 100644
+index 000000000..fba614618
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/SheetNote.java
+@@ -0,0 +1,61 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** A note on a sheet: its text, the user who added it and the sheet's today when it was added. */
++@Entity
++@Table(name = "sheet_note")
++public class SheetNote {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "note_text", nullable = false)
++    private String text;
++
++    @Column(name = "added_by", nullable = false)
++    private String addedBy;
++
++    @Column(name = "added_on", nullable = false)
++    private LocalDate addedOn;
++
++    protected SheetNote() {
++    }
++
++    public SheetNote(String sheetId, String text, String addedBy, LocalDate addedOn) {
++        this.sheetId = sheetId;
++        this.text = text;
++        this.addedBy = addedBy;
++        this.addedOn = addedOn;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getText() {
++        return text;
++    }
++
++    public String getAddedBy() {
++        return addedBy;
++    }
++
++    public LocalDate getAddedOn() {
++        return addedOn;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/SheetNoteController.java b/src/main/java/net/officefloor/hq/app/note/SheetNoteController.java
+new file mode 100644
+index 000000000..cb1c983a1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/SheetNoteController.java
+@@ -0,0 +1,64 @@
++package net.officefloor.hq.app.note;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.AsOf;
++import net.officefloor.hq.app.SignedInUser;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.converter.HttpMessageNotReadableException;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/notes")
++public class SheetNoteController {
++
++    /** A note as the screen shows it. */
++    public record NoteView(Long id, LocalDate addedOn, String by, String text) {
++        static NoteView of(SheetNote note) {
++            return new NoteView(note.getId(), note.getAddedOn(), note.getAddedBy(), note.getText());
++        }
++    }
++
++    /** A note: its text. */
++    public record NoteRequest(@Size(max = 1000) String text) {
++    }
++
++    private final SheetNoteService service;
++
++    public SheetNoteController(SheetNoteService service) {
++        this.service = service;
++    }
++
++    /** The sheet's notes, the newest first; as of a date when the screen is set to one. */
++    @GetMapping
++    public List<NoteView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
++        return service.list(sheetId.trim(), AsOf.parse(asOfHeader)).stream().map(NoteView::of).toList();
++    }
++
++    /** Add a note to the sheet. */
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public NoteView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated NoteRequest request) {
++        return NoteView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.text()));
++    }
++
++    /** A blank text is refused. */
++    @ExceptionHandler({NoteRefusedException.class, HttpMessageNotReadableException.class})
++    @ResponseStatus(HttpStatus.BAD_REQUEST)
++    public void refused() {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/SheetNoteRepository.java b/src/main/java/net/officefloor/hq/app/note/SheetNoteRepository.java
+new file mode 100644
+index 000000000..73c0c6abb
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/SheetNoteRepository.java
+@@ -0,0 +1,14 @@
++package net.officefloor.hq.app.note;
++
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetNoteRepository extends JpaRepository<SheetNote, Long> {
++
++    /** The sheet's notes, the newest first. */
++    List<SheetNote> findBySheetIdOrderByIdDesc(String sheetId);
++
++    /** The sheet's notes added while its today was on or before a date, the newest first. */
++    List<SheetNote> findBySheetIdAndAddedOnLessThanEqualOrderByIdDesc(String sheetId, LocalDate asOf);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/note/SheetNoteService.java b/src/main/java/net/officefloor/hq/app/note/SheetNoteService.java
+new file mode 100644
+index 000000000..14161cffc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/note/SheetNoteService.java
+@@ -0,0 +1,42 @@
++package net.officefloor.hq.app.note;
++
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** The notes on a sheet: texts users add, each kept with the sheet's today when it was added. */
++@Service
++public class SheetNoteService {
++
++    private final SheetNoteRepository notes;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public SheetNoteService(SheetNoteRepository notes, SheetService sheets, Audit audit) {
++        this.notes = notes;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    /** The sheet's notes, the newest first; under an as-of date only those added while the sheet's
++     *  today was on or before it. */
++    public List<SheetNote> list(String sheetId, LocalDate asOf) {
++        return asOf == null ? notes.findBySheetIdOrderByIdDesc(sheetId)
++                : notes.findBySheetIdAndAddedOnLessThanEqualOrderByIdDesc(sheetId, asOf);
++    }
++
++    /** Add a note to the sheet, dated the sheet's today. A blank text is refused. */
++    @Transactional
++    public SheetNote add(String sheetId, String user, String text) {
++        String trimmed = text == null ? "" : text.trim();
++        if (trimmed.isEmpty()) {
++            throw new NoteRefusedException("A note needs a text");
++        }
++        SheetNote saved = notes.saveAndFlush(new SheetNote(sheetId, trimmed, user, sheets.today(sheetId)));
++        audit.recordOnCommit("NOTE_ADDED sheet=" + sheetId + " by=" + user + " text=" + trimmed);
++        return saved;
++    }
++}
+diff --git a/src/main/resources/db/migration/V102__sheet_note.sql b/src/main/resources/db/migration/V102__sheet_note.sql
+new file mode 100644
+index 000000000..d975334b9
+--- /dev/null
++++ b/src/main/resources/db/migration/V102__sheet_note.sql
+@@ -0,0 +1,10 @@
++-- A sheet's notes: a text added by a user, kept with the sheet's today when it was added so the
++-- sheet as of a past day lists only the notes added while its today was on or before that day.
++CREATE TABLE sheet_note (
++    id BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(200) NOT NULL REFERENCES sheet (id),
++    note_text VARCHAR(1000) NOT NULL,
++    added_by VARCHAR(200) NOT NULL,
++    added_on DATE NOT NULL
++);
++CREATE INDEX sheet_note_sheet ON sheet_note (sheet_id, id);
