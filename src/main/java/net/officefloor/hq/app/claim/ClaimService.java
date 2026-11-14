@@ -144,6 +144,24 @@ public class ClaimService {
         return added;
     }
 
+    /** Whether the claim form would add a claim for the person dated on a day: the person is on the
+     *  sheet, the claim's due-by falls in no closed period and the person was not retired then. */
+    public boolean accepts(String sheetId, Long personId, LocalDate date) {
+        Optional<Person> found = people.findByIdAndSheetId(personId, sheetId);
+        if (found.isEmpty()) {
+            return false;
+        }
+        Person person = found.get();
+        LocalDate dueBy = holidays.businessDaysAfter(sheetId, date, termsFor(sheetId, person, date));
+        try {
+            refuseClosed(sheetId, dueBy);
+            refuseRetired(person, date);
+            return true;
+        } catch (PeriodClosedException | PersonRetiredException e) {
+            return false;
+        }
+    }
+
     /** Change a DRAFT claim's amount, date, note and external reference (blank: none; one another
      *  claim on the sheet already uses, without regard to case, is refused); a missing date takes the
      *  sheet's entry date, else its today. Any

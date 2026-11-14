@@ -10,6 +10,7 @@ import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
 import { Summary } from '../summary/summary';
+import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Counters } from '../counters/counters';
 import { PoolStore, Pools, figure, personCutTotals } from '../pools/pools';
 
@@ -85,7 +86,7 @@ interface StatementTaken {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [ClaimTemplates, Counters, Holidays, PersonClaims, Periods, Pools, Rates, Settings, Summary, VoidReasons],
+  imports: [ClaimTemplates, Counters, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -206,6 +207,7 @@ interface StatementTaken {
       @if (quickError(); as message) {
         <p role="alert" data-testid="quick-error">{{ message }}</p>
       }
+      <app-plan-generate (generated)="plansGenerated($event)" />
       <form (submit)="pasteClaims($event)" aria-label="Paste claims">
         <label for="paste-claims">Paste claims, one per line as name,amount,date,note (end the note with " #&lt;reference&gt;" to give a reference)</label>
         <textarea
@@ -381,6 +383,7 @@ interface StatementTaken {
               <th scope="col">Due in {{ pd.name }}</th>
             }
             <th scope="col">Claims</th>
+            <th scope="col">Plans</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -460,6 +463,9 @@ interface StatementTaken {
                   (moved)="claimMoved($event)"
                   (selectedChange)="selectClaim($event.id, $event.selected)"
                 />
+              </td>
+              <td>
+                <app-person-plans [personId]="p.id" [name]="p.name" />
               </td>
               <td>
                 <button
@@ -1518,6 +1524,11 @@ export class People {
         ? list.map((c) => (c.id === saved.id ? saved : c))
         : [saved, ...list],
     );
+  }
+
+  /** The claims the plans made, in the order they were made: each listed first, as its person's newest. */
+  protected plansGenerated(made: Claim[]): void {
+    for (const c of made) this.claimSaved(c);
   }
 
   /** A claim moved to another person: listed first, as their newest. */
