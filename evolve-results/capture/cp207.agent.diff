@@ -1,0 +1,193 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 220fba06b..be8e46e7b 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -119,6 +119,20 @@ export class PeriodStore {
+     return result.made;
+   }
+ 
++  /** Roll fiscal year FY<year> over on the active sheet: the next year's twelve periods are generated
++   *  and each person's open figure carried into its first; the server refuses anyone but a steward
++   *  or a year with no periods. Resolves to how many periods were made. */
++  async rollover(year: number): Promise<number> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const load = this.session.loads();
++    const result = await firstValueFrom(
++      this.http.post<{ made: number }>(`/api/sheets/${encodeURIComponent(sheet)}/periods/rollover`, { year }),
++    );
++    if (this.session.sheetId() === sheet) await this.read(sheet, load);
++    return result.made;
++  }
++
+   /** Generate the four calendar quarters of a year, <yyyy>-Q1 to <yyyy>-Q4, on the active sheet,
+    *  leaving out quarters whose name is taken or whose days overlap a period. Resolves to how many
+    *  were made. */
+@@ -312,6 +326,23 @@ export class PeriodStore {
+       @if (generateError(); as message) {
+         <p role="alert" data-testid="period-generate-error">{{ message }}</p>
+       }
++      <form (submit)="rollover($event)" aria-label="Roll the year over">
++        <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
++        <input
++          id="rollover-year"
++          data-testid="rollover-year"
++          inputmode="numeric"
++          [value]="rolloverYear()"
++          (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
++        />
++        <button type="submit" data-testid="rollover">Roll over</button>
++        @if (rolledOver() !== null) {
++          Made <strong data-testid="rollover-made">{{ rolledOver() }}</strong>
++        }
++      </form>
++      @if (rolloverError(); as message) {
++        <p role="alert" data-testid="rollover-error">{{ message }}</p>
++      }
+       <form (submit)="importOpenings($event)" aria-label="Import opening balances">
+         <label for="opening-import">Opening balances, one per line as name,period,amount</label>
+         <textarea
+@@ -438,6 +469,11 @@ export class Periods {
+   protected readonly openingsAdded = signal<number | null>(null);
+   protected readonly openingError = signal<string | null>(null);
+   private readonly openingBusy = signal(false);
++  protected readonly rolloverYear = signal('');
++  /** How many periods the last rollover made; null before one, or while one runs. */
++  protected readonly rolledOver = signal<number | null>(null);
++  protected readonly rolloverError = signal<string | null>(null);
++  private readonly rollingOver = signal(false);
+ 
+   constructor() {
+     // A loaded sheet starts the opening box afresh: its last count and error were for the sheet before.
+@@ -448,6 +484,8 @@ export class Periods {
+         this.openingText.set('');
+         this.openingsAdded.set(null);
+         this.openingError.set(null);
++        this.rolledOver.set(null);
++        this.rolloverError.set(null);
+       });
+     });
+   }
+@@ -482,6 +520,27 @@ export class Periods {
+     }
+   }
+ 
++  /** Roll the fiscal year typed (yyyy) over into the next; how many periods it made then shows. */
++  protected async rollover(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.rollingOver()) return;
++    this.rolloverError.set(null);
++    this.rolledOver.set(null);
++    const year = this.rolloverYear().trim();
++    if (!YEAR.test(year) || Number(year) < 1 || Number(year) > 9997) {
++      this.rolloverError.set('Type the fiscal year (yyyy) to roll over.');
++      return;
++    }
++    this.rollingOver.set(true);
++    try {
++      this.rolledOver.set(await this.store.rollover(Number(year)));
++    } catch {
++      this.rolloverError.set(`FY${year} could not be rolled over: only a steward may, and the year needs periods.`);
++    } finally {
++      this.rollingOver.set(false);
++    }
++  }
++
+   /** Close a period; one already closed is refused on its row. */
+   protected async close(period: Period): Promise<void> {
+     this.rowError.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 95d38c539..312de5239 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -154,6 +154,19 @@ public class PeriodController {
+                 request.year()));
+     }
+ 
++    /** A fiscal year to roll over into the next: FY<year>. */
++    public record RolloverRequest(@NotNull @Min(1) @Max(9997) Integer year) {
++    }
++
++    /** Roll a fiscal year over, generating the next year's periods and carrying each person's open
++     *  figure into its first; only a steward may. */
++    @PostMapping("/rollover")
++    public GenerateView rollover(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated RolloverRequest request) {
++        return new GenerateView(service.rollover(sheetId.trim(), SignedInUser.decode(user), request.year()));
++    }
++
+     /** A calendar year to generate the quarterly periods of. */
+     public record GenerateQuartersRequest(@NotNull @Min(1) @Max(9999) Integer year) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 7bbb7eb37..9c6ed769b 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -167,6 +167,66 @@ public class PeriodService {
+         return generate(sheetId, user, first, first.plusMonths(11));
+     }
+ 
++    /** A steward rolls fiscal year FY<year> over: the twelve monthly periods of FY<year+1> are generated
++     *  as {@link #generateFiscalYear} does, then each person's open figure at the end of the old year's
++     *  last period (the dues of their claims that count, due by a day in a period of the old year, and
++     *  OPEN or PENDING at the end of that last period's last day) is added to their opening balance for
++     *  the new year's first period. A period belongs to the fiscal year its from-date falls in. Anyone
++     *  but a steward, or an old year with no periods on the sheet, is refused. Returns how many periods
++     *  were made. */
++    @Transactional
++    public int rollover(String sheetId, String user, int year) {
++        sheets.lock(sheetId);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new PeriodRefusedException(user + " is not a steward: only a steward rolls the year over");
++        }
++        LocalDate oldFirst = LocalDate.of(year, settings.fiscalStartMonth(sheetId), 1);
++        LocalDate newFirst = oldFirst.plusYears(1);
++        LocalDate newLast = newFirst.plusYears(1).minusDays(1);
++        List<Period> oldYear = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
++                .filter(p -> !p.getFrom().isBefore(oldFirst) && p.getFrom().isBefore(newFirst)).toList();
++        if (oldYear.isEmpty()) {
++            throw new PeriodRefusedException("FY" + String.format("%04d", year) + " has no periods");
++        }
++        Period last = oldYear.stream().max(Comparator.comparing(Period::getTo)).orElseThrow();
++        int made = generateFiscalYear(sheetId, user, year + 1);
++        Period first = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
++                .filter(p -> !p.getFrom().isBefore(newFirst) && !p.getFrom().isAfter(newLast))
++                .findFirst()
++                .orElseThrow(() -> new PeriodRefusedException("FY" + String.format("%04d", year + 1)
++                        + " has no period to carry into"));
++
++        List<Person> everyone = people.findBySheetIdOrderByIdAsc(sheetId);
++        Map<Long, BigDecimal> open = new LinkedHashMap<>();
++        everyone.forEach(person -> open.put(person.getId(), BigDecimal.ZERO.setScale(2)));
++        Map<Long, Person> byId = everyone.stream().collect(Collectors.toMap(Person::getId, Function.identity()));
++        LocalDate today = sheets.today(sheetId);
++        Map<Long, ClaimStatus> atEnd = claimService.statusesAsOf(sheetId, last.getTo());
++        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
++            Person person = byId.get(claim.getPersonId());
++            ClaimStatus then = atEnd.get(claim.getId());
++            if (person == null || then == null || !then.isOpen()
++                    || !claim.countsAsOf(then, person.getRetiredFrom(), today)
++                    || oldYear.stream().noneMatch(p -> p.contains(claim.getDueBy()))) {
++                continue;
++            }
++            BigDecimal due = claimService.dueOf(sheetId, person, claim);
++            if (due != null) {
++                open.merge(person.getId(), due, BigDecimal::add);
++            }
++        }
++        for (Person person : everyone) {
++            BigDecimal amount = open.get(person.getId());
++            first.addOpening(person.getId(), amount);
++            audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                    + " period=" + first.getName() + " amount=" + amount.toPlainString());
++        }
++        periods.saveAndFlush(first);
++        audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + String.format("%04d", year)
++                + " periods=" + made);
++        return made;
++    }
++
+     /** Close a period (one soft-closed too, fixing its figures afresh), fixing each person's due-total for it, for everyone on the sheet, and its own
+      *  due-total, their sum: the figures shown on the claims due by a day in it that counted at the end of its last day (by the
+      *  status each had then, as its status log records it)
