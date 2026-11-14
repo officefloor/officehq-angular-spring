@@ -67,6 +67,13 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
   return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
 }
 
+/** Rates by grade, each grade's in the order given; a grade with no rate is absent. */
+function byGradeOf(rates: Rate[]): Map<string, Rate[]> {
+  const map = new Map<string, Rate[]>();
+  for (const r of rates) map.set(r.grade, [...(map.get(r.grade) ?? []), r]);
+  return map;
+}
+
 /** How a candidate rate would change the dues of a grade's open claims. */
 export interface RatePreview {
   /** How many OPEN and PENDING claims would show a different due. */
@@ -77,8 +84,8 @@ export interface RatePreview {
 
 const PERCENT = /^\d{1,5}(\.\d{1,2})?$/;
 
-// The active sheet's rates for each grade, each from its from-date, re-read whenever a sheet is
-// loaded.
+// The active sheet's rates for each grade, each from its from-date, and those of the sheets they fall
+// back to (its parent, the parent's parent, up to three levels up), re-read whenever a sheet is loaded.
 @Injectable({ providedIn: 'root' })
 export class RateStore {
   private readonly http = inject(HttpClient);
@@ -86,19 +93,20 @@ export class RateStore {
 
   /** The sheet's rates by grade, each grade's from the earliest. */
   readonly rates = signal<Rate[]>([]);
+  /** The rates of the sheets the sheet's rates fall back to, nearest first, each listed as `rates`. */
+  readonly inherited = signal<Rate[][]>([]);
   /** Each grade's rates by grade; a grade with no rate is absent. */
-  readonly byGrade = computed(() => {
-    const map = new Map<string, Rate[]>();
-    for (const r of this.rates()) map.set(r.grade, [...(map.get(r.grade) ?? []), r]);
-    return map;
-  });
-  /** Each grade's rate in force on the sheet's today; a grade with none is absent. */
+  readonly byGrade = computed(() => byGradeOf(this.rates()));
+  /** Each fall-back sheet's rates by grade, nearest first. */
+  private readonly inheritedByGrade = computed(() => this.inherited().map(byGradeOf));
+  /** Each grade's rate in force on the sheet's today, falling back to the parent sheets'; a grade
+   *  with none is absent. */
   readonly current = computed(() => {
     const today = this.session.today();
     const map = new Map<string, string>();
     if (!today) return map;
-    for (const [grade, rates] of this.byGrade()) {
-      const rate = rateOn(rates, today);
+    for (const grade of GRADES) {
+      const rate = rateOn(this.ofOn(grade, today), today);
       if (rate !== null) map.set(grade, rate);
     }
     return map;
@@ -109,10 +117,23 @@ export class RateStore {
     return this.byGrade().get(grade) ?? [];
   }
 
-  /** The rates of a person's grade in force on a date; none when that grade has no rate. */
+  /** A grade's rates to work a date's rate from: the sheet's own when one is in force on the date,
+   *  else those of the nearest parent sheet with one in force on it; the sheet's own when none is. */
+  ofOn(grade: string, date: string): Rate[] {
+    const own = this.of(grade);
+    if (rateOn(own, date) !== null) return own;
+    for (const level of this.inheritedByGrade()) {
+      const theirs = level.get(grade) ?? [];
+      if (rateOn(theirs, date) !== null) return theirs;
+    }
+    return own;
+  }
+
+  /** The rates of a person's grade in force on a date to work the date's rate from (see ofOn); none
+   *  when that grade has no rate. */
   ofGradeOn(grades: PersonGrade[], date: string): Rate[] {
     const grade = gradeOn(grades, date);
-    return grade === null ? [] : this.of(grade);
+    return grade === null ? [] : this.ofOn(grade, date);
   }
 
   constructor() {
@@ -120,8 +141,21 @@ export class RateStore {
       const sheet = this.session.sheetId();
       const load = this.session.loads();
       this.rates.set([]);
+      this.inherited.set([]);
       if (sheet) void this.read(sheet, load);
     });
+  }
+
+  /** Re-read the rates the active sheet falls back to: its parent sheet has changed. */
+  async readInherited(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const load = this.session.loads();
+    const inherited = await firstValueFrom(
+      this.http.get<Rate[][]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/inherited`),
+    );
+    if (this.session.loads() !== load || this.session.sheetId() !== sheet) return;
+    this.inherited.set(inherited);
   }
 
   /** Set a grade's rate from a date (null: from the beginning of time) through a date (null: no
@@ -150,11 +184,13 @@ export class RateStore {
   }
 
   private async read(sheet: string, load: number): Promise<void> {
-    const list = await firstValueFrom(
-      this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`),
-    );
+    const [list, inherited] = await Promise.all([
+      firstValueFrom(this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`)),
+      firstValueFrom(this.http.get<Rate[][]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/inherited`)),
+    ]);
     if (this.session.loads() !== load) return;
     this.rates.set(list);
+    this.inherited.set(inherited);
   }
 }
 

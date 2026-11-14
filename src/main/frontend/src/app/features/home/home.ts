@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { AuditViewer } from '../audit/audit-viewer';
 import { People } from '../people/people';
+import { SettingStore } from '../settings/settings';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
@@ -43,6 +44,7 @@ import { People } from '../people/people';
           Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         </p>
+        <p>Parent sheet <strong data-testid="sheet-parent">{{ settings.parent() }}</strong></p>
         @if (todayError(); as error) {
           <p role="alert" data-testid="sheet-error">{{ error }}</p>
         }
@@ -86,6 +88,7 @@ import { People } from '../people/people';
 })
 export class Home {
   protected readonly session = inject(Session);
+  protected readonly settings = inject(SettingStore);
   protected readonly nameInput = signal('');
   protected readonly sheetInput = signal('');
   protected readonly signinError = signal<string | null>(null);

@@ -3,7 +3,7 @@ import { Component, Injectable, computed, effect, inject, signal } from '@angula
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT } from '../claims/claims';
-import { GRADES } from '../rates/rates';
+import { GRADES, RateStore } from '../rates/rates';
 
 export interface RoleView {
   user: string;
@@ -53,6 +53,9 @@ interface SettingsView {
   graceDays: number | null;
   /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
   pot: string | null;
+  /** The parent sheet's id: a grade with no rate in force on a date takes the parent's (then its
+   *  parent's, up to three levels up); blank for none. */
+  parent: string;
   /** The entry date (yyyy-mm-dd): while it is set, a new claim given no date is dated it rather than
    *  the sheet's today; blank for off. */
   entryDate: string;
@@ -112,6 +115,7 @@ function rolesList(typed: string): boolean {
 export class SettingStore {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly rates = inject(RateStore);
 
   readonly roles = signal<RoleView[]>([]);
   readonly delegations = signal<DelegationView[]>([]);
@@ -168,6 +172,8 @@ export class SettingStore {
   readonly graceDays = signal('');
   /** The pot as text: two decimals, blank for none. */
   readonly pot = signal('');
+  /** The parent sheet's id; blank for none. */
+  readonly parent = signal('');
   /** The permission matrix as set, by action; blank keeps the standing rule. */
   readonly permissions = signal<Record<string, string>>({});
 
@@ -187,6 +193,7 @@ export class SettingStore {
       this.entryDate.set('');
       this.graceDays.set('');
       this.pot.set('');
+      this.parent.set('');
       this.permissions.set({});
       if (sheet) void this.read(sheet, load);
     });
@@ -409,6 +416,19 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's parent sheet; null leaves it blank (none). The sheet itself, a sheet
+   *  that has it as an ancestor and a sheet never loaded are refused. */
+  async setParent(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/parent`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+    await this.rates.readInherited();
+  }
+
   /** Set the roles that may take an action on the active sheet; blank keeps the standing rule. */
   async setPermission(action: string, value: string): Promise<void> {
     const sheet = this.session.sheetId();
@@ -440,6 +460,7 @@ export class SettingStore {
     this.entryDate.set(settings.entryDate);
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.pot.set(settings.pot ?? '');
+    this.parent.set(settings.parent);
     this.permissions.set(settings.permissions);
   }
 }
@@ -766,6 +787,14 @@ export class SettingStore {
           (focus)="potTyped.set(true)"
           (input)="pot.set(value($event)); potTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-parent">Parent sheet (blank: none)</label>
+        <input
+          id="setting-parent"
+          data-testid="setting-parent"
+          [value]="parent()"
+          (focus)="parentTyped.set(true)"
+          (input)="parent.set(value($event)); parentTyped.set(true); settingsError.set(null)"
+        />
         <fieldset>
           <legend>Permissions (roles, comma separated; blank for the standing rule)</legend>
           @for (p of permissionActions; track p.action) {
@@ -888,6 +917,13 @@ export class SettingStore {
           <span>none</span>
         }
       </p>
+      <p>
+        Parent sheet:
+        <strong data-testid="setting-parent-current">{{ store.parent() }}</strong>
+        @if (store.parent() === '') {
+          <span>none</span>
+        }
+      </p>
       @for (p of permissionActions; track p.action) {
         <p>
           {{ p.label }} allowed for:
@@ -956,6 +992,8 @@ export class Settings {
   protected readonly graceDaysTyped = signal(false);
   protected readonly pot = signal('');
   protected readonly potTyped = signal(false);
+  protected readonly parent = signal('');
+  protected readonly parentTyped = signal(false);
   /** The permission entries typed since the last save, by action; a focused one counts as typed, as
    *  a blank one (the standing rule) is a value of its own. */
   protected readonly permissions = signal<Record<string, string>>({});
@@ -1089,6 +1127,8 @@ export class Settings {
     const saveGraceDays = this.graceDaysTyped();
     const pot = this.pot().trim();
     const savePot = this.potTyped();
+    const parent = this.parent().trim();
+    const saveParent = this.parentTyped();
     const permissions = Object.entries(this.permissions()).map(
       ([action, roles]) => [action, roles.split(',').map((r) => r.trim()).filter((r) => r !== '').join(',')] as const,
     );
@@ -1209,6 +1249,7 @@ export class Settings {
     this.entryDateTyped.set(false);
     this.graceDaysTyped.set(false);
     this.potTyped.set(false);
+    this.parentTyped.set(false);
     this.permissions.set({});
     const save = async () => {
       try {
@@ -1235,6 +1276,7 @@ export class Settings {
         if (saveEntryDate) await this.store.setEntryDate(entryDate === '' ? null : entryDate);
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
         if (savePot) await this.store.setPot(pot === '' ? null : pot);
+        if (saveParent) await this.store.setParent(parent === '' ? null : parent);
         for (const [action, roles] of permissions) await this.store.setPermission(action, roles);
       } catch {
         // What was typed stays to be saved again.
@@ -1253,6 +1295,7 @@ export class Settings {
         if (saveEntryDate) this.entryDateTyped.set(true);
         if (saveGraceDays) this.graceDaysTyped.set(true);
         if (savePot) this.potTyped.set(true);
+        if (saveParent) this.parentTyped.set(true);
         this.permissions.update((typed) => ({ ...Object.fromEntries(permissions), ...typed }));
         this.settingsError.set('The settings could not be saved.');
       }

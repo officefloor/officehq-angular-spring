@@ -71,7 +71,7 @@ public class SettingService {
     public record AsOfView(Map<String, String> roles, Map<String, String> permissions, LocalDate periodNumberingFrom,
             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
-            Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot) {
+            Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -101,6 +101,7 @@ public class SettingService {
         String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
+        String parent = parent(sheetId);
         Map<String, List<SettingValue>> dated = history.dated(sheetId, day);
         Map<String, Integer> gradeTerms = new LinkedHashMap<>();
         dated.forEach((key, recorded) -> {
@@ -117,7 +118,7 @@ public class SettingService {
                 inForce(sheetId, "cap", day, day).map(SettingValue::getValue).orElse(null),
                 inForce(sheetId, "terms", day, day).map(v -> v.getValue().intValue()).orElse(START_TERMS),
                 latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
-                entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null);
+                entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -397,6 +398,12 @@ public class SettingService {
         return sheets.load(sheetId).getPot();
     }
 
+    /** The sheet's parent sheet's id; null when it has none. Not kept in the sheet's history: the
+     *  sheet shown as of a past day shows its parent as it stands now. */
+    public String parent(String sheetId) {
+        return sheets.load(sheetId).getParentId();
+    }
+
     /** The sheet's grace days; null when they are blank (off). */
     public Integer graceDays(String sheetId) {
         return sheets.load(sheetId).getGraceDays();
@@ -587,6 +594,35 @@ public class SettingService {
         history.settingSet(sheetId, POT, scaled != null ? scaled.toPlainString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=pot value="
                 + (scaled != null ? scaled.toPlainString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's parent sheet; null leaves it blank (none). The sheet itself, a sheet that
+     *  has this sheet as an ancestor, and a sheet never loaded are refused. */
+    @Transactional
+    public Sheet setParent(String sheetId, String by, String parentId) {
+        sheets.load(sheetId);
+        if (parentId != null) {
+            if (parentId.equals(sheetId)) {
+                throw new ParentRefusedException("A sheet cannot be its own parent.");
+            }
+            if (!sheetRepository.existsById(parentId)) {
+                throw new ParentRefusedException("The parent sheet " + parentId + " has never been loaded.");
+            }
+            List<String> seen = new ArrayList<>();
+            for (String up = parentId; up != null && !seen.contains(up);
+                    up = sheetRepository.findById(up).map(Sheet::getParentId).orElse(null)) {
+                if (up.equals(sheetId)) {
+                    throw new ParentRefusedException("The sheet " + parentId + " has this sheet as an ancestor.");
+                }
+                seen.add(up);
+            }
+        }
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setParentId(parentId);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=parent value="
+                + (parentId != null ? parentId : ""));
         return saved;
     }
 }

@@ -3,30 +3,59 @@ package net.officefloor.hq.app.rate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.sheet.Sheet;
+import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** The rates set on a sheet for each grade, each in force from its from-date. */
+/** The rates set on a sheet for each grade, each in force from its from-date. A grade with no rate
+ *  in force on a date on a sheet takes its parent sheet's, then the parent's parent's, up to
+ *  {@link #PARENT_LEVELS} levels up. */
 @Service
 public class RateService {
 
+    /** How many levels of parent sheets are looked to for a rate the sheet has none in force for. */
+    public static final int PARENT_LEVELS = 3;
+
     private final RateRepository rates;
     private final SheetService sheets;
+    private final SheetRepository sheetRepository;
     private final History history;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, History history, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, SheetRepository sheetRepository, History history,
+            Audit audit) {
         this.rates = rates;
         this.sheets = sheets;
+        this.sheetRepository = sheetRepository;
         this.history = history;
         this.audit = audit;
+    }
+
+    /** The sheet's parent sheet's id; null when it has none. The parent is not kept in the sheet's
+     *  history: a sheet shown as of a past day falls back to its parent as it stands now. */
+    private String parentOf(String sheetId) {
+        return sheetRepository.findById(sheetId).map(Sheet::getParentId).orElse(null);
+    }
+
+    /** The sheets the sheet's rates fall back to, nearest first: its parent, the parent's parent, up
+     *  to {@link #PARENT_LEVELS} levels up. */
+    public List<String> ancestors(String sheetId) {
+        List<String> found = new ArrayList<>();
+        String sheet = parentOf(sheetId);
+        while (sheet != null && found.size() < PARENT_LEVELS && !sheet.equals(sheetId) && !found.contains(sheet)) {
+            found.add(sheet);
+            sheet = parentOf(sheet);
+        }
+        return found;
     }
 
     /** The sheet's rates by grade, each grade's from the earliest. */
@@ -47,16 +76,33 @@ public class RateService {
     }
 
     /** The grade's rate in force on a date: the one whose from-date is the latest on or before it
-     *  (a rate with no from-date applies from the beginning of time); empty when none applies, or
-     *  when that one's to-date is before the date. */
+     *  (a rate with no from-date applies from the beginning of time); none applies when there is no
+     *  such rate, or when that one's to-date is before the date. When none applies on the sheet, the
+     *  parent sheet's is taken, then the parent's parent's, up to {@link #PARENT_LEVELS} levels up;
+     *  empty when none applies on any of them. */
     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date) {
-        return inForce(rates.findBySheetIdAndGradeOrderByFromAsc(sheetId, grade), date);
+        return rateOn(sheetId, grade, date, null);
     }
 
-    /** The grade's rate in force on a date as the rates stood at the end of a day (null: as they
-     *  stand now). */
+    /** The grade's rate in force on a date as the rates (the sheet's and its parent sheets') stood
+     *  at the end of a day (null: as they stand now). */
     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
-        return asOf == null ? rateOn(sheetId, grade, date) : inForce(history.rates(sheetId, grade, asOf), date);
+        Optional<Rate> own = ownRateOn(sheetId, grade, date, asOf);
+        if (own.isPresent()) {
+            return own;
+        }
+        for (String ancestor : ancestors(sheetId)) {
+            Optional<Rate> theirs = ownRateOn(ancestor, grade, date, asOf);
+            if (theirs.isPresent()) {
+                return theirs;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<Rate> ownRateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
+        return inForce(asOf == null ? rates.findBySheetIdAndGradeOrderByFromAsc(sheetId, grade)
+                : history.rates(sheetId, grade, asOf), date);
     }
 
     private static Optional<Rate> inForce(List<Rate> theirs, LocalDate date) {

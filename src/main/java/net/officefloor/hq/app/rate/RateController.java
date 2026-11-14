@@ -70,6 +70,17 @@ public class RateController {
         return service.list(sheetId.trim(), AsOf.parse(asOf)).stream().map(RateView::of).toList();
     }
 
+    /** The rates of the sheets the sheet's rates fall back to, nearest first (its parent, the
+     *  parent's parent, up to three levels up), each listed as {@link #list} lists them. */
+    @GetMapping("/inherited")
+    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
+        LocalDate day = AsOf.parse(asOf);
+        return service.ancestors(sheetId.trim()).stream()
+                .map(ancestor -> service.list(ancestor, day).stream().map(RateView::of).toList())
+                .toList();
+    }
+
     /** Set the rate for a grade (A, B or C) from a date, replacing the one it had from that date. */
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 200) String sheetId,

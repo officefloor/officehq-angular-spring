@@ -54,7 +54,7 @@ public class SettingController {
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
-            String entryDate, String pot) {
+            String entryDate, String pot, String parent) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -137,6 +137,10 @@ public class SettingController {
     public record PotRequest(@DecimalMin("0.00") @Digits(integer = 17, fraction = 2) BigDecimal value) {
     }
 
+    /** A parent sheet's id; null or blank leaves it blank (none). */
+    public record ParentRequest(@Size(max = 200) String value) {
+    }
+
     /** Grace days of 0 or more whole days; null leaves them blank (off). */
     public record GraceDaysRequest(@Min(0) @Max(36500) Integer value) {
     }
@@ -172,7 +176,7 @@ public class SettingController {
                 then.gradeTerms(), dated, then.permissions(),
                 then.delegations().stream().map(DelegationView::of).toList(),
                 then.entryDate() != null ? then.entryDate().toString() : "",
-                then.pot() != null ? then.pot().toPlainString() : null);
+                then.pot() != null ? then.pot().toPlainString() : null, then.parent() != null ? then.parent() : "");
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -372,6 +376,18 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's parent sheet; the figures it moves are followed in the audit. */
+    @PutMapping("/parent")
+    public SettingsView setParent(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ParentRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        String parent = request.value() == null || request.value().isBlank() ? null : request.value().trim();
+        rollups.track(sheet, by, () -> service.setParent(sheet, by, parent));
+        return view(sheet);
+    }
+
     private SettingsView view(String sheet) {
         LocalDate today = sheets.today(sheet);
         BigDecimal limit = service.clerkLimit(sheet);
@@ -380,6 +396,7 @@ public class SettingController {
         LocalDate numberingFrom = service.periodNumberingFrom(sheet);
         LocalDate entryDate = service.entryDate(sheet);
         BigDecimal pot = service.pot(sheet);
+        String parent = service.parent(sheet);
         Map<String, List<DatedView>> dated = new LinkedHashMap<>();
         service.dated(sheet).forEach((key, recorded) -> dated.put(key, recorded.stream().map(DatedView::of).toList()));
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
@@ -388,12 +405,13 @@ public class SettingController {
                 service.latePct(sheet, today).toPlainString(), policyDate != null ? policyDate.toString() : "",
                 numberingFrom != null ? numberingFrom.toString() : "", service.graceDays(sheet), service.gradeTerms(sheet, today), dated,
                 service.permissions(sheet), service.delegations(sheet).stream().map(DelegationView::of).toList(),
-                entryDate != null ? entryDate.toString() : "", pot != null ? pot.toPlainString() : null);
+                entryDate != null ? entryDate.toString() : "", pot != null ? pot.toPlainString() : null,
+                parent != null ? parent : "");
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
     @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class,
-            DelegationRefusedException.class})
+            DelegationRefusedException.class, ParentRefusedException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
     }
