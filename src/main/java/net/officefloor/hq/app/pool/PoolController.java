@@ -25,10 +25,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/pools")
 public class PoolController {
 
-    /** A pool member as the screen shows it; the share is a string with two decimals. */
-    public record PoolMemberView(Long personId, String share) {
+    /** A pool member as the screen shows it: a person, or another pool (memberPoolId); the share is a
+     *  string with two decimals. */
+    public record PoolMemberView(Long personId, Long memberPoolId, String share) {
         static PoolMemberView of(PoolMember member) {
-            return new PoolMemberView(member.getPersonId(), member.getShare().toPlainString());
+            return new PoolMemberView(member.getPersonId(), member.getMemberPoolId(),
+                    member.getShare().toPlainString());
         }
     }
 
@@ -44,8 +46,9 @@ public class PoolController {
     public record PoolRequest(@NotBlank @Size(max = 255) String name) {
     }
 
-    /** A member: a person of the sheet and their share percent. */
-    public record PoolMemberRequest(@NotNull Long personId, @NotNull BigDecimal share) {
+    /** A member: a person of the sheet, or another pool of the sheet (memberPoolId), and its share
+     *  percent. */
+    public record PoolMemberRequest(Long personId, Long memberPoolId, @NotNull BigDecimal share) {
     }
 
     private final PoolService service;
@@ -75,10 +78,11 @@ public class PoolController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated PoolMemberRequest request) {
         return PoolView.of(service.addMember(sheetId.trim(), SignedInUser.decode(user), poolId, request.personId(),
-                request.share()));
+                request.memberPoolId(), request.share()));
     }
 
-    /** A blank or used name, a person already in the pool, or a bad share, is refused. */
+    /** A blank or used name, a person already in the pool, a pool that may not be a member, or a bad
+     *  share, is refused. */
     @ExceptionHandler({PoolRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {

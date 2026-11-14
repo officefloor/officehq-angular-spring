@@ -16,6 +16,9 @@ public interface PoolMemberRepository extends JpaRepository<PoolMember, Long> {
     /** The person's membership of the pool; empty when they are not a member. */
     Optional<PoolMember> findByPoolIdAndPersonId(Long poolId, Long personId);
 
+    /** The sheet pool's membership of a pool; empty when it is a member of none. */
+    Optional<PoolMember> findByMemberPoolId(Long memberPoolId);
+
     /** Whether the person is a member of the pool. */
     boolean existsByPoolIdAndPersonId(Long poolId, Long personId);
 }

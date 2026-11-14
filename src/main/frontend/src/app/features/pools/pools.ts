@@ -5,7 +5,10 @@ import { Session } from '../../core/session';
 import { SettingStore } from '../settings/settings';
 
 export interface PoolMember {
-  personId: number;
+  /** The member person; null when the member is a pool. */
+  personId: number | null;
+  /** The member pool; null when the member is a person. */
+  memberPoolId: number | null;
   /** The member's share percent (two decimals). */
   share: string;
 }
@@ -58,6 +61,20 @@ function cuts(pot: bigint, members: { share: bigint; retired: boolean }[]): bigi
   return list;
 }
 
+/** A member chosen on a pool's row: a person or another pool, by id. */
+export interface MemberChoice {
+  kind: 'person' | 'pool';
+  id: number;
+}
+
+/** The choice a member select's value names; null for none. */
+function choiceOf(value: string | undefined): MemberChoice | null {
+  if (!value) return null;
+  const pool = value.startsWith('pool:');
+  const id = Number(pool ? value.slice(5) : value);
+  return Number.isInteger(id) && id > 0 ? { kind: pool ? 'pool' : 'person', id } : null;
+}
+
 /** A share (two decimals, more than 0.00 and at most 100.00). */
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
 
@@ -86,13 +103,14 @@ export class PoolStore {
     this.keep(sheet, saved);
   }
 
-  /** Add a person to a pool with a share; the server refuses a person already in it, or a bad share. */
-  async addMember(poolId: number, personId: number, share: string): Promise<void> {
+  /** Add a person or another pool to a pool with a share; the server refuses a person already in it,
+   *  a pool that is a member of a pool already, would contain itself or make a chain more than three
+   *  deep, or a bad share. */
+  async addMember(poolId: number, member: MemberChoice, share: string): Promise<void> {
     const sheet = this.session.sheetId();
     if (!sheet) throw new Error('No sheet loaded.');
-    const saved = await firstValueFrom(
-      this.http.post<Pool>(`${this.base(sheet)}/${poolId}/members`, { personId, share }),
-    );
+    const body = member.kind === 'person' ? { personId: member.id, share } : { memberPoolId: member.id, share };
+    const saved = await firstValueFrom(this.http.post<Pool>(`${this.base(sheet)}/${poolId}/members`, body));
     this.keep(sheet, saved);
   }
 
@@ -118,9 +136,9 @@ export class PoolStore {
 /** A pool as its row shows it: its members with their names, its total share and whether it balances. */
 interface PoolRow {
   pool: Pool;
-  /** Each member with their cut of the pot (two decimals); blank when the pool is unbalanced or
-   *  there is no pot. */
-  members: { personId: number; name: string; share: string; cut: string }[];
+  /** Each member with their cut of the pool's pot (two decimals); blank when the pool is unbalanced
+   *  or has no pot. A member's key is the person's id, or pool-<name> for a pool. */
+  members: { key: string; name: string; share: string; cut: string }[];
   /** The members' shares added up, a retired member's counting as 0.00 (two decimals). */
   total: string;
   /** Whether the total is exactly 100.00. */
@@ -155,8 +173,8 @@ interface PoolRow {
               balanced <strong data-testid="pool-balanced">{{ row.balanced ? 'yes' : 'no' }}</strong>
             </p>
             <ul>
-              @for (m of row.members; track m.personId) {
-                <li [attr.data-testid]="'pool-member-' + row.pool.name + '-' + m.personId">
+              @for (m of row.members; track m.key) {
+                <li [attr.data-testid]="'pool-member-' + row.pool.name + '-' + m.key">
                   {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>%, cut
                   <span data-testid="pool-cut">{{ m.cut }}</span>
                 </li>
@@ -166,11 +184,14 @@ interface PoolRow {
             <select
               [id]="'pool-member-select-' + row.pool.id"
               data-testid="pool-member-select"
-              (change)="setPerson(row.pool.id, value($event))"
+              (change)="setMember(row.pool.id, value($event))"
             >
-              <option value="" [selected]="!entries()[row.pool.id]?.personId">Choose a person</option>
+              <option value="" [selected]="!entries()[row.pool.id]?.member">Choose a person or pool</option>
               @for (p of people(); track p.id) {
-                <option [value]="p.id" [selected]="entries()[row.pool.id]?.personId === '' + p.id">{{ p.name }}</option>
+                <option [value]="p.id" [selected]="entries()[row.pool.id]?.member === '' + p.id">{{ p.name }}</option>
+              }
+              @for (other of store.pools(); track other.id) {
+                <option [value]="'pool:' + other.id" [selected]="entries()[row.pool.id]?.member === 'pool:' + other.id">{{ 'pool:' + other.name }}</option>
               }
             </select>
             <label [for]="'pool-member-share-' + row.pool.id">Share %</label>
@@ -198,8 +219,8 @@ export class Pools {
   private readonly settings = inject(SettingStore);
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
-  /** The person and share chosen on each pool's row, by pool id. */
-  protected readonly entries = signal<Record<number, { personId?: string; share?: string }>>({});
+  /** The member (the select's value) and share chosen on each pool's row, by pool id. */
+  protected readonly entries = signal<Record<number, { member?: string; share?: string }>>({});
   /** The error shown on each pool's row, by pool id. */
   protected readonly memberErrors = signal<Record<number, string | null>>({});
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
@@ -207,22 +228,49 @@ export class Pools {
 
   protected readonly rows = computed<PoolRow[]>(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
-    const pot = this.settings.pot();
-    return this.store.pools().map((pool) => {
-      const shares = pool.members.map((m) => ({
+    const pools = this.store.pools();
+    const poolById = new Map(pools.map((p) => [p.id, p]));
+    // The pool each pool is a member of, by member pool id.
+    const above = new Map<number, Pool>();
+    pools.forEach((p) => p.members.forEach((m) => m.memberPoolId !== null && above.set(m.memberPoolId, p)));
+    const shares = (pool: Pool) =>
+      pool.members.map((m) => ({
         share: hundredths(m.share),
-        retired: byId.get(m.personId)?.retired ?? false,
+        retired: m.personId !== null && (byId.get(m.personId)?.retired ?? false),
       }));
-      const total = shares.filter((m) => !m.retired).reduce((sum, m) => sum + m.share, 0n);
-      const balanced = total === 10000n;
-      const cut = balanced && pot !== '' ? cuts(hundredths(pot), shares).map(figure) : null;
-      const members = pool.members.map((m, i) => ({
-        personId: m.personId,
-        name: byId.get(m.personId)?.name ?? '',
-        share: m.share,
-        cut: cut ? cut[i] : '',
-      }));
-      return { pool, members, total: figure(total), balanced };
+    const totalOf = (list: { share: bigint; retired: boolean }[]) =>
+      list.filter((m) => !m.retired).reduce((sum, m) => sum + m.share, 0n);
+    // Each pool's cuts in hundredths, null when it is unbalanced or has no pot: a pool that is a
+    // member of none has the sheet's pot, any other its cut in the pool above. Chains are short.
+    const cutsOf = (pool: Pool, seen: Set<number>): bigint[] | null => {
+      if (seen.has(pool.id)) return null;
+      const list = shares(pool);
+      if (totalOf(list) !== 10000n) return null;
+      const parent = above.get(pool.id);
+      let pot: bigint | null;
+      if (parent) {
+        const parentCuts = cutsOf(parent, new Set([...seen, pool.id]));
+        const at = parent.members.findIndex((m) => m.memberPoolId === pool.id);
+        pot = parentCuts ? parentCuts[at] : null;
+      } else {
+        const sheetPot = this.settings.pot();
+        pot = sheetPot !== '' ? hundredths(sheetPot) : null;
+      }
+      return pot === null ? null : cuts(pot, list);
+    };
+    return pools.map((pool) => {
+      const total = totalOf(shares(pool));
+      const cut = cutsOf(pool, new Set());
+      const members = pool.members.map((m, i) => {
+        const member = m.memberPoolId !== null ? poolById.get(m.memberPoolId) : undefined;
+        return {
+          key: m.personId !== null ? `${m.personId}` : `pool-${member?.name ?? m.memberPoolId}`,
+          name: m.personId !== null ? (byId.get(m.personId)?.name ?? '') : `pool:${member?.name ?? ''}`,
+          share: m.share,
+          cut: cut ? figure(cut[i]) : '',
+        };
+      });
+      return { pool, members, total: figure(total), balanced: total === 10000n };
     });
   });
 
@@ -230,8 +278,8 @@ export class Pools {
     return (event.target as HTMLInputElement).value;
   }
 
-  protected setPerson(poolId: number, personId: string): void {
-    this.entries.update((e) => ({ ...e, [poolId]: { ...e[poolId], personId } }));
+  protected setMember(poolId: number, member: string): void {
+    this.entries.update((e) => ({ ...e, [poolId]: { ...e[poolId], member } }));
     this.memberErrors.update((e) => ({ ...e, [poolId]: null }));
   }
 
@@ -260,32 +308,37 @@ export class Pools {
     }
   }
 
-  /** Add the chosen person with the typed share; a person already in the pool, or a share not more
-   *  than 0.00 and at most 100.00 with two decimals, is refused on the pool's row. */
+  /** Add the chosen person or pool with the typed share; a person already in the pool, a pool that may
+   *  not be a member of it, or a share not more than 0.00 and at most 100.00 with two decimals, is
+   *  refused on the pool's row. */
   protected async addMember(pool: Pool): Promise<void> {
     if (this.busy()) return;
     const refuse = (message: string) => this.memberErrors.update((e) => ({ ...e, [pool.id]: message }));
     this.memberErrors.update((e) => ({ ...e, [pool.id]: null }));
     const entry = this.entries()[pool.id] ?? {};
-    const personId = Number(entry.personId);
+    const member = choiceOf(entry.member);
     const share = (entry.share ?? '').trim();
-    if (!entry.personId || !Number.isInteger(personId)) {
-      refuse('Choose a person to add.');
+    if (!member) {
+      refuse('Choose a person or a pool to add.');
       return;
     }
     if (!SHARE.test(share) || Number(share) <= 0 || Number(share) > 100) {
       refuse('A share is more than 0.00 and at most 100.00, with up to two decimals.');
       return;
     }
-    if (pool.members.some((m) => m.personId === personId)) {
+    if (member.kind === 'person' && pool.members.some((m) => m.personId === member.id)) {
       refuse('That person is in the pool already.');
       return;
     }
     this.busy.set(true);
     try {
-      await this.store.addMember(pool.id, personId, share);
+      await this.store.addMember(pool.id, member, share);
     } catch {
-      refuse('The member could not be added: they may be in the pool already.');
+      refuse(
+        member.kind === 'person'
+          ? 'The member could not be added: they may be in the pool already.'
+          : 'The pool could not be added: a pool is a member of at most one pool, cannot contain itself, and a chain of pools is at most three deep.',
+      );
     } finally {
       this.busy.set(false);
     }
