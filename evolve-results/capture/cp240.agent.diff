@@ -1,0 +1,215 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 3307c16bc..72cabf526 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -109,6 +109,26 @@ export function sharePartCents(dueCents: number, share: string): number {
+   return sign * whole;
+ }
+ 
++/** A holder's part of a shared claim in cents: a settled claim keeps its parts as frozen (its settled
++ *  due's part, see sharePartCents); otherwise the claim's amount times the share divided by 100, times
++ *  the rate in force on the claim's date among the holder's grade's rates (see RateStore#ofGradeOn)
++ *  divided by 100, rounded like the claim; null when the holder's grade has no rate then (their part
++ *  is 0.00). */
++export function holderPartCents(claim: Claim, share: string, rates: Rate[], late: Late): number | null {
++  if (claim.settledDue !== null) return sharePartCents(cents(claim.settledDue), share);
++  const rate = rateOn(rates, claim.date);
++  if (rate === null) return null;
++  const amount = cents(claim.amount);
++  const sign = amount < 0 ? -1n : 1n;
++  // Cents times share and rate in hundredths of a percent each: the part is product / 10^8 cents.
++  const product = BigInt(Math.abs(amount)) * BigInt(Math.round(Number(share) * 100)) * BigInt(Math.round(Number(rate) * 100));
++  const whole = product / 100_000_000n;
++  const rest = product % 100_000_000n;
++  const halfUp = roundsHalfUp(claim, late);
++  const up = rest > 50_000_000n || (rest === 50_000_000n && (halfUp || whole % 2n === 1n));
++  return Number(sign * (up ? whole + 1n : whole));
++}
++
+ /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
+ interface Split {
+   kept: Claim;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1dc0d33ef..0484a7f20 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, pendingLate, plusDays, reviewLate, sharePartCents, statusAsOf } from '../claims/claims';
++import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, pendingLate, plusDays, reviewLate, holderPartCents, statusAsOf } from '../claims/claims';
+ import { GradeStore, Grades } from '../grades/grades';
+ import { Holidays } from '../holidays/holidays';
+ import { Notes } from '../notes/notes';
+@@ -1212,8 +1212,8 @@ export class People {
+     return map;
+   });
+   /** What the shares of the claims that count move in each person's figures, in cents, by person id:
+-   *  each holder gains their part of a claim's due (see sharePartCents) and the claim's own person
+-   *  loses it, in all, among SETTLED claims and among OPEN and PENDING ones; held tells a holder's
++   *  each holder gains their part of a claim (see holderPartCents; one whose grade has no rate gains
++   *  nothing) and the claim's own person loses it, in all, among SETTLED claims and among OPEN and PENDING ones; held tells a holder's
+    *  part of a claim with a figure is one. A claim with no figure moves nothing. */
+   private readonly sharedByPerson = computed(() => {
+     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+@@ -1235,8 +1235,10 @@ export class People {
+       const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c), floor, late);
+       if (due === null) continue;
+       for (const s of c.shares) {
+-        if (!grades.has(s.personId)) continue;
+-        const part = sharePartCents(due, s.share);
++        const holder = grades.get(s.personId);
++        if (holder === undefined) continue;
++        const part = holderPartCents(c, s.share, this.rates.ofGradeOn(holder, c), late);
++        if (part === null) continue;
+         move(s.personId, c, part, true);
+         move(c.personId, c, -part, false);
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 62dcd2b67..917084dca 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -728,7 +728,9 @@ public class ClaimService {
+         if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
+             throw new ShareRefusedException("A " + status + " claim cannot be shared");
+         }
+-        refuseClosed(sheetId, claim.getDueBy());
++        if (periods.closedOn(sheetId, claim.getDate())) {
++            throw new PeriodClosedException("A claim dated " + claim.getDate() + " falls in a closed period");
++        }
+         if (holder.getId().equals(person.getId())) {
+             throw new ShareRefusedException("A claim cannot be shared with its own person");
+         }
+@@ -1233,6 +1235,24 @@ public class ClaimService {
+                 .orElse(null);
+     }
+ 
++    /** A holder's part of a shared claim (as it stood at the end of a day; null: now): a settled
++     *  claim keeps its parts as frozen, its settled due times the share divided by 100 (see
++     *  ClaimShare#partOf); otherwise the claim's amount times the share divided by 100, times the rate
++     *  of the holder's grade in force on the claim's date (of the rates that apply to the claim)
++     *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf); null when
++     *  the holder's grade has no rate then (their part is 0.00). */
++    public BigDecimal partOf(String sheetId, Claim claim, ClaimShare share, LocalDate asOf) {
++        if (claim.getSettledDue() != null) {
++            return share.partOf(claim.getSettledDue());
++        }
++        String grade = grades.gradeOn(share.personId(), claim.getDate(), asOf);
++        RoundingMode rounding = roundingOf(sheetId, claim, asOf);
++        return rates.rateFor(sheetId, grade, claim.getDate(), claim.getId(), asOf).map(Rate::getRate)
++                .map(rate -> claim.getAmount().multiply(share.share()).multiply(rate).movePointLeft(4)
++                        .setScale(2, rounding))
++                .orElse(null);
++    }
++
+     /** A grade's rate taken to apply on every date in place of the rates set for it. */
+     private record RateOverride(String grade, BigDecimal rate) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index c7e063d2e..80ae44872 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -81,6 +81,11 @@ public class Period {
+     @Column(name = "locked", nullable = false)
+     private boolean locked;
+ 
++    /** The sheet's today when the period was last locked; null while it is not locked, or for one
++     *  locked before this was kept. */
++    @Column(name = "locked_on")
++    private LocalDate lockedOn;
++
+     /** The pools, pot and people as they stood when the period was closed or soft-closed (JSON), each
+      *  pool member's cut for it worked out from these; null while it is open. */
+     @Lob
+@@ -138,9 +143,16 @@ public class Period {
+         return locked;
+     }
+ 
+-    /** Lock or unlock the period. */
+-    public void setLocked(boolean locked) {
++    /** Lock the period on a day (the sheet's today), or unlock it. */
++    public void setLocked(boolean locked, LocalDate on) {
+         this.locked = locked;
++        this.lockedOn = locked ? on : null;
++    }
++
++    /** Whether the period was locked at the end of a day: it is locked now, and was locked on or before
++     *  that day (one locked before the day was kept counts as locked). */
++    public boolean lockedAsOf(LocalDate day) {
++        return locked && (lockedOn == null || !lockedOn.isAfter(day));
+     }
+ 
+     public BigDecimal getClosedTotal() {
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index e47b4b101..0096e518d 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -83,7 +83,7 @@ public class PeriodController {
+         LocalDate asOf = AsOf.parse(asOfHeader);
+         if (asOf != null) {
+             // A period's cap is fixed when it is added, so the period as it stood then has the cap it has now;
+-            // its opening balances are those it holds now, and it is locked as it is now.
++            // its opening balances are those it holds now, and it is locked if it is locked now and was by then.
+             Map<Long, Period> now = new HashMap<>();
+             service.list(sheetId.trim()).forEach(period -> now.put(period.getId(), period));
+             return service.listAsOf(sheetId.trim(), asOf).stream()
+@@ -91,7 +91,7 @@ public class PeriodController {
+                         Period current = now.get(period.id());
+                         return PeriodView.of(period, current != null ? current.getCap() : null,
+                                 current != null ? current.getPersonOpenings() : Map.of(),
+-                                current != null && current.isLocked());
++                                current != null && current.lockedAsOf(asOf));
+                     }).toList();
+         }
+         return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 8bd564deb..3497893fd 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -524,7 +524,7 @@ public class PeriodService {
+         if (period.isLocked() == locked) {
+             throw new PeriodRefusedException("The period " + name + " is already " + (locked ? "locked" : "unlocked"));
+         }
+-        period.setLocked(locked);
++        period.setLocked(locked, sheets.today(sheetId));
+         Period saved = periods.saveAndFlush(period);
+         audit.recordOnCommit((locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + user
+                 + " period=" + name);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 17daade9c..f2279305f 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -308,8 +308,8 @@ public class RollupService {
+     }
+ 
+     /** What the shares of the claims that count move in each person's due-total, by person id: each
+-     *  holder gains their part of a claim's figure (its due times their share divided by 100, rounded
+-     *  half to even), and the claim's own person loses it. A person whose figures no share moves is
++     *  holder gains their part of the claim (see ClaimService#partOf; a holder whose grade has no rate
++     *  gains nothing), and the claim's own person loses it. A person whose figures no share moves is
+      *  not listed; a claim with no figure moves nothing. */
+     private Map<Long, BigDecimal> sharedParts(String sheetId, LocalDate asOf, List<Person> sheetPeople,
+             Map<Long, List<Claim>> counted) {
+@@ -328,7 +328,11 @@ public class RollupService {
+                     if (!onSheet.contains(share.personId())) {
+                         continue;
+                     }
+-                    BigDecimal part = share.partOf(figure);
++                    BigDecimal part = claimService.partOf(sheetId, claim, share, asOf);
++                    if (part == null) {
++                        parts.merge(person.getId(), NONE, BigDecimal::add);
++                        continue;
++                    }
+                     parts.merge(share.personId(), part, BigDecimal::add);
+                     parts.merge(person.getId(), part.negate(), BigDecimal::add);
+                 }
+diff --git a/src/main/resources/db/migration/V127__period_locked_on.sql b/src/main/resources/db/migration/V127__period_locked_on.sql
+new file mode 100644
+index 000000000..f8d8ffdbc
+--- /dev/null
++++ b/src/main/resources/db/migration/V127__period_locked_on.sql
+@@ -0,0 +1,3 @@
++-- The sheet's today when the period was last locked, so a period read as of an earlier day shows it
++-- not locked then; null while it is not locked, or for one locked before this was kept.
++ALTER TABLE period ADD COLUMN locked_on DATE;
