@@ -13,6 +13,7 @@ import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,9 +32,11 @@ public class RateService {
     private final SheetRepository sheetRepository;
     private final History history;
     private final Audit audit;
+    private final JdbcTemplate jdbc;
 
     public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets, SheetRepository sheetRepository, History history,
-            Audit audit) {
+            Audit audit, JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
         this.rates = rates;
         this.versions = versions;
         this.sheets = sheets;
@@ -65,6 +68,22 @@ public class RateService {
         return rates.findBySheetIdOrderByGradeAscFromAscIdAsc(sheetId);
     }
 
+    /** A rate's older versions, newest first: as they were read with it, else from the kept versions. */
+    public List<Rate> earlier(Rate rate) {
+        if (rate.getEarlier() != null) {
+            return rate.getEarlier();
+        }
+        List<RateVersion> older = versions.findByRateIdOrderByVersionAsc(rate.getId());
+        List<Rate> earlier = new ArrayList<>();
+        for (int i = older.size() - 1; i >= 0; i--) {
+            RateVersion version = older.get(i);
+            earlier.add(rate.asVersion(version.getRate(), version.getTo(), version.getVersion(),
+                    version.getForwardAfter()));
+        }
+        rate.setEarlier(earlier);
+        return earlier;
+    }
+
     /** The sheet's rates by grade, each grade's from the earliest, as they stood at the end of a day
      *  (null: as they stand now). */
     public List<Rate> list(String sheetId, LocalDate asOf) {
@@ -89,12 +108,20 @@ public class RateService {
     /** The grade's rate in force on a date as the rates (the sheet's and its parent sheets') stood
      *  at the end of a day (null: as they stand now). */
     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
-        Optional<Rate> own = ownRateOn(sheetId, grade, date, asOf);
+        return rateFor(sheetId, grade, date, null, asOf);
+    }
+
+    /** The grade's rate that applies to a claim (null: to no claim in particular) on a date, as
+     *  {@link #rateOn} finds it, but of the rates that apply to the claim only: a forward-only rate
+     *  saved before the claim was added is passed over, the claim keeping the version of it, if any,
+     *  that applied to it (see {@link Rate#appliesTo}). */
+    public Optional<Rate> rateFor(String sheetId, String grade, LocalDate date, Long claimId, LocalDate asOf) {
+        Optional<Rate> own = ownRateFor(sheetId, grade, date, claimId, asOf);
         if (own.isPresent()) {
             return own;
         }
         for (String ancestor : ancestors(sheetId)) {
-            Optional<Rate> theirs = ownRateOn(ancestor, grade, date, asOf);
+            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, asOf);
             if (theirs.isPresent()) {
                 return theirs;
             }
@@ -102,9 +129,19 @@ public class RateService {
         return Optional.empty();
     }
 
-    private Optional<Rate> ownRateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
-        return inForce(asOf == null ? rates.findBySheetIdAndGradeOrderByFromAsc(sheetId, grade)
-                : history.rates(sheetId, grade, asOf), date);
+    private Optional<Rate> ownRateFor(String sheetId, String grade, LocalDate date, Long claimId, LocalDate asOf) {
+        List<Rate> theirs = asOf == null ? rates.findBySheetIdAndGradeOrderByFromAsc(sheetId, grade)
+                : history.rates(sheetId, grade, asOf);
+        return inForce(theirs.stream().map(rate -> versionFor(rate, claimId)).flatMap(Optional::stream).toList(),
+                date);
+    }
+
+    /** The newest version of a rate that applies to a claim; empty when none of them does. */
+    private Optional<Rate> versionFor(Rate rate, Long claimId) {
+        if (rate.appliesTo(claimId)) {
+            return Optional.of(rate);
+        }
+        return earlier(rate).stream().filter(version -> version.appliesTo(claimId)).findFirst();
     }
 
     private static Optional<Rate> inForce(List<Rate> theirs, LocalDate date) {
@@ -116,8 +153,9 @@ public class RateService {
 
     /** Set the rate for a grade from a date (null: from the beginning of time) through a date (null:
      *  with no end). When the grade has a rate from that date, the value it held is kept as an older
-     *  version and the new one becomes its newest version, the one in force. A to-date before the from-date
-     *  is refused. */
+     *  version and the new one becomes its newest version, the one in force. A rate from a date on or
+     *  after the sheet's today is forward-only: it applies only to claims added after it is saved. A
+     *  to-date before the from-date is refused. */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal rate) {
         if (from != null && to != null && to.isBefore(from)) {
@@ -125,16 +163,23 @@ public class RateService {
         }
         sheets.load(sheetId);
         BigDecimal scaled = rate.setScale(2, RoundingMode.UNNECESSARY);
+        Long forwardAfter = from != null && !from.isBefore(sheets.today(sheetId))
+                ? jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) FROM claim", Long.class)
+                : null;
         Optional<Rate> had = from == null
                 ? rates.findBySheetIdAndGradeAndFromIsNull(sheetId, grade)
                 : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from);
         Rate saved = had
                 .map(existing -> {
                     versions.save(new RateVersion(existing, sheets.today(sheetId), user));
-                    existing.newVersion(scaled, to);
+                    existing.newVersion(scaled, to, forwardAfter);
                     return existing;
                 })
-                .orElseGet(() -> new Rate(sheetId, grade, from, to, scaled));
+                .orElseGet(() -> {
+                    Rate made = new Rate(sheetId, grade, from, to, scaled);
+                    made.setForwardAfter(forwardAfter);
+                    return made;
+                });
         saved = rates.saveAndFlush(saved);
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user + " grade=" + grade
                 + " rate=" + saved.getRate().toPlainString() + (from != null ? " from=" + from : "")

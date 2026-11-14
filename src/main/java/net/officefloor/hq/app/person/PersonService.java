@@ -224,9 +224,10 @@ public class PersonService {
                 .collect(Collectors.groupingBy(PersonRetirement::getPersonId));
     }
 
-    /** Keep a SNAPSHOT written for a person: the day being left and their due-total then as shown. */
-    public void snapshot(String sheetId, Long personId, LocalDate day, String dueTotal) {
-        snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal));
+    /** Keep a SNAPSHOT written for a person: the day being left, their due-total then as shown and
+     *  the day the sheet's today moves to. */
+    public void snapshot(String sheetId, Long personId, LocalDate day, String dueTotal, LocalDate movingTo) {
+        snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal, movingTo));
     }
 
     /** A person's snapshots, in the order they were written. */
@@ -236,10 +237,11 @@ public class PersonService {
 
     /** Each person's snapshots on the sheet as they stood at the end of a day (null: all), in the order
      *  they were written, by person id; a person with none is absent. A snapshot is written as the
-     *  sheet's today leaves its day, so only those of days before it had been written by then. */
+     *  sheet's today moves to another day, so only those written as it moved to that day or an earlier
+     *  one had been written by then. */
     public Map<Long, List<PersonSnapshot>> snapshots(String sheetId, LocalDate asOf) {
         return snapshots.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(s -> asOf == null || s.getDay().isBefore(asOf))
+                .filter(s -> asOf == null || s.writtenBy(asOf))
                 .collect(Collectors.groupingBy(PersonSnapshot::getPersonId));
     }
 

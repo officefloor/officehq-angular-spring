@@ -13,6 +13,43 @@ export interface Rate {
   to: string | null;
   /** How many versions the rate has; the one shown, in force, is the newest. */
   version: number;
+  /** For a forward-only rate (saved with a from-date on or after the sheet's today), the id of the
+   *  newest claim there was when it was saved: it applies only to claims with a higher id. Null when
+   *  it applies to every claim. */
+  forwardAfter: number | null;
+  /** For a forward-only rate, its older versions, newest first: a claim it does not apply to keeps
+   *  the newest of them that does. */
+  earlier: EarlierRate[];
+}
+
+/** An older version of a rate: its value, to-date and forward-only mark as the rate has them. */
+export interface EarlierRate {
+  rate: string;
+  to: string | null;
+  forwardAfter: number | null;
+}
+
+/** Whether a rate (or a version of one) applies to a claim: it is not forward-only, or the claim was
+ *  added after it was saved. */
+function appliesTo(forwardAfter: number | null, claimId: number): boolean {
+  return forwardAfter === null || claimId > forwardAfter;
+}
+
+/** A grade's rates as they apply to a claim: each forward-only rate saved before the claim was added
+ *  is taken as the newest of its older versions that applies to the claim, or left out when none
+ *  does. */
+export function ratesFor(rates: Rate[], claimId: number): Rate[] {
+  if (rates.every((r) => r.forwardAfter === null)) return rates;
+  const theirs: Rate[] = [];
+  for (const r of rates) {
+    if (appliesTo(r.forwardAfter, claimId)) {
+      theirs.push(r);
+      continue;
+    }
+    const version = r.earlier.find((e) => appliesTo(e.forwardAfter, claimId));
+    if (version) theirs.push({ ...r, rate: version.rate, to: version.to, forwardAfter: version.forwardAfter });
+  }
+  return theirs;
 }
 
 export const GRADES = ['A', 'B', 'C'];
@@ -120,22 +157,24 @@ export class RateStore {
   }
 
   /** A grade's rates to work a date's rate from: the sheet's own when one is in force on the date,
-   *  else those of the nearest parent sheet with one in force on it; the sheet's own when none is. */
-  ofOn(grade: string, date: string): Rate[] {
-    const own = this.of(grade);
+   *  else those of the nearest parent sheet with one in force on it; the sheet's own when none is.
+   *  For a claim (its id), only the rates as they apply to it count (see ratesFor). */
+  ofOn(grade: string, date: string, claimId?: number): Rate[] {
+    const of = (rates: Rate[]) => (claimId === undefined ? rates : ratesFor(rates, claimId));
+    const own = of(this.of(grade));
     if (rateOn(own, date) !== null) return own;
     for (const level of this.inheritedByGrade()) {
-      const theirs = level.get(grade) ?? [];
+      const theirs = of(level.get(grade) ?? []);
       if (rateOn(theirs, date) !== null) return theirs;
     }
     return own;
   }
 
-  /** The rates of a person's grade in force on a date to work the date's rate from (see ofOn); none
-   *  when that grade has no rate. */
-  ofGradeOn(grades: PersonGrade[], date: string): Rate[] {
-    const grade = gradeOn(grades, date);
-    return grade === null ? [] : this.ofOn(grade, date);
+  /** The rates of a person's grade in force on a claim's date to work the claim's rate from, as they
+   *  apply to the claim (see ofOn); none when that grade has no rate. */
+  ofGradeOn(grades: PersonGrade[], claim: { id: number; date: string }): Rate[] {
+    const grade = gradeOn(grades, claim.date);
+    return grade === null ? [] : this.ofOn(grade, claim.date, claim.id);
   }
 
   constructor() {

@@ -627,7 +627,7 @@ export class PersonClaims {
       rounding: this.roundingOn(),
       grace: (c: Claim) => this.graceOf(c),
     };
-    const due = claimDueCents(claim, this.rates.ofGradeOn(this.grades(), claim.date), this.floor(), late);
+    const due = claimDueCents(claim, this.rates.ofGradeOn(this.grades(), claim), this.floor(), late);
     return due === null ? NO_RATE : money(due);
   }
 

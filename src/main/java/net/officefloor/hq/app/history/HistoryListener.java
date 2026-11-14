@@ -23,8 +23,8 @@ public class HistoryListener {
             + " c.proofs, c.split_from, c.late_entry, TRUE, s.today"
             + " FROM claim c JOIN sheet s ON s.id = c.sheet_id WHERE c.id = ?";
 
-    private static final String RATE = "INSERT INTO rate_history (sheet_id, grade, from_date, to_date, rate, version, made_on)"
-            + " SELECT r.sheet_id, r.grade, r.from_date, r.to_date, r.rate, r.version, s.today"
+    private static final String RATE = "INSERT INTO rate_history (sheet_id, grade, from_date, to_date, rate, version, forward_after,"
+            + " made_on) SELECT r.sheet_id, r.grade, r.from_date, r.to_date, r.rate, r.version, r.forward_after, s.today"
             + " FROM rate r JOIN sheet s ON s.id = r.sheet_id WHERE r.id = ?";
 
     private static final String GRADE = "INSERT INTO person_grade_history (sheet_id, person_id, grade, from_date, made_on)"

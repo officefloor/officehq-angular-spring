@@ -154,11 +154,12 @@ public class RollupService {
     }
 
     /** Record in the audit each person's due-total as it stands now, in list order: the figures of
-     *  the day the sheet's today is about to leave; each is kept for the person with that day. */
-    public void snapshot(String sheetId, String user) {
+     *  the day the sheet's today is about to leave; each is kept for the person with that day and the
+     *  day the sheet's today is moving to. */
+    public void snapshot(String sheetId, String user, LocalDate movingTo) {
         LocalDate leaving = sheets.today(sheetId);
         rollup(sheetId).people().forEach((personId, figures) -> {
-            personService.snapshot(sheetId, personId, leaving, text(figures.due()));
+            personService.snapshot(sheetId, personId, leaving, text(figures.due()), movingTo);
             audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + user + " name=" + figures.name()
                     + " due-total=" + text(figures.due()));
         });

@@ -106,7 +106,7 @@ public class SheetController {
                 () -> {
                     LocalDate was = service.today(sheet);
                     if (!was.equals(request.today())) {
-                        rollups.snapshot(sheet, by);
+                        rollups.snapshot(sheet, by, request.today());
                     }
                     Sheet changed = service.setToday(sheet, request.today());
                     if (!was.equals(changed.getToday())) {

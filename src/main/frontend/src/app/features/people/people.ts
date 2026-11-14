@@ -920,7 +920,7 @@ export class People {
       const theirs = grades.get(c.personId);
       const tags = new Set([...c.tags, ...(personTags.get(c.personId) ?? [])]);
       if (theirs === undefined || tags.size === 0) continue;
-      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), floor, late) ?? 0;
+      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c), floor, late) ?? 0;
       for (const tag of tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
     }
     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
@@ -937,7 +937,7 @@ export class People {
       const theirs = grades.get(c.personId);
       if (theirs === undefined) continue;
       const month = c.date.slice(0, 7);
-      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), floor, late) ?? 0;
+      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c), floor, late) ?? 0;
       totals.set(month, (totals.get(month) ?? 0) + due);
     }
     return [...totals.keys()].sort().map((month) => ({ month, dueTotal: money(totals.get(month)!) }));
@@ -988,7 +988,7 @@ export class People {
       if (period === null || period.closed || period.softClosed || theirs === undefined) continue;
       const then = statusAsOf(c, period.to);
       if (then === null || !['OPEN', 'PENDING', 'SETTLED'].includes(then) || !keep(c)) continue;
-      const rates = this.rates.ofGradeOn(theirs, c.date);
+      const rates = this.rates.ofGradeOn(theirs, c);
       const byPerson = totals.get(period.id)!;
       const due = claimDueCents(c, rates, this.floor(), this.late()) ?? 0;
       byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0) + due);
@@ -1026,7 +1026,7 @@ export class People {
       const theirs = grades.get(c.personId);
       if (period === null || period.closed || period.softClosed || theirs === undefined) continue;
       if (!['OPEN', 'PENDING', 'SETTLED'].includes(c.status) || !keep(c)) continue;
-      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), this.floor(), this.late()) ?? 0;
+      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c), this.floor(), this.late()) ?? 0;
       totals.set(period.id, totals.get(period.id)! + due);
     }
     return periods.map((p) => ({ name: p.name, dueTotal: money(totals.get(p.id) ?? 0) }));
@@ -1566,7 +1566,7 @@ export class People {
       ['person', 'number', 'date', 'amount', 'due', 'status', 'period'],
       ...this.people().flatMap((p) =>
         [...this.claimsOf(p.id)].reverse().map((c) => {
-          const due = claimDueCents(c, this.rates.ofGradeOn(p.grades, c.date), floor, late);
+          const due = claimDueCents(c, this.rates.ofGradeOn(p.grades, c), floor, late);
           return [
             p.name,
             c.number ?? '',
@@ -1640,7 +1640,7 @@ export class People {
     const floor = this.floor();
     const late = this.late();
     const dues = this.countedOf(person.id).map((c) =>
-      claimDueCents(c, this.rates.ofGradeOn(person.grades, c.date), floor, late),
+      claimDueCents(c, this.rates.ofGradeOn(person.grades, c), floor, late),
     );
     if (!this.rates.current().has(this.gradeOf(person)) && dues.every((due) => due === null)) {
       return null;
@@ -1666,7 +1666,7 @@ export class People {
     return this.countedOf(person.id)
       .filter(keep)
       .reduce(
-        (sum, c) => sum + (claimDueCents(c, this.rates.ofGradeOn(person.grades, c.date), floor, late) ?? 0),
+        (sum, c) => sum + (claimDueCents(c, this.rates.ofGradeOn(person.grades, c), floor, late) ?? 0),
         0,
       );
   }
@@ -1692,7 +1692,7 @@ export class People {
       if (!isOpen(c)) continue;
       const age = today === null ? 0 : Math.round((Date.parse(today) - Date.parse(c.date)) / 86_400_000);
       const bucket = age <= 30 ? 0 : age <= 60 ? 1 : 2;
-      sums[bucket] += claimDueCents(c, this.rates.ofGradeOn(person.grades, c.date), floor, late) ?? 0;
+      sums[bucket] += claimDueCents(c, this.rates.ofGradeOn(person.grades, c), floor, late) ?? 0;
     }
     return [money(sums[0]), money(sums[1]), money(sums[2])];
   }
@@ -1701,7 +1701,7 @@ export class People {
     const floor = this.floor();
     const late = this.late();
     return this.overdueOf(person.id).reduce(
-      (sum, c) => sum + (claimDueCents(c, this.rates.ofGradeOn(person.grades, c.date), floor, late) ?? 0),
+      (sum, c) => sum + (claimDueCents(c, this.rates.ofGradeOn(person.grades, c), floor, late) ?? 0),
       0,
     );
   }

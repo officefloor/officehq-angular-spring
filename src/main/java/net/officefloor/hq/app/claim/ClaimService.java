@@ -979,7 +979,7 @@ public class ClaimService {
     }
 
     /** The due on a claim at the rate in force on the claim's date for the person's grade in force
-     *  on the claim's date: amount times rate
+     *  on the claim's date, of the rates that apply to the claim (see RateService#rateFor): amount times rate
      *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf); the floor is
      *  not applied here (see dueOf); null when no rate applies. */
     private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim, LocalDate asOf,
@@ -988,7 +988,7 @@ public class ClaimService {
         RoundingMode rounding = roundingOf(sheetId, claim, asOf);
         String grade = grades.gradeOn(person.getId(), claim.getDate(), asOf);
         Optional<BigDecimal> inForce = override != null && override.grade().equals(grade) ? Optional.of(override.rate())
-                : rates.rateOn(sheetId, grade, claim.getDate(), asOf).map(Rate::getRate);
+                : rates.rateFor(sheetId, grade, claim.getDate(), claim.getId(), asOf).map(Rate::getRate);
         return inForce
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, rounding))
                 .orElse(null);

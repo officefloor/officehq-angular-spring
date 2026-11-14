@@ -31,6 +31,9 @@ public class RateVersion {
     @Column(name = "to_date")
     private LocalDate to;
 
+    @Column(name = "forward_after")
+    private Long forwardAfter;
+
     @Column(name = "replaced_on")
     private LocalDate replacedOn;
 
@@ -46,6 +49,7 @@ public class RateVersion {
         this.version = replaced.getVersion();
         this.rate = replaced.getRate();
         this.to = replaced.getTo();
+        this.forwardAfter = replaced.getForwardAfter();
         this.replacedOn = replacedOn;
         this.replacedBy = replacedBy;
     }
@@ -68,6 +72,11 @@ public class RateVersion {
 
     public LocalDate getTo() {
         return to;
+    }
+
+    /** The version's forward-only mark (see {@link Rate#getForwardAfter}). */
+    public Long getForwardAfter() {
+        return forwardAfter;
     }
 
     public LocalDate getReplacedOn() {

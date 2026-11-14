@@ -35,12 +35,24 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** A grade's rate as the screen shows it; the rate is a percent string with two decimals, the
-     *  from-date null when the rate applies from the beginning of time, the version its version count. */
-    public record RateView(String grade, String rate, LocalDate from, LocalDate to, int version) {
-        static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFrom(), rate.getTo(),
-                    rate.getVersion());
-        }
+     *  from-date null when the rate applies from the beginning of time, the version its version count.
+     *  forwardAfter is, for a forward-only rate, the id of the newest claim there was when it was saved
+     *  (it applies only to claims with a higher id), else null; for a forward-only rate, earlier is its
+     *  older versions, newest first, for the claims it does not apply to; else none. */
+    public record RateView(String grade, String rate, LocalDate from, LocalDate to, int version, Long forwardAfter,
+            List<EarlierView> earlier) {
+    }
+
+    /** An older version of a rate: its value, to-date and forward-only mark as {@link RateView} has them. */
+    public record EarlierView(String rate, LocalDate to, Long forwardAfter) {
+    }
+
+    private RateView view(Rate rate) {
+        List<EarlierView> earlier = rate.getForwardAfter() == null ? List.of()
+                : service.earlier(rate).stream().map(version -> new EarlierView(version.getRate().toPlainString(),
+                        version.getTo(), version.getForwardAfter())).toList();
+        return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFrom(), rate.getTo(),
+                rate.getVersion(), rate.getForwardAfter(), earlier);
     }
 
     /** A rate: a percent of 0.00 or more with up to two decimals, and the date it applies from
@@ -76,7 +88,7 @@ public class RateController {
     @GetMapping
     public List<RateView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
-        return service.list(sheetId.trim(), AsOf.parse(asOf)).stream().map(RateView::of).toList();
+        return service.list(sheetId.trim(), AsOf.parse(asOf)).stream().map(this::view).toList();
     }
 
     /** The rates of the sheets the sheet's rates fall back to, nearest first (its parent, the
@@ -86,7 +98,7 @@ public class RateController {
             @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
         LocalDate day = AsOf.parse(asOf);
         return service.ancestors(sheetId.trim()).stream()
-                .map(ancestor -> service.list(ancestor, day).stream().map(RateView::of).toList())
+                .map(ancestor -> service.list(ancestor, day).stream().map(this::view).toList())
                 .toList();
     }
 
@@ -97,7 +109,7 @@ public class RateController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated RateRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return RateView.of(rollups.track(sheet, by, () -> service.set(sheet, by, grade, request.from(),
+        return view(rollups.track(sheet, by, () -> service.set(sheet, by, grade, request.from(),
                 request.to(), request.rate())));
     }
 
@@ -108,7 +120,7 @@ public class RateController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ImportRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return imports.importRates(sheet, by, request.text()).stream().map(RateView::of).toList();
+        return imports.importRates(sheet, by, request.text()).stream().map(this::view).toList();
     }
 
     /** Preview a candidate rate for a grade (A, B or C): how the dues of the OPEN and PENDING claims of
