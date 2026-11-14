@@ -1,0 +1,107 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index e014a2298..b27827923 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -159,10 +159,11 @@ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | nul
+   return dueCents(cents(claim.amount), rate, halfUp);
+ }
+ 
+-/** A claim's due in cents: the due fixed when it was settled; otherwise the greater of the sheet's floor
+- *  in force on its date (none for a correction) and its figure plus its late charge: for every full 30
+- *  days an OPEN or PENDING claim is overdue, the late percent in force on that boundary (its due-by plus
+- *  30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding), rounded
++/** A claim's due in cents: the due fixed when it was settled; otherwise its floored figure (the greater of
++ *  the sheet's floor in force on its date and its figure; none for a correction) plus its late charge on
++ *  that floored figure: for every full 30 days an OPEN or PENDING claim is overdue, the late percent in force
++ *  on that boundary (its due-by plus 30, 60, 90 ... days) of the floored figure plus the charges of the
++ *  boundaries before it (compounding), rounded
+  *  like a due, the charges added up (a statement binds the due,
+  *  charge included; settling freezes the due; a correction or a waived claim has none); null when it has no
+  *  figure. */
+@@ -170,9 +171,10 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
+   if (claim.settledDue !== null) return cents(claim.settledDue);
+   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
+   const halfUp = roundsHalfUp(claim, late);
+-  const figure = figureCents(claim, rates, halfUp);
+-  if (figure === null) return null;
+-  if (isCorrection(claim)) return figure;
++  const raw = figureCents(claim, rates, halfUp);
++  if (raw === null) return null;
++  if (isCorrection(claim)) return raw;
++  const figure = Math.max(raw, floor(claim.date));
+   const grace = late.grace(claim);
+   const periods = claim.waived ? 0 : Math.floor(daysOverdue(claim, late.today, grace) / 30);
+   let charge = 0;
+@@ -180,7 +182,7 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
+     const pct = late.pct(plusDays(claim.dueBy, grace + 30 * boundary));
+     if (cents(pct) !== 0) charge += dueCents(figure + charge, pct, halfUp);
+   }
+-  return Math.max(figure + charge, floor(claim.date));
++  return figure + charge;
+ }
+ 
+ /** A date (yyyy-mm-dd) some days on. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index bdcf8c7ab..58d75de33 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -791,8 +791,7 @@ public class ClaimService {
+         refuseClosed(sheetId, claim.getDueBy());
+         String old = settledDueText(claim);
+         BigDecimal figure = liveFigureOf(sheetId, person, claim, null, null);
+-        claim.setSettledDue(figure == null ? null
+-                : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, person, claim, figure, true, null)), null));
++        claim.setSettledDue(figure == null ? null : flooredDue(sheetId, person, claim, figure, true, null));
+         Claim saved = claims.saveAndFlush(claim);
+         log(sheetId, user, person, saved);
+         audit.recordOnCommit(line("CLAIM_RESETTLED", sheetId, user, person, saved, saved.getNumber())
+@@ -1027,9 +1026,9 @@ public class ClaimService {
+     }
+ 
+     /** The due a claim shows: a settled claim's frozen due; else the due its person's last statement
+-     *  bound it to; otherwise the greater of the sheet's floor in
+-     *  force on its date (none for a correction) and its figure plus its late charge (none while it is
+-     *  deferred: it is not overdue then); null when it has no figure. */
++     *  bound it to; otherwise its floored figure (the greater of the sheet's floor in force on its date
++     *  and its figure; none for a correction) plus the late charge on that floored figure (none while it
++     *  is deferred: it is not overdue then); null when it has no figure. */
+     public BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+         return dueOf(sheetId, person, claim, null);
+     }
+@@ -1047,14 +1046,20 @@ public class ClaimService {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        // A statement binds the due as shown, late charge and floor included.
++        // A statement binds the due as shown: the floored figure, late charge included.
+         if (claim.isStated()) {
+             return claim.getStatedDue();
+         }
+         BigDecimal figure = figureOf(sheetId, person, claim, asOf, override);
+         boolean open = claim.getStatus().isOpen() && !claim.deferredOn(todayOr(sheetId, asOf));
+-        return figure == null ? null
+-                : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, person, claim, figure, open, asOf)), asOf);
++        return figure == null ? null : flooredDue(sheetId, person, claim, figure, open, asOf);
++    }
++
++    /** A figure raised to the floor (see floored), plus the late charge worked out on that floored figure. */
++    private BigDecimal flooredDue(String sheetId, Person person, Claim claim, BigDecimal figure, boolean open,
++            LocalDate asOf) {
++        BigDecimal floored = floored(sheetId, claim, figure, asOf);
++        return floored.add(lateChargeOf(sheetId, person, claim, floored, open, asOf));
+     }
+ 
+     /** The day that stands for the sheet's today: the given one, else the sheet's today. */
+@@ -1062,9 +1067,9 @@ public class ClaimService {
+         return asOf != null ? asOf : sheets.today(sheetId);
+     }
+ 
+-    /** A due raised to the sheet's floor in force on the claim's date, unless the claim is a correction. */
+-    private BigDecimal floored(String sheetId, Claim claim, BigDecimal due, LocalDate asOf) {
+-        return claim.isCorrection() ? due : due.max(settings.floor(sheetId, claim.getDate(), asOf));
++    /** A figure raised to the sheet's floor in force on the claim's date, unless the claim is a correction. */
++    private BigDecimal floored(String sheetId, Claim claim, BigDecimal figure, LocalDate asOf) {
++        return claim.isCorrection() ? figure : figure.max(settings.floor(sheetId, claim.getDate(), asOf));
+     }
+ 
+     /** The date a claim is overdue after: its due-by plus the grace days in force on its date for the
