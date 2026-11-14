@@ -1,0 +1,64 @@
+{
+  "checkpoint": 14,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp14_edit-conflict",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "When a person is edited, the form remembers which version of the person it loaded. If someone\nelse has saved that person in the meantime, saving is refused with an error on the form, nothing\nis stored, and the form shows the current values; opening the editor again and saving works.\nSubmitting any form twice before the first submit has answered stores one record, not two.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a person is edited, the form remembers which version of the person it loaded. If someone\nelse has saved that person in the meantime, saving is refused with an error on the form, nothing\nis stored, and the form shows the current values; opening the editor again and saving works.\nSubmitting any form twice before the first submit has answered stores one record, not two.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "287277c494dbfc85b6425ca48052f940733f3f03",
+  "reset_sha": "",
+  "preagent_sha": "d1cdc9f4d1b1cd1a93327148103d59a44d8050c1",
+  "prev_sha": "d1cdc9f4d1b1cd1a93327148103d59a44d8050c1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.724814,
+    "input_tokens": 30,
+    "output_tokens": 8471,
+    "cache_read_tokens": 595810,
+    "cache_creation_tokens": 54514,
+    "num_turns": 16,
+    "duration_ms": 267853,
+    "duration_api_ms": 78708,
+    "model": "claude-opus-5-5",
+    "session_id": "3ff451b3-fd0a-4185-afaa-35fbf8756144",
+    "stop_reason": "success",
+    "result_text": "The change is in and all 4 acceptance tests pass. I had to run them as `PORT=3417 bin/e2e` because something else was already using port 3000 and the app couldn't start there.\n\n**Detecting an edit conflict**\n- **Stored data:** a new migration, `V12__person_version.sql`, adds a `version` column to `person`. The `Person` entity uses it as a JPA `@Version`, so the number goes up every time the person is saved.\n- **Server:** the person data the server sends now includes the version, and an edit sends back the version its form loaded. In `PersonService.update`, if that version is no longer the stored one, the save is refused with HTTP 412. Nothing is stored and nothing goes to the audit file. Two saves landing at the same moment are refused the same way.\n- **New endpoint:** `GET /api/sheets/{sheetId}/people/{id}` returns one person as currently stored.\n- **Front end (`people.ts`):** opening the editor keeps the person's version. When a save is refused this way:\n  - the form shows `person-form-error`;\n  - the row and the editor are refilled with the current values;\n  - the editor stays open and takes on the current version.\n\n  Opening the editor again and saving then works, as the request asks.\n\n**Submitting a form twice**\nThe add/edit person form, the claim form and the rate form now ignore a second submit while the first is still waiting for an answer. A double click therefore stores one record, not two.\n\n**One choice to confirm:** after a refusal, saving again from the still-open editor goes through without reopening it, because the editor has already moved to the current version. If you'd rather it stayed refused until the editor is reopened, that's a small change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.724814,
+        "num_turns": 16,
+        "duration_ms": 267853,
+        "duration_api_ms": 78708,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp14.agent.jsonl",
+  "agent_diff_file": "cp14.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
