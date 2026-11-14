@@ -119,6 +119,8 @@ interface StatementTaken {
       [periods]="periodSummary()"
       [statuses]="statusSummary()"
       [voids]="voidReasonSummary()"
+      [classicPeriods]="classicPeriodSummary()"
+      [classicDueTotal]="classicDueTotal()"
     />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -1003,6 +1005,37 @@ export class People {
       ]),
     );
   });
+  /** The classic summary per period, in cents by period id: while the period is open, the dues shown
+   *  now on the claims whose due-by falls in it that count by their status now (OPEN, PENDING or
+   *  SETTLED) and the live rules leave in (a claim with no figure adds nothing); once it is closed or
+   *  soft-closed, the figures fixed then, for the people on the sheet. */
+  protected readonly classicPeriodSummary = computed(() => {
+    const periods = this.periods.periods();
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const totals = new Map<number, number>();
+    for (const period of periods) {
+      const fixed = Object.entries(period.closed || period.softClosed ? period.closedPersonTotals : {});
+      totals.set(
+        period.id,
+        fixed.reduce((sum, [id, total]) => (grades.has(Number(id)) ? sum + cents(total) : sum), 0),
+      );
+    }
+    const keep = this.liveRulesKeep();
+    for (const c of this.claims()) {
+      const period = periodOf(periods, c.dueBy);
+      const theirs = grades.get(c.personId);
+      if (period === null || period.closed || period.softClosed || theirs === undefined) continue;
+      if (!['OPEN', 'PENDING', 'SETTLED'].includes(c.status) || !keep(c)) continue;
+      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), this.floor(), this.late()) ?? 0;
+      totals.set(period.id, totals.get(period.id)! + due);
+    }
+    return periods.map((p) => ({ name: p.name, dueTotal: money(totals.get(p.id) ?? 0) }));
+  });
+  /** The classic sheet due-total: everyone's due-total added up, skipping those with no figure, not
+   *  trimmed. */
+  protected readonly classicDueTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + (this.dueCentsBy(p) ?? 0), 0)),
+  );
   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up
    *  (skipping those with no figure), as their rows show them, and how many of them are active. */
   protected readonly gradeSummary = computed(() => {

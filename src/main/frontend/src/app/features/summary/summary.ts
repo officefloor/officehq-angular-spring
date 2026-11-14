@@ -19,6 +19,13 @@ export interface PeriodSummary {
   change: string;
 }
 
+export interface ClassicPeriodSummary {
+  name: string;
+  /** The period's due-total counting each claim by its status now; a closed period's figure fixed
+   *  when it closed (two decimals). */
+  dueTotal: string;
+}
+
 export interface StatusSummary {
   status: string;
   /** How many of the sheet's claims have the status. */
@@ -32,7 +39,7 @@ export interface VoidReasonSummary {
 }
 
 // The sheet in figures, each worked out from what the list shows: per grade, per period and per
-// claim status and void reason.
+// claim status and void reason; and beside it the classic summary.
 @Component({
   selector: 'app-summary',
   template: `
@@ -113,6 +120,27 @@ export interface VoidReasonSummary {
         </tbody>
       </table>
     </section>
+    <section aria-labelledby="classic-summary-heading">
+      <h2 id="classic-summary-heading">Classic summary</h2>
+      <table>
+        <caption>By period</caption>
+        <thead>
+          <tr>
+            <th scope="col">Period</th>
+            <th scope="col">Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of classicPeriods(); track p.name) {
+            <tr>
+              <th scope="row">{{ p.name }}</th>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <p>Sheet due-total: <span data-testid="classic-due-total">{{ classicDueTotal() }}</span></p>
+    </section>
   `,
 })
 export class Summary {
@@ -120,4 +148,6 @@ export class Summary {
   readonly periods = input.required<PeriodSummary[]>();
   readonly statuses = input.required<StatusSummary[]>();
   readonly voids = input.required<VoidReasonSummary[]>();
+  readonly classicPeriods = input.required<ClassicPeriodSummary[]>();
+  readonly classicDueTotal = input.required<string>();
 }
