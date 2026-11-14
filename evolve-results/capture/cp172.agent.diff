@@ -1,0 +1,44 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 08b406c6d..b2273af49 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -141,11 +141,10 @@ function roundsHalfUp(claim: Claim, late: Late): boolean {
+   return policy !== null && claim.roundsBy < policy;
+ }
+ 
+-/** A claim's figure in cents: the figure a statement bound it to, unless it is PENDING (no statement
+- *  binds it then); otherwise its amount times the rate in force on its date among its grade's rates;
+- *  null when it has no figure. The floor is not applied here (see claimDueCents). */
++/** A claim's figure in cents: the figure a statement bound it to; otherwise its amount times the
++ *  rate in force on its date among its grade's rates; null when it has no figure. The floor is not applied here (see claimDueCents). */
+ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | null {
+-  if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
++  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
+   const rate = rateOn(rates, claim.date);
+   if (rate === null) return null;
+   return dueCents(cents(claim.amount), rate, halfUp);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 7e1612f89..52f7d7c52 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -899,9 +899,8 @@ public class ClaimService {
+                 .findFirst().map(Period::getName).orElse(NO_PERIOD) + "-";
+     }
+ 
+-    /** The figure a claim shows: the due fixed when it was settled, else (unless it is PENDING, which
+-     *  no statement binds) the figure its person's last statement bound it to, else its due at the
+-     *  person's grade rate; null when it has none. */
++    /** The figure a claim shows: the due fixed when it was settled, else the figure its person's last
++     *  statement bound it to, else its due at the person's grade rate; null when it has none. */
+     public BigDecimal figureOf(String sheetId, Person person, Claim claim) {
+         return figureOf(sheetId, person, claim, null);
+     }
+@@ -916,7 +915,7 @@ public class ClaimService {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
++        return claim.isStated() ? claim.getStatedDue()
+                 : liveFigureOf(sheetId, person, claim, asOf, override);
+     }
+ 
