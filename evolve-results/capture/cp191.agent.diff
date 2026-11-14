@@ -1,0 +1,278 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 8e8e48ac2..9d437f62e 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -369,6 +369,26 @@ export class SettingStore {
+     return this.gradeTerms()[grade] ?? this.terms();
+   }
+ 
++  /** A grade's clerk limit in force on the sheet's today; blank for none (the sheet's applies). */
++  clerkLimitOf(grade: string): string {
++    return this.onToday(`clerk-limit-${grade}`) ?? '';
++  }
++
++  /** Record a grade's clerk limit on the active sheet from a date (null for the sheet's today);
++   *  null records none (blank). */
++  async setGradeClerkLimit(grade: string, value: string | null, from: string | null): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(
++      this.http.put<SettingsView>(
++        `/api/sheets/${encodeURIComponent(sheet)}/settings/clerk-limit/${encodeURIComponent(grade)}`,
++        { value, from },
++      ),
++    );
++    if (this.session.sheetId() !== sheet) return;
++    this.show(saved);
++  }
++
+   /** A grade's proof threshold in force on the sheet's today; blank for none (the sheet's applies). */
+   proofThresholdOf(grade: string): string {
+     return this.onToday(`proof-threshold-${grade}`) ?? '';
+@@ -872,6 +892,25 @@ export class SettingStore {
+             (input)="typeGradeTermsFrom(g, value($event))"
+           />
+         }
++        @for (g of grades; track g) {
++          <label [for]="'setting-clerk-limit-' + g">Clerk limit for grade {{ g }} (blank for the sheet's)</label>
++          <input
++            [id]="'setting-clerk-limit-' + g"
++            [attr.data-testid]="'setting-clerk-limit-' + g"
++            inputmode="decimal"
++            [value]="gradeClerkLimit()[g] ?? ''"
++            (focus)="typeGradeClerkLimit(g, gradeClerkLimit()[g] ?? '')"
++            (input)="typeGradeClerkLimit(g, value($event))"
++          />
++          <label [for]="'setting-clerk-limit-' + g + '-from'">Clerk limit for grade {{ g }} from</label>
++          <input
++            [id]="'setting-clerk-limit-' + g + '-from'"
++            [attr.data-testid]="'setting-clerk-limit-' + g + '-from'"
++            placeholder="yyyy-mm-dd"
++            [value]="gradeClerkLimitFrom()[g] ?? ''"
++            (input)="typeGradeClerkLimitFrom(g, value($event))"
++          />
++        }
+         @for (g of grades; track g) {
+           <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (blank for the sheet's)</label>
+           <input
+@@ -1107,6 +1146,15 @@ export class SettingStore {
+           }
+         </p>
+       }
++      @for (g of grades; track g) {
++        <p>
++          Clerk limit in force for grade {{ g }}:
++          <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ store.clerkLimitOf(g) }}</strong>
++          @if (store.clerkLimitOf(g) === '') {
++            <span>none (the sheet's)</span>
++          }
++        </p>
++      }
+       @for (g of grades; track g) {
+         <p>
+           Proof threshold in force for grade {{ g }}:
+@@ -1265,6 +1313,10 @@ export class Settings {
+   protected readonly gradeTerms = signal<Record<string, string>>({});
+   /** The from-dates typed for the grades' terms, by grade; blank for the sheet's today. */
+   protected readonly gradeTermsFrom = signal<Record<string, string>>({});
++  /** The grades' clerk limits typed since the last save, by grade; blank records none. */
++  protected readonly gradeClerkLimit = signal<Record<string, string>>({});
++  /** The from-dates typed for the grades' clerk limits, by grade; blank for the sheet's today. */
++  protected readonly gradeClerkLimitFrom = signal<Record<string, string>>({});
+   /** The grades' proof thresholds typed since the last save, by grade; blank records none. */
+   protected readonly gradeProofThreshold = signal<Record<string, string>>({});
+   /** The from-dates typed for the grades' proof thresholds, by grade; blank for the sheet's today. */
+@@ -1318,6 +1370,16 @@ export class Settings {
+     this.settingsError.set(null);
+   }
+ 
++  protected typeGradeClerkLimit(grade: string, typed: string): void {
++    this.gradeClerkLimit.update((all) => ({ ...all, [grade]: typed }));
++    this.settingsError.set(null);
++  }
++
++  protected typeGradeClerkLimitFrom(grade: string, typed: string): void {
++    this.gradeClerkLimitFrom.update((all) => ({ ...all, [grade]: typed }));
++    this.settingsError.set(null);
++  }
++
+   protected typeGradeProofThreshold(grade: string, typed: string): void {
+     this.gradeProofThreshold.update((all) => ({ ...all, [grade]: typed }));
+     this.settingsError.set(null);
+@@ -1423,6 +1485,7 @@ export class Settings {
+     const terms = this.terms().trim();
+     const saveTerms = this.termsTyped();
+     const gradeTerms = Object.entries(this.gradeTerms()).map(([grade, days]) => [grade, days.trim()] as const);
++    const gradeLimit = Object.entries(this.gradeClerkLimit()).map(([grade, amount]) => [grade, amount.trim()] as const);
+     const gradeThreshold = Object.entries(this.gradeProofThreshold()).map(([grade, amount]) => [grade, amount.trim()] as const);
+     const gradeGrace = Object.entries(this.gradeGrace()).map(([grade, days]) => [grade, days.trim()] as const);
+     const latePct = this.latePct().trim();
+@@ -1470,6 +1533,9 @@ export class Settings {
+     const gradeTermsFrom: Record<string, string> = Object.fromEntries(
+       Object.entries(this.gradeTermsFrom()).map(([grade, from]) => [grade, from.trim()]),
+     );
++    const gradeLimitFrom: Record<string, string> = Object.fromEntries(
++      Object.entries(this.gradeClerkLimitFrom()).map(([grade, from]) => [grade, from.trim()]),
++    );
+     const gradeThresholdFrom: Record<string, string> = Object.fromEntries(
+       Object.entries(this.gradeProofThresholdFrom()).map(([grade, from]) => [grade, from.trim()]),
+     );
+@@ -1478,6 +1544,7 @@ export class Settings {
+     );
+     const froms: [boolean, string, string][] = [
+       [saveLimit, limitFrom, 'the clerk limit'],
++      ...gradeLimit.map(([grade]) => [true, gradeLimitFrom[grade] ?? '', `the clerk limit for grade ${grade}`] as [boolean, string, string]),
+       [saveFloor, floorFrom, 'the floor'],
+       [saveCap, capFrom, 'the cap'],
+       [saveThreshold, thresholdFrom, 'the proof threshold'],
+@@ -1494,6 +1561,11 @@ export class Settings {
+       this.settingsError.set('Type a clerk limit of 0.00 or more, with up to two decimals, or leave it blank for none.');
+       return;
+     }
++    const badLimit = gradeLimit.find(([, amount]) => amount !== '' && !AMOUNT.test(amount));
++    if (badLimit) {
++      this.settingsError.set(`Type a clerk limit for grade ${badLimit[0]} of 0.00 or more, with up to two decimals, or leave it blank for the sheet's.`);
++      return;
++    }
+     if (saveFloor && !AMOUNT.test(floor)) {
+       this.settingsError.set('Type a floor of 0.00 or more, with up to two decimals.');
+       return;
+@@ -1605,6 +1677,7 @@ export class Settings {
+     this.roundingTyped.set(false);
+     this.termsTyped.set(false);
+     this.gradeTerms.set({});
++    this.gradeClerkLimit.set({});
+     this.gradeProofThreshold.set({});
+     this.gradeGrace.set({});
+     this.latePctTyped.set(false);
+@@ -1624,6 +1697,9 @@ export class Settings {
+     const save = async () => {
+       try {
+         if (saveLimit) await this.store.setClerkLimit(limit === '' ? null : limit, fromOf(limitFrom));
++        for (const [grade, amount] of gradeLimit) {
++          await this.store.setGradeClerkLimit(grade, amount === '' ? null : amount, fromOf(gradeLimitFrom[grade] ?? ''));
++        }
+         if (saveFloor) await this.store.setFloor(floor, fromOf(floorFrom));
+         if (saveCap) await this.store.setCap(cap === '' ? null : cap, fromOf(capFrom));
+         if (saveThreshold) await this.store.setProofThreshold(threshold === '' ? null : threshold, fromOf(thresholdFrom));
+@@ -1669,6 +1745,7 @@ export class Settings {
+         if (saveRounding) this.roundingTyped.set(true);
+         if (saveTerms) this.termsTyped.set(true);
+         this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
++        this.gradeClerkLimit.update((typed) => ({ ...Object.fromEntries(gradeLimit), ...typed }));
+         this.gradeProofThreshold.update((typed) => ({ ...Object.fromEntries(gradeThreshold), ...typed }));
+         this.gradeGrace.update((typed) => ({ ...Object.fromEntries(gradeGrace), ...typed }));
+         if (saveLatePct) this.latePctTyped.set(true);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index d32e23ccc..69b5d16a3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -393,7 +393,7 @@ public class ClaimService {
+             refuseUnnoted(sheetId, person, claim);
+             refuseOverCap(sheetId, claim);
+         }
+-        if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, due)) {
++        if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, person, user, due)) {
+             to = ClaimStatus.PENDING;
+         }
+         if (to == ClaimStatus.OPEN && overReviewThreshold(sheetId, person, claim)) {
+@@ -1139,10 +1139,12 @@ public class ClaimService {
+         return settings.roundingOn(sheetId, roundsBy(sheetId, claim), asOf);
+     }
+ 
+-    /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit; a due of n/a
+-     *  is within any limit, and a steward settles anything. */
+-    private boolean overClerkLimit(String sheetId, String user, BigDecimal due) {
+-        BigDecimal limit = settings.clerkLimit(sheetId);
++    /** Whether a clerk is settling a claim whose due is above the clerk limit in force on the sheet's
++     *  today (its person's grade's then when one is set, else the sheet's); a due of n/a is within any
++     *  limit, and a steward settles anything. */
++    private boolean overClerkLimit(String sheetId, Person person, String user, BigDecimal due) {
++        String grade = grades.gradeOn(person.getId(), sheets.today(sheetId));
++        BigDecimal limit = settings.clerkLimitFor(sheetId, grade);
+         if (limit == null || due == null || due.compareTo(limit) <= 0) {
+             return false;
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index 481ddb1d5..ec807ba44 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -271,6 +271,17 @@ public class SettingController {
+         return view(sheet);
+     }
+ 
++    /** Set a grade's (A, B or C) clerk limit; blank leaves the sheet's to apply to the grade's claims. */
++    @PutMapping("/clerk-limit/{grade}")
++    public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated ClerkLimitRequest request) {
++        String sheet = sheetId.trim();
++        service.setGradeClerkLimit(sheet, SignedInUser.decode(user), grade, request.value(), request.from());
++        return view(sheet);
++    }
++
+     /** Change the sheet's proof threshold. */
+     @PutMapping("/proof-threshold")
+     public SettingsView setProofThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 75d3eaae5..49ca73128 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -37,6 +37,9 @@ public class SettingService {
+     /** The key prefix of a grade's proof threshold: proof-threshold-A, proof-threshold-B, proof-threshold-C. */
+     private static final String GRADE_PROOF_THRESHOLD = "proof-threshold-";
+ 
++    /** The key prefix of a grade's clerk limit: clerk-limit-A, clerk-limit-B, clerk-limit-C. */
++    private static final String GRADE_CLERK_LIMIT = "clerk-limit-";
++
+     private final SheetService sheets;
+     private final SheetRepository sheetRepository;
+     private final SheetRoleRepository roles;
+@@ -289,6 +292,19 @@ public class SettingService {
+         return inForce(sheetId, "clerk-limit", sheets.today(sheetId)).map(SettingValue::getValue).orElse(null);
+     }
+ 
++    /** The clerk limit in force on the sheet's today for a claim of the grade: the grade's own in force
++     *  then when one is set (not blank), else the sheet's; null when neither is. */
++    public BigDecimal clerkLimitFor(String sheetId, String grade) {
++        if (grade != null) {
++            BigDecimal own = inForce(sheetId, GRADE_CLERK_LIMIT + grade, sheets.today(sheetId))
++                    .map(SettingValue::getValue).orElse(null);
++            if (own != null) {
++                return own;
++            }
++        }
++        return clerkLimit(sheetId);
++    }
++
+     /** The sheet's floor in force on a date: the least the live due of a claim of that date can be. */
+     public BigDecimal floor(String sheetId, LocalDate on) {
+         return floor(sheetId, on, null);
+@@ -530,6 +546,13 @@ public class SettingService {
+         return record(sheetId, by, "clerk-limit", limit != null ? limit.setScale(2, RoundingMode.UNNECESSARY) : null, from);
+     }
+ 
++    /** Record a grade's clerk limit on the sheet from a date (null for the sheet's today); null
++     *  records none (blank: the sheet's applies). */
++    @Transactional
++    public SettingValue setGradeClerkLimit(String sheetId, String by, String grade, BigDecimal limit, LocalDate from) {
++        return record(sheetId, by, GRADE_CLERK_LIMIT + grade, limit != null ? limit.setScale(2, RoundingMode.UNNECESSARY) : null, from);
++    }
++
+     /** Record the sheet's floor from a date (null for the sheet's today). */
+     @Transactional
+     public SettingValue setFloor(String sheetId, String by, BigDecimal floor, LocalDate from) {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingValue.java b/src/main/java/net/officefloor/hq/app/setting/SettingValue.java
+index d7c54d2a8..2b4162496 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingValue.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingValue.java
+@@ -12,7 +12,7 @@ import java.time.LocalDate;
+ import net.officefloor.hq.app.history.HistoryListener;
+ 
+ /** A value recorded for one of a sheet's dated settings (floor, late-pct, terms, terms-&lt;grade&gt;,
+- *  clerk-limit, cap, proof-threshold, proof-threshold-&lt;grade&gt;, note-threshold, rounding): in force from its from-date
++ *  clerk-limit, clerk-limit-&lt;grade&gt;, cap, proof-threshold, proof-threshold-&lt;grade&gt;, note-threshold, rounding): in force from its from-date
+  *  until the next one recorded for the key. A figure, but a word (its text) for the rounding mode. Null only for the clerk
+  *  limit, the cap, a proof threshold, the note threshold or the rounding mode, where it means none. */
+ @Entity

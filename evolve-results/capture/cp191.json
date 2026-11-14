@@ -1,0 +1,64 @@
+{
+  "checkpoint": 191,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp191_clerk-limit-per-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The clerk limit can be set per grade (settings, SETTING_CHANGED key=clerk-limit-<grade>\nvalue=<amount>, dated like the floor; blank means none): for a claim, the limit in force is its\nperson's grade's limit on the sheet's today when one is set, else the sheet's.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe clerk limit can be set per grade (settings, SETTING_CHANGED key=clerk-limit-<grade>\nvalue=<amount>, dated like the floor; blank means none): for a claim, the limit in force is its\nperson's grade's limit on the sheet's today when one is set, else the sheet's.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a8f93d7babbd9b0fb06d664faa73a8a607b0b50d",
+  "reset_sha": "",
+  "preagent_sha": "a058bec0df91d23cdaeddfa7ef526ca691d42d87",
+  "prev_sha": "a058bec0df91d23cdaeddfa7ef526ca691d42d87",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3003871999999999,
+    "input_tokens": 64,
+    "output_tokens": 14177,
+    "cache_read_tokens": 1902756,
+    "cache_creation_tokens": 79505,
+    "num_turns": 32,
+    "duration_ms": 406258,
+    "duration_api_ms": 143215,
+    "model": "claude-opus-5-5",
+    "session_id": "d8cacb7b-ab65-47e2-a834-06d53fbf59bb",
+    "stop_reason": "success",
+    "result_text": "The clerk limit can now be set per grade, but `bin/e2e` is not fully green: 3 of 4 tests pass. \"Scenario 1\" fails on a step that has nothing to do with clerk limits, and I left it alone rather than change a business rule outside this request.\n\n**What changed**\n- **Server:** A new endpoint, `PUT /settings/clerk-limit/{grade}` (grade A, B or C), stores the limit as a dated setting under the key `clerk-limit-<grade>`, the same way the per-grade proof threshold works. It writes `SETTING_CHANGED \u2026 key=clerk-limit-B value=5.00` (plus `from=` when dated, and `value=` when blank, which clears it). No database migration was needed because dated settings are already stored by key.\n- **Which limit applies:** When a clerk settles a claim, the limit is now the grade's own limit on the sheet's today, if one is set, otherwise the sheet's limit (`ClaimService.overClerkLimit` via the new `SettingService.clerkLimitFor`). I used the person's grade on the sheet's today, to match \"in force on the sheet's today\".\n- **Screen** (`settings.ts`): For each grade there's a limit field, a from-date field and a \"currently in force\" value (`setting-clerk-limit-<g>`, `-from`, `-current`). They are checked and saved with the other settings, and an invalid amount shows the usual settings error.\n\n**The failing step:** line 223 of the spec, `reassign(pg_vic, c_cam_1, \"Ben\")`, expects success. `c_cam_1` is a \u22121.00 correction of claim X-1, which belongs to Cam. The app refuses to move it on purpose, in `ClaimService.move`: *\"A correction stays with the person whose claim it corrects.\"* I reproduced the request directly and got HTTP 409. None of the other refusals in that method fit this data, so this rule is the cause, and my change doesn't touch reassigning. Because the test stops there, the rest of scenario 1 hasn't been checked yet, though it runs normally up to that point.\n\n**Decision for you:** To get the suite green, the existing rule has to be removed or relaxed so a correction can move to another person; the spec expects the correction to keep showing `corrects=X-1` after the move. That reverses a deliberate rule, so I didn't do it without your go-ahead. Say if you want it, and I'll make the change and run the full suite again.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3003871999999999,
+        "num_turns": 32,
+        "duration_ms": 406258,
+        "duration_api_ms": 143215,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp191.agent.jsonl",
+  "agent_diff_file": "cp191.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
