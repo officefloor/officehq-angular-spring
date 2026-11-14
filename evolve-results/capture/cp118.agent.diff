@@ -1,0 +1,309 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 17b211ffe..ac4ddaf98 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -916,8 +916,13 @@ export class People {
+   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+   /** Why the last bulk settle could not be done at all; null when it was. */
+   protected readonly bulkSettleError = signal<string | null>(null);
+-  /** The number of the sheet's last settle batch; null when there has been none. */
+-  protected readonly lastBatch = this.session.lastBatch.asReadonly();
++  /** The number of the sheet's last settle batch; null when there has been none. Shown as of a past
++   *  day, the highest batch among the claims as they stood then. */
++  protected readonly lastBatch = computed(() => {
++    if (this.session.asOf() === null) return this.session.lastBatch();
++    const batches = this.claims().flatMap((c) => (c.batch === null ? [] : [c.batch]));
++    return batches.length ? Math.max(...batches) : null;
++  });
+   /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
+   private readonly bulkSettleBusy = signal(false);
+   /** The person (an id, or blank) the selected claims are to move to. */
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index bbe8b1077..ed4b62b3f 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Component, Injectable, computed, effect, inject, signal } from '@angular/core';
++import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+@@ -172,6 +172,19 @@ export class RateStore {
+     );
+   }
+ 
++  /** Set a rate per pasted line of grade,rate,from,to on the active sheet, each as `set` would; none
++   *  when any line is refused. How many were set; the sheet's rates are then re-read. */
++  async import(text: string): Promise<number> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const load = this.session.loads();
++    const saved = await firstValueFrom(
++      this.http.post<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/import`, { text }),
++    );
++    if (this.session.sheetId() === sheet) await this.read(sheet, load);
++    return saved.length;
++  }
++
+   /** Preview a candidate rate for a grade on the active sheet; nothing is saved. */
+   async preview(grade: string, rate: string): Promise<RatePreview> {
+     const sheet = this.session.sheetId();
+@@ -242,6 +255,23 @@ export class RateStore {
+       @if (error(); as message) {
+         <p role="alert" data-testid="rate-form-error">{{ message }}</p>
+       }
++      <form (submit)="importRates($event)" aria-label="Import rates">
++        <label for="import-rates">Import rates, one per line as grade,rate,from,to (from and to may be left out)</label>
++        <textarea
++          id="import-rates"
++          data-testid="import-rates"
++          rows="4"
++          [value]="importText()"
++          (input)="importText.set(value($event)); importError.set(null)"
++        ></textarea>
++        <button type="submit" data-testid="import-rates-submit">Import rates</button>
++        @if (importSet() !== null) {
++          Set <strong data-testid="import-rates-set">{{ importSet() }}</strong>
++        }
++      </form>
++      @if (importError(); as message) {
++        <p role="alert" data-testid="import-rates-error">{{ message }}</p>
++      }
+       <form (submit)="runPreview($event)">
+         <label for="rate-preview-grade">Preview grade</label>
+         <select
+@@ -316,6 +346,7 @@ export class RateStore {
+ })
+ export class Rates {
+   protected readonly store = inject(RateStore);
++  private readonly session = inject(Session);
+   protected readonly grades = GRADES;
+   protected readonly noRate = NO_RATE;
+   protected readonly grade = signal('A');
+@@ -327,9 +358,27 @@ export class Rates {
+   protected readonly previewPct = signal('');
+   protected readonly previewError = signal<string | null>(null);
+   protected readonly previewResult = signal<RatePreview | null>(null);
++  protected readonly importText = signal('');
++  /** How many rates the last import set; null before one, or while one runs. */
++  protected readonly importSet = signal<number | null>(null);
++  protected readonly importError = signal<string | null>(null);
++  private readonly importBusy = signal(false);
+   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
+   private readonly busy = signal(false);
+ 
++  constructor() {
++    // A loaded sheet starts the import box afresh: its last count and error were for the sheet before.
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      untracked(() => {
++        this.importText.set('');
++        this.importSet.set(null);
++        this.importError.set(null);
++      });
++    });
++  }
++
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+@@ -356,6 +405,32 @@ export class Rates {
+     }
+   }
+ 
++  /** Set a rate per pasted line of grade,rate,from,to, each as the form would; when any line is
++   *  refused nothing is set. How many were set then shows. */
++  protected async importRates(event: Event): Promise<void> {
++    event.preventDefault();
++    if (this.importBusy()) return;
++    this.importError.set(null);
++    this.importSet.set(null);
++    const text = this.importText();
++    if (!text.trim()) {
++      this.importError.set('Paste at least one line of grade,rate,from,to.');
++      return;
++    }
++    this.importBusy.set(true);
++    try {
++      this.importSet.set(await this.store.import(text));
++      this.importText.set('');
++    } catch {
++      this.importError.set(
++        'The rates could not be imported: every line needs a grade of A, B or C, a rate of 0.00 or more ' +
++          'with up to two decimals, and dates (yyyy-mm-dd) with the to-date not before the from-date.',
++      );
++    } finally {
++      this.importBusy.set(false);
++    }
++  }
++
+   protected async submit(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.busy()) return;
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 5a1ec4a0b..278692eda 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -20,6 +20,7 @@ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+@@ -52,12 +53,19 @@ public class RateController {
+     public record RatePreviewView(int count, String diff) {
+     }
+ 
++    /** Pasted rates, one per line as grade,rate,from,to. */
++    public record ImportRequest(@NotNull @Size(max = 1_000_000) String text) {
++    }
++
+     private final RateService service;
++    private final RateImportService imports;
+     private final RollupService rollups;
+     private final ClaimService claims;
+ 
+-    public RateController(RateService service, RollupService rollups, ClaimService claims) {
++    public RateController(RateService service, RateImportService imports, RollupService rollups,
++            ClaimService claims) {
+         this.service = service;
++        this.imports = imports;
+         this.rollups = rollups;
+         this.claims = claims;
+     }
+@@ -92,6 +100,16 @@ public class RateController {
+                 request.to(), request.rate())));
+     }
+ 
++    /** Set a rate per pasted line, in order, each as the form would; none when any line is refused.
++     *  The rates set, in the order of their lines. */
++    @PostMapping("/import")
++    public List<RateView> importRates(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ImportRequest request) {
++        String sheet = sheetId.trim();
++        String by = SignedInUser.decode(user);
++        return imports.importRates(sheet, by, request.text()).stream().map(RateView::of).toList();
++    }
++
+     /** Preview a candidate rate for a grade (A, B or C): how the dues of the OPEN and PENDING claims of
+      *  people on the grade would change were it the grade's rate on every date. Nothing is saved. */
+     @GetMapping("/{grade}/preview")
+@@ -108,7 +126,7 @@ public class RateController {
+     public void unreadable() {
+     }
+ 
+-    /** A to-date before the from-date is refused. */
++    /** A to-date before the from-date, or a refused line of a paste, is refused. */
+     @ExceptionHandler(RateRefusedException.class)
+     @ResponseStatus(HttpStatus.BAD_REQUEST)
+     public void refused() {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateImportService.java b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+new file mode 100644
+index 000000000..01a0bf4e5
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateImportService.java
+@@ -0,0 +1,87 @@
++package net.officefloor.hq.app.rate;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.time.format.DateTimeParseException;
++import java.util.ArrayList;
++import java.util.List;
++import net.officefloor.hq.app.rollup.RollupService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Sets a rate per pasted line of grade,rate,from,to (from and to may be absent or blank), each as the
++ *  rate form would. Every line is checked first; the whole paste is one change, so one refused line
++ *  sets nothing. */
++@Service
++public class RateImportService {
++
++    /** A pasted line, read: the rate's fields (null from: from the beginning of time; null to: no end). */
++    private record Line(String grade, BigDecimal rate, LocalDate from, LocalDate to) {
++    }
++
++    private final RateService rates;
++    private final RollupService rollups;
++
++    public RateImportService(RateService rates, RollupService rollups) {
++        this.rates = rates;
++        this.rollups = rollups;
++    }
++
++    /** Set the pasted rates in the order of their lines, each replacing the grade's rate from the same
++     *  date; blank lines are skipped. The rates set, in the order of their lines. */
++    @Transactional
++    public List<Rate> importRates(String sheetId, String user, String text) {
++        List<Line> lines = new ArrayList<>();
++        int at = 0;
++        for (String raw : text.split("\\r?\\n")) {
++            at++;
++            if (!raw.isBlank()) {
++                lines.add(read(at, raw));
++            }
++        }
++        if (lines.isEmpty()) {
++            throw new RateRefusedException("Nothing to import");
++        }
++        List<Rate> set = new ArrayList<>();
++        for (Line l : lines) {
++            set.add(rollups.track(sheetId, user, () -> rates.set(sheetId, user, l.grade(), l.from(), l.to(), l.rate())));
++        }
++        return set;
++    }
++
++    /** One line as the rate form reads it: a grade of A, B or C, a percent of 0.00 or more with up to
++     *  two decimals, and a from-date and a to-date (each blank: none) with the to-date not before the
++     *  from-date, each trimmed. */
++    private static Line read(int at, String raw) {
++        String[] fields = raw.split(",", -1);
++        if (fields.length < 2 || fields.length > 4) {
++            throw new RateRefusedException("Line " + at + " needs grade,rate,from,to");
++        }
++        String grade = fields[0].trim();
++        if (!grade.matches("[ABC]")) {
++            throw new RateRefusedException("Line " + at + ": the grade must be A, B or C");
++        }
++        String rate = fields[1].trim();
++        if (!rate.matches("\\d{1,5}(\\.\\d{1,2})?")) {
++            throw new RateRefusedException("Line " + at + ": the rate must be 0.00 or more with up to two decimals");
++        }
++        LocalDate from = date(at, fields.length > 2 ? fields[2] : "");
++        LocalDate to = date(at, fields.length > 3 ? fields[3] : "");
++        if (from != null && to != null && to.isBefore(from)) {
++            throw new RateRefusedException("Line " + at + ": the to-date cannot be before the from-date");
++        }
++        return new Line(grade, new BigDecimal(rate), from, to);
++    }
++
++    private static LocalDate date(int at, String field) {
++        String text = field.trim();
++        if (text.isEmpty()) {
++            return null;
++        }
++        try {
++            return LocalDate.parse(text);
++        } catch (DateTimeParseException e) {
++            throw new RateRefusedException("Line " + at + ": " + text + " is not a date");
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateRefusedException.java b/src/main/java/net/officefloor/hq/app/rate/RateRefusedException.java
+index 8c209d5b5..c87debc73 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateRefusedException.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateRefusedException.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.rate;
+ 
+-/** A rate that cannot be set: its to-date is before its from-date. */
++/** A rate that cannot be set: its to-date is before its from-date, or a pasted line is not one the
++ *  rate form would set. */
+ public class RateRefusedException extends RuntimeException {
+ 
+     public RateRefusedException(String message) {
