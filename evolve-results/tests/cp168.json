@@ -1,0 +1,70 @@
+{
+  "checkpoint": 168,
+  "checkpoint_id": "cp168_crews-are-pools",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "aa8b9427b9037c2f16d0c08ee4d4639a87ad8e6c",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-13T21:57:06",
+  "seconds": 228,
+  "build_log_file": "cp168.test.log",
+  "replaced_tests": [
+    "cp166_crews.spec.ts::crews",
+    "cp166_crews.spec.ts::crews scenario 1",
+    "cp167_crew-lead-total.spec.ts::crew lead total scenario 1"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp168_crews-are-pools.spec.ts::crews are pools": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 1": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 2": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14271,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30823,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 36662,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 42375,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

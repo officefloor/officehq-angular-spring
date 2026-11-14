@@ -1,0 +1,66 @@
+{
+  "checkpoint": 119,
+  "checkpoint_id": "cp119_cut-totals",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "b6351be911af83f3a2f67a8fefe338bf6a7ba738",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-13T13:28:06",
+  "seconds": 169,
+  "build_log_file": "cp119.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp119_cut-totals.spec.ts::cut totals": true,
+      "cp119_cut-totals.spec.ts::cut totals scenario 1": true,
+      "cp119_cut-totals.spec.ts::cut totals scenario 2": true,
+      "cp119_cut-totals.spec.ts::cut totals scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp119_cut-totals.spec.ts::cut totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13080,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_cut-totals.spec.ts::cut totals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28062,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_cut-totals.spec.ts::cut totals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21207,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_cut-totals.spec.ts::cut totals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19661,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

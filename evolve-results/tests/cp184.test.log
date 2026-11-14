@@ -1,0 +1,37 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp184-7hpjpwm2
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp184_hold-leaves-claimed.spec.ts:6:7 › hold leaves claimed › hold leaves claimed (16.6s)
+  ✓  2 [chromium] › cp184_hold-leaves-claimed.spec.ts:107:7 › hold leaves claimed › hold leaves claimed scenario 1 (31.9s)
+  ✘  3 [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 (17.5s)
+  ✓  4 [chromium] › cp184_hold-leaves-claimed.spec.ts:1441:7 › hold leaves claimed › hold leaves claimed scenario 3 (27.0s)
+
+
+  1) [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      835 |     expect(await ui.setRate(pg_uma, {"grade": "C", "pct": "12.50"})).toBe(true);
+      836 |     await ui.refresh(pg_vic);
+    > 837 |     expect(await ui.waive(pg_vic, c_ben_0)).toBe(true);
+          |                                             ^
+      838 |     expect(await ui.addComment(pg_vic, c_ben_0, "see note")).toBe(true);
+      839 |     await ui.setAsOf(pg_vic, "2026-02-25");
+      840 |     await ui.refresh(pg_vic);
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp184_hold-leaves-claimed.spec.ts:837:45
+
+  1 failed
+    [chromium] › cp184_hold-leaves-claimed.spec.ts:720:7 › hold leaves claimed › hold leaves claimed scenario 2 
+  3 passed (1.7m)

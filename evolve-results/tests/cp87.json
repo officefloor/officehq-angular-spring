@@ -1,0 +1,66 @@
+{
+  "checkpoint": 87,
+  "checkpoint_id": "cp87_external-reference",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "eeac812b934ee67b589399696da399685db8ba42",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-13T09:17:56",
+  "seconds": 147,
+  "build_log_file": "cp87.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp87_external-reference.spec.ts::external reference": true,
+      "cp87_external-reference.spec.ts::external reference scenario 1": true,
+      "cp87_external-reference.spec.ts::external reference scenario 2": true,
+      "cp87_external-reference.spec.ts::external reference scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp87_external-reference.spec.ts::external reference",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16677,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_external-reference.spec.ts::external reference scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15352,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_external-reference.spec.ts::external reference scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20556,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_external-reference.spec.ts::external reference scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24069,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

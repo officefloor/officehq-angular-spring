@@ -1,0 +1,66 @@
+{
+  "checkpoint": 179,
+  "checkpoint_id": "cp179_flags",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "16fd71ec5bf95b07c8d29442632e4dac9bb5adc1",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-14T01:45:38",
+  "seconds": 163,
+  "build_log_file": "cp179.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp179_flags.spec.ts::flags": true,
+      "cp179_flags.spec.ts::flags scenario 1": false,
+      "cp179_flags.spec.ts::flags scenario 2": true,
+      "cp179_flags.spec.ts::flags scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp179_flags.spec.ts::flags",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15377,
+        "failure": ""
+      },
+      {
+        "test_id": "cp179_flags.spec.ts::flags scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 36236,
+        "failure": "Error: audit line 33\n  expected: PERSON_EDITED sheet=smwf9qz4pvsf1 by=uma name=Ben grade=A terms=20\n  actual:   PERSON_EDITED sheet=smwf9qz4pvsf1 by=uma name=Ben grade=A\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n   at ../support/ui.ts:1613\n\n  1611 |     const e = expected[i];\n  1612 |     const ok = line === e || line.startsWith(e + ' ');\n> 1613 |     expect(ok, `audit line ${i + 1}\\n  expected: ${e}\\n  actual:   ${line}`).toBe(true);\n       |                                                                              ^\n  1614 |   });\n  1615 | }\n  1616 |\n\n    at forEach (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:1613:78)\n    at Object.expectAudit (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:1610:9)\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp179_flags.spec.ts:278:14 | Error: audit line 33\n  expected: PERSON_EDITED sheet=smwf9qz4pvsf1 by=uma name=Ben grade=A terms=20\n  actual:   PERSON_EDITED sheet=smwf9qz4pvsf1 by=uma name=Ben grade=A\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp179_flags.spec.ts::flags scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26242,
+        "failure": ""
+      },
+      {
+        "test_id": "cp179_flags.spec.ts::flags scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 24009,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-10').getByTestId('person-due-total')\nExpected string: \u001b[32m\"0.00\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-10').getByTestId('person-due-total')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  1105 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-grade\")).toHaveText(\"A\");\n  1106 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n> 1107 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-due-total\")).toHaveText(\"0.00\");\n       |                                                                                             ^\n  1108 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-statement-count\")).toHaveText(\"1\");\n  1109 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-stated-total\")).toHaveText(\"0.00\");\n  1110 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben).getByTestId(\"person-statement-date\")).toHaveText(\"2026-03-20\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp179_flags.spec.ts:1107:93 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-10').getByTestId('person-due-total')\nExpected string: \u001b[32m\"0.00\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-10').getByTestId('person-due-total')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-due-total\">n/a</td>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

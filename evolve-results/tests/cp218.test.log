@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp218-7_bgc7f1
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp218_review-assignment.spec.ts:6:7 › review assignment › review assignment (24.8s)
+  ✘  2 [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 (36.0s)
+  ✓  3 [chromium] › cp218_review-assignment.spec.ts:744:7 › review assignment › review assignment scenario 2 (25.3s)
+  ✓  4 [chromium] › cp218_review-assignment.spec.ts:1343:7 › review assignment › review assignment scenario 3 (23.4s)
+
+
+  1) [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('rate-current-B')
+    Expected string: [32m"7.50"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('rate-current-B')[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="rate-current-B">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      373 |     await expect(pg_vic.getByTestId("period-row-2026-04").getByTestId("period-locked")).toHaveText("no");
+      374 |     await expect(pg_vic.getByTestId("rate-current-A")).toHaveText("33.33");
+    > 375 |     await expect(pg_vic.getByTestId("rate-current-B")).toHaveText("7.50");
+          |                                                        ^
+      376 |     await expect(pg_vic.getByTestId("rate-current-C")).toHaveText("33.33");
+      377 |     await expect(pg_vic.getByTestId("summary-grade-A-count")).toHaveText("0");
+      378 |     await expect(pg_vic.getByTestId("summary-grade-A-due-total")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp218_review-assignment.spec.ts:375:56
+
+  1 failed
+    [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 
+  3 passed (1.9m)

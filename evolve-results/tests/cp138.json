@@ -1,0 +1,66 @@
+{
+  "checkpoint": 138,
+  "checkpoint_id": "cp138_inline-grade",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "9e2de49c2407655711ba81628aba61acbe028675",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-13T16:25:17",
+  "seconds": 140,
+  "build_log_file": "cp138.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp138_inline-grade.spec.ts::inline grade": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 1": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 2": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16125,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21891,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21280,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18116,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

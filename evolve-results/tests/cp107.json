@@ -1,0 +1,66 @@
+{
+  "checkpoint": 107,
+  "checkpoint_id": "cp107_merge-people",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "89f1197a44293fd0d4e2c7a68d25f1080b492f6f",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-13T11:57:12",
+  "seconds": 141,
+  "build_log_file": "cp107.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp107_merge-people.spec.ts::merge people": true,
+      "cp107_merge-people.spec.ts::merge people scenario 1": true,
+      "cp107_merge-people.spec.ts::merge people scenario 2": true,
+      "cp107_merge-people.spec.ts::merge people scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13734,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23539,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23011,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24263,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

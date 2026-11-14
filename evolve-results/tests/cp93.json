@@ -1,0 +1,66 @@
+{
+  "checkpoint": 93,
+  "checkpoint_id": "cp93_bulk-reassign",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "653ce0243e12f58f32f6000502cc9f31eac63d57",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-13T10:12:54",
+  "seconds": 150,
+  "build_log_file": "cp93.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp93_bulk-reassign.spec.ts::bulk reassign": true,
+      "cp93_bulk-reassign.spec.ts::bulk reassign scenario 1": true,
+      "cp93_bulk-reassign.spec.ts::bulk reassign scenario 2": true,
+      "cp93_bulk-reassign.spec.ts::bulk reassign scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp93_bulk-reassign.spec.ts::bulk reassign",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16334,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_bulk-reassign.spec.ts::bulk reassign scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19607,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_bulk-reassign.spec.ts::bulk reassign scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15991,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_bulk-reassign.spec.ts::bulk reassign scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22149,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

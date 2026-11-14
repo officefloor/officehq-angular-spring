@@ -1,0 +1,66 @@
+{
+  "checkpoint": 71,
+  "checkpoint_id": "cp71_cancel-statement",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "706c759e271130bb9f3c3995cc5ff639854630fc",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-13T08:07:07",
+  "seconds": 131,
+  "build_log_file": "cp71.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp71_cancel-statement.spec.ts::cancel statement": true,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 1": true,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 2": true,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14320,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13827,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23139,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19893,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

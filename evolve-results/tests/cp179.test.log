@@ -1,0 +1,86 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp179-f9inm5q7
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp179_flags.spec.ts:6:7 › flags › flags (15.4s)
+  ✘  2 [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 (36.2s)
+  ✓  3 [chromium] › cp179_flags.spec.ts:527:7 › flags › flags scenario 2 (26.2s)
+  ✘  4 [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 (24.0s)
+
+
+  1) [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 ──────────────────────────────
+
+    Error: audit line 33
+      expected: PERSON_EDITED sheet=smwf9qz4pvsf1 by=uma name=Ben grade=A terms=20
+      actual:   PERSON_EDITED sheet=smwf9qz4pvsf1 by=uma name=Ben grade=A
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       at ../support/ui.ts:1613
+
+      1611 |     const e = expected[i];
+      1612 |     const ok = line === e || line.startsWith(e + ' ');
+    > 1613 |     expect(ok, `audit line ${i + 1}\n  expected: ${e}\n  actual:   ${line}`).toBe(true);
+           |                                                                              ^
+      1614 |   });
+      1615 | }
+      1616 |
+
+        at forEach (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:1613:78)
+        at Object.expectAudit (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:1610:9)
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp179_flags.spec.ts:278:14
+
+  2) [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 ─────────────────────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-10').getByTestId('person-due-total')
+    Expected string: [32m"0.00"[39m
+    Received string: [31m"n/a"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-10').getByTestId('person-due-total')[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+    [2m  -   locator resolved to <td data-testid="person-due-total">n/a</td>[22m
+    [2m  -   unexpected value "n/a"[22m
+
+
+      1105 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-grade")).toHaveText("A");
+      1106 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-claimed")).toHaveText("0.00");
+    > 1107 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-due-total")).toHaveText("0.00");
+           |                                                                                             ^
+      1108 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-statement-count")).toHaveText("1");
+      1109 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-stated-total")).toHaveText("0.00");
+      1110 |     await expect(pg_vic.getByTestId("person-row-" + p_ben).getByTestId("person-statement-date")).toHaveText("2026-03-20");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp179_flags.spec.ts:1107:93
+
+  2 failed
+    [chromium] › cp179_flags.spec.ts:72:7 › flags › flags scenario 1 ───────────────────────────────
+    [chromium] › cp179_flags.spec.ts:927:7 › flags › flags scenario 3 ──────────────────────────────
+  2 passed (1.8m)

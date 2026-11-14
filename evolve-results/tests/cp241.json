@@ -1,0 +1,66 @@
+{
+  "checkpoint": 241,
+  "checkpoint_id": "cp241_as-of-roles",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "a56716ce24db77af95486c2e8b88f9f697bee902",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-14T20:58:00",
+  "seconds": 197,
+  "build_log_file": "cp241.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp241_as-of-roles.spec.ts::as of roles": true,
+      "cp241_as-of-roles.spec.ts::as of roles scenario 1": true,
+      "cp241_as-of-roles.spec.ts::as of roles scenario 2": true,
+      "cp241_as-of-roles.spec.ts::as of roles scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp241_as-of-roles.spec.ts::as of roles",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15377,
+        "failure": ""
+      },
+      {
+        "test_id": "cp241_as-of-roles.spec.ts::as of roles scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34840,
+        "failure": ""
+      },
+      {
+        "test_id": "cp241_as-of-roles.spec.ts::as of roles scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 41512,
+        "failure": ""
+      },
+      {
+        "test_id": "cp241_as-of-roles.spec.ts::as of roles scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31859,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

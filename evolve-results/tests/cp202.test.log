@@ -1,0 +1,53 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp202-nn640lnq
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp202_snapshot-comparison.spec.ts:6:7 › snapshot comparison › snapshot comparison (10.7s)
+  ✓  2 [chromium] › cp202_snapshot-comparison.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 (24.1s)
+  ✓  3 [chromium] › cp202_snapshot-comparison.spec.ts:632:7 › snapshot comparison › snapshot comparison scenario 2 (34.2s)
+  ✘  4 [chromium] › cp202_snapshot-comparison.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 (6.3s)
+
+
+  1) [chromium] › cp202_snapshot-comparison.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      1264 |     expect(await ui.setRate(pg_uma, {"grade": "A", "pct": "20.00"})).toBe(true);
+      1265 |     expect(await ui.setRate(pg_uma, {"grade": "B", "pct": "12.50"})).toBe(true);
+    > 1266 |     expect(await ui.setRate(pg_uma, {"grade": "C", "pct": "10.00"})).toBe(true);
+           |                                                                      ^
+      1267 |     const p_cam = ui.must(await ui.addPerson(pg_uma, {"name": "Cam", "grade": "C"}));
+      1268 |     const p_ben = ui.must(await ui.addPerson(pg_uma, {"name": "Ben", "grade": "C"}));
+      1269 |     await ui.loadSheet(pg_uma, sheet);
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp202_snapshot-comparison.spec.ts:1266:70
+
+  Slow test file: [chromium] › cp202_snapshot-comparison.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp202_snapshot-comparison.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 
+  3 passed (1.3m)
+
+[gate attempt 1] app was no longer healthy after the run — it died mid-gate
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 2, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp202_snapshot-comparison.spec.ts:6:7 › snapshot comparison › snapshot comparison (8.7s)
+  ✓  2 [chromium] › cp202_snapshot-comparison.spec.ts:55:7 › snapshot comparison › snapshot comparison scenario 1 (19.6s)
+  ✓  3 [chromium] › cp202_snapshot-comparison.spec.ts:632:7 › snapshot comparison › snapshot comparison scenario 2 (29.2s)
+  ✓  4 [chromium] › cp202_snapshot-comparison.spec.ts:1251:7 › snapshot comparison › snapshot comparison scenario 3 (32.3s)
+
+  Slow test file: [chromium] › cp202_snapshot-comparison.spec.ts (1.5m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.5m)

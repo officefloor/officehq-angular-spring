@@ -1,0 +1,78 @@
+{
+  "checkpoint": 64,
+  "checkpoint_id": "cp64_floor-after-late",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "b4d8a70abdf3faa9d71636b57ac7991ebfe0bf59",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-13T07:22:14",
+  "seconds": 193,
+  "build_log_file": "cp64.test.log",
+  "replaced_tests": [
+    "cp24_floor.spec.ts::floor",
+    "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+    "cp43_cap.spec.ts::cap scenario 2",
+    "cp45_bulk-settle.spec.ts::bulk settle scenario 2",
+    "cp49_paste-claims.spec.ts::paste claims scenario 3",
+    "cp50_deferred-claims.spec.ts::deferred claims scenario 3",
+    "cp51_proofs.spec.ts::proofs scenario 1",
+    "cp51_proofs.spec.ts::proofs scenario 2",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 2",
+    "cp53_permission-matrix.spec.ts::permission matrix scenario 3"
+  ],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp64_floor-after-late.spec.ts::floor after late": true,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 1": true,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 2": true,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17855,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 47098,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22083,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21918,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 205,
+  "checkpoint_id": "cp205_plan-history",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "d85139db7fe9808dc7ef7381d1a87e2565dada6c",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-14T08:59:59",
+  "seconds": 184,
+  "build_log_file": "cp205.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp205_plan-history.spec.ts::plan history": true,
+      "cp205_plan-history.spec.ts::plan history scenario 1": false,
+      "cp205_plan-history.spec.ts::plan history scenario 2": true,
+      "cp205_plan-history.spec.ts::plan history scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp205_plan-history.spec.ts::plan history",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19722,
+        "failure": ""
+      },
+      {
+        "test_id": "cp205_plan-history.spec.ts::plan history scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 10472,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  101 |     expect(await ui.statement(pg_wes, p_ben)).toBe(true);\n  102 |     const pg_vic = await ui.userPage(browser, \"vic\", sheet);\n> 103 |     expect(await ui.periodAction(pg_vic, \"P1\", \"reopen\")).toBe(true);\n      |                                                           ^\n  104 |     expect(await ui.importPeople(pg_vic, \"Dot,B\\nFay,B,3,fay@x\")).toMatchObject({\"added\": 2, \"updated\": 0});\n  105 |     const p_dot = await ui.personId(pg_vic, \"Dot\");\n  106 |     const p_fay = await ui.personId(pg_vic, \"Fay\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp205_plan-history.spec.ts:103:59 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp205_plan-history.spec.ts::plan history scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33013,
+        "failure": ""
+      },
+      {
+        "test_id": "cp205_plan-history.spec.ts::plan history scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34745,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 189,
+  "checkpoint_id": "cp189_default-grade",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "fdd67c3c9e3ec5ca3a2bb7130d989dd743edf6ad",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-14T04:13:07",
+  "seconds": 182,
+  "build_log_file": "cp189.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp189_default-grade.spec.ts::default grade": true,
+      "cp189_default-grade.spec.ts::default grade scenario 1": true,
+      "cp189_default-grade.spec.ts::default grade scenario 2": true,
+      "cp189_default-grade.spec.ts::default grade scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp189_default-grade.spec.ts::default grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12980,
+        "failure": ""
+      },
+      {
+        "test_id": "cp189_default-grade.spec.ts::default grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25914,
+        "failure": ""
+      },
+      {
+        "test_id": "cp189_default-grade.spec.ts::default grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24091,
+        "failure": ""
+      },
+      {
+        "test_id": "cp189_default-grade.spec.ts::default grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28404,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

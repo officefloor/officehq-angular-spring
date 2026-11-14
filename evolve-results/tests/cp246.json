@@ -1,0 +1,66 @@
+{
+  "checkpoint": 246,
+  "checkpoint_id": "cp246_claim-counts-per-person",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 7,
+  "branch": "evolve/202610271-as/just-solve/chain7",
+  "commit_sha": "e3986bb8679dd72e6dfcb3162d88ce33f7ec405b",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-14T21:14:37",
+  "seconds": 166,
+  "build_log_file": "cp246.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp246_claim-counts-per-person.spec.ts::claim counts per person": true,
+      "cp246_claim-counts-per-person.spec.ts::claim counts per person scenario 1": true,
+      "cp246_claim-counts-per-person.spec.ts::claim counts per person scenario 2": true,
+      "cp246_claim-counts-per-person.spec.ts::claim counts per person scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp246_claim-counts-per-person.spec.ts::claim counts per person",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12107,
+        "failure": ""
+      },
+      {
+        "test_id": "cp246_claim-counts-per-person.spec.ts::claim counts per person scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34250,
+        "failure": ""
+      },
+      {
+        "test_id": "cp246_claim-counts-per-person.spec.ts::claim counts per person scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23704,
+        "failure": ""
+      },
+      {
+        "test_id": "cp246_claim-counts-per-person.spec.ts::claim counts per person scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35694,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
