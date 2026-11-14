@@ -54,6 +54,11 @@ public class SheetController {
     public record PersonFiguresView(String name, List<String> aliases, String dueTotal, String overdueTotal) {
     }
 
+    /** A sheet's figures per grade as its summary shows them: whether the sheet was ever used, and per
+     *  grade the due-totals of the people on it not retired added up. */
+    public record GradeDueTotals(boolean exists, Map<String, String> gradeDueTotals) {
+    }
+
     public record TodayRequest(@NotNull LocalDate today) {
     }
 
@@ -120,6 +125,21 @@ public class SheetController {
         return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString(),
                 own.people(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString(), gradeDueTotals,
                 statusCounts, personFigures);
+    }
+
+    /** The sheet's due-total per grade, as its summary shows it now or as it stood at the end of the
+     *  screen's as-of date; a sheet never used has none and is not started. */
+    @GetMapping("/{id}/grade-due-totals")
+    public GradeDueTotals gradeDueTotals(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
+        String sheet = id.trim();
+        Map<String, String> totals = new TreeMap<>();
+        if (!service.exists(sheet)) {
+            return new GradeDueTotals(false, totals);
+        }
+        rollups.breakdown(sheet, AsOf.parse(asOfHeader)).gradeDueTotals()
+                .forEach((grade, total) -> totals.put(grade, total.toPlainString()));
+        return new GradeDueTotals(true, totals);
     }
 
     /** Change the sheet's today, closing the periods past their grace days and releasing every claim

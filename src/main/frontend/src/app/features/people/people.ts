@@ -10,6 +10,7 @@ import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
+import { SheetCompare } from '../sheet-compare/sheet-compare';
 import { Summary } from '../summary/summary';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Counters } from '../counters/counters';
@@ -151,7 +152,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, Notes, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
+  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, Notes, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, SheetCompare, Summary, VoidReasons],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -186,6 +187,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       [classicPeriods]="classicPeriodSummary()"
       [classicDueTotal]="classicDueTotal()"
     />
+    <app-sheet-compare [grades]="gradeSummary()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form (submit)="submit($event)">
