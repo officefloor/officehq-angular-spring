@@ -51,6 +51,11 @@ public class Sheet {
     @Column(name = "late_pct", nullable = false, precision = 5, scale = 2)
     private BigDecimal latePct = DEFAULT_LATE_PCT;
 
+    /** A claim dated before this rounds half up, one on or after it half to even; null when blank,
+     *  when the sheet's today is the policy date. */
+    @Column(name = "policy_date")
+    private LocalDate policyDate;
+
     protected Sheet() {
     }
 
@@ -106,6 +111,19 @@ public class Sheet {
 
     public void setLatePct(BigDecimal latePct) {
         this.latePct = latePct;
+    }
+
+    public LocalDate getPolicyDate() {
+        return policyDate;
+    }
+
+    public void setPolicyDate(LocalDate policyDate) {
+        this.policyDate = policyDate;
+    }
+
+    /** The policy date in force: the one set, else the sheet's today. */
+    public LocalDate getPolicyDateInForce() {
+        return policyDate != null ? policyDate : today;
     }
 
     /** Take the sheet's next claim number. */

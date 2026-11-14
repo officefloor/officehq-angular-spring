@@ -58,14 +58,14 @@ export function rateError(e: unknown): string {
 }
 
 /** Whole cents times a percent (in hundredths of a percent), divided by 100, in whole cents,
- *  rounded half to even (a negative product rounded as its size is). Worked in BigInt so large
- *  amounts stay exact. */
-export function dueCents(cents: number, pctHundredths: number): number {
+ *  rounded half to even, or half up when `halfUp` (a negative product rounded as its size is).
+ *  Worked in BigInt so large amounts stay exact. */
+export function dueCents(cents: number, pctHundredths: number, halfUp = false): number {
   const product = BigInt(cents) * BigInt(pctHundredths);
   const size = product < 0n ? -product : product;
   const whole = size / 10000n;
   const rest = size % 10000n;
-  const rounded = rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole;
+  const rounded = rest > 5000n || (rest === 5000n && (halfUp || whole % 2n === 1n)) ? whole + 1n : whole;
   return Number(product < 0n ? -rounded : rounded);
 }
 
@@ -78,27 +78,28 @@ export interface Lateness {
 }
 
 /** A claim's due in cents: the due fixed when it was settled, else its figure (the due a statement
- *  bound it to, else its amount times its grade's rate in force on its date, rounded half to even
- *  and raised to the sheet's floor) with its late charge on top (a correction is neither raised
- *  to the floor nor charged late); null (n/a) with no figure. */
-export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness): number | null {
+ *  bound it to, else its amount times its grade's rate in force on its date, rounded half up when
+ *  `halfUp` (the claim's rounding policy) else half to even, and raised to the sheet's floor) with
+ *  its late charge, rounded the same way, on top (a correction is neither raised to the floor nor
+ *  charged late); null (n/a) with no figure. */
+export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness, halfUp: boolean): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
-  const figure = figureCents(rates, c, floorCents);
-  return figure === null ? null : figure + lateChargeCents(c, figure, late);
+  const figure = figureCents(rates, c, floorCents, halfUp);
+  return figure === null ? null : figure + lateChargeCents(c, figure, late, halfUp);
 }
 
-function figureCents(rates: readonly Rate[], c: Claim, floorCents: number): number | null {
+function figureCents(rates: readonly Rate[], c: Claim, floorCents: number, halfUp: boolean): number | null {
   if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
   if (pct === null) return null;
-  const due = dueCents(cents(c.amount), cents(pct));
+  const due = dueCents(cents(c.amount), cents(pct), halfUp);
   return isCorrection(c) ? due : Math.max(due, floorCents);
 }
 
 /** An overdue claim's late charge in cents: the late percent of its figure for every full 30 days
- *  past its due-by, rounded half to even; 0 when it is not overdue. */
-function lateChargeCents(c: Claim, figure: number, late: Lateness): number {
+ *  past its due-by, rounded by the claim's rounding policy; 0 when it is not overdue. */
+function lateChargeCents(c: Claim, figure: number, late: Lateness, halfUp: boolean): number {
   if (late.today === null || isCorrection(c) || !overdue(c, late.terms, late.today)) return 0;
   const days = Math.round((Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000);
-  return dueCents(figure, cents(late.latePct) * Math.floor(days / 30));
+  return dueCents(figure, cents(late.latePct) * Math.floor(days / 30), halfUp);
 }

@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, statusError } from './claims-api';
+import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, roundsHalfUp, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -101,15 +101,15 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(null));
   }
 
-  /** The claim's amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded half
-   *  to even, at least the sheet's floor; n/a with no rate in force then. A claim settled with a
+  /** The claim's amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
+   *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), at least the sheet's floor; n/a with no rate in force then. A claim settled with a
    *  due shows the due fixed then, and one bound by a statement the due bound; an overdue OPEN
    *  claim gains its late charge on top. */
   protected dueOf(c: Claim): string {
     const grade = gradeOn(this.grades(), c.date);
     const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floor()), {
       today: this.session.today(), terms: this.session.terms(), latePct: this.session.latePct(),
-    });
+    }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today()));
     return due === null ? 'n/a' : money(due);
   }
 

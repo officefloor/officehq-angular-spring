@@ -10,7 +10,7 @@ import net.officefloor.hq.app.sheet.Sheet;
 /**
  * The sheet's late charge: an OPEN claim overdue (its due-by, its date plus the terms, before the
  * sheet's today) gains the late percent of its figure for every full 30 days it is overdue,
- * rounded half to even, on top; a correction (a negative amount) gains none. It is never bound by a statement; settling freezes it in.
+ * rounded as the claim's rounding policy has it, on top; a correction (a negative amount) gains none. It is never bound by a statement; settling freezes it in.
  */
 public record LateCharge(LocalDate today, int terms, BigDecimal pct) {
 
@@ -24,8 +24,8 @@ public record LateCharge(LocalDate today, int terms, BigDecimal pct) {
                 sheet.map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT));
     }
 
-    /** The claim's figure (null: n/a, which stays n/a) with its late charge added. */
-    public BigDecimal addTo(Claim claim, BigDecimal figure) {
+    /** The claim's figure (null: n/a, which stays n/a) with its late charge, rounded by {@code mode}, added. */
+    public BigDecimal addTo(Claim claim, BigDecimal figure, RoundingMode mode) {
         if (figure == null || claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
             return figure;
         }
@@ -34,6 +34,6 @@ public record LateCharge(LocalDate today, int terms, BigDecimal pct) {
             return figure;
         }
         BigDecimal steps = BigDecimal.valueOf(overdue / STEP_DAYS);
-        return figure.add(figure.multiply(pct).multiply(steps).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN));
+        return figure.add(figure.multiply(pct).multiply(steps).divide(BigDecimal.valueOf(100), 2, mode));
     }
 }

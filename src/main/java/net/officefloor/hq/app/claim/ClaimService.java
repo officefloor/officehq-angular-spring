@@ -233,7 +233,7 @@ public class ClaimService {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, figureOf(claim, person));
+        return LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, figureOf(claim, person), roundingOf(claim));
     }
 
     /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
@@ -254,14 +254,23 @@ public class ClaimService {
     }
 
     /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
-     *  100, rounded half to even, raised to the sheet's floor (a correction's never is); null with no rate in force then. */
+     *  100, rounded as its rounding policy has it, raised to the sheet's floor (a correction's never is); null with no rate in force then. */
     private BigDecimal dueOf(Claim claim, Person person) {
         BigDecimal floor = sheets.floor(claim.getSheetId());
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
-                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, roundingOf(claim)))
                 .map(due -> claim.isCorrection() ? due : due.max(floor))
                 .orElse(null);
+    }
+
+    /** How the claim's live figures round: by the sheet's policy date against its date, or for a
+     *  correction the date of the claim it corrects. */
+    private RoundingMode roundingOf(Claim claim) {
+        LocalDate on = claim.getCorrects() == null ? claim.getDate()
+                : claims.findFirstBySheetIdAndPersonIdAndNumber(claim.getSheetId(), claim.getPersonId(), claim.getCorrects())
+                        .map(Claim::getDate).orElse(claim.getDate());
+        return Rounding.of(sheets.find(claim.getSheetId())).on(on);
     }
 
     private void record(String event, String user, Person person, Claim claim) {

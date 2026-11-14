@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -12,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit, floor, terms and late percent) and the role each user name holds on it. */
+/** The sheet's settings (its clerk limit, floor, terms, late percent and policy date) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -24,6 +25,8 @@ public class SettingsService {
     public static final String TERMS = "terms";
     /** The key the late percent is audited under. */
     public static final String LATE_PCT = "late-pct";
+    /** The key the policy date is audited under. */
+    public static final String POLICY_DATE = "policy-date";
 
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -118,6 +121,28 @@ public class SettingsService {
                 + " key=" + LATE_PCT + " value=" + scaled.toPlainString());
         rollup.recordChanges(sheetId, user, before);
         return scaled;
+    }
+
+    /** The sheet's policy date as set; null when blank (the sheet's today is the policy date). */
+    @Transactional(readOnly = true)
+    public LocalDate policyDate(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getPolicyDate).orElse(null);
+    }
+
+    /** Set the sheet's policy date (null: blank, following the sheet's today), the sheet created
+     *  first if it was never loaded; every live due's rounding (and so every total) moves with it,
+     *  while settled and bound figures stay as they are. */
+    @Transactional
+    public LocalDate setPolicyDate(String sheetId, String user, LocalDate policyDate) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setPolicyDate(policyDate);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + POLICY_DATE + " value=" + (policyDate == null ? "" : policyDate));
+        rollup.recordChanges(sheetId, user, before);
+        return policyDate;
     }
 
     @Transactional(readOnly = true)

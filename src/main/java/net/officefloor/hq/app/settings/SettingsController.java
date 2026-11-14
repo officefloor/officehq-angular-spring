@@ -6,9 +6,12 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.sheet.Sheet;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -24,11 +28,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class SettingsController {
 
     /** The sheet's settings as the screen shows them: the clerk limit with two decimals, null for
-     *  none, the floor with two decimals, the terms in days, and the late percent with two decimals. */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct) {
-        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct) {
+     *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
+     *  and the policy date, null when blank. */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate) {
+        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
-                    latePct.setScale(2).toPlainString());
+                    latePct.setScale(2).toPlainString(), policyDate);
         }
     }
 
@@ -46,6 +51,10 @@ public class SettingsController {
 
     /** The late percent as the form submits it: 0.00 or more with up to two decimals, blank for the default. */
     public record LatePctForm(@NotNull @Pattern(regexp = "(\\d{1,3}(\\.\\d{1,2})?)?") String value) {
+    }
+
+    /** The policy date as the form submits it: a date as yyyy-mm-dd, blank for none (the sheet's today). */
+    public record PolicyDateForm(@NotNull @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
     }
 
     /** A user name's role on the sheet. */
@@ -114,9 +123,24 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/policy-date")
+    public SettingsView setPolicyDate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PolicyDateForm body) {
+        LocalDate policyDate;
+        try {
+            policyDate = body.value().isEmpty() ? null : LocalDate.parse(body.value());
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date");
+        }
+        service.setPolicyDate(sheetId, user.trim(), policyDate);
+        return view(sheetId);
+    }
+
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
-                service.latePct(sheetId));
+                service.latePct(sheetId), service.policyDate(sheetId));
     }
 
     @GetMapping("/roles")

@@ -12,6 +12,9 @@ export const LIMIT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
 /** A late percent of 0.00 or more with up to two decimals. */
 export const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 
+/** A policy date as yyyy-mm-dd. */
+export const POLICY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 /** Terms of a whole number of days. */
 export const TERMS_PATTERN = /^\d{1,4}$/;
 
@@ -24,6 +27,9 @@ export interface Settings {
   terms: number;
   /** Two decimals, as the server formats it: an overdue claim's due gains it for every full 30 days overdue. */
   latePct: string;
+  /** yyyy-mm-dd: a claim dated before it rounds half up, one on or after it half to even; null when
+   *  blank, when the sheet's today is the policy date. */
+  policyDate: string | null;
 }
 
 export interface RoleGrant {
@@ -65,6 +71,12 @@ export class SettingsApi {
     );
   }
 
+  setPolicyDate(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers: this.headers() }),
+    );
+  }
+
   roles(sheetId: string): Promise<RoleGrant[]> {
     return firstValueFrom(this.http.get<RoleGrant[]>(`${this.url(sheetId)}/roles`, { headers: this.headers() }));
   }
@@ -83,7 +95,7 @@ export class SettingsApi {
 }
 
 export const SETTINGS_INVALID =
-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and a late percent of 0.00 or more with up to two decimals (blank: 0.00).';
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today).';
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;

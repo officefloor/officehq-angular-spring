@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, money, overdue, quickAddError } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
@@ -319,7 +319,8 @@ export class People {
 
   /** A claim's due in cents, at the rate of the person's grade in force on the claim's date. */
   private claimDueCents(p: Person, c: Claim, floor: number, late: Lateness): number | null {
-    return claimDueCents(this.ratesOf(gradeOn(p.grades, c.date)), c, floor, late);
+    return claimDueCents(this.ratesOf(gradeOn(p.grades, c.date)), c, floor, late,
+      roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today));
   }
 
   /** Every rate the sheet has for a grade. */

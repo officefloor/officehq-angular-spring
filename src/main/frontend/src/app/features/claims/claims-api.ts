@@ -60,6 +60,16 @@ export function overdue(c: Claim, terms: number, today: string | null): boolean 
   return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
 }
 
+/** Whether a claim's live figures round half up: its date (a correction's, the date of the claim
+ *  of its person it corrects, among `theirs`) is before the sheet's policy date (null: blank, the
+ *  sheet's today); else they round half to even. */
+export function roundsHalfUp(c: Claim, theirs: readonly Claim[], policyDate: string | null, today: string | null): boolean {
+  const policy = policyDate ?? today;
+  if (policy === null) return false;
+  const on = c.corrects === null ? c.date : theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
+  return on < policy;
+}
+
 export interface ClaimForm {
   amount: string;
   /** null takes the sheet's today. */
