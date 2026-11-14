@@ -2,6 +2,7 @@ package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -70,13 +71,17 @@ public class PoolService {
     }
 
     /** Add a member to a pool with a share percent: more than 0.00 and at most 100.00, with up to two
-     *  decimals. The member is a person of the sheet, or another pool of the sheet (memberPoolId).
-     *  Refused for such a share, a person already in the pool, a pool that is a member of a pool
+     *  decimals, and an optional from-date and to-date, both included. The member is a person of the
+     *  sheet, or another pool of the sheet (memberPoolId). Refused for such a share, a to-date before
+     *  the from-date, a person already in the pool, a pool that is a member of a pool
      *  already, a pool that would contain itself through any chain, or a chain of pools more than
      *  three deep. */
     @Transactional
     public PoolWithMembers addMember(String sheetId, String user, Long poolId, Long personId, Long memberPoolId,
-            BigDecimal share) {
+            BigDecimal share, LocalDate from, LocalDate to) {
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new PoolRefusedException("A membership's to-date is not before its from-date");
+        }
         if (share == null || share.signum() <= 0 || share.compareTo(HUNDRED) > 0
                 || share.stripTrailingZeros().scale() > 2) {
             throw new PoolRefusedException("A share is more than 0.00 and at most 100.00, with two decimals");
@@ -95,17 +100,18 @@ public class PoolService {
             if (members.existsByPoolIdAndPersonId(poolId, personId)) {
                 throw new PoolRefusedException(person.getName() + " is in the pool " + pool.getName() + " already");
             }
-            members.saveAndFlush(new PoolMember(poolId, personId, scaled));
+            members.saveAndFlush(new PoolMember(poolId, personId, scaled).dated(from, to));
             name = person.getName();
         } else {
             Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
                     .orElseThrow(() -> new PoolRefusedException("No such pool on the sheet"));
             checkNesting(sheetId, pool, member);
-            members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, scaled));
+            members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, scaled).dated(from, to));
             name = member.getName();
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + name + " share=" + scaled.toPlainString());
+                + " name=" + name + " share=" + scaled.toPlainString() + (from != null ? " from=" + from : "")
+                + (to != null ? " to=" + to : ""));
         return new PoolWithMembers(pool, members.findByPoolIdInOrderByIdAsc(List.of(poolId)));
     }
 

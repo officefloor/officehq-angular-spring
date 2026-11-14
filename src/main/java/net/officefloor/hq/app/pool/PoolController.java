@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,11 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PoolController {
 
     /** A pool member as the screen shows it: a person, or another pool (memberPoolId); the share is a
-     *  string with two decimals. */
-    public record PoolMemberView(Long personId, Long memberPoolId, String share) {
+     *  string with two decimals; from and to bound the membership, both included (null: no bound). */
+    public record PoolMemberView(Long personId, Long memberPoolId, String share, LocalDate from, LocalDate to) {
         static PoolMemberView of(PoolMember member) {
             return new PoolMemberView(member.getPersonId(), member.getMemberPoolId(),
-                    member.getShare().toPlainString());
+                    member.getShare().toPlainString(), member.getFrom(), member.getTo());
         }
     }
 
@@ -47,8 +48,9 @@ public class PoolController {
     }
 
     /** A member: a person of the sheet, or another pool of the sheet (memberPoolId), and its share
-     *  percent. */
-    public record PoolMemberRequest(Long personId, Long memberPoolId, @NotNull BigDecimal share) {
+     *  percent, with an optional from-date and to-date. */
+    public record PoolMemberRequest(Long personId, Long memberPoolId, @NotNull BigDecimal share, LocalDate from,
+            LocalDate to) {
     }
 
     private final PoolService service;
@@ -78,11 +80,11 @@ public class PoolController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated PoolMemberRequest request) {
         return PoolView.of(service.addMember(sheetId.trim(), SignedInUser.decode(user), poolId, request.personId(),
-                request.memberPoolId(), request.share()));
+                request.memberPoolId(), request.share(), request.from(), request.to()));
     }
 
-    /** A blank or used name, a person already in the pool, a pool that may not be a member, or a bad
-     *  share, is refused. */
+    /** A blank or used name, a person already in the pool, a pool that may not be a member, a bad
+     *  share, or a to-date before the from-date, is refused. */
     @ExceptionHandler({PoolRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
