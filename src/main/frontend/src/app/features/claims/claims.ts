@@ -43,8 +43,8 @@ export interface Claim {
   /** The date the claim's live figures round by (yyyy-mm-dd): its own, or for a correction the date
    *  of the claim it corrects. */
   roundsBy: string;
-  /** The date the claim is due by (yyyy-mm-dd), fixed when it was added: its date plus the terms of
-   *  its person's grade in force on that date. */
+  /** The date the claim is due by (yyyy-mm-dd), fixed when it was added: its date plus the terms in
+   *  force on the day it was added (the person's own, else their grade's, else the sheet's). */
   dueBy: string;
   /** The claim's status log, oldest first: one line per status it has had, as
    *  <STATUS> by <user> on <date> due=<due>. */

@@ -99,8 +99,8 @@ public class ClaimService {
     /** Add a claim for a person; a missing date takes the sheet's entry date, else its today. One added while the period
      *  its due-by falls in is soft-closed is a late entry, and one whose due-by falls in a closed period is refused.
      *  Its due-by is fixed now: the
-     *  business day after its date that is the person's own terms, else the terms in force on that date for the
-     *  person's grade then, counted skipping weekends and the sheet's holidays now. A negative amount is a
+     *  business day after its date that is the terms in force on the day it is added (the sheet's today): the
+     *  person's own, else those of the grade the person had that day, else the sheet's, counted skipping weekends and the sheet's holidays now. A negative amount is a
      *  correction and must name a SETTLED claim of the person it corrects. */
     @Transactional
     public Claim add(String sheetId, String user, Long personId, BigDecimal amount, LocalDate date, String note,
@@ -124,7 +124,7 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         corrects = numberOf(corrects);
         LocalDate on = date != null ? date : settings.defaultClaimDate(sheetId);
-        int terms = termsFor(sheetId, person, on);
+        int terms = termsFor(sheetId, person, sheets.today(sheetId));
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
@@ -158,7 +158,7 @@ public class ClaimService {
             return false;
         }
         Person person = found.get();
-        LocalDate dueBy = holidays.businessDaysAfter(sheetId, date, termsFor(sheetId, person, date));
+        LocalDate dueBy = holidays.businessDaysAfter(sheetId, date, termsFor(sheetId, person, sheets.today(sheetId)));
         try {
             refuseClosed(sheetId, dueBy);
             refuseRetired(person, date);
@@ -518,7 +518,7 @@ public class ClaimService {
         claim.unbind();
         Claim kept = claims.saveAndFlush(claim);
         LocalDate on = kept.getDate();
-        int terms = termsFor(sheetId, person, on);
+        int terms = termsFor(sheetId, person, sheets.today(sheetId));
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         Claim split = Claim.splitOff(kept, part, dueBy, terms, nextNumber(sheetId, dueBy), user);
         if (periods.softClosedOn(sheetId, dueBy)) {
@@ -1303,8 +1303,8 @@ public class ClaimService {
         return note == null ? "" : note.trim();
     }
 
-    /** The terms in business days a claim of the person dated on a date takes: the person's own in force
-     *  then, else their grade's in force then, else the sheet's. */
+    /** The terms in business days a claim of the person created on a day (the sheet's today then) takes:
+     *  the person's own in force that day, else those of the grade they had that day, else the sheet's. */
     private int termsFor(String sheetId, Person person, LocalDate on) {
         Integer own = personTerms.termsOn(person, on);
         return own != null ? own : settings.termsFor(sheetId, grades.gradeOn(person.getId(), on), on);

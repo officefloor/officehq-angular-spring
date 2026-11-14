@@ -47,8 +47,8 @@ public class Claim {
     @Column(name = "claim_date", nullable = false)
     private LocalDate date;
 
-    /** The date the claim is due by, fixed when it was added: its date plus the terms of its person's
-     *  grade in force on that date, moved past the sheet's holidays then. It stays as it was when the
+    /** The date the claim is due by, fixed when it was added: its date plus the terms in force on the day
+     *  it was added (the sheet's today then): its person's own, else their grade's that day, else the sheet's, moved past the sheet's holidays then. It stays as it was when the
      *  terms or the claim's date change; a holiday added on or before it re-fixes it (see {@link #refix}). */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
