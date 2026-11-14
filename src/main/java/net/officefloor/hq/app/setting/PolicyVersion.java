@@ -28,6 +28,14 @@ public class PolicyVersion {
     @Column(name = "from_date")
     private LocalDate from;
 
+    /** The key of the policy setting whose change made the version; null for one made before this was kept. */
+    @Column(name = "setting_key")
+    private String key;
+
+    /** The value the change gave it, as the audit shows it; blank for none. */
+    @Column(name = "setting_value")
+    private String value;
+
     /** The sheet's today when the version was made. */
     @Column(name = "made_on", nullable = false, updatable = false)
     private LocalDate madeOn;
@@ -35,10 +43,12 @@ public class PolicyVersion {
     protected PolicyVersion() {
     }
 
-    public PolicyVersion(String sheetId, int number, LocalDate from, LocalDate madeOn) {
+    public PolicyVersion(String sheetId, int number, LocalDate from, String key, String value, LocalDate madeOn) {
         this.sheetId = sheetId;
         this.number = number;
         this.from = from;
+        this.key = key;
+        this.value = value;
         this.madeOn = madeOn;
     }
 
@@ -48,6 +58,14 @@ public class PolicyVersion {
 
     public LocalDate getFrom() {
         return from;
+    }
+
+    public String getKey() {
+        return key;
+    }
+
+    public String getValue() {
+        return value;
     }
 
     public LocalDate getMadeOn() {

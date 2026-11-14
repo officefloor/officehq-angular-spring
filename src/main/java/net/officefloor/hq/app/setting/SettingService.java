@@ -693,7 +693,7 @@ public class SettingService {
                 })
                 .orElseGet(() -> new SettingValue(sheetId, "rounding", on, null, mode));
         saved = values.saveAndFlush(saved);
-        newPolicyVersion(sheetId, "rounding", on);
+        newPolicyVersion(sheetId, "rounding", mode != null ? mode : "", on);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=rounding value="
                 + (mode != null ? mode : "") + (from != null ? " from=" + from : ""));
         return saved;
@@ -711,9 +711,9 @@ public class SettingService {
                 })
                 .orElseGet(() -> new SettingValue(sheetId, key, on, value));
         saved = values.saveAndFlush(saved);
-        newPolicyVersion(sheetId, key, on);
-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=" + key + " value="
-                + (value != null ? (wholeDays(key) ? String.valueOf(value.intValue()) : value.toPlainString()) : "")
+        String shown = value != null ? (wholeDays(key) ? String.valueOf(value.intValue()) : value.toPlainString()) : "";
+        newPolicyVersion(sheetId, key, shown, on);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=" + key + " value=" + shown
                 + (from != null ? " from=" + from : ""));
         return saved;
     }
@@ -721,10 +721,11 @@ public class SettingService {
     /** The keys of the policy settings, versioned together. */
     private static final List<String> POLICY_KEYS = List.of("rounding", "floor", "cap", "terms", "late-pct", "clerk-limit");
 
-    /** Make the next policy version, in force from a from-date, when the key is a policy setting's. */
-    private void newPolicyVersion(String sheetId, String key, LocalDate from) {
+    /** Make the next policy version, in force from a from-date, when the key is a policy setting's; it
+     *  keeps the value given as the audit shows it. */
+    private void newPolicyVersion(String sheetId, String key, String value, LocalDate from) {
         if (POLICY_KEYS.contains(key)) {
-            versions.saveAndFlush(new PolicyVersion(sheetId, (int) versions.countBySheetId(sheetId) + 1, from,
+            versions.saveAndFlush(new PolicyVersion(sheetId, (int) versions.countBySheetId(sheetId) + 1, from, key, value,
                     sheets.today(sheetId)));
         }
     }

@@ -108,8 +108,9 @@ public class SheetCloneService {
         jdbc.update("INSERT INTO sheet_setting_history (sheet_id, setting_key, setting_value, made_on)"
                 + " SELECT ?, setting_key, setting_value, ? FROM sheet_setting_history WHERE sheet_id = ? ORDER BY id",
                 to, today, from);
-        jdbc.update("INSERT INTO policy_version (sheet_id, version_number, from_date, made_on)"
-                + " SELECT ?, version_number, from_date, ? FROM policy_version WHERE sheet_id = ? ORDER BY id",
+        jdbc.update("INSERT INTO policy_version (sheet_id, version_number, from_date, setting_key,"
+                + " setting_value, made_on) SELECT ?, version_number, from_date, setting_key, setting_value, ?"
+                + " FROM policy_version WHERE sheet_id = ? ORDER BY id",
                 to, today, from);
 
         // People, in list order, then what each one has.
