@@ -1,0 +1,64 @@
+{
+  "checkpoint": 15,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp15_statements",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row gains a statement button. Taking a statement records the person's due-total at\nthat moment (STATEMENT name=<name> due-total=<due-total> claims=<count of their claims that\ncount>), and binds every claim of theirs that counts at that moment to the figure it has then:\nfrom now on that claim shows and totals that bound figure, whatever later changes to rates or\ngrades would have made it, until the person's next statement rebinds all their counting claims\nto their figures as of that moment. A claim of theirs that does not count at a statement is left\nunbound (live again). A settled claim's frozen figure is unaffected. Show on each claim stated\nyes/no, and on the person their statement count, the last statement's due-total and its date\n(the sheet's today when it was taken).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row gains a statement button. Taking a statement records the person's due-total at\nthat moment (STATEMENT name=<name> due-total=<due-total> claims=<count of their claims that\ncount>), and binds every claim of theirs that counts at that moment to the figure it has then:\nfrom now on that claim shows and totals that bound figure, whatever later changes to rates or\ngrades would have made it, until the person's next statement rebinds all their counting claims\nto their figures as of that moment. A claim of theirs that does not count at a statement is left\nunbound (live again). A settled claim's frozen figure is unaffected. Show on each claim stated\nyes/no, and on the person their statement count, the last statement's due-total and its date\n(the sheet's today when it was taken).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "92ea801f61ca2684b8f6d6785a5880110debaf4a",
+  "reset_sha": "",
+  "preagent_sha": "c1e37c4f2b6d878f26d00165d40b2e9b970e0264",
+  "prev_sha": "c1e37c4f2b6d878f26d00165d40b2e9b970e0264",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3166209999999998,
+    "input_tokens": 34,
+    "output_tokens": 15832,
+    "cache_read_tokens": 1167545,
+    "cache_creation_tokens": 95792,
+    "num_turns": 18,
+    "duration_ms": 261272,
+    "duration_api_ms": 141224,
+    "model": "claude-opus-5-5",
+    "session_id": "a3527c68-9f35-40eb-95c0-7bd64b010b62",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has a statement button. All four Playwright tests in `bin/e2e` pass on the first run.\n\n**What a statement does**\n- It writes `STATEMENT sheet=\u2026 by=\u2026 name=<name> due-total=<x> claims=<n>` to the audit file, where `n` is how many of the person's claims count (OPEN or SETTLED).\n- Every claim of theirs that counts is bound to the figure it currently shows. From then on, rate or grade changes don't affect that claim's due or the totals. A claim that doesn't count is unbound and goes back to its live figure. A settled claim's fixed due still takes priority.\n- A second statement rebinds to the figures shown at that moment, which may be the ones the first statement bound, not freshly recalculated ones. The test requires this: Ada's second statement records 9.02, not 12.05.\n\n**Changes**\n- **Stored data:** migration `V13__statement.sql` adds a `person_statement` table (due-total, claim count, the sheet's today, who took it) and `stated` / `stated_due` columns on `claim`. Statements are kept in their own table so taking one doesn't change the person's version, which would make an editor someone else has open refuse to save.\n- **Server:** `ClaimService.statement(...)` locks the person and their claims, works out the due-total the same way the screen does, binds or unbinds each claim, and saves the statement. It's exposed as `POST /api/sheets/{sheetId}/people/{personId}/statement`. The person data now includes `statementCount`, `statedTotal` and `statementDate`; claims include `stated` and `statedDue`.\n- **Front end:** the person row shows `person-statement-count`, `person-stated-total` (blank when there are no statements), `person-statement-date`, the `person-statement` button and a `person-error` element. Each claim shows `claim-stated` yes/no. The due calculation uses the bound figure for a stated claim.\n\n**Three choices I made that the request didn't settle (none is tested):**\n- Settling a stated claim fixes its due at the bound figure, not the live rate.\n- Editing a stated claim's amount keeps its bound figure until the next statement.\n- If the due-total is n/a when a statement is taken, the audit line says `due-total=n/a` and the row shows `n/a`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3166209999999998,
+        "num_turns": 18,
+        "duration_ms": 261272,
+        "duration_api_ms": 141224,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp15.agent.jsonl",
+  "agent_diff_file": "cp15.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
