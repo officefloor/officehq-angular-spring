@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.session.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -28,15 +29,24 @@ public class ClaimController {
 
     /** A claim as the screen shows it: the amount always with two decimals; a SETTLED claim's
      *  due as fixed when it was settled (null, so the due is live, when its grade had no rate then,
-     *  and for other claims); who opened it (null while DRAFT). */
+     *  and for other claims); who opened it (null while DRAFT); whether the person's last statement
+     *  bound it, and the due it was bound to (null when unbound or n/a then). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue, String openedBy) {
+            ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
+            String statedDue) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
-                    c.getDate(), c.getNote(), c.getStatus(), c.getNumber(),
-                    c.getSettledDue() == null ? null : c.getSettledDue().setScale(2).toPlainString(),
-                    c.getOpenedBy());
+                    c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
+                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()));
         }
+
+        private static String money(BigDecimal value) {
+            return value == null ? null : value.setScale(2).toPlainString();
+        }
+    }
+
+    /** A statement just taken: the person as they now show, and all their claims, newest first. */
+    public record StatementView(PersonView person, List<ClaimView> claims) {
     }
 
     /** A claim's values as the form submits them: an amount of 0.00 or more with up to two
@@ -101,5 +111,15 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.VOID));
+    }
+
+    @PostMapping("/people/{personId}/statement")
+    public StatementView statement(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        ClaimService.Statement s = service.statement(sheetId, user.trim(), personId);
+        return new StatementView(PersonView.of(s.person(), s.summary()),
+                s.claims().stream().map(ClaimView::of).toList());
     }
 }

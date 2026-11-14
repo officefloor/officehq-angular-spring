@@ -27,6 +27,10 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened the claim, who cannot settle it; null while DRAFT. */
   openedBy: string | null;
+  /** Whether the person's last statement bound the claim: it then shows and totals statedDue. */
+  stated: boolean;
+  /** The due the claim was bound to, with two decimals; null when unbound or n/a then. */
+  statedDue: string | null;
 }
 
 /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */

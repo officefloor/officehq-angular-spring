@@ -1,6 +1,8 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -14,11 +16,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class PersonService {
 
     private final PersonRepository people;
+    private final PersonStatementRepository statements;
     private final SheetService sheets;
     private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
+    public PersonService(PersonRepository people, PersonStatementRepository statements, SheetService sheets,
+            Audit audit) {
         this.people = people;
+        this.statements = statements;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -32,6 +37,19 @@ public class PersonService {
     public Person get(String sheetId, long id) {
         return people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+    }
+
+    /** Each person's statement summary, by person id; a person with none is missing. */
+    @Transactional(readOnly = true)
+    public Map<Long, StatementSummary> statementSummaries(String sheetId) {
+        return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.groupingBy(PersonStatement::getPersonId,
+                        Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
+    }
+
+    @Transactional(readOnly = true)
+    public StatementSummary statementSummary(long personId) {
+        return StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId));
     }
 
     /** Add a person to the sheet (the sheet is created first if it was never loaded). */

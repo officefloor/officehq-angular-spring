@@ -18,4 +18,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")
     Optional<Claim> findForUpdate(Long id, String sheetId);
+
+    /** A person's claims, newest first, locked while a statement binds them. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Claim c where c.personId = :personId and c.sheetId = :sheetId order by c.id desc")
+    List<Claim> findByPersonForUpdate(Long personId, String sheetId);
 }

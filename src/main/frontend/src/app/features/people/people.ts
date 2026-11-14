@@ -5,7 +5,7 @@ import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
 import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, isStale, personError } from './people-api';
+import { GRADES, PeopleApi, Person, isStale, personError, statementError } from './people-api';
 
 // The sheet's rates; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed and their due-total; the sheet's claimed-total and due-total; and
@@ -39,7 +39,7 @@ import { GRADES, PeopleApi, Person, isStale, personError } from './people-api';
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
@@ -49,12 +49,22 @@ import { GRADES, PeopleApi, Person, isStale, personError } from './people-api';
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) }}</td>
               <td>
+                <span data-testid="person-statement-count">{{ p.statementCount }}</span>
+                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
+                <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+                <button type="button" data-testid="person-statement" (click)="statement(p)"
+                  [attr.aria-label]="'Take statement of ' + p.name">Statement</button>
+              </td>
+              <td>
                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
+                @if (rowErrors()[p.id]; as err) {
+                  <p role="alert" data-testid="person-error">{{ err }}</p>
+                }
               </td>
             </tr>
           }
@@ -88,13 +98,14 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** Each person's due-total in cents, by person id: the sum of the dues their OPEN and SETTLED
    *  claims show (each already rounded). Null (n/a) when their grade has no rate in force on the
-   *  sheet's today, unless a settled claim keeps a fixed due: then the sum of the dues there are. */
+   *  sheet's today, unless a settled claim keeps a fixed due or a stated claim a bound one: then
+   *  the sum of the dues there are. */
   private readonly dueByPerson = computed(() => {
     const out = new Map<number, number | null>();
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
       const counted = this.claimsOf(p.id).filter(counts);
-      if (pctOn(rates, this.session.today()) === null && !counted.some((c) => c.settledDue !== null)) {
+      if (pctOn(rates, this.session.today()) === null && !counted.some((c) => c.settledDue !== null || c.statedDue !== null)) {
         out.set(p.id, null);
         continue;
       }
@@ -113,6 +124,8 @@ export class People {
   /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
   private submitting = false;
   protected readonly error = signal<string | null>(null);
+  /** The error of each person's last refused row action, by person id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
 
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: Validators.required }),
@@ -129,6 +142,7 @@ export class People {
       this.session.loads();
       untracked(() => {
         this.reset();
+        this.rowErrors.set({});
         this.people.set([]);
         this.claims.set([]);
         this.rates.set([]);
@@ -160,6 +174,26 @@ export class People {
   protected dueOf(p: Person): string {
     const due = this.dueByPerson().get(p.id);
     return due === null || due === undefined ? 'n/a' : money(due);
+  }
+
+  /** The last statement's due-total: blank with none, n/a when it was n/a. */
+  protected statedTotalOf(p: Person): string {
+    return p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a');
+  }
+
+  /** Take a statement of a person; the row then shows it and their claims as bound now. */
+  protected async statement(p: Person): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const taken = await this.api.statement(sheetId, p.id);
+      if (this.session.sheetId() !== sheetId) return;
+      this.taken(taken.person);
+      this.claims.update((cs) => [...cs.filter((c) => c.personId !== p.id), ...taken.claims].sort((a, b) => b.id - a.id));
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: statementError(e) }));
+    }
   }
 
   /** Take in a rate just set, in place of the grade's old one for the same from-date. */

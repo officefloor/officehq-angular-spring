@@ -66,10 +66,12 @@ export function dueCents(cents: number, pctHundredths: number): number {
   return Number(rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole);
 }
 
-/** A claim's due in cents: the due fixed when it was settled, else its amount times its grade's
- *  rate in force on its date, rounded half to even; null (n/a) with no rate in force then. */
+/** A claim's due in cents: the due fixed when it was settled, else the due a statement bound it
+ *  to, else its amount times its grade's rate in force on its date, rounded half to even; null
+ *  (n/a) with no rate in force then. */
 export function claimDueCents(rates: readonly Rate[], c: Claim): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
+  if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
   return pct === null ? null : dueCents(cents(c.amount), cents(pct));
 }

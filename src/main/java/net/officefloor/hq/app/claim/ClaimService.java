@@ -7,6 +7,9 @@ import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.person.PersonStatement;
+import net.officefloor.hq.app.person.PersonStatementRepository;
+import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -20,14 +23,20 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final PersonRepository people;
+    private final PersonStatementRepository statements;
     private final RateRepository rates;
     private final SheetService sheets;
     private final Audit audit;
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, RateRepository rates, SheetService sheets,
-            Audit audit) {
+    /** A statement just taken: the person, their statement summary now, and their claims, newest first. */
+    public record Statement(Person person, StatementSummary summary, List<Claim> claims) {
+    }
+
+    public ClaimService(ClaimRepository claims, PersonRepository people, PersonStatementRepository statements,
+            RateRepository rates, SheetService sheets, Audit audit) {
         this.claims = claims;
         this.people = people;
+        this.statements = statements;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
@@ -90,7 +99,8 @@ public class ClaimService {
         } else if (to == ClaimStatus.VOID) {
             claim.setNumber(null);
         } else if (to == ClaimStatus.SETTLED) {
-            claim.setSettledDue(dueOf(claim, person));
+            // a claim bound by a statement settles at its bound figure
+            claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : dueOf(claim, person));
         }
         claims.flush();
         String event = switch (to) {
@@ -106,6 +116,59 @@ public class ClaimService {
             record(event, user, person, claim, number);
         }
         return claim;
+    }
+
+    /** Take a statement of a person: record their due-total now, and bind each of their claims
+     *  that counts (OPEN or SETTLED) to the due it shows now; the others are left unbound. */
+    @Transactional
+    public Statement statement(String sheetId, String user, long personId) {
+        Person person = people.findForUpdate(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        LocalDate today = sheets.today(sheetId);
+        List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
+        List<Claim> counted = theirs.stream().filter(ClaimService::counts).toList();
+        BigDecimal dueTotal = dueTotalOf(counted, person, today);
+        for (Claim c : theirs) {
+            if (counts(c)) {
+                c.bind(shownDueOf(c, person));
+            } else {
+                c.unbind();
+            }
+        }
+        claims.flush();
+        statements.saveAndFlush(new PersonStatement(sheetId, personId, dueTotal, counted.size(), today, user));
+        audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted.size());
+        return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
+    }
+
+    /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
+    private static boolean counts(Claim c) {
+        return c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.SETTLED;
+    }
+
+    /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
+     *  to (null: n/a), else its live due. */
+    private BigDecimal shownDueOf(Claim claim, Person person) {
+        if (claim.getSettledDue() != null) {
+            return claim.getSettledDue();
+        }
+        return claim.isStated() ? claim.getStatedDue() : dueOf(claim, person);
+    }
+
+    /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
+     *  null (n/a) when their grade has no rate in force on the sheet's today, unless a claim keeps
+     *  a fixed or bound due. */
+    private BigDecimal dueTotalOf(List<Claim> counted, Person person, LocalDate today) {
+        boolean kept = counted.stream()
+                .anyMatch(c -> c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null));
+        if (rates.findInForce(person.getSheetId(), person.getGrade(), today).isEmpty() && !kept) {
+            return null;
+        }
+        return counted.stream()
+                .map(c -> shownDueOf(c, person))
+                .filter(d -> d != null)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
     /** The claim's amount times its person's grade rate in force on the claim's date, divided by

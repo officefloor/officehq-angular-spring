@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Claim } from '../claims/claims-api';
 
 export const GRADES = ['A', 'B', 'C'] as const;
 
@@ -11,6 +12,18 @@ export interface Person {
   grade: string;
   /** Raised on every save. */
   version: number;
+  /** How many statements have been taken of the person. */
+  statementCount: number;
+  /** The last statement's due-total, with two decimals; null when it was n/a or there is none. */
+  statedTotal: string | null;
+  /** The sheet's today when the last statement was taken; null with none. */
+  statementDate: string | null;
+}
+
+/** A statement just taken: the person as they now show, and all their claims, newest first. */
+export interface Statement {
+  person: Person;
+  claims: Claim[];
 }
 
 export interface PersonForm {
@@ -42,6 +55,14 @@ export class PeopleApi {
     return firstValueFrom(this.http.put<Person>(`${this.url(sheetId)}/${id}`, form, { headers: this.headers() }));
   }
 
+  /** Take a statement of a person, binding their counting claims to the dues they show now. */
+  statement(sheetId: string, id: number): Promise<Statement> {
+    return firstValueFrom(
+      this.http.post<Statement>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${id}/statement`, null,
+        { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/people`;
   }
@@ -55,6 +76,11 @@ export function personError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name and choose a grade.';
   if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use on this sheet.';
+  return 'Something went wrong; try again.';
+}
+
+export function statementError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return 'Something went wrong; try again.';
 }
 

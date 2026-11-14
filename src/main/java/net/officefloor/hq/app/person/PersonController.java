@@ -5,7 +5,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.session.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -24,9 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PersonController {
 
-    public record PersonView(long id, String name, String grade, long version) {
-        static PersonView of(Person p) {
-            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion());
+    /** A person as the screen shows them, with their statement count and their last statement's
+     *  due-total (two decimals; null when it was n/a or they have none) and date. */
+    public record PersonView(long id, String name, String grade, long version, int statementCount,
+            String statedTotal, LocalDate statementDate) {
+        public static PersonView of(Person p, StatementSummary s) {
+            return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), s.count(),
+                    s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate());
         }
     }
 
@@ -48,7 +54,10 @@ public class PersonController {
     public List<PersonView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId).stream().map(PersonView::of).toList();
+        Map<Long, StatementSummary> summaries = service.statementSummaries(sheetId);
+        return service.list(sheetId).stream()
+                .map(p -> PersonView.of(p, summaries.getOrDefault(p.getId(), StatementSummary.NONE)))
+                .toList();
     }
 
     @GetMapping("/{id}")
@@ -56,7 +65,7 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return PersonView.of(service.get(sheetId, id));
+        return view(service.get(sheetId, id));
     }
 
     @PostMapping
@@ -65,7 +74,7 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
-        return PersonView.of(service.add(sheetId, user.trim(), body.name(), body.grade()));
+        return view(service.add(sheetId, user.trim(), body.name(), body.grade()));
     }
 
     @PutMapping("/{id}")
@@ -74,6 +83,10 @@ public class PersonController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
-        return PersonView.of(service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade()));
+        return view(service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade()));
+    }
+
+    private PersonView view(Person p) {
+        return PersonView.of(p, service.statementSummary(p.getId()));
     }
 }
