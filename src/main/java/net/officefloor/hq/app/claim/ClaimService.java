@@ -14,6 +14,7 @@ import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ public class ClaimService {
     private final SheetService sheets;
     private final RollupService rollup;
     private final PeriodService periods;
+    private final SettingsService settings;
     private final Audit audit;
 
     /** A statement just taken: the person, their statement summary now, and their claims, newest first. */
@@ -37,7 +39,7 @@ public class ClaimService {
     }
 
     public ClaimService(ClaimRepository claims, PersonRepository people, PersonStatementRepository statements,
-            RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, Audit audit) {
+            RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.statements = statements;
@@ -45,6 +47,7 @@ public class ClaimService {
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -99,7 +102,8 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a move its status does not allow is refused (409), as is
-     *  settling by the user who opened the claim (403), and any move of a claim dated in a closed
+     *  settling by the user who opened the claim (403), settling by a clerk a claim
+     *  whose due is above the sheet's clerk limit (403), and any move of a claim dated in a closed
      *  period (423). */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
@@ -116,6 +120,14 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        // a claim bound by a statement settles at its bound figure
+        BigDecimal settling = to == ClaimStatus.SETTLED
+                ? (claim.isStated() ? claim.getStatedDue() : dueOf(claim, person))
+                : null;
+        if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, settling)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "A clerk cannot settle a claim whose due is above the clerk limit");
+        }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         // a voided claim keeps its number (never reused), and the VOIDED record carries it
         Integer number = claim.getNumber();
@@ -125,8 +137,7 @@ public class ClaimService {
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
-            // a claim bound by a statement settles at its bound figure
-            claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : dueOf(claim, person));
+            claim.setSettledDue(settling);
         }
         claims.flush();
         String event = switch (to) {

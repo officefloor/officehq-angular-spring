@@ -159,7 +159,7 @@ export class PersonClaims {
       const claim = await this.api.changeStatus(sheetId, c.id, action);
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
-      this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e) }));
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e, c.openedBy === this.session.user()) }));
     }
   }
 

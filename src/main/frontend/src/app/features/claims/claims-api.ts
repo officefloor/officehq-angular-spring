@@ -116,9 +116,12 @@ export function quickAddError(e: unknown): string {
   return 'Something went wrong; try again.';
 }
 
-export function statusError(e: unknown): string {
+/** Why a status change was refused; `opener` says whether the user is the one who opened the claim. */
+export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status.';
-  if (e instanceof HttpErrorResponse && e.status === 403) return 'The user who opened this claim cannot settle it.';
+  if (e instanceof HttpErrorResponse && e.status === 403) {
+    return opener ? 'The user who opened this claim cannot settle it.' : "This claim's due is above the clerk limit; a steward must settle it.";
+  }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   return 'Something went wrong; try again.';

@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.sheet;
 
 import java.time.LocalDate;
+import java.util.Optional;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,18 @@ public class SheetService {
                 return sheets.findById(id).orElseThrow(() -> e);
             }
         });
+    }
+
+    /** The sheet, if it was ever loaded. */
+    @Transactional(readOnly = true)
+    public Optional<Sheet> find(String id) {
+        return sheets.findById(id);
+    }
+
+    /** Write the changes made to a loaded sheet. */
+    @Transactional
+    public void flush() {
+        sheets.flush();
     }
 
     /** The sheet's today: the date every date decision and default date on the sheet uses. */
