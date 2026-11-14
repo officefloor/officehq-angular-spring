@@ -1,0 +1,101 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 9a6a598b3..dfa26648b 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -150,6 +150,24 @@ export class RateStore {
+     }
+     return map;
+   });
++  /** The months (yyyy-mm) of the calendar year of the sheet's today; none when it has no today. */
++  readonly months = computed(() => {
++    const year = this.session.today()?.slice(0, 4);
++    if (!year) return [];
++    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
++  });
++  /** For each grade and month of `months`, the rate in force on the month's first day, falling back
++   *  to the parent sheets' as `current` does; null when none is. Keyed grade-yyyy-mm. */
++  readonly calendar = computed(() => {
++    const map = new Map<string, string | null>();
++    for (const grade of GRADES) {
++      for (const month of this.months()) {
++        const first = `${month}-01`;
++        map.set(`${grade}-${month}`, rateOn(this.ofOn(grade, first), first));
++      }
++    }
++    return map;
++  });
+ 
+   /** A grade's rates; none when the grade has no rate. */
+   of(grade: string): Rate[] {
+@@ -361,6 +379,27 @@ export class RateStore {
+           }
+         </tbody>
+       </table>
++      <table>
++        <caption>Rate calendar: in force on the first of each month</caption>
++        <thead>
++          <tr>
++            <th scope="col">Grade</th>
++            @for (m of store.months(); track m) {
++              <th scope="col">{{ m }}</th>
++            }
++          </tr>
++        </thead>
++        <tbody>
++          @for (g of grades; track g) {
++            <tr>
++              <th scope="row">{{ g }}</th>
++              @for (m of store.months(); track m) {
++                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ store.calendar().get(g + '-' + m) ?? noRate }}</td>
++              }
++            </tr>
++          }
++        </tbody>
++      </table>
+       <table>
+         <caption>All rates</caption>
+         <thead>
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 8b76494b9..f9da4374b 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -7,6 +7,7 @@ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.crew.Crew;
+@@ -67,22 +68,29 @@ public class PoolService {
+     }
+ 
+     /** The sheet's crews as pools, in the order they were added: each the lead and the members at equal
+-     *  shares, 100.00 split as patrons' shares are (each rounded half to even), the remainder on the lead. */
++     *  shares, 100.00 split as patrons' shares are (each rounded half to even), the remainder on the first.
++     *  A lead who has left the sheet (transferred or merged away) is not among them. */
+     public List<CrewPool> crewPools(String sheetId) {
+         List<Crew> list = crews.findBySheetIdOrderByIdAsc(sheetId);
+         Map<Long, List<CrewMember>> byCrew = crewMembers
+                 .findByCrewIdInOrderByIdAsc(list.stream().map(Crew::getId).toList()).stream()
+                 .collect(Collectors.groupingBy(CrewMember::getCrewId));
++        Set<Long> onSheet = people.findBySheetIdOrderByIdAsc(sheetId).stream().map(Person::getId)
++                .collect(Collectors.toSet());
+         return list.stream().map(crew -> {
+             List<Long> ids = new ArrayList<>();
+             ids.add(crew.getLeadId());
+             byCrew.getOrDefault(crew.getId(), List.of()).forEach(m -> ids.add(m.getPersonId()));
++            ids.removeIf(id -> !onSheet.contains(id));
+             return new CrewPool(crew, ids, equalShares(ids.size()));
+         }).toList();
+     }
+ 
+-    /** 100.00 split equally over this many, each rounded half to even, the remainder on the first. */
++    /** 100.00 split equally over this many, each rounded half to even, the remainder on the first; none for none. */
+     private static List<BigDecimal> equalShares(int count) {
++        if (count == 0) {
++            return List.of();
++        }
+         BigDecimal each = HUNDRED.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_EVEN);
+         List<BigDecimal> shares = new ArrayList<>();
+         for (int i = 0; i < count; i++) {

@@ -1,0 +1,64 @@
+{
+  "checkpoint": 170,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp170_rate-calendar",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow a rate calendar: for each grade and each month of the sheet's today's calendar year, the\nrate in force on the first day of that month (n/a when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6af6b363242540b93959648a80fc4759c5319778",
+  "reset_sha": "",
+  "preagent_sha": "c3cbe676754efa46a45cec4216f079a98d02732b",
+  "prev_sha": "c3cbe676754efa46a45cec4216f079a98d02732b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8519304000000001,
+    "input_tokens": 48,
+    "output_tokens": 8010,
+    "cache_read_tokens": 1061852,
+    "cache_creation_tokens": 59896,
+    "num_turns": 25,
+    "duration_ms": 871191,
+    "duration_api_ms": 86017,
+    "model": "claude-opus-5-5",
+    "session_id": "3881e7c2-5002-4ad0-b910-906272092b14",
+    "stop_reason": "success",
+    "result_text": "The rate calendar is in, and `bin/e2e` now passes all 4 tests.\n\n**The calendar** (`src/main/frontend/src/app/features/rates/rates.ts`): a new table under \"In force today\" in the Rates section. It has one row per grade (A, B, C) and one column for each month of the calendar year that contains the sheet's today. Each cell (`rate-month-<grade>-<yyyy-mm>`) shows the rate in force on the 1st of that month, or `n/a` when there is none. It works this out the same way as the existing \"in force today\" column, so to-dates and fallback to parent sheets behave the same. Changing the sheet's today moves the calendar to that year. The data was already being loaded, so nothing changed on the server or in the stored data.\n\n**A separate bug the test also caught** (`src/main/java/net/officefloor/hq/app/pool/PoolService.java`): this was already there and wasn't caused by the calendar. Moving a person to another sheet removed them as a crew member but not as a crew's lead. So when Cam, the lead of crew C1, was moved away, the crew still split its 100% share between Cam and Ada, and Ada showed 50.00 instead of 100.00. Now a crew splits its share only among its lead and members who are still on the sheet (people merged away are left out too). A crew with nobody left no longer causes a divide-by-zero.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8519304000000001,
+        "num_turns": 25,
+        "duration_ms": 871191,
+        "duration_api_ms": 86017,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp170.agent.jsonl",
+  "agent_diff_file": "cp170.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
