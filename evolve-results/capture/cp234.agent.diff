@@ -1,0 +1,130 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ba62a301b..0c48fadb7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -357,6 +357,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
++      <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people as CSV</button>
+       <p>
+         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
+         @if (bulkOpenResult(); as r) {
+@@ -2118,6 +2119,24 @@ export class People {
+     ]);
+   }
+ 
++  /** Download the people of the sheet's whole tree as CSV: this sheet's first, in list order with the
++   *  grade and due-total as shown, then those of the tree's other sheets, by sheet id, as each shows them. */
++  protected async exportTree(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (sheet === null) return;
++    const others = await firstValueFrom(
++      this.http.get<{ sheet: string; name: string; grade: string; dueTotal: string }[]>(
++        `/api/sheets/${encodeURIComponent(sheet)}/tree-people`,
++      ),
++    );
++    if (this.session.sheetId() !== sheet) return;
++    this.downloadCsv('tree', [
++      ['sheet', 'name', 'grade', 'due-total'],
++      ...this.people().map((p) => [sheet, p.name, this.gradeOf(p), this.dueBy(p)]),
++      ...others.map((p) => [p.sheet, p.name, p.grade, p.dueTotal]),
++    ]);
++  }
++
+   /** Download the period figures as CSV: one line per person and period, people in list order and
+    *  periods in the order added, with the due-total and carried figure as the rows show them. */
+   protected exportPeriods(): void {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index bd07008ae..17daade9c 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -204,6 +204,25 @@ public class RollupService {
+         return new Breakdown(gradeDues, statusCounts);
+     }
+ 
++    /** A person on a sheet as its list shows them now: the name, the grade in force on the sheet's today
++     *  and the due-total ("n/a" for none). */
++    public record PersonLine(String name, String grade, String dueTotal) {
++    }
++
++    /** Each person on the sheet, retired people included, in list order as its list shows them now. */
++    @Transactional(readOnly = true)
++    public List<PersonLine> personLines(String sheetId) {
++        LocalDate today = sheets.today(sheetId);
++        Map<Long, String> dues = dueTotals(sheetId);
++        List<PersonLine> lines = new ArrayList<>();
++        for (Person person : personService.list(sheetId)) {
++            String grade = grades.gradeOn(person.getId(), today);
++            lines.add(new PersonLine(person.getName(), grade == null ? "" : grade,
++                    dues.getOrDefault(person.getId(), NO_RATE)));
++        }
++        return lines;
++    }
++
+     /** Each person's due-total on the sheet as it shows it now ("n/a" for none), by person id in list order. */
+     @Transactional(readOnly = true)
+     public Map<Long, String> dueTotals(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 16e96d06c..c99486d02 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -130,6 +130,22 @@ public class SheetController {
+                 statusCounts, personFigures, overdueCount);
+     }
+ 
++    /** A person on another sheet of the tree as that sheet's list shows them now. */
++    public record TreePersonView(String sheet, String name, String grade, String dueTotal) {
++    }
++
++    /** The people of the other sheets of the sheet's whole tree, sheets by id, each sheet's people in
++     *  list order as that sheet shows them now. */
++    @GetMapping("/{id}/tree-people")
++    public List<TreePersonView> treePeople(@PathVariable @NotBlank @Size(max = 200) String id) {
++        List<TreePersonView> found = new ArrayList<>();
++        for (String sheet : service.wholeTree(id.trim())) {
++            rollups.personLines(sheet).forEach(p -> found.add(new TreePersonView(sheet, p.name(), p.grade(),
++                    p.dueTotal())));
++        }
++        return found;
++    }
++
+     /** The sheet's due-total per grade, as its summary shows it now or as it stood at the end of the
+      *  screen's as-of date; a sheet never used has none and is not started. */
+     @GetMapping("/{id}/grade-due-totals")
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index edc4cde17..f585f008f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -6,6 +6,7 @@ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Set;
++import java.util.TreeSet;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.Preview;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -156,6 +157,23 @@ public class SheetService {
+         return found;
+     }
+ 
++    /** The ids of the other sheets of the whole tree the sheet is in: its root (the topmost ancestor
++     *  that exists) and all the root's descendants, by sheet id; the sheet itself is not among them. */
++    public List<String> wholeTree(String id) {
++        String root = id;
++        Set<String> seen = new HashSet<>(Set.of(id));
++        for (String up = sheets.findById(id).map(Sheet::getParentId).orElse(null); up != null && seen.add(up);
++                up = sheets.findById(up).map(Sheet::getParentId).orElse(null)) {
++            if (sheets.existsById(up)) {
++                root = up;
++            }
++        }
++        Set<String> found = new TreeSet<>(descendants(root));
++        found.add(root);
++        found.remove(id);
++        return new ArrayList<>(found);
++    }
++
+     /** Whether a sheet with this id was ever used (loaded or changed). */
+     public boolean exists(String id) {
+         return sheets.existsById(id);
