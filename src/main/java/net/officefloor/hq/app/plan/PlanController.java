@@ -15,6 +15,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.annotation.Validated;
@@ -33,14 +34,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets/{sheetId}/plans")
 public class PlanController {
 
-    /** A plan as the screen shows it, with how many claims it has made so far. */
+    /** A plan as the screen shows it, with how many claims it has made so far and its next dates: the
+     *  first five plan dates after the sheet's today and on or before its end. */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every,
-            Integer day, LocalDate end, int generated) {
-        static PlanView of(Plan plan, int generated) {
+            Integer day, LocalDate end, int generated, List<LocalDate> nextDates) {
+        static PlanView of(Plan plan, int generated, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated);
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated, plan.datesAfter(today, NEXT_DATES));
         }
     }
+
+    /** How many next dates a plan shows. */
+    private static final int NEXT_DATES = 5;
 
     /** A plan's fields as typed: the amount, interval and day of the month are checked by the service;
      *  a blank start takes the sheet's today. */
@@ -55,11 +60,13 @@ public class PlanController {
     private final PlanService service;
     private final ClaimService claims;
     private final RollupService rollups;
+    private final SheetService sheets;
 
-    public PlanController(PlanService service, ClaimService claims, RollupService rollups) {
+    public PlanController(PlanService service, ClaimService claims, RollupService rollups, SheetService sheets) {
         this.service = service;
         this.claims = claims;
         this.rollups = rollups;
+        this.sheets = sheets;
     }
 
     /** The sheet's plans in the order they were added: as they stand now, or as they stood at the end
@@ -78,7 +85,7 @@ public class PlanController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return PlanView.of(service.add(sheet, by, request.personId(), request.amount(), request.start(),
-                request.every(), request.day(), request.end()), 0);
+                request.every(), request.day(), request.end()), 0, sheets.today(sheet));
     }
 
     /** Make the plans' claims due by the sheet's today, then record the figures they moved. */
@@ -96,7 +103,8 @@ public class PlanController {
     private List<PlanView> views(String sheet, LocalDate asOf) {
         List<Plan> them = service.list(sheet, asOf);
         Map<Long, Integer> generated = service.generated(them, asOf);
-        return them.stream().map(p -> PlanView.of(p, generated.getOrDefault(p.getId(), 0))).toList();
+        LocalDate today = sheets.today(sheet);
+        return them.stream().map(p -> PlanView.of(p, generated.getOrDefault(p.getId(), 0), today)).toList();
     }
 
     /** A bad amount, interval or day of the month, an end before the start, or a date that is not a real yyyy-mm-dd date. */

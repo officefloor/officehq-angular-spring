@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -116,6 +117,29 @@ public class Plan {
             return dates;
         }
         for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
+            dates.add(d);
+        }
+        return dates;
+    }
+
+    /** The first so many plan dates after the day given and on or before its end, the earliest first. */
+    public List<LocalDate> datesAfter(LocalDate after, int count) {
+        List<LocalDate> dates = new ArrayList<>();
+        if (day != null) {
+            YearMonth m = YearMonth.from(after.isBefore(start) ? start : after);
+            for (; dates.size() < count && !m.atDay(1).isAfter(end); m = m.plusMonths(1)) {
+                LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
+                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
+                    dates.add(d);
+                }
+            }
+            return dates;
+        }
+        LocalDate d = start;
+        if (!after.isBefore(start)) {
+            d = start.plusDays((ChronoUnit.DAYS.between(start, after) / every + 1) * every);
+        }
+        for (; dates.size() < count && !d.isAfter(end); d = d.plusDays(every)) {
             dates.add(d);
         }
         return dates;

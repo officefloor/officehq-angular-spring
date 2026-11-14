@@ -16,6 +16,8 @@ export interface Plan {
   end: string;
   /** How many claims the plan has made so far. */
   generated: number;
+  /** The first five plan dates after the sheet's today and on or before the end, the earliest first. */
+  nextDates: string[];
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -88,7 +90,8 @@ export class PlanStore {
             every <span data-testid="plan-every">{{ pl.every }}</span> days
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>;
-          made <span data-testid="plan-generated">{{ pl.generated }}</span>
+          made <span data-testid="plan-generated">{{ pl.generated }}</span>;
+          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
         </li>
       }
     </ul>
