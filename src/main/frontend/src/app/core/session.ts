@@ -9,6 +9,8 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
+  /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
+  readonly today = signal<string | null>(null);
 
   /** Sign in by name; resolves to an error message, or null on success. */
   async signIn(name: string): Promise<string | null> {
@@ -27,16 +29,40 @@ export class Session {
     if (!user) return 'Sign in first.';
     try {
       const res = await firstValueFrom(
-        this.http.post<{ id: string }>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
           headers: { 'X-User': user },
         }),
       );
       this.sheetId.set(res.id);
+      this.today.set(res.today);
       return null;
     } catch (e) {
       return message(e, 'Enter a sheet id without spaces.');
     }
   }
+
+  /** Change the active sheet's today; resolves to an error message, or null. */
+  async setToday(today: string): Promise<string | null> {
+    const user = this.user();
+    const id = this.sheetId();
+    if (!user || !id) return 'Load a sheet first.';
+    try {
+      const res = await firstValueFrom(
+        this.http.put<SheetView>(`/api/sheets/${encodeURIComponent(id)}/today`, { today }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === res.id) this.today.set(res.today);
+      return null;
+    } catch (e) {
+      return message(e, 'Enter a date as yyyy-mm-dd.');
+    }
+  }
+}
+
+interface SheetView {
+  id: string;
+  today: string;
 }
 
 function message(e: unknown, invalid: string): string {

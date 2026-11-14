@@ -19,6 +19,12 @@ import { Session } from '../../core/session';
       </form>
       @if (session.sheetId(); as id) {
         <p>Sheet <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+        <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+        <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Sheet today">
+          <label for="sheet-today-input">Change today</label>
+          <input id="sheet-today-input" type="date" data-testid="sheet-today-input" formControlName="today" />
+          <button type="submit" data-testid="sheet-today-save">Save today</button>
+        </form>
       } @else {
         <p data-testid="home-empty">Load a sheet to begin.</p>
       }
@@ -43,12 +49,16 @@ export class Home {
   protected readonly sheetForm = new FormGroup({
     sheetId: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
+  protected readonly todayForm = new FormGroup({
+    today: new FormControl('', { nonNullable: true, validators: Validators.required }),
+  });
   protected readonly signinError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
 
   constructor() {
     this.signinForm.valueChanges.subscribe(() => this.signinError.set(null));
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
+    this.todayForm.valueChanges.subscribe(() => this.sheetError.set(null));
   }
 
   protected async signIn(): Promise<void> {
@@ -69,5 +79,15 @@ export class Home {
       return;
     }
     this.sheetError.set(await this.session.loadSheet(id));
+  }
+
+  protected async saveToday(): Promise<void> {
+    this.sheetError.set(null);
+    const today = this.todayForm.controls.today.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+      this.sheetError.set('Enter a date as yyyy-mm-dd.');
+      return;
+    }
+    this.sheetError.set(await this.session.setToday(today));
   }
 }
