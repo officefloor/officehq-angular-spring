@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { PeriodStore } from '../periods/periods';
 import { SettingStore } from '../settings/settings';
 
 export interface PoolMember {
@@ -393,6 +394,7 @@ export class Pools {
 
   protected readonly store = inject(PoolStore);
   private readonly settings = inject(SettingStore);
+  private readonly periods = inject(PeriodStore);
   private readonly session = inject(Session);
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
@@ -404,9 +406,11 @@ export class Pools {
   private readonly busy = signal(false);
 
   constructor() {
-    // The cuts each period ended with are re-read whenever what they are worked out from may have changed.
+    // The cuts each period ended with are re-read whenever what they are worked out from may have
+    // changed, or a period is closed (fixing them as they stand) or reopened (making them live again).
     effect(() => {
       this.people();
+      this.periods.periods();
       this.store.pools();
       this.settings.pot();
       this.session.today();

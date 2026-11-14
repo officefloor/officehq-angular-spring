@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
@@ -79,6 +80,12 @@ public class Period {
     /** Whether a steward has locked the period: a locked period cannot be reopened. */
     @Column(name = "locked", nullable = false)
     private boolean locked;
+
+    /** The pools, pot and people as they stood when the period was closed or soft-closed (JSON), each
+     *  pool member's cut for it worked out from these; null while it is open. */
+    @Lob
+    @Column(name = "frozen_pools")
+    private String frozenPools;
 
     protected Period() {
     }
@@ -186,6 +193,16 @@ public class Period {
         this.closedTotal = null;
         this.personTotals.clear();
         this.personCarried.clear();
+        this.frozenPools = null;
+    }
+
+    public String getFrozenPools() {
+        return frozenPools;
+    }
+
+    /** Fix the pools, pot and people as they stand (JSON), the period's cuts worked out from them. */
+    public void freezePools(String frozenPools) {
+        this.frozenPools = frozenPools;
     }
 
     /** Whether the date falls in the period (inclusive). */

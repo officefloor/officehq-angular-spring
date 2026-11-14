@@ -24,6 +24,7 @@ import net.officefloor.hq.app.setting.Permission;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,10 +41,12 @@ public class PeriodService {
     private final SettingService settings;
     private final History history;
     private final Audit audit;
+    private final ApplicationEventPublisher events;
 
     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
             ClaimService claimService, PersonRepository people, PersonService personService, SettingService settings,
-            History history, Audit audit) {
+            History history, Audit audit, ApplicationEventPublisher events) {
+        this.events = events;
         this.history = history;
         this.periods = periods;
         this.sheets = sheets;
@@ -284,6 +287,7 @@ public class PeriodService {
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
         BigDecimal total = sum(personTotals);
         period.softClose(total, personTotals, personCarried(sheetId, period));
+        events.publishEvent(new PeriodFixing(period));
         Period saved = save(period);
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
                 + " total=" + total.toPlainString());
@@ -295,6 +299,7 @@ public class PeriodService {
         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
         BigDecimal total = sum(personTotals);
         period.close(total, personTotals, personCarried(sheetId, period));
+        events.publishEvent(new PeriodFixing(period));
         Period saved = save(period);
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
                 + " total=" + total.toPlainString() + suffix);

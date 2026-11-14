@@ -27,9 +27,10 @@ public class PoolHistoryService {
     }
 
     /** A period that has ended and, at the end of its to-date, the pot (null for none), the pools with
-     *  their members, the crews as pools and the people as they stood. */
+     *  their members, the crews as pools and the people as they stood; or, for one closed or
+     *  soft-closed, those fixed when it was (frozen, JSON, the rest unused). */
     public record PeriodPools(String period, LocalDate day, BigDecimal pot, List<PoolService.PoolWithMembers> pools,
-            List<PoolService.CrewPool> crews, List<PersonThen> people) {
+            List<PoolService.CrewPool> crews, List<PersonThen> people, String frozen) {
     }
 
     private final PoolService pools;
@@ -52,34 +53,45 @@ public class PoolHistoryService {
     }
 
     /** Each period whose to-date is on or before the sheet's today (the as-of date standing in for it
-     *  while one is set), the earliest first, with the sheet's pools as they stood at the end of it. */
+     *  while one is set), the earliest first, with the sheet's pools as they stood at the end of it; a
+     *  closed or soft-closed one (while no as-of date is set) with those fixed when it was closed. */
     public List<PeriodPools> byPeriod(String sheetId, LocalDate asOf) {
         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
-        List<Map.Entry<String, LocalDate>> ended = new ArrayList<>();
+        List<PeriodPools> list = new ArrayList<>();
+        List<Person> everyone = people.findBySheetIdOrderByIdAsc(sheetId);
         if (asOf == null) {
             for (Period period : periods.list(sheetId)) {
-                ended.add(Map.entry(period.getName(), period.getTo()));
+                if (period.getTo().isAfter(today)) {
+                    continue;
+                }
+                list.add(period.getFrozenPools() != null
+                        ? new PeriodPools(period.getName(), period.getTo(), null, List.of(), List.of(), List.of(),
+                                period.getFrozenPools())
+                        : at(sheetId, period.getName(), period.getTo(), everyone));
             }
         } else {
             for (History.PeriodThen period : periods.listAsOf(sheetId, asOf)) {
-                ended.add(Map.entry(period.name(), period.to()));
+                if (!period.to().isAfter(today)) {
+                    list.add(at(sheetId, period.name(), period.to(), everyone));
+                }
             }
-        }
-        List<Person> everyone = people.findBySheetIdOrderByIdAsc(sheetId);
-        List<PeriodPools> list = new ArrayList<>();
-        for (Map.Entry<String, LocalDate> period : ended) {
-            LocalDate day = period.getValue();
-            if (day.isAfter(today)) {
-                continue;
-            }
-            Map<Long, History.PersonThen> then = history.people(sheetId, day);
-            Map<Long, List<PersonHold>> holds = personService.holds(sheetId, day);
-            List<PersonThen> them = everyone.stream().map(p -> new PersonThen(p,
-                    then.containsKey(p.getId()) ? then.get(p.getId()).retiredFrom() != null : p.isRetired(),
-                    holds.getOrDefault(p.getId(), List.of()))).toList();
-            list.add(new PeriodPools(period.getKey(), day, settings.pot(sheetId, day), pools.list(sheetId, day),
-                    pools.crewPools(sheetId, day), them));
         }
         return list;
+    }
+
+    /** The period's pools, pot and people as they stand now, at the sheet's today, to be fixed on it. */
+    public PeriodPools now(String sheetId, String period) {
+        return at(sheetId, period, sheets.today(sheetId), people.findBySheetIdOrderByIdAsc(sheetId));
+    }
+
+    /** The sheet's pools, pot and people as they stood at the end of a day. */
+    private PeriodPools at(String sheetId, String period, LocalDate day, List<Person> everyone) {
+        Map<Long, History.PersonThen> then = history.people(sheetId, day);
+        Map<Long, List<PersonHold>> holds = personService.holds(sheetId, day);
+        List<PersonThen> them = everyone.stream().map(p -> new PersonThen(p,
+                then.containsKey(p.getId()) ? then.get(p.getId()).retiredFrom() != null : p.isRetired(),
+                holds.getOrDefault(p.getId(), List.of()))).toList();
+        return new PeriodPools(period, day, settings.pot(sheetId, day), pools.list(sheetId, day),
+                pools.crewPools(sheetId, day), them, null);
     }
 }

@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.json.JsonMapper;
 
 @RestController
 @Validated
@@ -70,6 +71,10 @@ public class PoolController {
      *  none), the pools and crews as pools, and the people, as they stood. */
     public record PeriodPoolsView(String period, LocalDate day, String pot, List<PoolView> pools,
             List<PersonThenView> people) {
+        static PeriodPoolsView of(PoolHistoryService.PeriodPools then, JsonMapper json) {
+            return then.frozen() != null ? json.readValue(then.frozen(), PeriodPoolsView.class) : of(then);
+        }
+
         static PeriodPoolsView of(PoolHistoryService.PeriodPools then) {
             List<PoolView> pools = new ArrayList<>(then.pools().stream().map(PoolView::of).toList());
             then.crews().stream().map(PoolView::of).forEach(pools::add);
@@ -91,10 +96,12 @@ public class PoolController {
 
     private final PoolService service;
     private final PoolHistoryService pastPools;
+    private final JsonMapper json;
 
-    public PoolController(PoolService service, PoolHistoryService pastPools) {
+    public PoolController(PoolService service, PoolHistoryService pastPools, JsonMapper json) {
         this.service = service;
         this.pastPools = pastPools;
+        this.json = json;
     }
 
     /** The sheet's pools, in the order they were added, then its crews as pools, in the order they were added. */
@@ -106,12 +113,13 @@ public class PoolController {
     }
 
     /** Each period whose to-date is on or before the sheet's today, the earliest first, with the pools
-     *  as they stood at the end of it; while the screen is set to an as-of date, that date stands in for
+     *  as they stood at the end of it (a closed or soft-closed one's as they stood when it was closed); while the screen is set to an as-of date, that date stands in for
      *  the sheet's today. */
     @GetMapping("/by-period")
     public List<PeriodPoolsView> byPeriod(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
-        return pastPools.byPeriod(sheetId.trim(), AsOf.parse(asOfHeader)).stream().map(PeriodPoolsView::of).toList();
+        return pastPools.byPeriod(sheetId.trim(), AsOf.parse(asOfHeader)).stream()
+                .map(then -> PeriodPoolsView.of(then, json)).toList();
     }
 
     /** Add a pool to the sheet. */
