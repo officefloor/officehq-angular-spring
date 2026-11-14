@@ -1,0 +1,64 @@
+{
+  "checkpoint": 167,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp167_crew-lead-total",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user's crew total when a person with the user's name leads a\ncrew: the due-totals of the crews they lead, added up; nothing otherwise.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user's crew total when a person with the user's name leads a\ncrew: the due-totals of the crews they lead, added up; nothing otherwise.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c1b01585fc13ae27ced7426b1f487d9d8d8099c8",
+  "reset_sha": "",
+  "preagent_sha": "bbb7ab6f96dc3ccb3b2821d1ddf2ef57ee04669a",
+  "prev_sha": "bbb7ab6f96dc3ccb3b2821d1ddf2ef57ee04669a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.418741,
+    "input_tokens": 22,
+    "output_tokens": 4211,
+    "cache_read_tokens": 324085,
+    "cache_creation_tokens": 33702,
+    "num_turns": 11,
+    "duration_ms": 245792,
+    "duration_api_ms": 41846,
+    "model": "claude-opus-5-5",
+    "session_id": "32d2d0e6-f9a0-475a-889b-ea7009c77894",
+    "stop_reason": "success",
+    "result_text": "The header now shows the signed-in user's crew total, and all 4 tests in `bin/e2e` pass.\n\n**How it works:** The header has a new \"My crews' due\" value (`my-crew-due-total`). It finds the person whose name or alias matches the signed-in user (ignoring case) \u2014 the same person \"My due\" uses. It then adds up the due-totals of every crew that person leads. If no such person exists, or they lead no crew, it's blank. If they lead crews that have no due figures at all, it shows `0.00`.\n\n**What changed (front end only):** Crews and their due-totals were already loaded and worked out in the browser, so nothing on the server, in the database or in the audit file needed to change.\n- `features/crews/crews.ts`: I moved the crew due-total sum into a shared `crewDueCents()` function, so the crew rows and the header total use the same calculation.\n- `features/people/people.ts`: the person matching the signed-in user is now looked up in one place (`me`), which both \"My due\" and the new `myCrewDue` total use.\n- `features/counters/counters.ts`: displays the new value in the header.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.418741,
+        "num_turns": 11,
+        "duration_ms": 245792,
+        "duration_api_ms": 41846,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp167.agent.jsonl",
+  "agent_diff_file": "cp167.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,111 @@
+diff --git a/src/main/frontend/src/app/features/counters/counters.ts b/src/main/frontend/src/app/features/counters/counters.ts
+index e900fe07e..9901964cc 100644
+--- a/src/main/frontend/src/app/features/counters/counters.ts
++++ b/src/main/frontend/src/app/features/counters/counters.ts
+@@ -25,6 +25,8 @@ import { StatusSummary } from '../summary/summary';
+         <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
+         <dt>My overdue</dt>
+         <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
++        <dt>My crews' due</dt>
++        <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() }}</dd>
+         <dt>People with sub-sheets</dt>
+         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
+         <dt>Due in total with sub-sheets</dt>
+@@ -43,6 +45,8 @@ export class Counters {
+   /** The signed-in user's own figures, when a person on the sheet has their name; blank otherwise. */
+   readonly myDueTotal = input.required<string>();
+   readonly myOverdueTotal = input.required<string>();
++  /** The due-totals of the crews the user's person leads, added up; blank when they lead none. */
++  readonly myCrewDueTotal = input.required<string>();
+   readonly consolidatedPeopleCount = input.required<number>();
+   readonly consolidatedDueTotal = input.required<string>();
+   readonly consolidatedOverdueTotal = input.required<string>();
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 68b98d294..aafc2eb22 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -73,6 +73,13 @@ export class CrewStore {
+   }
+ }
+ 
++/** A crew's due-total in cents: its lead's and its members' due-totals added up, n/a skipped. */
++export function crewDueCents(crew: Crew, people: ReadonlyMap<number, CrewPerson>): number {
++  return [crew.leadId, ...crew.memberIds]
++    .map((id) => people.get(id)?.due ?? null)
++    .reduce<number>((sum, d) => sum + (d ?? 0), 0);
++}
++
+ /** A crew as its row shows it: its lead's name, its members' names and its due-total. */
+ interface CrewRow {
+   crew: Crew;
+@@ -161,14 +168,11 @@ export class Crews {
+   protected readonly rows = computed<CrewRow[]>(() => {
+     const byId = new Map(this.people().map((p) => [p.id, p]));
+     return this.store.crews().map((crew) => {
+-      const due = [crew.leadId, ...crew.memberIds]
+-        .map((id) => byId.get(id)?.due ?? null)
+-        .reduce<number>((sum, d) => sum + (d ?? 0), 0);
+       return {
+         crew,
+         lead: byId.get(crew.leadId)?.name ?? '',
+         members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
+-        dueTotal: money(due),
++        dueTotal: money(crewDueCents(crew, byId)),
+       };
+     });
+   });
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6fa2fec8d..d39257623 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -13,7 +13,7 @@ import { Summary } from '../summary/summary';
+ import { PersonPlans, PlanGenerate } from '../plans/plans';
+ import { Counters } from '../counters/counters';
+ import { PoolStore, Pools, figure, personCutTotals } from '../pools/pools';
+-import { Crews } from '../crews/crews';
++import { CrewStore, Crews, crewDueCents } from '../crews/crews';
+ 
+ /** A hold put on a person: from its from-date to its to-date, both included (null: it does not end). */
+ interface Hold {
+@@ -140,6 +140,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+       [overdueTotal]="overdueTotal()"
+       [myDueTotal]="mine()?.dueTotal ?? ''"
+       [myOverdueTotal]="mine()?.overdueTotal ?? ''"
++      [myCrewDueTotal]="myCrewDue()"
+       [consolidatedPeopleCount]="consolidatedPeople()"
+       [consolidatedDueTotal]="consolidatedDue()"
+       [consolidatedOverdueTotal]="consolidatedOverdue()"
+@@ -855,6 +856,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+ export class People {
+   private readonly http = inject(HttpClient);
+   private readonly session = inject(Session);
++  private readonly crewStore = inject(CrewStore);
+   protected readonly rates = inject(RateStore);
+   protected readonly periods = inject(PeriodStore);
+   private readonly voidReasons = inject(VoidReasonStore);
+@@ -1027,11 +1029,23 @@ export class People {
+   /** The signed-in user's own figures: those of the person whose name or an alias is the user's
+    *  name, as names are compared; null when there is no such person. */
+   protected readonly mine = computed(() => {
++    const me = this.me();
++    return me ? { dueTotal: this.dueBy(me), overdueTotal: this.overdueTotalOf(me) } : null;
++  });
++  /** The person whose name or an alias is the signed-in user's name, as names are compared. */
++  private readonly me = computed(() => {
+     const user = this.session.user()?.toLowerCase();
+-    const me = this.people().find(
++    return this.people().find(
+       (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
+     );
+-    return me ? { dueTotal: this.dueBy(me), overdueTotal: this.overdueTotalOf(me) } : null;
++  });
++  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
++  protected readonly myCrewDue = computed(() => {
++    const me = this.me();
++    const led = me ? this.crewStore.crews().filter((c) => c.leadId === me.id) : [];
++    if (led.length === 0) return '';
++    const byId = new Map(this.crewPeople().map((p) => [p.id, p]));
++    return money(led.reduce((sum, c) => sum + crewDueCents(c, byId), 0));
+   });
+   /** The sheet's descendants' figures added up, as the store last told them. */
+   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
