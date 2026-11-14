@@ -112,6 +112,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** Whether a steward waived the claim's late charge: it bears none from then on. */
+    @Column(name = "waived", nullable = false)
+    private boolean waived;
+
     /** How many proofs have been added to the claim. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -169,6 +173,7 @@ public class Claim {
         split.openedBy = openedBy;
         split.splitFrom = from.number;
         split.tags = from.tags;
+        split.waived = from.waived;
         return split;
     }
 
@@ -197,6 +202,13 @@ public class Claim {
         this.proofs = proofs;
         this.splitFrom = splitFrom;
         this.lateEntry = lateEntry;
+        return this;
+    }
+
+    /** Whether the claim, as it was once saved, had its late charge waived; on a copy made by
+     *  {@link #asItWas}. */
+    public Claim withWaived(boolean waived) {
+        this.waived = waived;
         return this;
     }
 
@@ -396,6 +408,15 @@ public class Claim {
 
     public void setEscalated(boolean escalated) {
         this.escalated = escalated;
+    }
+
+    public boolean isWaived() {
+        return waived;
+    }
+
+    /** Waive the claim's late charge. */
+    public void waive() {
+        this.waived = true;
     }
 
     public int getProofs() {

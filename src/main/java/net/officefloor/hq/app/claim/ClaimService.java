@@ -572,6 +572,29 @@ public class ClaimService {
         return saved;
     }
 
+    /** A steward waives an OPEN or PENDING claim's late charge: it bears none from then on, whatever
+     *  its overdue state, and CLAIM_WAIVED is written. Anyone else, a claim in any other status, one
+     *  already waived, or one dated in a closed period, is refused. */
+    @Transactional
+    public Claim waive(String sheetId, String user, Long personId, Long id) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new WaiveForbiddenException(user);
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new WaiveRefusedException("A " + claim.getStatus() + " claim's late charge cannot be waived");
+        }
+        if (claim.isWaived()) {
+            throw new WaiveRefusedException("The claim's late charge is already waived");
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        claim.waive();
+        Claim saved = claims.saveAndFlush(claim);
+        record("CLAIM_WAIVED", sheetId, user, person, saved);
+        return saved;
+    }
+
     /** Remind an OPEN or PENDING claim: REMIND is written and the claim's reminded date is the sheet's
      *  today. A claim in any other status, or one already reminded on the sheet's today, is refused. When
      *  the sheet has an escalation gap and the claim's previous reminder was at least that many days before
@@ -968,12 +991,12 @@ public class ClaimService {
      *  days), compounding: the late percent in force on that boundary date of the figure plus the charges
      *  of the boundaries before it, rounded to two decimals as the claim's date decides (see roundingOf), the
      *  charges added up. Never bound by a statement: it follows the
-     *  sheet's today. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
+     *  sheet's today. A waived claim bears none. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
      *  claim as if it were still OPEN. */
     private BigDecimal lateChargeOf(String sheetId, Person person, Claim claim, BigDecimal figure, boolean open,
             LocalDate asOf) {
         BigDecimal none = BigDecimal.ZERO.setScale(2);
-        if (!open || claim.isCorrection()) {
+        if (!open || claim.isCorrection() || claim.isWaived()) {
             return none;
         }
         LocalDate from = overdueFrom(sheetId, person, claim, asOf);

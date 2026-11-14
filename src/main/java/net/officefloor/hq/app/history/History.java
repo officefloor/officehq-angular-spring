@@ -38,7 +38,8 @@ public class History {
                         rs.getBigDecimal("amount"), rs.getObject("claim_date", LocalDate.class),
                         rs.getObject("due_by", LocalDate.class), ClaimStatus.valueOf(rs.getString("status")),
                         rs.getBigDecimal("settled_due"), rs.getBoolean("stated"), rs.getBigDecimal("stated_due"),
-                        rs.getString("corrects_number"), rs.getObject("deferred_until", LocalDate.class)),
+                        rs.getString("corrects_number"), rs.getObject("deferred_until", LocalDate.class))
+                        .withWaived(rs.getBoolean("waived")),
                 claimId, day).stream().findFirst();
     }
 
@@ -61,6 +62,7 @@ public class History {
                             rs.getObject("due_by", LocalDate.class), ClaimStatus.valueOf(rs.getString("status")),
                             rs.getBigDecimal("settled_due"), rs.getBoolean("stated"), rs.getBigDecimal("stated_due"),
                             rs.getString("corrects_number"), rs.getObject("deferred_until", LocalDate.class));
+                    was.withWaived(rs.getBoolean("waived"));
                     Claim is = current.get(id);
                     if (rs.getBoolean("complete")) {
                         was.withRest(rs.getString("claim_number"), rs.getString("opened_by"), rs.getString("note"),

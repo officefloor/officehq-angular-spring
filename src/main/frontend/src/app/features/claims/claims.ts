@@ -74,6 +74,8 @@ export interface Claim {
   /** The claim's lines, oldest first, each as <label> <qty> x <unit>; empty when it has none. A claim
    *  with lines has them added up as its amount. */
   lines: string[];
+  /** Whether a steward waived the claim's late charge: it bears none from then on. */
+  waived: boolean;
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -155,7 +157,8 @@ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | nul
  *  days an OPEN or PENDING claim is overdue, the late percent in force on that boundary (its due-by plus
  *  30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding), rounded
  *  like a due, the charges added up (a statement never binds
- *  the charge; settling freezes the due; a correction has none); null when it has no figure. */
+ *  the charge; settling freezes the due; a correction or a waived claim has none); null when it has no
+ *  figure. */
 export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string) => number, late: Late): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
   const halfUp = roundsHalfUp(claim, late);
@@ -163,7 +166,7 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
   if (figure === null) return null;
   if (isCorrection(claim)) return figure;
   const grace = late.grace(claim);
-  const periods = Math.floor(daysOverdue(claim, late.today, grace) / 30);
+  const periods = claim.waived ? 0 : Math.floor(daysOverdue(claim, late.today, grace) / 30);
   let charge = 0;
   for (let boundary = 1; boundary <= periods; boundary++) {
     const pct = late.pct(plusDays(claim.dueBy, grace + 30 * boundary));
@@ -324,6 +327,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+          <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
@@ -375,6 +379,9 @@ const NUMBER = /^\S+$/;
           </button>
           <button type="button" data-testid="claim-remind" [attr.aria-label]="'Remind claim ' + c.id" (click)="remind(c)">
             Remind
+          </button>
+          <button type="button" data-testid="claim-waive" [attr.aria-label]="'Waive the late charge of claim ' + c.id" (click)="waive(c)">
+            Waive late charge
           </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -838,6 +845,25 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message: 'The claim could not be reminded: only an open or pending claim can be, once a day.',
+      });
+    }
+  }
+
+  /** Waive an OPEN or PENDING claim's late charge; anyone but a steward, a claim in any other status,
+   *  or one already waived, is refused on the row. */
+  protected async waive(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/waive`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, {}));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch {
+      this.rowError.set({
+        id: claim.id,
+        message: "The late charge could not be waived: only a steward waives it, once, on an open or pending claim.",
       });
     }
   }

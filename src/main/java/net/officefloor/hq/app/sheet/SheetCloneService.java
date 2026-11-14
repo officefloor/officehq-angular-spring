@@ -173,10 +173,10 @@ public class SheetCloneService {
             for (Long id : ids("SELECT id FROM claim WHERE person_id = ? ORDER BY listed, id", person.getKey())) {
                 Long is = insert("INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status,"
                         + " settled_due, opened_by, stated, corrects_number, due_by, deferred_until, proofs, split_from,"
-                        + " late_entry, reminded_on, ref, ref_key, tags, void_reason, edited_by, escalated)"
+                        + " late_entry, reminded_on, ref, ref_key, tags, void_reason, edited_by, escalated, waived)"
                         + " SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by, FALSE, corrects_number,"
                         + " due_by, deferred_until, proofs, split_from, late_entry, reminded_on, ref, ref_key, tags,"
-                        + " void_reason, edited_by, escalated FROM claim WHERE id = ?", to, person.getValue(), id);
+                        + " void_reason, edited_by, escalated, waived FROM claim WHERE id = ?", to, person.getValue(), id);
                 jdbc.update("INSERT INTO claim_status_log (sheet_id, claim_id, status, changed_by, changed_on, due)"
                         + " SELECT ?, ?, status, changed_by, changed_on, due FROM claim_status_log WHERE claim_id = ?"
                         + " ORDER BY id", to, is, id);
