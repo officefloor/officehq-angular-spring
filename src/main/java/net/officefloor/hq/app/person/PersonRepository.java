@@ -4,7 +4,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
@@ -43,4 +45,10 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and p.contact = :contact"
             + " and (:exceptId is null or p.id <> :exceptId)")
     boolean contactInUse(String sheetId, String contact, Long exceptId);
+
+    /** Put a person at the end of the list, as though just added. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "UPDATE person SET list_position = NEXT VALUE FOR person_position_seq WHERE id = :id",
+            nativeQuery = true)
+    void toEnd(@Param("id") Long id);
 }

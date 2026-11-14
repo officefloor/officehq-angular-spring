@@ -978,6 +978,14 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                 >
                   Merge
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-merge-undo"
+                  [attr.aria-label]="'Undo the last merge into ' + p.name"
+                  (click)="undoMerge(p)"
+                >
+                  Undo merge
+                </button>
                 <label [for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
                 <input
                   [id]="'person-transfer-to-' + p.id"
@@ -1957,6 +1965,23 @@ export class People {
     }
     if (this.session.sheetId() !== sheet) return;
     this.mergeChoices.update((choices) => ({ ...choices, [person.id]: '' }));
+    await this.read(sheet, this.session.loads());
+  }
+
+  /** Undo the last merge into a person: the person merged into them is back on the list with their
+   *  claims and aliases, so the people and claims are read again. */
+  protected async undoMerge(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/merge-undo`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, {}));
+    } catch {
+      this.rowError.set({ id: person.id, message: `The last merge into ${person.name} could not be undone.` });
+      return;
+    }
+    if (this.session.sheetId() !== sheet) return;
     await this.read(sheet, this.session.loads());
   }
 

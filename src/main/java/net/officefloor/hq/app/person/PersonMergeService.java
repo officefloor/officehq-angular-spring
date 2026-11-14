@@ -1,9 +1,12 @@
 package net.officefloor.hq.app.person;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -26,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PersonMergeService {
 
     private final PersonRepository people;
+    private final PersonMergeRepository merges;
     private final PersonAliasRepository aliases;
     private final PersonPatronRepository patrons;
     private final PersonHoldRepository holds;
@@ -39,11 +43,12 @@ public class PersonMergeService {
     private final SheetService sheets;
     private final Audit audit;
 
-    public PersonMergeService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
+    public PersonMergeService(PersonRepository people, PersonMergeRepository merges, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PersonHoldRepository holds, PersonWatchRepository watches, ClaimRepository claims,
             StatementRepository statements, PoolMemberRepository poolMembers, CrewService crews, PeriodRepository periods,
             SettingService settings, SheetService sheets, Audit audit) {
         this.people = people;
+        this.merges = merges;
         this.aliases = aliases;
         this.patrons = patrons;
         this.holds = holds;
@@ -82,13 +87,71 @@ public class PersonMergeService {
         if (from.isRetired() || into.isRetired()) {
             throw new MergeRefusedException("A retired person is neither merged nor merged into");
         }
-        absorb(sheetId, user, from, into);
+        List<Long> claimIds = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, from.getId()).stream()
+                .map(Claim::getId).toList();
+        List<Long> aliasIds = aliases.findByPersonIdOrderByIdAsc(from.getId()).stream().map(PersonAlias::getId)
+                .toList();
+        PersonAlias nameAlias = absorb(sheetId, user, from, into);
+        merges.saveAndFlush(new PersonMerge(sheetId, from.getId(), into.getId(), user, sheets.today(sheetId),
+                nameAlias.getId(), Set.copyOf(claimIds), Set.copyOf(aliasIds)));
         return into;
+    }
+
+    /** The steward who made the last merge into a person undoes it on the same sheet's today it was
+     *  made: the merged person is back at the end of the list with the claims that came from them (as
+     *  they are now, listed in the order they are under the other) and their own aliases, which leave
+     *  the other's; patron and pool changes stay. A later day, anyone else, or a person with no merge to
+     *  undo is refused. Returns the person brought back. */
+    @Transactional
+    public Person undo(String sheetId, String user, Long intoId) {
+        sheets.lock(sheetId);
+        Person into = person(sheetId, intoId);
+        PersonMerge merge = merges.findFirstByIntoIdOrderByIdDesc(into.getId())
+                .filter(made -> !made.isUndone())
+                .orElseThrow(() -> new MergeRefusedException(into.getName() + " has no merge to undo"));
+        if (!merge.getMadeBy().equals(user) || settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new MergeRefusedException("Only the steward who made a merge undoes it");
+        }
+        if (!sheets.today(sheetId).equals(merge.getMadeOn())) {
+            throw new MergeRefusedException("A merge is undone only on the day it was made");
+        }
+        Person from = people.findById(merge.getFromId())
+                .filter(person -> into.getId().equals(person.getMergedInto()))
+                .orElseThrow(() -> new MergeRefusedException(into.getName() + " has no merge to undo"));
+
+        List<Claim> back = new ArrayList<>(claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, into.getId())
+                .stream().filter(claim -> merge.getClaimIds().contains(claim.getId())).toList());
+        Collections.reverse(back);
+        back.forEach(claim -> claim.setPersonId(from.getId()));
+        claims.saveAllAndFlush(back);
+        back.forEach(claim -> claims.relist(claim.getId()));
+
+        List<PersonAlias> theirAliases = aliases.findAllById(merge.getAliasIds()).stream()
+                .filter(alias -> alias.getPersonId().equals(into.getId()))
+                .sorted(Comparator.comparing(PersonAlias::getId)).toList();
+        theirAliases.forEach(alias -> alias.setPersonId(from.getId()));
+        aliases.saveAllAndFlush(theirAliases);
+        if (merge.getNameAliasId() != null) {
+            aliases.findById(merge.getNameAliasId()).ifPresent(alias -> {
+                aliases.delete(alias);
+                aliases.flush();
+            });
+        }
+
+        from.unmerge();
+        people.saveAndFlush(from);
+        people.toEnd(from.getId());
+        merge.undo();
+        merges.saveAndFlush(merge);
+
+        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + user + " name=" + from.getName()
+                + " from=" + into.getName());
+        return people.findById(from.getId()).orElseThrow();
     }
 
     /** Merges one person into another on the sheet, as {@link #merge} does once it is allowed: a person
      *  transferred onto a sheet that has them already by a name or alias is merged this way. */
-    void absorb(String sheetId, String user, Person from, Person into) {
+    PersonAlias absorb(String sheetId, String user, Person from, Person into) {
 
         List<Claim> moved = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, from.getId()).stream()
                 .sorted(Comparator.comparing(Claim::getId)).toList();
@@ -101,7 +164,8 @@ public class PersonMergeService {
         List<PersonAlias> theirAliases = aliases.findByPersonIdOrderByIdAsc(from.getId());
         theirAliases.forEach(alias -> alias.setPersonId(into.getId()));
         aliases.saveAllAndFlush(theirAliases);
-        aliases.saveAndFlush(new PersonAlias(sheetId, into.getId(), from.getName(), sheets.today(sheetId)));
+        PersonAlias nameAlias = aliases.saveAndFlush(new PersonAlias(sheetId, into.getId(), from.getName(),
+                sheets.today(sheetId)));
 
         List<PersonPatron> theirPatrons = patrons.findByPersonIdOrderByIdAsc(from.getId());
         patrons.deleteAll(theirPatrons);
@@ -165,6 +229,7 @@ public class PersonMergeService {
 
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + from.getName()
                 + " into=" + into.getName());
+        return nameAlias;
     }
 
     private Person person(String sheetId, Long id) {

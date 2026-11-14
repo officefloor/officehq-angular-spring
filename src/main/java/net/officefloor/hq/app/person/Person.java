@@ -202,6 +202,11 @@ public class Person {
         this.mergedInto = personId;
     }
 
+    /** Undo the person's merge into another: they are back on the sheet. */
+    public void unmerge() {
+        this.mergedInto = null;
+    }
+
     /** Flag the person with a reason until a date, replacing any flag they had. */
     public void flag(String reason, LocalDate until, LocalDate on) {
         this.flagReason = reason;

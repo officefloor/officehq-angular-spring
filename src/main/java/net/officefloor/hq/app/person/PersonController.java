@@ -381,6 +381,16 @@ public class PersonController {
         return withStatements(rollups.track(sheet, by, () -> merges.merge(sheet, by, id, request.intoId())), by);
     }
 
+    /** Undo the last merge into a person: the person merged into them is back on the sheet; that
+     *  person, as they stand after it. */
+    @PostMapping("/{id}/merge-undo")
+    public PersonView undoMerge(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(rollups.track(sheet, by, () -> merges.undo(sheet, by, id)), by);
+    }
+
     /** Transfer a person to another sheet by id: they leave this sheet. */
     @PostMapping("/{id}/transfer")
     @ResponseStatus(HttpStatus.NO_CONTENT)
