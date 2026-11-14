@@ -49,9 +49,13 @@ public class Claim {
 
     /** The date the claim is due by, fixed when it was added: its date plus the terms of its person's
      *  grade in force on that date, moved past the sheet's holidays then. It stays as it was when the
-     *  terms, the holidays or the claim's date change. */
-    @Column(name = "due_by", nullable = false, updatable = false)
+     *  terms or the claim's date change; a holiday added on or before it re-fixes it (see {@link #refix}). */
+    @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms in business days the due-by was fixed with. */
+    @Column(name = "terms", nullable = false, updatable = false)
+    private int terms;
 
     @Column(name = "note", nullable = false)
     private String note;
@@ -133,10 +137,11 @@ public class Claim {
     protected Claim() {
     }
 
-    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note,
-            String corrects) {
+    public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, int terms,
+            String note, String corrects) {
         this.sheetId = sheetId;
         this.dueBy = dueBy;
+        this.terms = terms;
         this.corrects = corrects;
         this.personId = personId;
         this.amount = amount;
@@ -146,8 +151,9 @@ public class Claim {
 
     /** An OPEN claim split off another: the split-off amount, with the same date and note, its own
      *  due-by, number and opener, naming the claim it was split from. */
-    public static Claim splitOff(Claim from, BigDecimal amount, LocalDate dueBy, String number, String openedBy) {
-        Claim split = new Claim(from.sheetId, from.personId, amount, from.date, dueBy, from.note, null);
+    public static Claim splitOff(Claim from, BigDecimal amount, LocalDate dueBy, int terms, String number,
+            String openedBy) {
+        Claim split = new Claim(from.sheetId, from.personId, amount, from.date, dueBy, terms, from.note, null);
         split.status = ClaimStatus.OPEN;
         split.number = number;
         split.openedBy = openedBy;
@@ -160,7 +166,7 @@ public class Claim {
     public static Claim asItWas(Long id, String sheetId, Long personId, BigDecimal amount, LocalDate date,
             LocalDate dueBy, ClaimStatus status, BigDecimal settledDue, boolean stated, BigDecimal statedDue,
             String corrects, LocalDate deferredUntil) {
-        Claim was = new Claim(sheetId, personId, amount, date, dueBy, "", corrects);
+        Claim was = new Claim(sheetId, personId, amount, date, dueBy, 0, "", corrects);
         was.id = id;
         was.status = status;
         was.settledDue = settledDue;
@@ -232,6 +238,15 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    /** Fix the due-by again, as the sheet's holidays now move it. */
+    public void refix(LocalDate dueBy) {
+        this.dueBy = dueBy;
     }
 
     public String getNote() {

@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,11 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class HolidayService {
 
     private final HolidayRepository holidays;
+    private final ClaimRepository claims;
     private final SheetService sheets;
     private final Audit audit;
 
-    public HolidayService(HolidayRepository holidays, SheetService sheets, Audit audit) {
+    public HolidayService(HolidayRepository holidays, ClaimRepository claims, SheetService sheets, Audit audit) {
         this.holidays = holidays;
+        this.claims = claims;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -31,7 +36,10 @@ public class HolidayService {
     }
 
     /** Add a holiday to the sheet. Refused when the date is already on its list. The sheet is held
-     *  locked so the same date added at the same moment is checked against itself. */
+     *  locked so the same date added at the same moment is checked against itself. Every claim on the
+     *  sheet that is not SETTLED or VOID and is due by the holiday or later has its due-by re-fixed:
+     *  worked out again from its date, with the terms it was fixed with, over the holidays now on the
+     *  sheet. */
     @Transactional
     public Holiday add(String sheetId, String user, LocalDate date) {
         sheets.lock(sheetId);
@@ -39,6 +47,18 @@ public class HolidayService {
             throw new HolidayRefusedException("The date " + date + " is already a holiday on the sheet");
         }
         Holiday saved = holidays.saveAndFlush(new Holiday(sheetId, date));
+        Set<LocalDate> days = list(sheetId).stream().map(Holiday::getDate).collect(Collectors.toSet());
+        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+            if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                    || claim.getDueBy().isBefore(date)) {
+                continue;
+            }
+            LocalDate dueBy = businessDaysAfter(days, claim.getDate(), claim.getTerms());
+            if (!dueBy.equals(claim.getDueBy())) {
+                claim.refix(dueBy);
+                claims.saveAndFlush(claim);
+            }
+        }
         audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user + " date=" + date);
         return saved;
     }

@@ -113,13 +113,14 @@ public class ClaimService {
         Person person = person(sheetId, personId);
         corrects = numberOf(corrects);
         LocalDate on = date != null ? date : settings.defaultClaimDate(sheetId);
-        LocalDate dueBy = dueBy(sheetId, person, on);
+        int terms = termsFor(sheetId, person, on);
+        LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
         refuseBadCorrection(sheetId, personId, amount, corrects);
         ref = refOf(ref);
         refuseRefInUse(sheetId, ref, null);
-        Claim claim = new Claim(sheetId, personId, scaled(amount), on, dueBy, noteOf(note), corrects);
+        Claim claim = new Claim(sheetId, personId, scaled(amount), on, dueBy, terms, noteOf(note), corrects);
         claim.setRef(ref);
         claim.setTags(tagsOf(tags));
         boolean late = periods.softClosedOn(sheetId, dueBy);
@@ -358,8 +359,9 @@ public class ClaimService {
         claim.unbind();
         Claim kept = claims.saveAndFlush(claim);
         LocalDate on = kept.getDate();
-        LocalDate dueBy = dueBy(sheetId, person, on);
-        Claim split = Claim.splitOff(kept, part, dueBy, nextNumber(sheetId, dueBy), user);
+        int terms = termsFor(sheetId, person, on);
+        LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
+        Claim split = Claim.splitOff(kept, part, dueBy, terms, nextNumber(sheetId, dueBy), user);
         if (periods.softClosedOn(sheetId, dueBy)) {
             split.markLateEntry();
         }
@@ -1003,12 +1005,6 @@ public class ClaimService {
 
     private static String noteOf(String note) {
         return note == null ? "" : note.trim();
-    }
-
-    /** The due-by of a claim of the person dated on a date, fixed as it is added: the terms-th
-     *  business day after its date, skipping weekends and the holidays on the sheet now. */
-    private LocalDate dueBy(String sheetId, Person person, LocalDate on) {
-        return holidays.businessDaysAfter(sheetId, on, termsFor(sheetId, person, on));
     }
 
     /** The terms in business days a claim of the person dated on a date takes: the person's own, else their

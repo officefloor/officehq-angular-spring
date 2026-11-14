@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -37,9 +38,11 @@ public class HolidayController {
     }
 
     private final HolidayService service;
+    private final RollupService rollups;
 
-    public HolidayController(HolidayService service) {
+    public HolidayController(HolidayService service, RollupService rollups) {
         this.service = service;
+        this.rollups = rollups;
     }
 
     /** The sheet's holidays, the earliest first. */
@@ -48,12 +51,14 @@ public class HolidayController {
         return service.list(sheetId.trim()).stream().map(HolidayView::of).toList();
     }
 
-    /** Add a holiday to the sheet. */
+    /** Add a holiday to the sheet, then record the figures the due-bys it re-fixes moved. */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public HolidayView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated HolidayRequest request) {
-        return HolidayView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.date()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return HolidayView.of(rollups.track(sheet, by, () -> service.add(sheet, by, request.date())));
     }
 
     /** A date already on the sheet's list is refused. */
